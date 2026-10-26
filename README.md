@@ -327,23 +327,42 @@ location /ops/ {
 }
 ```
 
-### 4. 不想配 rewrite？改用 hash 模式
+### 4. 不想配 rewrite？改用 hash 路由模式
 
-改 [`src/router/index.js`](src/router/index.js) 第 88 行：
+**不用改源码**，构建时指定环境变量即可：
 
-```js
-// 原来是
-history: createWebHistory(import.meta.env.BASE_URL),
-
-// 改成
-history: createWebHashHistory(),
+```bash
+VITE_ROUTER_MODE=hash BASE_PATH=/你的子目录/ npm run build
 ```
-
-同时把第 1 行的 `createWebHistory` 导入换成 `createWebHashHistory`。
 
 URL 变成 `/#/bank`、`/#/question/3`。**任何静态托管、甚至直接双击 html 都能用，零配置**。
 代价是 URL 带 `#`，不好看，且部分统计/分享工具处理 hash 不佳。
-如果你是个人刷题用、部署在不确定环境里，**推荐直接用这个**。
+
+> 路由模式由 `import.meta.env.VITE_ROUTER_MODE` 控制（见 `src/router/index.js`），
+> 不用为了部署去改源码再忘记改回来。
+
+### 4.1 GitHub Pages（已配置自动部署）
+
+仓库已带 [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)，**CI 通过后自动发布**。
+
+首次使用需在网页开启一次（只做一次）：
+
+1. 仓库 **Settings → Pages**
+2. **Source** 选择 **GitHub Actions**（不要选 “Deploy from a branch”）
+3. 推送 `main` 后，Actions 里的 `Deploy to GitHub Pages` 会构建并发布
+4. 站点地址：`https://<用户名>.github.io/<仓库名>/`
+
+工作流已处理 Pages 的两个特殊要求：
+
+| 要求 | 处理方式 |
+|---|---|
+| 项目站点在子路径下 | 自动设 `BASE_PATH=/<仓库名>/` |
+| **Pages 不支持服务器端 rewrite** | 自动用 `VITE_ROUTER_MODE=hash` |
+
+> ⚠️ 这一点很关键：我实测过，history 模式在纯静态托管上，`/bank` 会直接 404，
+> 只有首页能用。所以 Pages 必须用 hash 模式。
+
+### 4.2 其他平台速查
 
 ### 5. 部署后必须验证的 4 件事
 

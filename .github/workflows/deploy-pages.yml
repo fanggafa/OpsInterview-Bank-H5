@@ -1,0 +1,90 @@
+name: Deploy to GitHub Pages
+
+on:
+  # 只在 main 分支的 CI 通过后手动/自动触发
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 允许本工作流向 Pages 发布
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只保留一个部署，取消进行中的
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建 Pages 产物
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 部署前的质量门禁：任一失败则不发布
+      - name: 编码检查
+        run: npm run check:encoding
+
+      - name: 题库校验
+        run: npm run validate:data
+
+      - name: 单元测试
+        run: npm run test
+
+      - name: 构建（hash 路由 + 子路径）
+        env:
+          # GitHub Pages 项目站点的 URL 形如 https://<user>.github.io/<repo>/
+          # 因此 base 必须是 /<repo>/，否则资源全部 404
+          BASE_PATH: /${{ github.event.repository.name }}/
+          # Pages 不支持服务器端 rewrite，必须用 hash 路由
+          VITE_ROUTER_MODE: hash
+        run: npm run build
+
+      - name: 校验产物
+        run: |
+          set -e
+          test -f dist/index.html || { echo "缺少 index.html"; exit 1; }
+          test -f dist/data/questions.json || { echo "缺少题库"; exit 1; }
+          grep -q "/${{ github.event.repository.name }}/assets/" dist/index.html \
+            || { echo "BASE_PATH 未生效"; exit 1; }
+          echo "✓ 产物校验通过"
+
+      # 防止 GitHub Pages 的 Jekyll 处理干扰下划线开头的文件
+      - name: 添加 .nojekyll
+        run: touch dist/.nojekyll
+
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: 部署
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

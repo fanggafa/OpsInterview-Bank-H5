@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
 import { useBankStore } from '@/stores/bankStore'
 
 /**
@@ -84,8 +84,17 @@ const routes = [
   },
 ]
 
+/**
+ * 路由模式由环境变量决定，避免「为部署改源码、事后忘记改回」的坑：
+ * - 默认：history 模式（需要服务器 rewrite，如 Nginx/Vercel/Netlify）
+ * - VITE_ROUTER_MODE=hash：hash 模式（零配置，适合 GitHub Pages 等不支持 rewrite 的托管）
+ */
+const USE_HASH = import.meta.env.VITE_ROUTER_MODE === 'hash'
+
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: USE_HASH
+    ? createWebHashHistory()
+    : createWebHistory(import.meta.env.BASE_URL),
   routes,
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) return savedPosition
