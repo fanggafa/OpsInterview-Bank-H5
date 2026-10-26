@@ -503,3 +503,20 @@ Set-Content -Path README.md -Value $content -Encoding UTF8
 | 每日一题 | `src/api/dataService.js` 加 `dailyQuestion(date)`，用日期做随机种子 |
 | PWA 离线 | 接入 `vite-plugin-pwa`，无需改业务代码 |
 | 面试单题倒计时 | `InterviewRunView` 加计时器即可 |
+
+---
+
+## 分支保护需要的 status check 名称
+
+开启分支保护时，GitHub 会要求选择「必须通过的 status check」。本项目的名称由
+`job.name` + 矩阵值拼成，因此是这两个：
+
+```
+测试与构建 (20.x)
+测试与构建 (22.x)
+```
+
+> 如果设置页显示 `No checks have been added`，说明仓库最近还没有过 `pull_request`
+> 触发的 CI 运行（push 事件产生的 check 不会进入这个候选列表）。
+> 解法：提一个 PR 让 CI 跑一次，之后就能搜到了。
+
