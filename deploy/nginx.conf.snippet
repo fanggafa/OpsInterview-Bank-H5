@@ -1,0 +1,32 @@
+# Nginx 部署片段（history 模式必备）
+# 把下面 server 块合并进你的 nginx 配置，或 include 到 http 段。
+
+server {
+    listen       80;
+    server_name  ops.example.com;
+
+    root   /usr/share/nginx/html/ops-interview-h5;   # 指向 dist 目录
+    index  index.html;
+
+    # 关键：静态文件不存在时回退到 index.html，否则直刷子路由 404
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 静态资源长缓存（文件名带 hash，可放心强缓存）
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # 题库数据不要强缓存，方便更新题目后立即生效
+    location /data/ {
+        expires -1;
+        add_header Cache-Control "no-cache";
+    }
+
+    # 可选：gzip
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+}

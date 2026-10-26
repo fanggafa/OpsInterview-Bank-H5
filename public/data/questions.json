@@ -1,0 +1,2174 @@
+[
+  {
+    "id": 1,
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "简述 Linux 的 load average 含义，以及如何判断系统负载是否过高。",
+    "answer": "load average 表示最近 1/5/15 分钟内，处于「可运行状态(R)」和「不可中断状态(D)」的平均进程数。\n\n判断方式：\n1. 与 CPU 核心数比较，1 分钟值持续超过核心数，说明有排队；\n2. 经验阈值：持续 > 核心数 × 2 需要介入排查；\n3. 注意 load 高不等于 CPU 高——D 状态（IO 等待）也会推高 load。\n\n排查链路：top 看 %us/%sy/%wa → vmstat 1 看 r 列与 b 列 → iostat -x 1 看 %util 与 await → ps 找 D 状态进程。\n\n关键区分：load 高 + CPU 高 ⇒ 计算密集或死循环；load 高 + %wa 高 ⇒ IO 瓶颈；load 高 + 进程少 ⇒ 检查 D 状态与内核态。",
+    "tags": [
+      "负载",
+      "性能排查",
+      "vmstat"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2,
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "df -h 显示磁盘还有空间，但写入却报 No space left on device，可能是什么原因？",
+    "answer": "常见 3 类原因：\n\n1. inode 耗尽：大量小文件占满 inode，df -h 看空间正常，df -i 看 inode 已 100%。用 find 定位文件多的目录。\n2. 删除文件但进程仍持有句柄：空间不释放。lsof +L1 或 lsof | grep deleted 找到进程，重启进程或 kill 后释放。\n3. inode 保留空间 / 挂载点被覆盖：根分区写满、或子目录挂载点被上层文件覆盖。\n\n次要原因：\n- 目录配额 quota 超限；\n- overlay/tmpfs 类文件系统容量限制；\n- 磁盘坏块或只读挂载。\n\n处理顺序：df -h → df -i → lsof +L1 → du 定位大目录。",
+    "tags": [
+      "磁盘",
+      "inode",
+      "故障排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3,
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "软链接（symbolic link）和硬链接（hard link）有什么区别？各自适用场景是什么？",
+    "answer": "硬链接：多个文件名指向同一个 inode，inode 链接计数 +1；删除任一名称不影响其他名称，只有计数归零数据才释放。不能跨文件系统，不能链接目录（root 受限场景除外）。\n\n软链接：独立的文件，内容是目标路径字符串；目标删除后成为「悬空链接」（dangling link）。可以跨文件系统，可以指向目录。\n\n查看方式：ls -li 看 inode，ls -l 看软链接的 -> 指向。\n\n适用场景：\n- 硬链接：同一分区内做备份快照、节省空间的重复文件、防止误删（保留一个硬链接别名）。\n- 软链接：跨分区/跨目录引用、版本切换（如 /usr/local/java -> java-17）、配置指向。",
+    "tags": [
+      "inode",
+      "文件系统"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4,
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "进程处于 D 状态（不可中断睡眠）意味着什么？为什么它杀不掉，应该如何排查？",
+    "answer": "D 状态表示进程在内核态等待某个不可中断的事件，典型是等待磁盘 IO、NFS 响应、内核锁或驱动。\n\n为什么 kill -9 无效：信号只在进程返回用户态时被处理，而 D 状态进程在内核态阻塞，不会处理信号，只能等内核事件完成或超时。\n\n排查步骤：\n1. ps -eo pid,ppid,stat,wchan:30,command | grep ' D ' 看 wchan（内核等待点）；\n2. cat /proc/<pid>/stack 看内核调用栈；\n3. iostat -x 1 看磁盘 %util/await，NFS 场景看 mount 参数与网络；\n4. 若是 NFS 挂载点无响应，考虑 mount -o soft,timeo 或 umount -f。\n\n缓解手段：等待 IO 完成、修复存储/NFS、必要时重启相关服务或主机。",
+    "tags": [
+      "进程状态",
+      "D状态",
+      "IO"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 5,
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "free 命令输出中 available 和 free 有什么不同？为什么 available 才代表实际可用内存？",
+    "answer": "free 是当前完全空闲、未被任何用途占用的内存。\n\navailable 是内核估算的「在不触发 swap 的前提下，可供新进程使用的内存」，计算上包含：free + 可回收的 page cache + 可回收的 slab。\n\n为什么看 available：Linux 会积极用空闲内存做文件缓存（buff/cache），这部分随压力可被立即回收，所以 free 偏小是正常现象，不代表内存不足。available 偏小才是真的吃紧。\n\n补充：\n- 用 top 看 MiB Mem 行，或 /proc/meminfo 的 MemAvailable；\n- swap 使用率高 + available 低 ⇒ 内存压力大；\n- 需结合 OOM 日志 dmesg 与 cgroup memory.events 判断。",
+    "tags": [
+      "内存",
+      "page cache"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 6,
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "线上机器 CPU 使用率突然 100%，请给出完整的排查思路和常用命令。",
+    "answer": "第一步定位是哪类 CPU：\n- top 看 %us（用户态）/ %sy（内核态）/ %wa（IO 等待）/ %si（软中断）；\n- 按 1 展开多核，确认是单核打满还是全部。\n\n第二步定位进程与线程：\n- top -Hp <pid> 或 ps -Lp <pid> -o tid,%cpu,stat,comm --sort=-%cpu；\n- 拿到高占用线程 TID 后 printf '0x%x' <tid> 转十六进制；\n- jstack <pid> | grep -A 20 'nid=0x<hex>' 定位 Java 线程栈（Go/Python 用 pprof/py-spy）。\n\n第三步看内核侧：\n- vmstat 1 看 r/sy/cs 与 in 中断；\n- pidstat -u -w 1 看上下文切换；\n- perf top / perf record -g 做热点采样（无 perf 时用 strace 看系统调用）。\n\n常见根因：死循环、正则回溯、频繁 GC、大量短连接导致软中断高、sys 高多为系统调用或锁竞争。",
+    "tags": [
+      "CPU",
+      "性能排查",
+      "top",
+      "perf"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 7,
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "服务报错「Too many open files」，原因是什么？如何临时和永久解决？",
+    "answer": "原因：进程打开的文件描述符数量超过限制。常见于长连接服务、日志文件未关闭、fd 泄漏、大量并发连接。\n\n排查：\n1. 看进程限制：cat /proc/<pid>/limits | grep 'Max open files'；\n2. 看当前占用：ls /proc/<pid>/fd | wc -l；\n3. 看是谁：lsof -p <pid> 统计 socket 与文件分布；\n4. 确认为泄漏还是真需要（连接数增长曲线）。\n\n处理：\n- 临时：ulimit -n 65535（仅当前 shell 及其子进程），或 prlimit --pid <pid> --nofile=65535:65535；\n- 永久：/etc/security/limits.conf 或 limits.d 配 nofile，systemd 服务用 LimitNOFILE=65535，容器看 docker run --ulimit。\n\n注意：fd 泄漏要修代码（未 close 的连接/文件），调大限制只是缓解。",
+    "tags": [
+      "文件描述符",
+      "ulimit",
+      "资源限制"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 8,
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "简述 systemd 服务启动失败的排查方法，并说明 Restart= 与 Type= 参数的含义。",
+    "answer": "排查链路：\n1. systemctl status <svc> 看 Active 状态与最近日志；\n2. journalctl -u <svc> -n 200 --no-pager，或 -xe 看完整信息；\n3. 看 unit 文件是否合法：systemctl cat <svc>，systemd-analyze verify；\n4. 手动执行 ExecStart 的命令，复现问题（注意环境变量与工作目录差异）；\n5. 常见原因：路径错误、权限/属主不对、Type 配置与实际不符、依赖未启动、SELinux 拦截。\n\nType= 取值：\n- simple（默认）：启动即认为服务就绪；\n- forking：进程 fork 后父进程退出，需配 PIDFile；\n- notify：服务主动 sd_notify 通知就绪；\n- oneshot：只执行一次，配合 RemainAfterExit=yes。\n\nRestart=：no / on-failure / always / on-abnormal 等，配合 RestartSec= 控制重启间隔，防止疯狂重启。\n\n其他常用：ExecStartPre/Post、WorkingDirectory、EnvironmentFile、LimitNOFILE。",
+    "tags": [
+      "systemd",
+      "服务管理"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 9,
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "Shell 脚本开头写 set -euo pipefail 有什么作用？分别解释每个选项。",
+    "answer": "作用是让脚本「遇错即停」，避免静默失败导致更严重的后果。\n\n- set -e：任一命令返回非 0 状态立即退出。注意在 if/while 条件、|| 之后、管道中间（除非 pipefail）等场景不触发，属于已知坑。\n- set -u：引用未定义变量时报错退出，避免空变量静默变成空字符串。建议配合 ${VAR:-default} 使用。\n- set -o pipefail：管道中任一环节失败，整个管道返回失败（默认只看最后一个命令）。这是 -e 生效的关键补充。\n- 常一并加 set -x 用于调试，或用 IFS=$'\\n\\t' 规范分词。\n\n反例：cmd1 | cmd2 中 cmd1 失败，没有 pipefail 时脚本会继续执行，非常危险。",
+    "tags": [
+      "set",
+      "健壮性",
+      "脚本规范"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 10,
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何获取管道中每个命令的退出码？$? 在管道里为什么不准确？",
+    "answer": "$? 只反映「最后一个执行完成命令」的退出码。在 cmd1 | cmd2 中，$? 是 cmd2 的退出码，cmd1 的失败被吞掉。\n\n获取管道各段退出码：\n- 用 bash 的 PIPESTATUS 数组：cmd1 | cmd2; echo \"${PIPESTATUS[@]}\"；注意取完立即使用，因为任何后续命令都会覆盖它；\n- 或 set -o pipefail 让管道整体返回第一个失败项，这样 $? 就可用（推荐）。\n\n示例：\nset -o pipefail\ngrep foo file | wc -l\n上面 grep 未命中返回 1 时，管道返回 1，配合 set -e 即能中断。\n\n注意：PIPESTATUS 是 bash 特性，POSIX sh 不支持；跨 shell 可改用临时文件或显式分步执行捕捉 $?。",
+    "tags": [
+      "退出码",
+      "PIPESTATUS",
+      "管道"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 11,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 中如何安全地执行命令替换与变量取值？为什么推荐用 $(...) 而不是反引号？",
+    "answer": "推荐 $(cmd)：\n1. 可嵌套，反引号嵌套必须转义，可读性极差；\n2. 引号处理更直观，内部引号不易错乱；\n3. 是 POSIX 标准写法，跨 shell 一致。\n\n安全要点：\n- 命令替换结果含空格会分词，务必加双引号：\"$(cmd)\"；\n- 变量取值用 \"${var}\"，避免与相邻字符歧义；\n- 命令替换的退出码不进入 $?（取的是外层命令），需要判断时先赋值给变量再检查；\n- 处理文件名等不可信输入时用 while IFS= read -r 或 -print0/-0 组合，避免分词与通配符展开。\n\n反例：\nrm $(find . -name \"*.tmp\")  —— 文件名含空格时会删错文件。",
+    "tags": [
+      "命令替换",
+      "变量",
+      "安全写法"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 12,
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "用 find 找到的文件名含空格或特殊字符时，怎样配合 xargs 安全处理？",
+    "answer": "默认 xargs 以空格/换行分词，文件名含空格会被拆成多个参数，极其危险（尤其是 rm）。\n\n正确做法（任选）：\n1. find ... -print0 | xargs -0 rm -f：用 NUL 分隔，最可靠；\n2. find ... -exec rm -f {} +：直接由 find 批量传参，无需 xargs；\n3. find ... -exec rm -f {} \\;：逐个处理，安全但慢；\n4. 循环：find ... -print0 | while IFS= read -r -d '' f; do rm -f -- \"$f\"; done。\n\n要点：\n- 始终用 -print0 / -0 配对；\n- 删除命令加 -- 防止文件名以 - 开头被当作选项；\n- 先 echo 预览再执行，避免误删。\n\n反例：find . -name '* *' | xargs rm 会因分词删错文件。",
+    "tags": [
+      "find",
+      "xargs",
+      "安全"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 13,
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "编写一段 Shell 逻辑：判断文件是否存在且可读、判断目录是否存在，并说明 test 常用表达式。",
+    "answer": "推荐写法（兼容 POSIX，用 [ ] 或 [[ ]]）：\n\nif [ -f \"$file\" ] && [ -r \"$file\" ]; then\n  echo \"文件存在且可读\"\nelse\n  echo \"文件不存在或不可读\"\nfi\n\nif [ -d \"$dir\" ]; then echo \"目录存在\"; fi\n\n常用 test 表达式：\n- 文件类：-e 存在、-f 普通文件、-d 目录、-r/-w/-x 权限、-s 非空、-L 软链接；\n- 字符串：-z 空、-n 非空、= / != 比较；\n- 数值：-eq -ne -lt -le -gt -ge；\n- 组合：-a/-o（[ ]）或 && / ||（[[ ]] 更安全）。\n\n注意：[[ ]] 是 bash 扩展，支持正则 =~ 且不做分词，更推荐；变量务必加引号。",
+    "tags": [
+      "test",
+      "条件判断"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 14,
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "写一个日志清理脚本：删除 /var/log/app 下 7 天前的 .log 文件，并记录清理结果，要求安全可重复执行。",
+    "answer": "#!/usr/bin/env bash\nset -euo pipefail\n\nLOG_DIR=\"/var/log/app\"\nKEEP_DAYS=7\n\n[ -d \"$LOG_DIR\" ] || { echo \"目录不存在: $LOG_DIR\" >&2; exit 1; }\n\n# 先统计再删除，-print0 处理特殊文件名\ncount=$(find \"$LOG_DIR\" -type f -name '*.log' -mtime +\"$KEEP_DAYS\" -print0 \\\n  | tr -cd '\\0' | wc -c)\n\nif [ \"$count\" -eq 0 ]; then\n  echo \"$(date '+%F %T') 无需清理\"\n  exit 0\nfi\n\nfind \"$LOG_DIR\" -type f -name '*.log' -mtime +\"$KEEP_DAYS\" -print0 \\\n  | xargs -0 -r rm -f --\n\necho \"$(date '+%F %T') 已清理 $count 个文件\"\n\n要点说明：\n- set -euo pipefail 防静默失败；\n- -mtime +7 表示修改时间超过 7 天；\n- -print0/-0/-- 组合防空格与 - 开头文件名；\n- xargs -r 在无输入时不执行命令；\n- 可重复执行（幂等），并输出统计便于审计。\n- 生产建议改为压缩归档而非直接删除，并挂 crontab。",
+    "tags": [
+      "日志清理",
+      "find",
+      "运维脚本"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 15,
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 中数组如何定义、遍历和取长度？关联数组（map）怎么用？有哪些坑？",
+    "answer": "索引数组：\narr=(a b c)           # 定义\narr+=(d)              # 追加\necho \"${arr[0]}\"      # 取元素，全部用 \"${arr[@]}\"\necho \"${#arr[@]}\"     # 长度\nfor x in \"${arr[@]}\"; do echo \"$x\"; done\n\n关联数组（bash 4+）：\ndeclare -A map\nmap[host]=web1\nmap[port]=80\necho \"${map[host]}\"\nfor k in \"${!map[@]}\"; do echo \"$k=${map[$k]}\"; done\n\n常见坑：\n- 不加引号的 ${arr[@]} 会分词，含空格元素被拆开；\n- ${arr[*]} 会把元素拼成一个字符串；\n- 稀疏数组 ${#arr[@]} 不等于最大下标 +1；\n- 关联数组 key 为空会报错（bash 5 起）；\n- POSIX sh 完全不支持数组，需用 bash 显式声明 #!/usr/bin/env bash。",
+    "tags": [
+      "数组",
+      "关联数组",
+      "bash"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 16,
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TCP 为什么是三次握手而不是两次？两次握手会带来什么问题？",
+    "answer": "核心目的：双方都确认「自己的发送和对方的接收都正常」，并同步初始序列号（ISN）。\n\n两次握手的问题：\n1. 服务端无法确认客户端收到了自己的 SYN-ACK，客户端可能根本没收到；\n2. 历史重复连接请求（网络延迟的旧 SYN）会让服务端直接建立一条无效连接，浪费资源——这是三次握手要解决的核心问题；\n3. 序列号同步不完整，无法保证后续可靠的按序传输。\n\n三次握手过程：SYN(seq=x) → SYN+ACK(seq=y, ack=x+1) → ACK(ack=y+1)。第三次让服务端确认客户端具备接收能力。\n\n补充：SYN 洪泛攻击就是利用半连接队列（SYN queue）耗尽，防御手段包括 SYN cookies、调大 backlog、缩短超时。",
+    "tags": [
+      "TCP",
+      "三次握手",
+      "SYN"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 17,
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TCP 四次挥手时，主动关闭方为什么要进入 TIME_WAIT 状态并等待 2MSL？",
+    "answer": "TIME_WAIT 存在的两个原因：\n\n1. 保证最后的 ACK 能可靠到达：若 ACK 丢失，被动关闭方会重发 FIN，处于 TIME_WAIT 的一方能重发 ACK。等待 2MSL（报文最大生存时间的两倍）覆盖「FIN 重传 + ACK 往返」的最坏情况。\n\n2. 让本连接的旧报文在网络中消亡：防止同一四元组的新连接收到上条连接的延迟报文，造成数据错乱。\n\n时间为什么是 2MSL：一来一回，即主动方发 ACK 到对端的最长生存时间，加上对端重传 FIN 到达的最长生存时间。\n\n工程影响：\n- 大量短连接导致 TIME_WAIT 堆积，占端口/内存；\n- 缓解：连接复用（长连接/连接池）、调 net.ipv4.tcp_tw_reuse（仅对客户端出向连接有效且需时间戳）、扩大本地端口范围；\n- tcp_tw_recycle 在新内核已移除，切勿使用。",
+    "tags": [
+      "TCP",
+      "TIME_WAIT",
+      "四次挥手"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 18,
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "在浏览器输入 URL 到页面完全展示，中间经历了哪些环节？请按顺序说明。",
+    "answer": "1. URL 解析：拆协议/域名/端口/路径；命中 HSTS 强制 HTTPS。\n2. DNS 解析：浏览器缓存 → 系统 hosts → 本地 DNS → 递归查询根/顶级/权威服务器，拿到 A/AAAA 记录（CDN 场景返回就近节点 IP）。\n3. 建立连接：TCP 三次握手；HTTPS 再走 TLS 握手（证书校验、密钥协商，TLS1.3 为 1-RTT）。\n4. 发送 HTTP 请求：请求行 + 头（Cookie/Host/UA/缓存校验头）。\n5. 服务端处理：负载均衡 → 应用服务 → 缓存/数据库。\n6. 响应返回：状态码 + 头（Cache-Control/ETag/Content-Encoding）+ 正文。\n7. 浏览器解析渲染：HTML 解析 → DOM → CSSOM → 渲染树 → 布局 → 绘制；遇到 JS 阻塞解析，遇 CSS 阻塞渲染；图片等资源并行加载。\n8. 连接处理：HTTP/1.1 keep-alive 复用，HTTP/2 多路复用，HTTP/3 走 QUIC/UDP。\n\n排障价值：任意环节都可成为瓶颈，用 curl -w、dig、traceroute、浏览器 DevTools 分段定位。",
+    "tags": [
+      "HTTP",
+      "DNS",
+      "TLS",
+      "渲染"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 19,
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "如何用 tcpdump 定位一个「客户端连不上服务端」的问题？请给出抓包命令和分析思路。",
+    "answer": "抓包命令（服务端侧）：\ntcpdump -i eth0 -nn -s0 -c 100 'host 10.0.0.5 and port 8080' -w /tmp/cap.pcap\n客户端侧：tcpdump -i any -nn 'tcp port 8080'\n\n分析思路（按握手阶段）：\n1. 只有 SYN、没有 SYN-ACK ⇒ 服务端未收到或被拦截：查防火墙/安全组、服务是否监听（ss -lntp）、端口是否正确。\n2. SYN 到达但回 RST ⇒ 端口没监听或进程已退出；也可能是中间设备重置。\n3. 有 SYN-ACK 但客户端收不到 ⇒ 回程路由问题、客户端防火墙。\n4. 卡在 TLS 握手 ⇒ 证书/协议版本/SNI 问题。\n5. 连上后很快 RST/FIN ⇒ 服务端进程崩溃或超时策略。\n\n常用辅助：\n- ss -s 看连接状态分布；\n- netstat -s 看重传与 listen 溢出（overflowed/synqueue）；\n- cap.pcap 用 Wireshark 看「Expert Info」与 TCP 流图更快定位。",
+    "tags": [
+      "tcpdump",
+      "抓包",
+      "连通性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 20,
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "请描述 DNS 解析的完整过程，以及常见的解析故障如何排查？",
+    "answer": "解析过程：\n1. 应用发起查询 → 查本地缓存（浏览器、系统 nscd/systemd-resolved）；\n2. 查 /etc/hosts；\n3. 查 /etc/resolv.conf 配置的 DNS 服务器（本地递归解析器）；\n4. 递归解析器缓存未命中时，依次查询根 → 顶级域（.com）→ 权威服务器，拿到 A/AAAA 记录；\n5. 结果按 TTL 缓存返回。\n\n常见故障与排查：\n- 解析失败：dig example.com +trace 逐跳看在哪一层断；nslookup 指定服务器对比。\n- 解析慢：time dig @8.8.8.8 example.com 看 Query time；检查 resolv.conf 里列出多个不可达 DNS（会串行超时）。\n- 解析到错误 IP：检查 CDN/权威记录、TTL 是否过长、是否被本地 hosts 覆盖、是否有 DNS 劫持。\n- 内网解析：确认 search 域与 ndots 设置（ndots 过大导致大量无效查询）。\n\n推荐工具：dig、nslookup、host、resolvectl、tcpdump port 53。",
+    "tags": [
+      "DNS",
+      "dig",
+      "resolv.conf"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 21,
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "服务端应用正常但外部访问不通，请给出从下到上的排查顺序和对应命令。",
+    "answer": "按 OSI 自下而上，先确认真实性再逐层排除：\n\n1. 链路/网卡：ip addr、ip link 看网卡 UP、IP 正确；ethtool 看速率与错误计数。\n2. 路由/网关：ip route、ping 网关、traceroute 看断点在哪一跳。\n3. 端口监听：ss -lntp 确认服务真的在监听（注意绑 127.0.0.1 还是 0.0.0.0，这是最常见坑）。\n4. 本机防火墙：iptables -L -n / nft list ruleset / firewall-cmd --list-all；云上还要查安全组与网络 ACL。\n5. 应用可达性：curl -v http://127.0.0.1:8080 先排除应用本身。\n6. 路径上中间设备：从上一条命令在外部机器再执行一遍，逐步缩小范围。\n7. 抓包定论：tcpdump 看包到底到没到网卡。\n\n常见根因排序：监听地址错（127.0.0.1）> 云安全组未放行 > 本机防火墙 > 服务未启动 > 路由/网关错。",
+    "tags": [
+      "连通性",
+      "防火墙",
+      "排查顺序"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 22,
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP 和 UDP 的核心区别是什么？各自适用的业务场景有哪些？",
+    "answer": "TCP：面向连接、可靠、有序、有流量控制与拥塞控制，有重传与确认，开销大（三次握手、头部 20 字节起）。\nUDP：无连接、不可靠、不保序、无拥塞控制，头部仅 8 字节，开销小、延迟低，支持广播/组播。\n\n适用场景：\n- TCP：HTTP/HTTPS、数据库连接、SSH、文件传输等要求数据完整准确的场景。\n- UDP：DNS、DHCP、VoIP、视频直播、游戏实时同步、QUIC/HTTP3、监控指标上报（可容忍少量丢失）。\n\n工程权衡：\n- 需要可靠但想低延迟 ⇒ 在 UDP 上自建可靠性（如 QUIC）；\n- 内网服务发现/指标采集用 UDP 可减少连接开销但要处理丢包与乱序；\n- 高并发短请求场景 TCP 的握手与 TIME_WAIT 成本不可忽视。",
+    "tags": [
+      "TCP",
+      "UDP",
+      "协议"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 23,
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP 502 与 504 有什么区别？分别应该往哪个方向排查？",
+    "answer": "502 Bad Gateway：网关/代理从上游收到了「无效响应」（连不上上游、上游返回了非法/空响应、上游进程崩溃）。\n排查方向：\n- 反向代理错误日志（nginx error.log 看 upstream/connect 相关）；\n- 上游服务是否存活、端口是否监听、健康检查是否通过；\n- 上游是否重启中、worker 崩溃（OOM）、协议不匹配（http 转 https）；\n- 超时类配置是否过短。\n\n504 Gateway Timeout：网关在超时时间内没等到上游响应，本质是「等太久」。\n排查方向：\n- 上游处理慢（慢 SQL、下游依赖慢、GC 停顿、锁等待）；\n- proxy_read_timeout / send_timeout 配置；\n- 大请求体上传、上游线程池打满。\n\n快速区分：502 是「上游坏了/连不上」，504 是「上游慢」。用 nginx 的 upstream_response_time 与上游自身耗时日志交叉验证。",
+    "tags": [
+      "HTTP",
+      "502",
+      "504",
+      "nginx"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 24,
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 的索引为什么使用 B+ 树而不是 B 树、红黑树或哈希表？",
+    "answer": "核心原因是「磁盘 IO 次数」与「范围查询」。\n\n对比：\n- 哈希表：等值查询 O(1)，但不支持范围查询、排序，且有哈希冲突；仅 Memory 引擎支持。\n- 红黑树/二叉搜索树：树高过大，每层一次磁盘随机 IO，几百万行数据树高 ~20 层，不可接受。\n- B 树：非叶子节点也存数据，单页能放的索引 key 更少，树更高；且范围查询需要中序遍历，跨层跳转多。\n- B+ 树：非叶子只存 key，扇出大（一页可放几百个 key），树高通常 3-4 层；数据全部在叶子节点且用双向链表串联，范围查询与排序只需顺序扫描叶子。\n\n补充：\n- InnoDB 聚簇索引叶子存整行数据，二级索引叶子存主键值（需回表）；\n- 页大小默认 16KB，三层 B+ 树可支撑约 2000 万行；\n- 覆盖索引可避免回表。",
+    "tags": [
+      "索引",
+      "B+树",
+      "InnoDB"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 25,
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "什么是联合索引的最左前缀原则？哪些写法会导致索引失效？",
+    "answer": "最左前缀：联合索引 (a, b, c) 相当于建立了 (a)、(a,b)、(a,b,c) 三个索引。查询必须从最左列开始且连续匹配才能用上索引。\n\n能用索引：where a=? / a=? and b=? / a=? and b=? and c=? / a=? and c=?（c 用不上，但 a 可用）。\n不能用：where b=? / c=? / b=? and c=?。\n\n常见索引失效场景：\n1. 对索引列做函数或运算：where date(create_time)=... 、where id+1=10；\n2. 隐式类型转换：字符串列用数字比较 where phone=13800000000；\n3. 前导模糊：like '%abc'；\n4. 使用 != 、not in、is not null 大量过滤（视数据分布而定，优化器可能放弃索引）；\n5. or 连接非索引列；\n6. 范围查询后的列无法再用于排序/过滤（a>10 and b=1，b 用不上）；\n7. 优化器认为全表扫描更快（区分度低、表很小）。\n\n验证手段：EXPLAIN 看 type/key/rows/Extra（Using index 表示覆盖索引）。",
+    "tags": [
+      "索引",
+      "最左前缀",
+      "EXPLAIN"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 26,
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "EXPLAIN 输出中 type、key、rows、Extra 各代表什么？你重点关注哪些值？",
+    "answer": "type（访问类型，性能由好到差）：\nsystem > const > eq_ref > ref > range > index > ALL。出现 ALL 或 index 需警惕。\n\nkey：实际使用的索引；key 为 NULL 说明没走索引。possible_keys 是候选。\n\nrows：预估扫描行数，越小越好；结合 filtered 估算实际返回比例。\n\nExtra 关键值：\n- Using index：覆盖索引，无需回表，最优；\n- Using where：回表后再过滤，可优化；\n- Using index condition：索引下推（ICP），较好；\n- Using filesort：文件排序，需优化（加合适索引或调整 ORDER BY）；\n- Using temporary：使用临时表，常见于 GROUP BY/DISTINCT，需优化；\n- Using join buffer：JOIN 无索引。\n\n进阶：EXPLAIN ANALYZE（8.0.18+）给出真实执行耗时，比估算更可靠；optimizer_trace 看优化器决策。",
+    "tags": [
+      "EXPLAIN",
+      "执行计划",
+      "优化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 27,
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 四种事务隔离级别分别解决什么问题？InnoDB 如何实现可重复读并避免幻读？",
+    "answer": "四种级别：\n1. 读未提交（RU）：能读到未提交数据，脏读；\n2. 读已提交（RC）：解决脏读，但有不可重复读；\n3. 可重复读（RR，InnoDB 默认）：解决不可重复读，理论上仍有幻读；\n4. 串行化：全部串行，性能最差。\n\nInnoDB 在 RR 下的实现：\n- MVCC：每行有隐藏的 DB_TRX_ID 与 DB_ROLL_PTR，配合 undo log 与 ReadView 实现快照读，保证同一事务多次普通 SELECT 结果一致。\n- 当前读（SELECT ... FOR UPDATE / UPDATE / DELETE）加锁：使用 Next-Key Lock（记录锁 + 间隙锁），锁住索引区间，阻止其他事务在该区间插入，从而避免幻读。\n\n结论：RR 下快照读靠 MVCC，当前读靠 Next-Key Lock，两者结合使 InnoDB 的 RR 基本避免了幻读。\n\n注意：间隙锁会降低并发，RC 级别不加间隙锁（除外键/唯一性检查），因此高并发场景常改用 RC。",
+    "tags": [
+      "事务",
+      "隔离级别",
+      "MVCC",
+      "间隙锁"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 28,
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "主从复制延迟越来越大，你会从哪些方面排查和解决？",
+    "answer": "先量化：SHOW SLAVE STATUS 看 Seconds_Behind_Master、Relay_Log_Pos 与 Exec_Master_Log_Pos 的差值、Slave_SQL_Running_State。\n\n排查方向：\n1. 大事务/大批量 DML：单条语句执行太久，拆小批次（如按主键分批 1000 行）；\n2. 从库性能不足：CPU/IO/磁盘规格低于主库，或从库上有额外查询；\n3. 无主键表：ROW 格式下每行全表扫描定位，必须补主键；\n4. 索引缺失：从库执行 UPDATE/DELETE 比主库慢；\n5. 单线程回放瓶颈：开启并行复制（slave_parallel_workers + LOGICAL_CLOCK / WRITESET）；\n6. 锁冲突：从库上有长事务或大查询阻塞回放；\n7. 网络/磁盘延迟：binlog 传输慢、relay log 写入慢。\n\n解决手段：并行复制、拆分大事务、补主键与索引、提升从库规格、读写分离时识别「强一致读」走主库、监控 Seconds_Behind_Master 告警。",
+    "tags": [
+      "主从复制",
+      "延迟",
+      "并行复制"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 29,
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "一条 SQL 执行很慢，请给出完整的定位与优化流程。",
+    "answer": "1. 确认慢在哪：慢查询日志（slow_query_log=ON, long_query_time）或 performance_schema；SHOW PROCESSLIST 看当前阻塞。\n2. 取执行计划：EXPLAIN / EXPLAIN ANALYZE，关注 type、key、rows、Extra（filesort、temporary）。\n3. 判断类别：\n   - 索引缺失或失效 ⇒ 加/改索引，避免函数与隐式转换；\n   - 扫描行数过大 ⇒ 缩小范围、分页优化、覆盖索引；\n   - 锁等待 ⇒ 查 innodb_lock_wait、information_schema.innodb_trx 找长事务；\n   - 排序/临时表 ⇒ 让排序字段走索引；\n   - 数据量过大 ⇒ 归档、分区、分库分表。\n4. 验证：对比优化前后 EXPLAIN 的 rows 与真实耗时，压测确认。\n5. 防回归：上线后观察慢查询数量与 P99。\n\n加分项：说明「不要盲目加索引」，索引会增加写放大与空间；优先优化 SQL 写法与数据模型。",
+    "tags": [
+      "慢查询",
+      "优化",
+      "EXPLAIN"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 30,
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "InnoDB 和 MyISAM 的主要区别是什么？为什么现在推荐 InnoDB？",
+    "answer": "InnoDB：\n- 支持事务（ACID）、行级锁、外键、MVCC；\n- 聚簇索引，主键即数据组织方式；\n- 崩溃恢复能力强（redo log + doublewrite）；\n- 支持热备份（xtrabackup）。\n\nMyISAM：\n- 不支持事务，表级锁，无外键；\n- 非聚簇索引，索引与数据分离；\n- 崩溃后易损坏，需 repair；\n- COUNT(*) 有元数据缓存所以很快，但并发写性能差。\n\n为什么推荐 InnoDB：并发写入能力、事务一致性、崩溃安全、复制（ROW 格式）都更可靠，是 MySQL 5.5+ 的默认引擎。MyISAM 仅适合只读、可重建的小数据场景。\n\n补充：InnoDB 的 COUNT(*) 需要扫描（走最小的二级索引），这是相对 MyISAM 的劣势，可用计数表或缓存缓解。",
+    "tags": [
+      "存储引擎",
+      "InnoDB",
+      "MyISAM"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 31,
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "线上出现死锁，如何定位是哪些 SQL 造成的？怎样降低再次发生的概率？",
+    "answer": "定位：\n1. SHOW ENGINE INNODB STATUS\\G 看 LATEST DETECTED DEADLOCK 段，包含两个事务的 SQL、持有锁与等待锁、被回滚的事务；\n2. innodb_print_all_deadlocks=ON 把死锁写入 error log，便于事后分析；\n3. information_schema.innodb_trx / innodb_locks（8.0 为 data_locks / data_lock_waits）看当前锁等待；\n4. performance_schema.events_statements_history 回看事务内语句顺序。\n\n降低概率：\n- 统一加锁顺序：多个事务按相同顺序访问相同行/表（最常见有效手段）；\n- 缩短事务：把事务内非数据库操作（RPC、IO）移出事务；\n- 减少锁范围：走索引避免锁全表/大量间隙锁，RC 级别减少间隙锁；\n- 拆小批量更新，避免大批量同时锁多行；\n- 应用层对冲突资源加分布式锁或重试（捕获 1213 错误，退避重试）；\n- 必要时 SET innodb_lock_wait_timeout 调小，快速失败而非长时间阻塞。",
+    "tags": [
+      "死锁",
+      "锁",
+      "事务"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 32,
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 五大数据类型分别是什么？各自适合什么业务场景？",
+    "answer": "1. String：最基础，可存文本/数字/二进制。场景：缓存对象 JSON、计数器（INCR）、分布式锁（SET NX PX）、限流。\n2. Hash：field-value 结构，适合存对象的多个字段。场景：用户属性、购物车、部分字段更新（避免整体序列化）。\n3. List：双向链表，支持两端 push/pop。场景：消息队列（LPUSH+BRPOP）、最新列表、简单时间线。\n4. Set：无序去重集合，支持交并差。场景：标签、共同好友、抽奖去重、UV 统计（配合 bitmap 更省）。\n5. ZSet：带 score 的有序集合。场景：排行榜、延迟队列（score 为时间戳）、范围查询。\n\n补充类型：\n- Bitmap：签到、活跃用户统计；\n- HyperLogLog：基数估算（UV），误差 0.81%；\n- GEO：地理位置；\n- Stream：更完善的消息队列（消费组、ack）。",
+    "tags": [
+      "数据类型",
+      "ZSet",
+      "场景选型"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 33,
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "缓存穿透、缓存击穿、缓存雪崩有什么区别？分别如何解决？",
+    "answer": "缓存穿透：查询不存在的数据，缓存不命中，每次打 DB。\n解决：\n- 缓存空值（短 TTL），\n- 布隆过滤器前置拦截，\n- 接口层参数校验与限流。\n\n缓存击穿：某个热点 key 过期瞬间，大量并发请求同时打到 DB。\n解决：\n- 互斥锁/分布式锁，只放一个请求回源（SET NX），\n- 逻辑过期 + 异步更新，\n- 热点 key 永不过期（后台定时刷新）。\n\n缓存雪崩：大量 key 在同一时刻集中失效，或 Redis 整体宕机。\n解决：\n- TTL 加随机抖动，打散过期时间；\n- 多级缓存（本地 + Redis）；\n- Redis 高可用（主从/哨兵/集群）；\n- 限流降级 + 熔断，保护 DB；\n- 缓存预热。\n\n区分口诀：穿透是「数据不存在」，击穿是「单个热点失效」，雪崩是「大批同时失效」。",
+    "tags": [
+      "缓存",
+      "穿透",
+      "雪崩",
+      "击穿"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 34,
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 RDB 和 AOF 持久化有什么区别？生产环境应该怎么配置？",
+    "answer": "RDB：定时生成内存快照（二进制），文件小、恢复快，但会丢失最后一次快照之后的数据；fork 子进程时可能造成内存与延迟抖动。\nAOF：追加写命令日志，可配置 appendfsync always/everysec/no，数据更完整（everysec 最多丢 1 秒）；文件大、恢复慢，需 rewrite 压缩。\n\nRedis 4.0+ 混合持久化（aof-use-rdb-preamble yes）：AOF 重写时把当前数据以 RDB 格式写入 AOF 头部，兼顾恢复速度与数据完整性。\n\n生产建议：\n- 开启 AOF + everysec，同时保留 RDB 做冷备与快速恢复；\n- 主从架构下从库也可开持久化，避免主库 fork 影响；\n- 监控 fork 耗时与 latest_fork_usec；\n- 明确业务可接受的数据丢失窗口（RPO），据此选策略。\n\n注意：持久化不等于备份，仍需定期把 RDB 备份到异地。",
+    "tags": [
+      "持久化",
+      "RDB",
+      "AOF"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 35,
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的过期删除策略和内存淘汰策略分别是什么？两者有何区别？",
+    "answer": "过期删除策略（针对设置了 TTL 的 key）：\n- 惰性删除：访问时检查是否过期，过期则删。省 CPU，但可能长期占内存。\n- 定期删除：每 100ms 随机抽查部分 key 删除过期项。两者结合使用（Redis 实际就是惰性 + 定期）。\n\n内存淘汰策略（maxmemory-policy，内存达上限时触发）：\n- noeviction：不淘汰，写操作报错（默认）；\n- allkeys-lru / allkeys-lfu / allkeys-random：从所有 key 中淘汰；\n- volatile-lru / volatile-lfu / volatile-random / volatile-ttl：只从设置了过期时间的 key 中淘汰。\n\n区别：过期删除处理「已到期」的 key；淘汰策略处理「内存不够」时该牺牲谁。两者触发条件完全不同。\n\n选型建议：纯缓存用 allkeys-lru/lfu；缓存与持久数据混存时用 volatile-*，避免误删持久数据；LFU 对热点更友好（4.0+）。",
+    "tags": [
+      "过期",
+      "淘汰策略",
+      "maxmemory"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 36,
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 单线程为什么还能这么快？6.0 之后的多线程又解决了什么问题？",
+    "answer": "单线程快的原因：\n1. 纯内存操作，无磁盘 IO（持久化由子进程完成）；\n2. 数据结构针对内存优化（SDS、跳表、quicklist、intset）；\n3. 单线程避免了多线程的上下文切换与锁竞争；\n4. IO 多路复用（epoll）单线程处理大量连接；\n5. 协议简单，RESP 解析开销小。\n\n注意：单线程指「命令执行」在主线程串行，网络 IO 与持久化并非单线程。\n\n6.0 的多线程 IO：\n- 解决网络读写（socket read/write、协议解析）成为瓶颈的问题，多线程分担这部分；\n- 命令执行仍然是单线程，保证原子性；\n- 需配置 io-threads（建议 ≤ CPU 核数，通常 4-8）。\n\n补充：慢查询会阻塞全局（如 KEYS、大 key 的 DEL），这是单线程模型的固有风险，需用 SCAN 替代 KEYS、UNLINK 替代 DEL。",
+    "tags": [
+      "单线程",
+      "epoll",
+      "多线程IO"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 37,
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 主从、哨兵、集群三种架构有什么区别？各自解决什么问题、有什么局限？",
+    "answer": "主从复制：\n- 一主多从，从库异步复制；解决读扩展与数据冗余。\n- 局限：故障需人工切换；异步复制可能丢数据；单主写入有上限。\n\n哨兵（Sentinel）：\n- 在主从基础上增加哨兵集群，监控主库、自动故障转移、通知客户端。\n- 机制：主观下线（单哨兵判定）→ 客观下线（达到 quorum）→ 选举 Leader 哨兵 → 选新主（优先级/偏移量最大）→ 其他从库重新指向新主。\n- 局限：仍是单主写入，无法水平扩展容量；切换瞬间有不可用窗口。\n\n集群（Cluster）：\n- 数据分片：16384 个 hash slot 分布到多个主节点；每个主节点带从节点做高可用。\n- 解决容量与写入水平扩展；支持自动 failover。\n- 局限：多 key 操作需在同一 slot（用 hash tag {}）；不支持跨 slot 事务；客户端需支持 MOVED/ASK 重定向；运维复杂度高。\n\n选型：数据量小、要求高可用 ⇒ 哨兵；数据量大或写入压力大 ⇒ 集群。",
+    "tags": [
+      "主从",
+      "哨兵",
+      "集群",
+      "故障转移"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 38,
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "用 Redis 实现分布式锁有哪些坑？如何保证锁的安全性和正确性？",
+    "answer": "正确加锁：SET key value NX PX 30000，value 用唯一标识（如 UUID + 线程 id），且加锁与设置过期必须原子。\n\n核心坑：\n1. 误删别人的锁：解锁前必须校验 value 是自己，并用 Lua 保证「比较 + 删除」原子；\n2. 锁提前过期：业务执行时间超过 TTL，锁被释放后被他人获取 ⇒ 需看门狗续期（Redisson 的 watchdog，每 TTL/3 续期）；\n3. 主从切换丢锁：主库写入锁后未同步到从库就宕机，新主没有该锁 ⇒ 两个客户端同时持锁。Redlock 试图缓解但仍受时钟与网络假设影响，存在争议；\n4. 不可重入：同线程二次加锁失败，需按线程维护重入计数；\n5. 阻塞与超时：获取锁要设超时（否则线程池打满），失败需退避重试。\n\n工程结论：简单场景用 SET NX PX + Lua 解锁即可；强一致场景（金融）优先考虑数据库唯一约束/行锁或 ZooKeeper/etcd 这类 CP 系统。",
+    "tags": [
+      "分布式锁",
+      "SETNX",
+      "Redlock"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 39,
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "什么是 Redis 大 key 和热 key？如何发现并治理？",
+    "answer": "大 key：单个 key 的 value 很大（如 String >10KB，集合元素 >5000），或成员总内存占比高。\n危害：\n- 网络阻塞：一次 GET/DEL 传输大量数据，阻塞其他请求；\n- 删除大 key 用 DEL 会阻塞主线程（应使用 UNLINK 异步删除）；\n- 集群下造成数据倾斜。\n发现：redis-cli --bigkeys、--memkeys、MEMORY USAGE key、rdb 离线分析（rdb-tools）、slowlog。\n治理：拆分（大 hash 按 field 分桶、大 list 分页）、压缩序列化、设置合理 TTL、用 UNLINK/SCAN 渐进删除。\n\n热 key：某 key 的 QPS 极高（如秒杀商品、热点新闻）。\n危害：单分片 CPU 打满，集群也无法分摊。\n发现：redis-cli --hotkeys（需 LFU）、MONITOR 采样、客户端埋点统计、proxy 层统计。\n治理：本地缓存（JVM/进程内）扛读、key 拆分加随机后缀打散到多分片、读写分离、限流。",
+    "tags": [
+      "大key",
+      "热key",
+      "性能"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 40,
+    "category": "Docker/K8s",
+    "difficulty": "中等",
+    "question": "Docker 镜像的分层结构是什么？为什么分层能节省空间和加速构建？",
+    "answer": "镜像由多个只读层（layer）叠加而成，每层对应 Dockerfile 中的一条指令（RUN/COPY/ADD 等），层内是文件系统 diff。容器启动时在最上面加一个可写层（container layer），采用联合文件系统（overlay2 等）挂载。\n\n节省空间：层是内容寻址（digest）且可复用的，多个镜像共享相同的基础层，本地只存一份。\n加速构建：某层未变化时直接命中缓存，不必重新执行。\n\n关键规则：\n- 一旦某层变化，其后的所有层缓存全部失效 ⇒ Dockerfile 要把「变化少的」放前面（依赖安装在前，源码 COPY 在后）；\n- 每层都会增加镜像体积，因此要合并 RUN 并清理缓存文件（apt 安装后 rm -rf /var/lib/apt/lists/*）；\n- 多阶段构建（multi-stage）只把产物复制到最终镜像，避免把编译工具链带入生产镜像。\n\n验证：docker history <image> 查看各层大小。",
+    "tags": [
+      "镜像",
+      "分层",
+      "overlay2",
+      "多阶段构建"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 41,
+    "category": "Docker/K8s",
+    "difficulty": "简单",
+    "question": "容器和虚拟机有什么区别？容器为什么更轻量？",
+    "answer": "虚拟机：通过 Hypervisor 虚拟化硬件，每台 VM 有独立的 Guest OS 内核，隔离性强但启动慢（分钟级）、资源开销大（每台都要跑完整 OS）。\n\n容器：共享宿主机内核，通过 namespace 做隔离（PID/NET/MNT/UTS/IPC/USER），通过 cgroups 做资源限制，通过联合文件系统做镜像分层。启动快（秒级甚至毫秒级）、体积小、密度高。\n\n区别总结：\n- 隔离级别：VM 硬件级（更强），容器进程级（较弱，内核共享）；\n- 启动速度：VM 分钟级，容器秒级；\n- 资源开销：VM 大，容器小；\n- 安全边界：容器逃逸风险高于 VM，因此多租户场景常需 gVisor/Kata 等安全容器。\n\n选型：需要强隔离/异构内核 ⇒ VM；追求密度、快速交付、弹性伸缩 ⇒ 容器。",
+    "tags": [
+      "容器",
+      "虚拟机",
+      "namespace",
+      "cgroups"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 42,
+    "category": "Docker/K8s",
+    "difficulty": "中等",
+    "question": "如何优化 Dockerfile 以减小镜像体积并加快构建？请说出至少 5 条实践。",
+    "answer": "1. 选精简基础镜像：alpine / distroless / slim，避免用 latest 大镜像；\n2. 多阶段构建：编译阶段用完整镜像，运行阶段只 COPY 产物；\n3. 合并 RUN 指令并清理缓存：apt-get install 后 rm -rf /var/lib/apt/lists/*，同一层完成安装与清理；\n4. 合理排序指令：变化少的在前（依赖清单 → 安装依赖 → 复制源码），最大化缓存命中；\n5. 使用 .dockerignore 排除 node_modules、.git、测试文件，避免污染构建上下文并加速传输；\n6. 不在镜像中安装无关工具（curl、vim、编译器等），必要时用临时调试容器；\n7. 固定基础镜像与依赖版本（digest 或精确版本），保证可复现；\n8. 用非 root 用户运行（USER 指令），同时减少运行期风险；\n9. 减少层数不是唯一目标，避免为合并层而牺牲可读性。\n\n验证：docker images 看体积，docker history 定位大层。",
+    "tags": [
+      "Dockerfile",
+      "镜像优化",
+      "多阶段构建"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 43,
+    "category": "Docker/K8s",
+    "difficulty": "中等",
+    "question": "Kubernetes 的 Pod 生命周期有哪些阶段？liveness、readiness、startup 三种探针有什么区别？",
+    "answer": "Pod phase：Pending（已调度但容器未全部就绪）→ Running → Succeeded / Failed；另有 Unknown。容器状态：Waiting / Running / Terminated。\n\n三种探针：\n- startupProbe：判断应用是否启动完成。成功前其他探针不生效，用于给慢启动应用更长宽限，避免被 liveness 误杀。\n- livenessProbe：判断容器是否「活着」。失败达到阈值后 kubelet 重启容器。\n- readinessProbe：判断容器是否「可以接收流量」。失败则从 Service Endpoints 中摘除，但不重启。\n\n区别要点：\n- 启动慢 → 用 startupProbe，而不是把 liveness 的 initialDelaySeconds 调很大；\n- 依赖未就绪（如 DB 未连上）→ 用 readinessProbe 摘流量；\n- 死锁/僵死 → 用 livenessProbe 重启。\n\n常见错误：liveness 探测依赖外部服务，外部一抖动就把全量 Pod 重启，造成雪崩。探针应只检查自身健康。",
+    "tags": [
+      "Pod",
+      "探针",
+      "生命周期"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 44,
+    "category": "Docker/K8s",
+    "difficulty": "困难",
+    "question": "Pod 被 OOMKilled 的原因是什么？requests 和 limits 如何影响调度与运行时行为？",
+    "answer": "OOMKilled 表示容器内存使用超过 limits.memory，被 cgroup OOM killer 杀掉（kubectl describe 显示 Last State: Terminated, Reason: OOMKilled, Exit Code: 137）。\n\nrequests 与 limits：\n- requests：调度依据，kube-scheduler 按 requests 找有足够资源的节点；也是 QoS 的依据。\n- limits：运行时上限，CPU 超限被节流（throttle，不会杀），内存超限直接 OOMKill。\n\nQoS 等级：\n- Guaranteed：requests == limits（所有容器）；节点资源紧张时最后被驱逐。\n- Burstable：requests < limits；中间优先级。\n- BestEffort：都没设置；最先被驱逐。\n\n排查：\n1. kubectl describe pod 看 OOMKilled 与 limits；\n2. kubectl top pod 看实际使用；\n3. 应用是否有内存泄漏（堆 dump、GC 日志）；\n4. 是否因 JVM 未设 -Xmx 或未感知 cgroup 限制（老版本 JDK 坑，需 -XX:+UseContainerSupport）。\n\n调优：设合理 requests（略低于峰值）与 limits（留 20-30% 余量）；不要为了「省资源」把 limits 设得刚好等于常态用量。",
+    "tags": [
+      "OOM",
+      "resources",
+      "QoS",
+      "调度"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 45,
+    "category": "Docker/K8s",
+    "difficulty": "中等",
+    "question": "Kubernetes 中 ClusterIP、NodePort、LoadBalancer、Ingress 分别是什么？流量是怎么进来的？",
+    "answer": "Service 类型（四层）：\n- ClusterIP：集群内部虚拟 IP，靠 kube-proxy 的 iptables/IPVS 规则转发到 Pod，仅集群内可达。\n- NodePort：在每个节点上开一个端口（30000-32767），外部通过 节点IP:端口 访问，再由 kube-proxy 转到 Pod。\n- LoadBalancer：在 NodePort 基础上向云厂商申请外部负载均衡器，分配公网 IP。\n- ExternalName：CNAME 映射到外部域名，不做代理。\n\nIngress（七层）：不是 Service 类型，而是 HTTP/HTTPS 路由规则（按 host/path 转发），由 Ingress Controller（nginx-ingress、traefik 等）实现，最终仍转发到后端 Service。\n\n典型流量路径（云上）：\n用户 → 云 LB（LoadBalancer Service）→ Ingress Controller Pod → 按规则转发到业务 Service（ClusterIP）→ Endpoints → Pod。\n\n补充：\n- Endpoints 由 kube-controller-manager 根据 selector 与 readiness 维护；\n- 无 Service 时可用 Headless Service（clusterIP: None）直接拿到 Pod IP 列表，供 StatefulSet 使用。",
+    "tags": [
+      "Service",
+      "Ingress",
+      "kube-proxy"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 46,
+    "category": "Docker/K8s",
+    "difficulty": "中等",
+    "question": "Pod 一直处于 CrashLoopBackOff 状态，请给出完整的排查步骤。",
+    "answer": "CrashLoopBackOff 表示容器启动后反复退出，kubelet 按指数退避重启。\n\n排查顺序：\n1. kubectl describe pod <pod>：看 Last State 的 Reason / Exit Code（137=OOMKilled，1=应用异常，143=SIGTERM）；看 Events 里是否有拉镜像失败、探针失败。\n2. kubectl logs <pod> --previous：看上次崩溃的日志（关键，当前容器可能还没输出）。\n3. kubectl logs <pod> -c <container>：多容器场景指定容器。\n4. 检查配置：ConfigMap/Secret 是否挂载成功、环境变量是否正确、启动命令与参数是否匹配镜像。\n5. 检查探针：liveness 超时过早导致反复重启（especially 慢启动应用）。\n6. 资源：limits 过小导致 OOM。\n7. 权限：securityContext、只读根文件系统、SELinux。\n8. 交互进入复现：kubectl run 临时 pod 用同镜像同命令排查，或用 kubectl debug。\n\n常见根因：启动脚本退出、配置缺失、依赖服务不可达、OOM、探针配置不当、镜像架构不匹配（arm vs amd）。",
+    "tags": [
+      "CrashLoopBackOff",
+      "Pod排查",
+      "kubectl"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 47,
+    "category": "Docker/K8s",
+    "difficulty": "中等",
+    "question": "Deployment 的滚动更新是如何工作的？如何保证更新不影响可用性并实现快速回滚？",
+    "answer": "滚动更新机制：Deployment 创建新 ReplicaSet，逐步扩新缩旧，受两个参数控制：\n- maxSurge：更新期间最多超出期望副本数的 Pod 数（可百分比）；\n- maxUnavailable：更新期间最多不可用的 Pod 数。\n两者不能同时为 0。\n\n保证可用性：\n1. 设置合理的 readinessProbe，新 Pod 就绪后才接流量；\n2. maxUnavailable 设为 0、maxSurge 设 1~25%，实现「先起新再停旧」；\n3. 配合 PodDisruptionBudget 保证驱逐时仍有足够副本；\n4. 优雅停止：preStop hook + terminationGracePeriodSeconds，让在途请求处理完。\n\n回滚：\n- kubectl rollout undo deployment/<name>（--to-revision 指定版本）；\n- kubectl rollout status 观察进度；\n- kubectl rollout history 查看历史。\n\n注意：revisionHistoryLimit 默认 10，超过会被清理；改镜像用 digest 而非 latest tag，避免回滚时拉到不同内容。",
+    "tags": [
+      "Deployment",
+      "滚动更新",
+      "回滚"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 48,
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "设计一条完整的 CI/CD 流水线，你会包含哪些阶段？每个阶段的准入条件是什么？",
+    "answer": "典型阶段：\n1. 代码检出（checkout）：拉取指定分支/commit，浅克隆加速。\n2. 静态检查：lint、代码规范、依赖漏洞扫描（如 trivy/npm audit）。\n3. 单元测试 + 覆盖率阈值：覆盖率低于阈值即失败。\n4. 构建：编译打包、构建镜像，产物打上 commit SHA 或语义化版本。\n5. 集成测试/契约测试：起依赖环境（docker compose / testcontainers）。\n6. 镜像扫描与签名：漏洞等级超阈值阻断，镜像签名（cosign）。\n7. 推送到镜像仓库，生成制品。\n8. 部署到测试环境 → 自动化冒烟测试。\n9. 部署到生产：灰度/蓝绿，观察指标与错误率。\n10. 健康检查与自动回滚：失败自动回退上一版本并告警。\n\n准入条件（门禁）：\n- 主干分支保护，必须 MR + Review + 流水线全绿；\n- 生产发布需人工审批（或按变更等级自动审批）；\n- 高危漏洞、密钥泄露、覆盖率不达标一律阻断。\n\n设计原则：流水线要「快反馈、可复现、可回滚、产物一次构建多处部署（build once, deploy many）」。",
+    "tags": [
+      "流水线",
+      "门禁",
+      "制品"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 49,
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "蓝绿发布、灰度发布、滚动发布有什么区别？各自适合什么场景？",
+    "answer": "滚动发布（Rolling）：逐步替换旧实例，新旧版本共存。优点：资源占用小、无需额外环境；缺点：版本共存期间行为不一致，回滚需再滚一次。适合无状态服务、常规迭代。\n\n蓝绿发布（Blue-Green）：准备两套完整环境，新版本部署在绿环境，验证通过后一次性切流量。优点：切换瞬间完成、回滚极快（切回去）；缺点：资源翻倍、数据库等有状态组件难同步。适合资源充足、要求快速回滚的核心服务。\n\n灰度发布（Canary）：按比例/特定用户逐步导入流量（如 1% → 10% → 50% → 100%），结合指标观察。优点：风险最小、可按用户维度控制；缺点：需要流量路由能力（网关/服务网格）与完善的监控。适合用户量大、变更风险高的服务。\n\n选型建议：\n- 有完善监控与流量治理 ⇒ 灰度；\n- 发布频率低但影响大（如网关、支付）⇒ 蓝绿；\n- 资源紧张、无状态服务 ⇒ 滚动。",
+    "tags": [
+      "蓝绿",
+      "灰度",
+      "滚动发布"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 50,
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "制品（artifact）如何管理？版本号、存储与可追溯性分别怎么设计？",
+    "answer": "版本策略：\n- 语义化版本 MAJOR.MINOR.PATCH；\n- 镜像 tag 使用 commit SHA（不可变）或「语义版本 + SHA」，禁止在生产依赖 latest；\n- 用 digest 锁定实际内容，避免 tag 被覆盖。\n\n存储：\n- 镜像放私有 Registry（Harbor/ACR/ECR），开启不可变 tag 策略；\n- 二进制/包放制品库（Nexus/Artifactory）或对象存储；\n- 保留策略：生产版本永久保留，测试版本按时间清理。\n\n可追溯性：\n- 制品元数据记录 commit、构建流水线 ID、构建人、时间、依赖清单（SBOM）；\n- 通过标签/label 把制品与源码 commit 关联；\n- 记录部署记录（谁、何时、把哪个制品部署到哪个环境）；\n- 支持「从线上容器反查源码版本」（镜像内注入 version/build info）。\n\n加分：一次构建、多环境晋级（dev → staging → prod 同一个 digest），避免「重新构建导致环境差异」。",
+    "tags": [
+      "制品管理",
+      "版本",
+      "可追溯"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 51,
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "生产发布失败时，如何做到快速回滚？数据库变更怎么处理？",
+    "answer": "应用回滚：\n1. 保留上一版本制品（镜像按 digest 留存）；\n2. 一键回滚：kubectl rollout undo、Helm rollback、或流水线「回滚到指定版本」；\n3. 回滚后验证：健康检查、核心接口冒烟、错误率与延迟回到基线；\n4. 门禁：回滚也要走审计记录，事后补复盘。\n\n数据库变更（难点）：\n- 遵循「先兼容、后清理」：加字段/加表先上（新旧代码都能跑），删字段/改名放到后续版本；\n- 使用 expand-contract 模式，禁止与应用发布同版本做破坏性 DDL；\n- 大表 DDL 用 gh-ost/pt-online-schema-change，避免锁表；\n- 数据迁移脚本必须可重复执行（幂等）、有回滚脚本或备份；\n- 回滚应用时数据要能兼容旧代码（只增不改字段，旧代码忽略新字段）。\n\n原则：应用的「可回滚」依赖数据库的「向后兼容」，破坏性变更必须拆成多次发布。",
+    "tags": [
+      "回滚",
+      "数据库变更",
+      "发布"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 52,
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "如何优化 CI 流水线的构建速度？请说出你能落地的具体手段。",
+    "answer": "1. 依赖缓存：缓存 npm/yarn/pip/maven 目录，命中即跳过下载（key 用 lock 文件哈希）。\n2. Docker 层缓存：用 buildx + registry cache（--cache-from/--cache-to）跨流水线复用层。\n3. 并行化：把 lint、单测、构建拆成并行 job；测试分片（split tests）。\n4. 增量构建：只构建变更的模块（monorepo 用 affected 分析，如 nx/turborepo）。\n5. 减少检出成本：浅克隆（--depth=1）、只拉需要的子模块。\n6. 更快机器：更高核数 runner，或本地 SSD。\n7. 精简镜像与构建步骤：多阶段构建、去掉不必要的打包步骤。\n8. 提前失败：把最快、最容易失败的检查（lint）放最前面。\n9. 避免重复构建：一次构建产物晋级到多环境，不要每个环境重编。\n10. 监控时长：给每个阶段打点，找出最慢的 top 3 持续优化。\n\n量化：以「PR 到首个反馈」与「主干合并到可部署」两个时长为核心指标。",
+    "tags": [
+      "构建加速",
+      "缓存",
+      "并行"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 53,
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "常见 Git 分支策略有哪些（Git Flow / GitHub Flow / Trunk Based）？团队规模不同该怎么选？",
+    "answer": "Git Flow：master + develop + feature + release + hotfix 多分支。优点：发布节奏清晰、适合版本化产品；缺点：分支多、合并冲突多、集成滞后。适合有明确版本发布周期的传统项目。\n\nGitHub Flow：主干 main + 短生命周期 feature 分支 + PR + 部署。优点：简单、持续部署友好；缺点：对测试与自动化要求高。适合小型团队与 SaaS。\n\nTrunk Based：所有人频繁提交到主干（一天多次），配合功能开关（feature flag）和短分支。优点：集成问题最早暴露、发布最快；缺点：对工程能力（自动化测试、开关治理）要求最高。适合成熟团队、追求持续交付。\n\n选型建议：\n- 团队 <10 人、SaaS 持续发布 ⇒ GitHub Flow 或 Trunk Based；\n- 多版本并行维护（如对外交付）⇒ 需要 release 分支，接近 Git Flow 的简化版；\n- 无论哪种：分支要短命、MR 要小、CI 必须快且绿。",
+    "tags": [
+      "Git",
+      "分支策略",
+      "协作"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 54,
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "什么是「黄金指标」？为什么监控应该优先看这几类指标？",
+    "answer": "Google SRE 提出的四类黄金信号：\n1. 延迟（Latency）：成功请求的耗时，区分成功与失败请求的延迟（失败请求可能很快返回，会拉低平均值误导判断）。\n2. 流量（Traffic）：系统负载量，如 QPS、并发连接数、请求量。\n3. 错误（Errors）：显式错误（5xx）与隐式错误（返回 200 但内容错误、业务失败码）。\n4. 饱和度（Saturation）：资源使用接近上限的程度，如 CPU、内存、磁盘、连接池使用率、队列长度。\n\n为什么优先：这四类指标直接对应用户体感与系统可用性，能快速回答「用户是否受影响、影响多大、瓶颈在哪」，而不是陷入几百个细分指标里。\n\n实践建议：\n- 每个服务至少暴露这四类指标并配告警；\n- 延迟用 P95/P99 而非平均值；\n- 饱和度要关注「即将打满」的趋势而非仅当前值。",
+    "tags": [
+      "黄金指标",
+      "SRE",
+      "监控"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 55,
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "Prometheus 的四种指标类型分别是什么？counter 为什么要配合 rate 使用？",
+    "answer": "四种类型：\n1. Counter：只增不减的累计值（请求总数、错误数）。重启会归零。\n2. Gauge：可增可减的瞬时值（内存使用、并发数、温度）。\n3. Histogram：按桶（bucket）统计分布，可计算分位数（_bucket/_sum/_count）。\n4. Summary：客户端直接计算分位数（_sum/_count 与 φ 分位），无法跨实例聚合。\n\nCounter 配 rate 的原因：\n- Counter 是累计值，直接看数值无意义（一直增大），且服务重启会归零；\n- rate() 计算区间内每秒平均增长率，且能自动处理重启归零（不会算出负值或巨大跳变）；\n- 常用 rate(metric[5m]) 表示最近 5 分钟的平均 QPS。\n\n注意：\n- rate 的窗口至少包含 4 个采样点（scrape_interval 15s 时窗口 ≥ 1m），否则结果不稳定；\n- increase(metric[5m]) 是区间增量总量；\n- irate 只取最后两个点，适合快速变化的曲线，但对毛刺敏感、不适合告警；\n- Histogram 用 histogram_quantile(0.99, rate(...bucket[5m])) 算 P99，聚合时务必先 rate 再分位。",
+    "tags": [
+      "Prometheus",
+      "指标类型",
+      "rate",
+      "PromQL"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 56,
+    "category": "监控告警",
+    "difficulty": "困难",
+    "question": "PromQL 中 rate 和 irate 有什么区别？计算 P99 时为什么常写 histogram_quantile(0.99, sum by (le) (rate(...[5m])))？",
+    "answer": "rate vs irate：\n- rate(v[5m])：用窗口首尾两个样本计算平均每秒增长率，平滑、稳定，适合告警与时序展示。\n- irate(v[5m])：只用窗口内最后两个样本，反映「瞬时」速率，灵敏但抖动大，适合调试与快速变化场景。\n- 两者都要求 Counter，且窗口内至少 2 个样本（rate 实际建议 ≥4 个）。\n\nP99 计算式解读：\nhistogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))\n1. rate(..._bucket[5m])：把累计桶转成每秒速率，并处理重启；\n2. sum by (le)：按桶边界 le 聚合所有实例，得到全局分布（分位数必须在聚合后计算，否则不能合并）；\n3. histogram_quantile(0.99, ...)：在桶边界上做线性插值估算 P99。\n\n关键点：\n- 顺序不能反：先 rate 再 sum by (le)，最后 quantile；\n- 直接对 summary 的分位做平均是错的（分位数不可加）；\n- 桶边界设置要贴合业务 SLO（如 .1 .2 .5 1 2 5 秒），桶太粗误差大；\n- 无数据或样本不足时返回 NaN，需在面板与告警里处理。",
+    "tags": [
+      "PromQL",
+      "P99",
+      "histogram_quantile"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 57,
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "如何设计告警规则，避免告警风暴和告警疲劳？请说出具体的工程手段。",
+    "answer": "规则设计：\n1. 基于用户影响告警，而非单纯资源阈值：优先「错误率 > 1%」「P99 > 500ms 持续 5 分钟」，而不是「CPU > 80%」。\n2. 加 for 持续时间：`for: 5m` 过滤瞬时毛刺。\n3. 分级：P0（影响用户，立即处理）/ P1（即将影响）/ P2（趋势问题，工单）；不同级别不同通道与响应时效。\n4. 抑制（inhibit）：上游故障时抑制下游告警，避免连锁刷屏。\n5. 分组（group_by）：按服务/集群聚合，group_wait/group_interval/repeat_interval 控制通知节奏。\n6. 静默（silence）：变更窗口内主动静默，并与发布系统联动自动静默。\n7. 聚合去重：同根因的告警合并为一条，附影响范围。\n8. 定期治理：统计告警量与误报率，每月清理「从没人处理」的规则。\n\n组织层面：\n- 每条告警都必须有归属人、处理手册（runbook）；\n- 告警要有明确行动项，无法行动的指标不该告警；\n- 复盘时统计 MTTA/MTTR 而非告警数量。",
+    "tags": [
+      "告警",
+      "降噪",
+      "抑制",
+      "SLO"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 58,
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "监控体系中的 metrics、logging、tracing 三者有什么区别与联系？什么场景该用哪个？",
+    "answer": "Metrics（指标）：聚合数值（QPS、延迟分位、CPU），成本低、适合长期存储与告警，但缺乏上下文，无法定位到具体请求。\nLogging（日志）：离散事件文本，上下文丰富（错误堆栈、参数），适合排查个案，但量大、存储成本高，不适合做聚合告警。\nTracing（链路追踪）：一次请求跨服务的调用链（trace → span），能定位耗时在哪个环节，适合微服务性能分析，采样存储。\n\n区别一句话：metrics 告诉你「有问题」，logging 告诉你「什么错」，tracing 告诉你「慢/错在哪一跳」。\n\n实践组合：\n- 告警用 metrics（快、稳）；\n- 定位用 tracing 找异常链路，再拉该 trace 的日志看详情；\n- 三者通过 trace_id / request_id 关联（日志里打印 trace_id，指标带服务维度标签）；\n- 常见栈：Prometheus + Loki/ELK + Jaeger/Tempo/SkyWalking + Grafana 统一展示。\n\n成本控制：metrics 全量、tracing 采样（如 1%-10% 或头部采样）、logging 分级 + 冷热分层。",
+    "tags": [
+      "可观测性",
+      "日志",
+      "链路追踪"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 59,
+    "category": "监控告警",
+    "difficulty": "困难",
+    "question": "SLI、SLO、SLA 分别是什么？如何用错误预算（Error Budget）指导发布决策？",
+    "answer": "SLI（Indicator）：可量化的服务质量指标，如「HTTP 请求成功率」「P99 延迟」。要定义清楚测量点与口径。\nSLO（Objective）：对 SLI 的目标值，如「99.9% 的请求在 300ms 内成功」，是内部承诺。\nSLA（Agreement）：对客户的合同化承诺，通常含赔付条款，SLA ≤ SLO（留缓冲）。\n\n错误预算：\n错误预算 = 1 - SLO。例如 SLO 99.9%（月度），错误预算 = 0.1% 的请求量。\n\n指导发布：\n- 预算充足：可加快发布节奏、尝试风险变更；\n- 预算消耗过快（如一周用掉 60%）：冻结非必要发布，优先稳定性治理；\n- 预算耗尽：只允许修复类变更，触发复盘。\n\n实践要点：\n- 用燃烧率（burn rate）做多窗口告警：短时间内快速燃烧（1h 窗口 14.4x）对应 P0，缓慢燃烧（6h/3d）对应工单；\n- SLO 要少而精（核心用户路径 3-5 个），避免全站一刀切；\n- 预算统计要排除计划内维护窗口。",
+    "tags": [
+      "SLO",
+      "错误预算",
+      "SLA",
+      "燃烧率"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 60,
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "线上故障时，值班工程师的标准响应流程是什么？如何做到快速止血并有效升级？",
+    "answer": "标准流程：\n1. 确认与分级（0-5 分钟）：看告警、确认影响面（用户/业务/地域）、定级 P0-P3，拉起应急群。\n2. 止血优先（5-15 分钟）：先恢复可用性再找根因。常用手段：回滚、扩容、切流/降级、限流、重启、摘除异常节点、开关关闭新功能。\n3. 定位（并行）：看监控大盘与最近变更（发布、配置、DB 变更、网络），用链路追踪定位瓶颈服务。\n4. 沟通：指定一人做「信息同步」，固定节奏对外通报（如每 15 分钟），避免多头指挥。\n5. 恢复验证：核心指标回基线、冒烟通过、观察 30 分钟无反复。\n6. 复盘：24-48 小时内完成，产出时间线、根因、改进项（有 owner 与 deadline），不追责个人。\n\n升级原则：\n- 超过 X 分钟未定位或影响扩大，立即升级到二线/架构/负责人；\n- 权限不足（如无法回滚、需要 DB 操作）立即升级，不要死磕；\n- 明确「谁有权决定回滚」，避免决策卡顿。",
+    "tags": [
+      "故障响应",
+      "应急",
+      "复盘",
+      "MTTR"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 61,
+    "category": "安全",
+    "difficulty": "中等",
+    "question": "如何加固一台面向公网的 Linux 服务器？请给出关键措施清单。",
+    "answer": "账号与认证：\n- 禁用 root 远程登录（PermitRootLogin no），用普通用户 + sudo；\n- SSH 改端口、禁用密码登录改为密钥（PasswordAuthentication no），限制 AllowUsers；\n- 强制复杂密码策略（PAM pwquality）与登录失败锁定（faillock）；\n- 清理无用账号与空口令账号，定期审计。\n\n网络与服务：\n- 防火墙默认拒绝，仅放行必要端口（iptables/nftables/firewalld）；\n- 关闭不必要服务与端口，ss -lntp 定期核查监听；\n- 云上配合安全组最小开放。\n\n系统与内核：\n- 及时打补丁，启用自动安全更新；\n- SELinux/AppArmor 开启并配置；\n- 内核加固：sysctl 关闭 IP 转发（非路由机）、开启 SYN cookies、限制 icmp。\n\n可观测与审计：\n- 开启 auditd 与登录日志，日志外送到集中平台；\n- 部署入侵检测（fail2ban、Wazuh）与文件完整性校验（AIDE）；\n- 定期漏洞扫描与基线核查（CIS Benchmark）。",
+    "tags": [
+      "基线加固",
+      "SSH",
+      "防火墙",
+      "CIS"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 62,
+    "category": "安全",
+    "difficulty": "困难",
+    "question": "主机疑似被入侵，发现异常外联和反弹 shell，你会如何处置？请说明排查与应急顺序。",
+    "answer": "原则：先隔离止损，再取证，最后清除；**不要急于 reboot 或直接 kill**（会丢失内存证据）。\n\n1. 隔离：从安全组/防火墙切断出向（尤其 4444、5555 等非常用端口与境外 IP），保留入向以便取证；必要时整机下线但保留磁盘快照。\n2. 初步取证（尽量不改动现场）：\n   - ps auxf / top 看可疑进程与父进程链；\n   - ss -antp 看异常外联与监听；\n   - ls -l /proc/<pid>/exe 看可执行文件是否已被删除（常见隐藏手法）；\n   - crontab -l、/etc/cron*、systemctl list-units 查持久化；\n   - ~/.ssh/authorized_keys、/etc/passwd 查新增账号；\n   - 检查 LD_PRELOAD、/etc/ld.so.preload 等 rootkit 痕迹。\n3. 证据保全：备份 /var/log（auth、secure、history）、内存镜像（如 avml）、磁盘镜像，记录时间线。\n4. 清除与加固：删除恶意文件与持久化项、重置所有凭据与密钥、修复入口漏洞、全盘扫描。\n5. 复盘：确认入侵路径（弱口令？未打补丁？暴露的 Redis？），横向影响面排查同网段其他机器。\n6. 合规：按需上报，保留完整处置记录。",
+    "tags": [
+      "应急响应",
+      "入侵",
+      "取证",
+      "反弹shell"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 63,
+    "category": "安全",
+    "difficulty": "中等",
+    "question": "什么是最小权限原则？在 Linux 运维和容器环境中如何落地？",
+    "answer": "最小权限原则：主体只应拥有完成其工作所必需的最小权限，且时限尽可能短（JIT）。\n\nLinux 落地：\n- 不用 root 日常操作，用普通账号 + sudo 精确授权（/etc/sudoers.d 中指定命令白名单，避免 ALL）；\n- 文件权限最小化，敏感文件 600，目录 750，避免 777；\n- 服务以专用低权限用户运行（如 nginx/www-data、mysql）；\n- 使用 capability 拆分 root 权限（setcap），减少全 root；\n- 密钥/凭据按用途隔离，定期轮换。\n\n容器/K8s 落地：\n- 镜像 USER 非 root，runAsNonRoot: true；\n- securityContext 设置 readOnlyRootFilesystem、allowPrivilegeEscalation: false、capabilities.drop 设为 ['ALL']；\n- 不用 privileged、不挂 /var/run/docker.sock；\n- 用 RBAC 精确授权 ServiceAccount，避免 cluster-admin；\n- 网络策略（NetworkPolicy）限制 Pod 间东西向流量。\n\n审计：定期用工具核查实际权限（如 kube-bench、CIS 扫描），并移除长期未使用的权限。",
+    "tags": [
+      "最小权限",
+      "RBAC",
+      "securityContext",
+      "sudo"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 64,
+    "category": "安全",
+    "difficulty": "中等",
+    "question": "SQL 注入的原理是什么？运维侧能做哪些防护（不止依赖开发改代码）？",
+    "answer": "原理：应用把用户输入拼接进 SQL 语句，输入中的引号、注释符、UNION 等改变了原语句语义，从而绕过条件、读取任意数据甚至执行系统命令。\n\n开发侧根治：参数化查询（预编译 PreparedStatement）、ORM 绑定参数、严格类型校验、最小数据库权限。\n\n运维/WAF 侧：\n1. 部署 WAF（ModSecurity + OWASP CRS 或云 WAF），拦截常见注入特征；\n2. 数据库账号按应用分库分权，禁止应用账号拥有 DROP/FILE/SUPER 权限；\n3. 关闭不必要的危险功能：LOAD_FILE、INTO OUTFILE、xp_cmdshell，MySQL 可设置 secure_file_priv；\n4. 数据库不暴露公网，仅内网访问 + 白名单；\n5. 开启审计日志（general_log 谨慎、audit plugin），对异常查询告警；\n6. 输入长度与字符白名单在网关层兜底；\n7. 定期用 sqlmap 做授权渗透测试，验证防护有效。\n\n注意：WAF 只是纵深防御的一层，不能替代参数化查询。",
+    "tags": [
+      "SQL注入",
+      "WAF",
+      "纵深防御"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 65,
+    "category": "安全",
+    "difficulty": "中等",
+    "question": "TLS 证书过期导致服务不可用，如何提前发现并做到自动续期？",
+    "answer": "检测：\n1. 主动探测：echo | openssl s_client -connect host:443 -servername host 2>/dev/null | openssl x509 -noout -dates，或 curl -vI 看证书有效期；\n2. 黑盒探针：黑盒监控（如 blackbox_exporter 的 probe_ssl_earliest_cert_expiry）采集剩余天数并告警（<30 天预警，<7 天严重）；\n3. 盘点所有对外域名与内部 mTLS 证书，建立到期清单（自动化登记）。\n\n自动续期：\n- Let's Encrypt 用 certbot/acme.sh 自动续期，配 cron 或 systemd timer，续期后 reload（nginx -s reload 而非 restart）；\n- 云上可用 ACM/托管证书自动轮换；\n- K8s 用 cert-manager + Ingress 注解自动签发与续期；\n- 内部服务网格用 Istio 自动轮换工作负载证书。\n\n工程要点：\n- 续期后必须有 reload 动作，否则仍用旧证书（最常见事故点）；\n- 验证链路完整（中间证书要一起下发），否则部分客户端失败；\n- 变更后监控有效性，而不是只看文件时间戳。",
+    "tags": [
+      "TLS",
+      "证书",
+      "acme",
+      "自动续期"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 66,
+    "category": "安全",
+    "difficulty": "困难",
+    "question": "密钥与敏感配置在运维中如何安全管理？请对比几种常见做法及其风险。",
+    "answer": "反模式（应避免）：\n- 明文写在代码仓库/配置文件里（Git 历史泄露，清理困难）；\n- 打进容器镜像（镜像可被拉取，secret 随镜像扩散）；\n- 通过环境变量写在 docker-compose/k8s yaml 里入库；\n- 多人共享同一把长期密钥。\n\n推荐做法：\n1. 集中密钥管理：Vault、云 KMS/Secrets Manager、K8s Secrets（需开启 etcd 加密静态存储）；\n2. 运行时注入：sidecar/CSI 挂载、init 容器拉取，不落盘不入库；\n3. 短生命周期：动态凭据（Vault 数据库动态账号）、短期 token、云 IAM Role 代替静态 AK；\n4. 加密与最小可见：Sealed Secrets / SOPS + KMS 让 Git 中只有密文，解密权限受控；\n5. 审计与轮换：记录访问审计、定期轮换（90 天或按合规要求）、离职即吊销；\n6. 泄露检测：gitleaks/trufflehog 扫描仓库与 CI，密钥泄露即告警并自动吊销。\n\n落地要点：应用启动时拉取而非构建时固化；本地开发用独立的低权限凭据；密钥不打印日志。",
+    "tags": [
+      "密钥管理",
+      "Vault",
+      "KMS",
+      "泄露检测"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 67,
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "线上服务在高峰期频繁超时，CPU、内存、磁盘、网络指标都不高，你会怎么排查？",
+    "answer": "现象特征：资源不饱和但请求超时 ⇒ 瓶颈在「等待」而非「计算」。\n\n排查方向：\n1. 线程/连接池：线程池满、连接池耗尽（DB/Redis/HTTP client）导致请求排队。看 pool active/idle 等待数、pool wait time。\n2. 锁竞争：应用内 synchronized/读写锁、分布式锁等待；jstack 找 BLOCKED 线程，或 arthas 的 thread -b。\n3. 下游依赖慢：DB 慢查询（导出慢日志）、Redis 慢命令、第三方 API 延迟；用链路追踪看耗时分布。\n4. 队列积压：消息队列消费跟不上，或本地队列满导致拒绝/排队。\n5. GC 停顿：频繁 Full GC 造成 STW，看 GC 日志与 P99 延迟的周期性尖刺。\n6. 连接数/TIME_WAIT：端口耗尽、NAT 表满、conntrack 溢出（dmesg 有 nf_conntrack: table full）。\n7. 限流/熔断误触发：限流阈值设置过低，正常流量被拒。\n\n方法：先看 P99 与错误率的时间曲线是否与 QPS 同步，再用 tracing 定位耗时集中在「自身处理」还是「下游等待」，最后针对性扩容池子、优化慢查询、调整超时与限流。",
+    "tags": [
+      "超时",
+      "线程池",
+      "链路追踪",
+      "场景题"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 68,
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "数据库突然连接数暴涨并拒绝新连接，作为运维你会怎么快速恢复并防止再次发生？",
+    "answer": "快速止血（按优先级）：\n1. 确认现象：SHOW PROCESSLIST / information_schema.processlist 看连接来源、状态（Sleep 占比、是否大量相同 SQL）。\n2. 若是应用侧泄漏或突增：先重启异常实例或摘流，避免雪崩；\n3. 若是慢查询堆积：KILL 掉长时间运行的查询（按耗时排序，谨慎选目标）；\n4. 临时调大 max_connections（注意内存：每连接有开销，且受 ulimit -n 限制）；\n5. 启用连接代理/中间件排队（如 ProxySQL），或让应用侧连接池上限收紧。\n\n定位根因：\n- 连接池配置不当（最大值过大、未复用、无健康检查）；\n- 代码未关闭连接（try-finally 缺失）；\n- 慢查询占住连接（锁等待、全表扫描）；\n- 突发流量或爬虫；\n- 主从切换后应用重连风暴。\n\n长期治理：\n- 应用侧连接池上限 = 数据库可用连接数 / 实例数，留余量；\n- 设置 wait_timeout 回收空闲连接；\n- 慢查询治理与索引优化；\n- 监控 Threads_connected / Threads_running / Aborted_connects 并告警；\n- 数据库前置代理做连接数与限流；\n- 压测验证容量上限。",
+    "tags": [
+      "连接数",
+      "max_connections",
+      "连接池",
+      "场景题"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 69,
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "一次大促前，你负责做容量评估与压测方案，请说明你的方法论和关键动作。",
+    "answer": "1. 目标量化：拿到业务预估峰值（QPS、订单量、并发用户），换算成系统指标；定义 SLO（如 P99 < 300ms、错误率 < 0.1%）。\n2. 链路梳理：画核心链路（入口 → 网关 → 服务 → 缓存/DB/消息），标注每个节点的容量上限与依赖。\n3. 容量盘点：按「单实例容量 × 实例数 × 安全系数(0.7)」估算；找出最短板（通常是 DB 写入、Redis 单分片、第三方接口配额）。\n4. 压测实施：\n   - 分层压测：单接口 → 单服务 → 全链路；\n   - 流量模型贴近真实（读写比、热点分布、思考时间）；\n   - 阶梯加压找拐点，记录每档的延迟分位与错误率；\n   - 数据量要接近生产（避免小表测出假高性能）；\n   - 压测环境隔离，避免影响线上；生产压测需审批与熔断预案。\n5. 瓶颈优化：扩容、缓存前置、异步化、限流降级、DB 读写分离/分片、连接池调优。\n6. 预案与演练：限流阈值、降级开关、扩容脚本、回滚方案，做一次全链路演练。\n7. 大促期间：实时看板 + 值守 + 快速开关；复盘沉淀容量基线。\n\n关键认知：压测是为了找到「第一个瓶颈」，解决后继续压，循环直到达不到目标或成本不可接受。",
+    "tags": [
+      "容量评估",
+      "压测",
+      "大促",
+      "SLO"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 70,
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "服务发布后 5 分钟，错误率从 0.1% 飙升到 30%，你如何处置？请给出完整决策过程。",
+    "answer": "第 1 分钟——止血优先：\n- 立即判断影响面（全量还是部分地域/机型、是否影响核心链路）；\n- 决策回滚：新版本是最大变量，优先回滚到上一版本（保留现场日志与镜像用于事后分析）；\n- 同步应急群，指定信息同步人。\n\n第 2-5 分钟——同步并行：\n- 回滚执行：rollout undo / 平台一键回滚，观察错误率是否下降；\n- 看监控：错误码分布（5xx 具体是什么）、是否有特定接口/下游依赖、DB/Redis 指标是否异常；\n- 看日志：新版本日志里是否有新增异常堆栈、配置读取失败、依赖版本冲突。\n\n回滚无效时：\n- 考虑非代码因素：配置变更、DB 迁移、证书、依赖服务同时变更、流量突增；\n- 采取降级/限流/切流保护核心链路。\n\n恢复后：\n- 确认指标回基线并观察 30 分钟；\n- 复盘：变更影响评估是否到位、灰度是否跳过、测试是否覆盖、回滚为何没更早触发（告警阈值/自动化）。\n- 改进：强制灰度分批、自动化回滚条件（错误率阈值）、发布窗口与观察期规范。\n\n回答要点：先恢复再定位，不回滚犹豫；用数据说话；复盘对事不对人。",
+    "tags": [
+      "发布事故",
+      "回滚",
+      "决策",
+      "场景题"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 71,
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "服务运行几天后内存持续上涨直至 OOM，如何定位是内存泄漏还是缓存设计问题？",
+    "answer": "先区分形态：\n- 泄漏：内存只涨不跌，重启后回落，GC 后仍持续上升；\n- 缓存/大对象：随业务量波动，GC 后能回落但基线高。\n\n定位手段：\n1. 观察曲线：RSS/堆内存随时间与流量的关系，是否与请求量同步。\n2. JVM（Java）：jstat -gcutil 看老年代占比与 Full GC 频率；heap dump（jmap -dump）后用 MAT 分析支配树，找可疑大对象与引用链。\n3. Go：pprof heap（/debug/pprof/heap）对比两次采样看增长对象。\n4. Python：tracemalloc / objgraph。\n5. Node：--inspect + heap snapshot 对比。\n6. 通用：pmap -x / smaps 看是哪类内存（anon、file-backed），dmesg 与 cgroup memory.stat 区分宿主机与容器视角。\n\n常见根因：\n- 集合/Map 只增不删（缓存无淘汰策略、监听器未注销、ThreadLocal 未清理）；\n- 大对象缓存无上限；\n- 连接/文件句柄未释放（indirectly 持有 buffer）；\n- glibc malloc arena 碎片（多线程场景 RSS 高但 heap 不高）；\n- 容器 limits 设置低于实际需求。\n\n处置：先加内存与重启争取时间，抓 dump 定位；代码侧修复泄漏或给缓存加容量上限 + TTL。",
+    "tags": [
+      "内存泄漏",
+      "OOM",
+      "heapdump",
+      "场景题"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 72,
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "领导让你把一个「单机部署、手工发布」的老系统改造成高可用架构，你会怎么规划？",
+    "answer": "先明确约束与目标：可用性目标（如 99.9%）、预算、可停机窗口、团队能力、业务耦合度。\n\n分阶段演进（避免大爆炸式重构）：\n\n阶段一：可观测与可回滚（1-2 周）\n- 加监控告警、日志集中、健康检查接口；\n- 建立部署脚本与回滚流程，把手工操作固化成脚本。\n\n阶段二：消除单点（2-4 周）\n- 应用无状态化：session 外置到 Redis、上传文件对象存储；\n- 多实例 + 负载均衡（Nginx/云 LB），至少 2 台跨可用区；\n- 数据库主从 + 自动切换（或迁云 RDS），定期备份与恢复演练；\n- Redis 主从/哨兵。\n\n阶段三：自动化交付（3-4 周）\n- 容器化（Dockerfile + 镜像仓库），流水线自动化构建与部署；\n- 配置外置（配置中心/ConfigMap），环境差异化；\n- 灰度发布能力。\n\n阶段四：容量与容灾\n- 压测找瓶颈，扩容与限流降级；\n- 跨可用区/跨地域容灾，明确 RTO/RPO；\n- 混沌演练（杀进程、断网、断电模拟）。\n\n落地要点：每阶段都要有可验证的收益（MTTR 下降、发布耗时下降），先做「消除单点」和「可回滚」，再谈容器化与云原生，避免为了架构而架构。",
+    "tags": [
+      "高可用",
+      "演进",
+      "架构规划",
+      "场景题"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 73,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "top 输出中 %wa（或 wa）偏高，通常说明什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "用户态 CPU 忙"
+      },
+      {
+        "key": "B",
+        "text": "CPU 花在等待磁盘/网络 IO 上，处于 IO 瓶颈"
+      },
+      {
+        "key": "C",
+        "text": "内存不足触发 OOM"
+      },
+      {
+        "key": "D",
+        "text": "进程数过多导致调度开销"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "%wa 是 CPU 处于空闲但仍有 IO 未完成的时间占比，偏高说明瓶颈在 IO。需用 iostat -x、iotop 进一步定位哪块盘、哪个进程。%sy 高是系统调用/软中断，%us 高是计算密集。",
+    "tags": [
+      "top",
+      "CPU",
+      "性能排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 74,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "以下哪些命令可以查看某个端口被哪个进程占用？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "ss -lntp"
+      },
+      {
+        "key": "B",
+        "text": "netstat -tulnp"
+      },
+      {
+        "key": "C",
+        "text": "lsof -i:8080"
+      },
+      {
+        "key": "D",
+        "text": "df -h"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "ss 是 netstat 的现代替代，更快；lsof -i:端口 直接列出占用该端口的进程。df 看的是磁盘空间，与端口无关。注意非 root 用户看不到其他用户进程的 PID。",
+    "tags": [
+      "ss",
+      "netstat",
+      "lsof",
+      "端口"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 75,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "chmod 750 file 执行后，属组和其他用户分别拥有的权限是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "属组 rwx，其他 r-x"
+      },
+      {
+        "key": "B",
+        "text": "属组 r-x，其他无任何权限"
+      },
+      {
+        "key": "C",
+        "text": "属组 rw-，其他 r--"
+      },
+      {
+        "key": "D",
+        "text": "属组 rwx，其他 rwx"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "750 拆成三组：7=rwx（属主）、5=r-x（属组，可读可执行但不可写）、0=---（其他用户无权限）。权限数字位：读4、写2、执行1 相加。",
+    "tags": [
+      "chmod",
+      "文件权限"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 76,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "关于僵尸进程（状态 Z），以下说法正确的是？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "它已经结束，但父进程还没回收它的退出状态"
+      },
+      {
+        "key": "B",
+        "text": "kill -9 对僵尸进程有效，能直接清除"
+      },
+      {
+        "key": "C",
+        "text": "大量僵尸进程会导致 PID 与进程表资源被占用"
+      },
+      {
+        "key": "D",
+        "text": "处理方式是让父进程 wait() 回收，或重启父进程"
+      }
+    ],
+    "answer": [
+      "A",
+      "C",
+      "D"
+    ],
+    "explanation": "僵尸进程已释放内存等资源，只剩进程表项等父进程调用 wait() 读取退出码。对僵尸进程发信号无效（它已经是死的），正确做法是让父进程正常回收，或重启/修复父进程。",
+    "tags": [
+      "僵尸进程",
+      "进程状态"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 77,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "Shell 中 ${var:-default} 的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "若 var 未设置或为空，则使用 default，且不修改 var"
+      },
+      {
+        "key": "B",
+        "text": "若 var 未设置或为空，则把 var 赋值为 default"
+      },
+      {
+        "key": "C",
+        "text": "判断 var 是否等于字符串 default"
+      },
+      {
+        "key": "D",
+        "text": "删除变量 var"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "${var:-default} 只做取值兜底，不改变 var 本身；${var:=default} 才是赋值。配合 set -u 使用可避免未定义变量直接报错退出，是脚本健壮性常用写法。",
+    "tags": [
+      "变量展开",
+      "参数默认值"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 78,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "以下哪些是合法的 Shell 循环写法？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "for i in 1 2 3; do echo $i; done"
+      },
+      {
+        "key": "B",
+        "text": "for ((i=0;i<3;i++)); do echo $i; done"
+      },
+      {
+        "key": "C",
+        "text": "while read -r line; do echo $line; done < file"
+      },
+      {
+        "key": "D",
+        "text": "loop i in 1 2 3; do echo $i; done"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "A 是列表遍历，B 是 C 风格算术 for（bash 扩展），C 是逐行读取文件的标准写法（配合 IFS= 与 -r 更稳）。D 中 loop 不是 Shell 关键字。",
+    "tags": [
+      "for",
+      "while",
+      "循环"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 79,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "命令 cmd > out.log 2>&1 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "标准输出写入 out.log，标准错误仍打印到屏幕"
+      },
+      {
+        "key": "B",
+        "text": "标准输出与标准错误都写入 out.log"
+      },
+      {
+        "key": "C",
+        "text": "只把标准错误写入 out.log"
+      },
+      {
+        "key": "D",
+        "text": "把 out.log 作为命令输入"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "2>&1 表示把 fd2（stderr）重定向到 fd1 当前指向的位置，而 fd1 已先被重定向到 out.log，所以两者都进文件。顺序不能颠倒：cmd 2>&1 > out.log 会让 stderr 仍指向原屏幕。",
+    "tags": [
+      "重定向",
+      "2>&1"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 80,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "HTTP 403 与 404 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "403 资源不存在，404 无权限访问"
+      },
+      {
+        "key": "B",
+        "text": "403 服务器理解请求但拒绝执行（无权限），404 资源不存在"
+      },
+      {
+        "key": "C",
+        "text": "两者完全等价，只是不同服务器习惯不同"
+      },
+      {
+        "key": "D",
+        "text": "403 是客户端网络问题，404 是服务端错误"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "403 Forbidden 表示身份或权限不足被拒；404 Not Found 表示目标资源不存在。运维排障时 403 多查文件权限、SELinux、WAF 规则，404 多查路径、rewrite 规则、上游路由。",
+    "tags": [
+      "HTTP",
+      "状态码",
+      "403"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 81,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "以下哪些属于传输层（TCP/IP 四层模型）协议？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "TCP"
+      },
+      {
+        "key": "B",
+        "text": "UDP"
+      },
+      {
+        "key": "C",
+        "text": "IP"
+      },
+      {
+        "key": "D",
+        "text": "ICMP"
+      }
+    ],
+    "answer": [
+      "A",
+      "B"
+    ],
+    "explanation": "传输层是 TCP 与 UDP（另有 SCTP 等）。IP 属于网络层，ICMP 虽封装在 IP 中但按功能归网络层（用于差错与控制报文，ping/traceroute 依赖它）。",
+    "tags": [
+      "OSI",
+      "传输层",
+      "TCP/IP"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 82,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "客户端能连上端口但立即断开，抓包看到服务端回 RST，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "网络丢包"
+      },
+      {
+        "key": "B",
+        "text": "该端口没有进程监听"
+      },
+      {
+        "key": "C",
+        "text": "DNS 解析失败"
+      },
+      {
+        "key": "D",
+        "text": "TLS 证书过期"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "SYN 到达但目标端口无监听时，内核直接回 RST。若完全无响应则更可能是防火墙/安全组拦截；证书问题发生在 TLS 握手阶段，DNS 失败根本到不了 TCP 层。",
+    "tags": [
+      "tcpdump",
+      "RST",
+      "连通性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 83,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "网段 192.168.1.0/24 理论上可分配给主机的地址数量是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "256"
+      },
+      {
+        "key": "B",
+        "text": "254"
+      },
+      {
+        "key": "C",
+        "text": "255"
+      },
+      {
+        "key": "D",
+        "text": "512"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "/24 共 256 个地址，减去网络地址（.0）与广播地址（.255），可用主机地址为 254 个。/31 与 /32 在现代设备上有特殊规则，另当别论。",
+    "tags": [
+      "CIDR",
+      "子网",
+      "网络基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 84,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "InnoDB 中，事务 ACID 分别主要由什么机制保证？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "原子性：undo log（回滚未提交的修改）"
+      },
+      {
+        "key": "B",
+        "text": "持久性：redo log（提交后崩溃可恢复）"
+      },
+      {
+        "key": "C",
+        "text": "隔离性：锁 + MVCC"
+      },
+      {
+        "key": "D",
+        "text": "一致性：由 binlog 单独保证"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "原子性靠 undo log 回滚，持久性靠 redo log（WAL）刷盘，隔离性靠锁与 MVCC。一致性是最终目的，由前三者加上应用层的约束共同保证，不是 binlog 单独负责。",
+    "tags": [
+      "ACID",
+      "redo log",
+      "undo log",
+      "MVCC"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 85,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "EXPLAIN 中 Extra 出现 Using index 说明什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "使用了覆盖索引，无需回表"
+      },
+      {
+        "key": "B",
+        "text": "使用了全表扫描"
+      },
+      {
+        "key": "C",
+        "text": "需要额外排序"
+      },
+      {
+        "key": "D",
+        "text": "使用了临时表"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "Using index 表示查询所需列全部在索引里，直接从索引返回数据，不必按主键回表，通常是好现象。Using filesort 是额外排序，Using temporary 是临时表，均需优化。",
+    "tags": [
+      "EXPLAIN",
+      "覆盖索引",
+      "回表"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 86,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 8 中 varchar(10) 在 utf8mb4 字符集下，最多能存多少个字符？",
+    "options": [
+      {
+        "key": "A",
+        "text": "10 个字符"
+      },
+      {
+        "key": "B",
+        "text": "10 个字节"
+      },
+      {
+        "key": "C",
+        "text": "40 个字符"
+      },
+      {
+        "key": "D",
+        "text": "取决于行的总长度，可能更少"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "varchar(n) 的 n 是字符数而非字节数。utf8mb4 下每字符最多占 4 字节，索引长度按 4 字节估算，所以 varchar(10) 索引占 40 字节。注意行总长超过限制时仍可能被截断或报错。",
+    "tags": [
+      "varchar",
+      "字符集",
+      "utf8mb4"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 87,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 仅作纯缓存使用（数据丢失可重建），maxmemory-policy 推荐用？",
+    "options": [
+      {
+        "key": "A",
+        "text": "noeviction"
+      },
+      {
+        "key": "B",
+        "text": "allkeys-lru 或 allkeys-lfu"
+      },
+      {
+        "key": "C",
+        "text": "volatile-ttl"
+      },
+      {
+        "key": "D",
+        "text": "volatile-random"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "纯缓存场景所有 key 都可淘汰，allkeys-* 能充分利用内存；LFU 更能保留热点。noeviction 会在内存满时直接报错，volatile-* 只淘汰设了过期时间的 key，若大量 key 无 TTL 则可能淘汰不动。",
+    "tags": [
+      "淘汰策略",
+      "maxmemory",
+      "缓存"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 88,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "以下哪些 Redis 操作在生产环境应避免或谨慎使用？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "KEYS *"
+      },
+      {
+        "key": "B",
+        "text": "FLUSHALL"
+      },
+      {
+        "key": "C",
+        "text": "对大 Hash 执行 HGETALL"
+      },
+      {
+        "key": "D",
+        "text": "用 SCAN 分批遍历 key"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "KEYS 会 O(N) 遍历并阻塞单线程，应改用 SCAN 分批；FLUSHALL 清空全库，极危险；大 Hash 的 HGETALL 一次返回全部字段，易阻塞并放大网络流量。SCAN 是推荐的渐进式遍历方式。",
+    "tags": [
+      "KEYS",
+      "阻塞",
+      "大key"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 89,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 执行 RDB 持久化时 fork 子进程，主要风险是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "子进程会锁住主线程直到快照完成"
+      },
+      {
+        "key": "B",
+        "text": "fork 本身可能造成毫秒到秒级阻塞，且 copy-on-write 在写入频繁时内存占用显著上涨"
+      },
+      {
+        "key": "C",
+        "text": "RDB 会清空内存中的数据"
+      },
+      {
+        "key": "D",
+        "text": "fork 会导致主从复制中断"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "fork 需复制页表，数据量大时耗时明显；子进程与父进程共享内存页，写入触发的 copy-on-write 会让内存占用接近翻倍，极端情况下触发 OOM。可监控 latest_fork_usec 与内存水位。",
+    "tags": [
+      "RDB",
+      "fork",
+      "copy-on-write"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 90,
+    "type": "single",
+    "category": "Docker/K8s",
+    "difficulty": "简单",
+    "question": "Docker 容器默认使用的网络模式是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "host"
+      },
+      {
+        "key": "B",
+        "text": "bridge"
+      },
+      {
+        "key": "C",
+        "text": "none"
+      },
+      {
+        "key": "D",
+        "text": "overlay"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "默认是 bridge，容器通过 docker0 网桥和 NAT 访问外网，需 -p 做端口映射。host 模式与宿主机共享网络栈（无 NAT 开销但端口冲突），none 无网络，overlay 用于跨主机通信（Swarm）。",
+    "tags": [
+      "Docker",
+      "网络模式",
+      "bridge"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 91,
+    "type": "single",
+    "category": "Docker/K8s",
+    "difficulty": "中等",
+    "question": "Kubernetes 中 resources.requests 的主要作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "限制容器运行时的资源上限"
+      },
+      {
+        "key": "B",
+        "text": "作为调度依据，决定 Pod 能调度到哪个节点"
+      },
+      {
+        "key": "C",
+        "text": "设置容器被驱逐的优先级"
+      },
+      {
+        "key": "D",
+        "text": "指定节点亲和性"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "requests 是调度器判断节点剩余容量的依据，也决定 QoS 等级。limits 才是运行时的硬上限（CPU 超限被节流、内存超限被 OOMKilled）。requests 设太小会导致节点超卖、争抢严重。",
+    "tags": [
+      "requests",
+      "limits",
+      "调度"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 92,
+    "type": "multiple",
+    "category": "Docker/K8s",
+    "difficulty": "中等",
+    "question": "排查一个异常 Pod 时，以下哪些 kubectl 命令有用？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "kubectl describe pod <pod>"
+      },
+      {
+        "key": "B",
+        "text": "kubectl logs <pod> --previous"
+      },
+      {
+        "key": "C",
+        "text": "kubectl get events --sort-by=.lastTimestamp"
+      },
+      {
+        "key": "D",
+        "text": "kubectl rollout restart deployment/<name>"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "describe 看状态与事件、--previous 看上次崩溃的日志、get events 看集群层面调度/拉镜像/探针失败。rollout restart 是重启动作，属于处理手段而非排查手段。",
+    "tags": [
+      "kubectl",
+      "Pod排查",
+      "events"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 93,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "「一次构建、多处部署」（build once, deploy many）的核心目的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "减少流水线执行时间"
+      },
+      {
+        "key": "B",
+        "text": "保证各环境部署的是同一份制品，避免「重新构建导致环境差异」"
+      },
+      {
+        "key": "C",
+        "text": "节省镜像仓库空间"
+      },
+      {
+        "key": "D",
+        "text": "让每个环境可以独立选择依赖版本"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "每个环境重新构建，会因依赖版本、构建时间、缓存状态不同而产出不同二进制，导致测试通过但生产出问题。正确做法是构建一次并打上不可变标识（如 commit SHA 或 digest），按 dev → staging → prod 逐级晋级同一个制品。",
+    "tags": [
+      "制品晋级",
+      "build once",
+      "可复现"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 94,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "Prometheus 采用拉取（pull）模型，什么场景适合配合 Pushgateway？",
+    "options": [
+      {
+        "key": "A",
+        "text": "短生命周期的批处理任务，来不及被拉取就结束"
+      },
+      {
+        "key": "B",
+        "text": "任何服务都应该推送到 Pushgateway"
+      },
+      {
+        "key": "C",
+        "text": "需要长期存储指标时"
+      },
+      {
+        "key": "D",
+        "text": "替代 Alertmanager 发送告警"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "Pull 模型要求目标可被访问，短命任务（如 cron 批处理）在两次拉取之间就退出了，故用 Pushgateway 中转。注意 Pushgateway 不会自动清理，残留指标会一直存在，需主动删除。",
+    "tags": [
+      "Prometheus",
+      "pull",
+      "Pushgateway"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 95,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "Prometheus 告警规则中 for 字段的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "指定告警重复发送的间隔"
+      },
+      {
+        "key": "B",
+        "text": "表达式需持续为真达到该时长才触发，过滤瞬时抖动"
+      },
+      {
+        "key": "C",
+        "text": "指定告警发往哪个 Alertmanager"
+      },
+      {
+        "key": "D",
+        "text": "设置指标采集间隔"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "for: 5m 表示条件持续满足 5 分钟才进入 firing，避免毛刺触发误报。重复发送由 Alertmanager 的 repeat_interval 控制，采集间隔由 scrape_interval 控制。",
+    "tags": [
+      "告警规则",
+      "for",
+      "Prometheus"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 96,
+    "type": "multiple",
+    "category": "安全",
+    "difficulty": "中等",
+    "question": "以下哪些属于 SSH 安全加固措施？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "禁用 root 直接登录（PermitRootLogin no）"
+      },
+      {
+        "key": "B",
+        "text": "禁用密码登录，改用密钥认证"
+      },
+      {
+        "key": "C",
+        "text": "把默认端口改成 22 以外的端口，并限制来源 IP"
+      },
+      {
+        "key": "D",
+        "text": "为了让运维方便，允许所有用户无密码 sudo"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "禁用 root 直登、强制密钥认证、改端口限制来源都是常见加固；配合 fail2ban 可缓解爆破。D 严重违反最小权限原则，等于人人可提权，是典型高危配置。",
+    "tags": [
+      "SSH",
+      "安全加固",
+      "fail2ban"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 97,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "Shell 中 $0、$#、$@、$*、$? 各代表什么？$@ 和 $* 有什么区别？",
+    "answer": "$0=脚本名；$#=参数个数；$@=所有参数列表（每个参数独立）；$*=所有参数合并为一个字符串；$?=上一条命令退出码（0成功）。$@ 和 $* 不加引号时无区别，加引号时：“$@” 保留每个参数边界，“$*” 合并为单个参数，循环处理带空格参数时必须用 “$@”。",
+    "tags": [
+      "变量",
+      "特殊变量"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 98,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "Shell 中单引号、双引号、反引号和 $() 有什么区别？",
+    "answer": "单引号：完全字面量，内部变量不展开；双引号：内部 $变量、命令替换会展开，但空格不分割，写路径必须加；反引号：命令替换（已过时，不支持嵌套，可读性差）；$(cmd)：命令替换，支持嵌套，现代脚本应统一用 $()。",
+    "tags": [
+      "引号",
+      "命令替换"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 99,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "crontab 的时间字段格式是什么？写一个每天凌晨2点30分执行、每周一执行的例子。常见坑有哪些？",
+    "answer": "格式：分 时 日 月 周 [命令]，共5个时间字段。每天 02:30：30 2 * * *；每周一：0 0 * * 1。常见坑：1）周字段 0 和 7 都是周日；2）crontab 默认最小粒度是分钟，不能精确到秒；3）cron 环境变量极少（PATH 只有 /bin:/usr/bin），脚本内用绝对路径或先 source /etc/profile；4）% 在 crontab 中是换行符，需转义为 \\%；5）输出不重定向会发邮件，建议统一重定向到日志。",
+    "tags": [
+      "crontab",
+      "定时任务"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 100,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "grep、sed、awk 的典型使用场景区别是什么？举例说明。",
+    "answer": "grep：按行过滤，grep -rn error /var/log 递归查日志，-v 反向匹配，-A/-B/-C 显示上下文，-c 计数；sed：流编辑，擅长行替换和删除，sed -i s/old/new/g file 原地替换，sed -n 10,20p 打印指定行；awk：按列处理，擅长格式化统计，awk {sum+=$5} END{print sum} 累加某列，awk -F: {print $1,$3} /etc/passwd。口诀：grep 找行、sed 改行、awk 算列。",
+    "tags": [
+      "三剑客",
+      "文本处理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 101,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 函数如何返回值？如何判断上一条命令是否执行成功并做错误处理？",
+    "answer": "Shell 函数用 return 返回 0-255 的退出码（不是数据），要返回字符串用 echo 输出再命令捕获：result=$(myfunc)。判断成功：if ! cmd; then echo fail; fi，或 cmd || { echo fail; exit 1; }。注意管道场景必须配合 pipefail，否则中间的失败检测不到。函数内 return 非0，配合 set -e 会直接退出脚本。",
+    "tags": [
+      "函数",
+      "错误处理"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 102,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP 和 HTTPS 的区别？简述 TLS 握手过程。",
+    "answer": "区别：HTTPS = HTTP + TLS 加密，默认端口 443 vs 80；提供机密性、完整性、身份认证（防中间人），代价是多一次握手 RTT 和加解密 CPU 开销。TLS1.2 握手：1）ClientHello：客户端给出支持的加密套件、随机数 C1；2）ServerHello：选定套件、随机数 S1、下发服务器证书；3）客户端验证证书链（CA、有效期、域名），协商出预主密钥；4）双方用 C1+S1+预主密钥生成会话密钥，Finished 消息验证握手完整性，之后对称加密通信。TLS1.3 简化为1-RTT并废弃弱算法。",
+    "tags": [
+      "HTTPS",
+      "TLS",
+      "加密"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 103,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "服务器 ping 不通，你的排查思路是什么？",
+    "answer": "分层排查：1）本地：ip addr 看网卡/IP 是否配置，网卡是否 UP；2）本机防火墙：iptables -L / firewall-cmd --list-all，ICMP 是否被禁；3）路由：ip route 看默认网关，ping 网关测试内网连通性；4）安全组/云平台网络 ACL：云服务器最常见，控制台检查安全组入方向是否放通 ICMP；5）对端：对端防火墙禁 ping（网站能访问但 ping 不通属正常）；6）中间链路：traceroute/mtr 定位在哪一跳中断；7）sysctl：net.ipv4.icmp_echo_ignore_all 是否为1。",
+    "tags": [
+      "网络排查",
+      "ICMP"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 104,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 的 binlog 格式有哪几种？各自优缺点是什么？生产环境怎么选？",
+    "answer": "三种格式：\n1. STATEMENT：记录原始 SQL 语句。日志小，但含非确定性函数（NOW()、UUID()、LIMIT 无 ORDER BY）时主从不一致。\n2. ROW：记录每行数据的实际变更。最安全，能保证一致性，是 5.7+ 默认；缺点是日志量大（批量 UPDATE 会膨胀数倍）、大字段变更成本高。\n3. MIXED：默认用 STATEMENT，遇到不确定语句时自动切 ROW。兼顾体积与安全，但行为不易预测。\n\n生产建议：\n- 用 ROW，配合 binlog_row_image=MINIMAL 减少体积；\n- 需要审计或数据恢复时 ROW 也更好用（binlog2sql 可反向生成回滚 SQL）；\n- 关注 binlog 保留时长与磁盘占用，避免写满磁盘。",
+    "tags": [
+      "binlog",
+      "复制格式",
+      "主从复制"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 105,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "为什么 InnoDB 表建议用自增主键，而不推荐 UUID 作为主键？",
+    "answer": "1）聚簇索引按主键顺序组织数据：自增 ID 插入总是追加到 B+树末尾，页分裂少、写入快；UUID 随机，插入导致频繁的页分裂和页搬迁，写放大严重；2）二级索引叶子节点存主键值，UUID 占 16 字节比 bigint 的 8 字节大一倍，所有二级索引都变大，浪费空间；3）UUID 作为主键使数据物理存储随机，范围查询和顺序扫描性能差。如果必须用 UUID，建议用有序 ID 算法（雪花ID、UUID v7），或作为唯一键而主键仍用自增。",
+    "tags": [
+      "主键",
+      "UUID",
+      "聚簇索引"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 106,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "数据库与缓存如何保证一致性？先更新数据库还是先删缓存？",
+    "answer": "推荐「先更新数据库，再删除缓存」（Cache Aside）：\n- 若先删缓存再更新库，中间窗口内的读请求会把旧值重新加载回缓存，导致长期脏数据；\n- 先更新库再删缓存，脏窗口更短，且删缓存失败的概率低于写缓存失败。\n\n进一步加固：\n1. 延迟双删：更新库后删一次，再延迟几百毫秒（约为主从同步延迟 + 一次读耗时）删第二次；\n2. 删除失败要重试：消息队列补偿或订阅 binlog（Canal）异步删除；\n3. 加分布式锁或串行化，避免并发写导致顺序错乱；\n4. 给缓存设 TTL 兜底，最终一致。\n\n为什么不是「更新缓存」：并发更新场景下缓存写入顺序可能与数据库不一致，且大量写多读少的场景白白浪费缓存。",
+    "tags": [
+      "缓存一致性",
+      "Cache Aside",
+      "延迟双删"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 107,
+    "type": "short",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "什么是 CI/CD？常用工具链有哪些？",
+    "answer": "CI（持续集成）：代码频繁合并到主干，每次合并自动构建+自动化测试，快速发现集成错误；CD 有两个含义——持续交付（代码随时可发布到生产，人工点一下发布）和持续部署（通过全部流水线后自动上线）。价值：快速反馈、降低发布风险、减少人工操作错误。工具：代码管理 GitLab/Gitea；流水线 Jenkins（插件多）、GitLab CI（与仓库一体）、GitHub Actions（YAML声明式）、ArgoCD/Flux（GitOps）；制品仓库 Harbor/Nexus；部署 Ansible、Helm/Kustomize。",
+    "tags": [
+      "CI/CD",
+      "流水线",
+      "GitOps"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 108,
+    "type": "short",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "Jenkins Pipeline 的核心概念是什么？写一个简单示例。",
+    "answer": "核心概念：1）Pipeline：流水线即代码（Jenkinsfile，Groovy DSL），版本化可 review；2）Stage：阶段划分（拉代码/构建/测试/部署），可视化展示；3）Step：具体步骤，最小执行单元；4）Agent：执行节点；5）Post：阶段结束后动作（always/success/failure，如发通知）；6）凭据通过 credentialsId 注入，不明文写。示例：pipeline { agent any; stages { stage(Build) { steps { sh mvn clean package } } stage(Deploy) { steps { sh scp target/app.jar user@host:/opt/ } } } post { failure { echo 构建失败 } } }。现代趋势：声明式语法优于脚本式。",
+    "tags": [
+      "Jenkins",
+      "Pipeline",
+      "Jenkinsfile"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 109,
+    "type": "short",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "测试金字塔是什么？在流水线中如何安排各类测试？",
+    "answer": "测试金字塔（自底向上）：单元测试（多，毫秒级，测函数逻辑，占比70%+）到接口/组件测试（中，秒级，测 API 契约）到 UI/E2E 测试（少，分钟级，模拟用户流程）。原则：越底层越便宜越快越稳定。流水线安排：每次提交触发单元测试+静态检查（lint）+构建（分钟级反馈）；合并到主干后跑接口测试+安全扫描；定时跑全量 E2E 和性能测试；发布前跑核心链路冒烟测试。反模式：依赖大量 UI 自动化导致流水线慢、flaky test 频繁误报。",
+    "tags": [
+      "测试",
+      "自动化",
+      "流水线"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 110,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "Prometheus 的整体架构和工作原理是什么？",
+    "answer": "核心：1）Prometheus Server：定时（scrape_interval，默认15s）通过 HTTP 拉取（Pull）各 Exporter 的 /metrics 端点，时序数据存入本地 TSDB；2）Exporter：node_exporter（主机）、mysqld_exporter、redis_exporter、blackbox_exporter（探活），应用通过 client 库暴露自定义指标；3）服务发现：配合 K8s 自动发现 Pod/Service；4）PromQL：查询语言，rate(http_requests_total[5m]) 算 QPS；5）Alertmanager：接收告警，去重、分组、路由（按标签发不同接收人）、静默和抑制（如主机宕机抑制其所有服务告警）；6）Grafana 可视化。Push 场景（短生命周期任务）用 Pushgateway。",
+    "tags": [
+      "Prometheus",
+      "时序数据库",
+      "架构"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 111,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "Grafana 在监控体系中扮演什么角色？使用上的最佳实践？",
+    "answer": "Grafana 是可视化与数据聚合层：不存储数据，通过数据源插件（Prometheus/Elasticsearch/MySQL/Loki）统一查询展示，一个看板聚合多来源数据。最佳实践：1）Dashboard 即代码：JSON 用 grafonnet 或 provisioning 目录管理，版本化可 code review；2）看板分层：Overview 总览（黄金指标：流量/错误/延迟/饱和度）到服务详情到排障深入；3）变量模板化：$instance、$job 下拉切换，一个看板复用到所有实例；4）权限管理：团队/角色分文件夹隔离，敏感数据源只读。",
+    "tags": [
+      "Grafana",
+      "可视化",
+      "Dashboard"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 112,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "用户反馈网站打开很慢，给出你的全链路排查思路。",
+    "answer": "自顶向下分层：1）界定范围：是个别用户还是全部？某页面还是全站？（个别用户指向本地网络/运营商线路；全站指向服务端）；2）客户端侧：F12 看 Network 瀑布图——慢在 DNS、TCP连接、TTFB（服务端响应）、还是内容下载/前端渲染；3）网络链路：ping/mtr 看延迟丢包，CDN 是否命中（回源慢？）；4）接入层：Nginx access log 看 upstream_response_time 和 request_time 的差值——差大说明后端慢；连接数是否打满、是否有大量 TIME_WAIT；5）应用层：APM（SkyWalking）看 trace 哪个服务/哪个 SQL 慢，线程池是否打满、GC 是否频繁；6）依赖层：DB 慢查询、锁等待，Redis 慢查询/大key，下游 API 超时；7）资源层：CPU/内存/磁盘IO/带宽是否打满。面试表达要点：先分层隔离缩小范围，再说每层看什么指标用什么工具。",
+    "tags": [
+      "全链路",
+      "性能排查",
+      "面试场景"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 113,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "凌晨3点，监控系统告警：多台服务器 CPU 同时飙高，部分服务超时。你的处理流程？",
+    "answer": "1）先止血保业务：摘除异常节点（LB 权重调0、K8s cordon+drain），让健康节点扛流量；判断是否攻击（流量来源是否集中、异常UA）——是攻击则启用 WAF/封 IP；2）定位：us 高还是 sy 高——us 高找进程（top -H 定位线程+jstack），凌晨3点重点怀疑定时任务雪崩（crontab/对账任务/调度平台）、batch job、消息队列突增消费、重试风暴；sy 高看上下文切换和软中断；wa 高看磁盘 IO（备份任务、日志狂写）；3）注意多台同时高的关联性：共同的外部依赖（某下游超时导致重试风暴）、共用存储/NFS 抖动、同宿主机问题；4）恢复与复盘：找到根因后修复，输出故障报告（时间线、影响面、根因、改进项：加限流、任务错峰、监控补盲点）。面试加分点：先说止血再说根因，凌晨3点这个时间线索指向定时任务。",
+    "tags": [
+      "故障处理",
+      "CPU",
+      "应急"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 114,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "线上数据库主库磁盘 IO 使用率 100%，业务开始超时，如何处理？",
+    "answer": "1）止血：确认读写分离架构下把读流量全部切到从库；开启限流保护（ProxySQL 连接限制、应用侧降级开关关掉非核心写功能）；紧急扩容磁盘 IO（云盘升 IOPS）；2）定位 IO 来源：iostat -x 看哪块盘 util 100%、await 多高；iotop 找 IO 最高的进程；进 MySQL：show processlist 看是否有大查询、大批量写入、DDL（alter table 重建表最吃IO）、binlog 刷盘压力；3）针对性处置：kill 大查询，长事务提交/回滚（大事务回滚本身也吃IO，评估后选择），暂停备份任务，评估 sync_binlog 降级策略（牺牲少量持久性换IO，需审批）；4）中期优化：热点表加缓存、慢SQL治理、磁盘换 SSD/提升 IOPS、归档冷数据；5）预防：binlog/数据/日志分盘部署，IO 使用率监控提前到70%告警。",
+    "tags": [
+      "数据库",
+      "磁盘IO",
+      "故障处理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 115,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "设计一次新版本上线方案：从上线前检查、发布过程到回滚预案。",
+    "answer": "上线前：1）代码冻结，变更评审（review+测试报告）；2）检查发布窗口（低峰期）、通知相关方、值班安排；3）数据库变更先行且必须可回滚——DDL 用 online DDL 工具（pt-online-schema-change/gh-ost）或先加字段后发布代码的兼容方案，禁止先改代码后改库；4）确认监控看板、告警就绪，回滚命令预演过；5）制品从测试环境晋级（同一镜像，不重新构建）。发布过程：金丝雀灰度 1%到10%到50%到100%，每档观察5-10分钟核心指标（错误率、P99、饱和度），异常即暂停。回滚预案：1）代码回滚：切回旧版本（rollout undo/蓝绿切换），必须验证旧版本与新数据结构兼容；2）DB 回滚最难点：加字段可回滚（灰度期未写入新字段时），删字段/改类型不可逆——破坏性变更拆两次发布（第一次加新列双写，第二次稳定后切读再删旧列）；3）回滚后验证核心业务，出故障报告。",
+    "tags": [
+      "发布方案",
+      "回滚",
+      "变更管理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 116,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "电商大促（双11类）前，作为运维你要做哪些保障工作？",
+    "answer": "1）容量规划：基于往年数据+压测结果做容量评估，核心链路（下单/支付）按预估峰值3-5倍扩容，全链路压测摸出瓶颈点（限流阈值、线程池、DB 连接池、缓存热点）；2）架构预案：降级开关预案（非核心功能如推荐/评论可一键关闭）、限流熔断阈值配置、静态资源 CDN 预热、缓存预热防击穿；3）稳定性检查：慢SQL清零、核心接口超时治理、连接池/队列容量核对、证书有效期、第三方依赖（短信/支付）的降级方案；4）变更冻结：大促前N天禁止一切非必要变更；5）监控与值守：大屏+专项看板、核心指标秒级监控、告警升级链路、作战室与 oncall 排班、应急预案演练；6）大促中盯核心指标，突发按预案降级扩容；7）大促后复盘、容量回收。",
+    "tags": [
+      "大促保障",
+      "容量",
+      "压测"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 117,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "公司要求把传统物理机/虚拟机上的应用迁移到 Kubernetes，你会如何规划这次迁移？",
+    "answer": "1）评估与规划：梳理应用清单，分类——无状态应用（最易迁）、有状态应用（需 Operator/StatefulSet 或应用先迁数据留在库）、不适合迁的（强依赖物理硬件/特殊内核模块）；制定分批迁移计划和回退方案；2）基础平台建设：K8s 集群高可用、网络方案选型（CNI）、Ingress、镜像仓库 Harbor、CI/CD 改造（构建镜像、Helm 模板化）、监控日志接入（Prometheus Operator、Loki）、命名空间与 RBAC 隔离、ResourceQuota；3）应用改造：容器化（Dockerfile、健康检查、优雅停机 preStop、配置外置 ConfigMap/Secret、无状态化改造）、HPA 弹性配置、PDB 配置；4）灰度迁移：双跑验证（新旧环境并行，流量按比例切换）、数据层同步、切流用 DNS/网关权重控制，保留旧环境观察期作为快速回退；5）收尾：旧环境下线计划、团队培训、故障演练（混沌工程）、成本对比复盘。关键原则：先平台后应用、先无状态后有状态、随时可回退。",
+    "tags": [
+      "K8s",
+      "迁移",
+      "上云"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 118,
+    "type": "multiple",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "以下哪些做法能提高发布的可靠性？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "先灰度一小部分流量，观察错误率与延迟再逐步放量"
+      },
+      {
+        "key": "B",
+        "text": "发布前准备好回滚方案与上一版本制品"
+      },
+      {
+        "key": "C",
+        "text": "所有环境（含生产）都重新构建一次以保持「新鲜」"
+      },
+      {
+        "key": "D",
+        "text": "配置与镜像解耦，通过配置中心或 ConfigMap 注入"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "D"
+    ],
+    "explanation": "灰度放量能限制故障影响面，回滚方案与上一版本制品是止损前提，配置外置让同一制品能在多环境复用。C 恰好破坏「一次构建多处部署」，会引入环境差异，是常见反模式。",
+    "tags": [
+      "灰度发布",
+      "回滚",
+      "发布可靠性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 119,
+    "type": "multiple",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "以下哪些指标适合用来做告警？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "接口错误率持续高于 1%（持续 5 分钟）"
+      },
+      {
+        "key": "B",
+        "text": "P99 延迟超过 SLO 阈值"
+      },
+      {
+        "key": "C",
+        "text": "某台机器的 CPU 瞬时冲到 80% 一次"
+      },
+      {
+        "key": "D",
+        "text": "磁盘使用率 7 天内将达到 100%（趋势预测）"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "D"
+    ],
+    "explanation": "告警应对应用户影响或明确的容量风险：错误率、延迟超标、容量趋势都可行动。C 的瞬时毛刺靠 for 持续时间过滤即可，单独告警会造成告警疲劳；资源类指标也不宜直接等同于故障。",
+    "tags": [
+      "告警设计",
+      "SLO",
+      "降噪"
+    ],
+    "frequency": "高频"
+  }
+]

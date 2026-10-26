@@ -1,0 +1,313 @@
+/* ============================================================
+   全局样式与 CSS 变量
+   主题通过 <html data-theme="light|dark"> 切换，组件内禁止写死颜色
+   ============================================================ */
+
+:root {
+  --c-primary: #4f7cff;
+  --c-primary-weak: rgba(79, 124, 255, 0.1);
+  --c-bg: #f6f7fb;
+  --c-card: #ffffff;
+  --c-border: #e8eaf0;
+  --c-text: #1f2430;
+  --c-text-2: #6b7280;
+  --c-text-3: #9ca3af;
+  --c-success: #52c41a;
+  --c-warning: #faad14;
+  --c-danger: #f5222d;
+  --c-freq: #7a8ba8;
+  --c-freq-weak: rgba(122, 139, 168, 0.12);
+  --c-success-weak: rgba(82, 196, 26, 0.12);
+  --c-danger-weak: rgba(245, 34, 45, 0.12);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --maxw: 480px;
+  --tabbar-h: 52px;
+  --app-header-h: 52px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+:root[data-theme='dark'] {
+  --c-primary: #6e93ff;
+  --c-primary-weak: rgba(110, 147, 255, 0.16);
+  --c-bg: #121212;
+  --c-card: #1e1e1e;
+  --c-border: #2a2a2a;
+  --c-text: #e6e6e6;
+  --c-text-2: #a0a0a0;
+  /* 深色下 #7A7A7A 对比度仅 3.88（低于 AA 的 4.5），提亮到 #8E8E8E → 约 4.8 */
+  --c-text-3: #8e8e8e;
+  --c-success: #73d13d;
+  --c-warning: #ffc53d;
+  --c-danger: #ff7875;
+  --c-freq: #8fa1bd;
+  --c-freq-weak: rgba(143, 161, 189, 0.16);
+  --c-success-weak: rgba(115, 209, 61, 0.16);
+  --c-danger-weak: rgba(255, 120, 117, 0.16);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+a {
+  color: var(--c-primary);
+  text-decoration: none;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- 布局 ---------- */
+
+.app-shell {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-bg);
+  position: relative;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 12px calc(var(--tabbar-h) + var(--safe-bottom) + 12px);
+  overflow-x: hidden;
+}
+
+.app-main--no-tab {
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+/* 无 TabBar 页面：不需要为 TabBar 预留底部空间 */
+.app-shell--no-tab .app-main {
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+/**
+ * 沉浸式页面（刷题）：内容区精确占满「视口 - TabBar - 安全区」，
+ * 自身不滚动，滚动交给内部卡片。
+ *
+ * 关键点：TabBar 是 fixed 定位、不占文档流，那 52px 空档会被
+ * `.app-main { flex: 1 }` 撑掉（页面反而长出 52px，把吸底操作栏
+ * 顶到 TabBar 底下）。所以这里必须关掉 flex 增长并显式扣高度。
+ */
+.app-main--full {
+  flex: none;
+  height: calc(100dvh - var(--tabbar-h) - var(--safe-bottom));
+  padding-bottom: 0;
+  overflow: hidden;
+}
+.app-shell--no-tab .app-main--full {
+  height: 100dvh;
+}
+
+.page {
+  padding-top: 6px;
+}
+
+/* 作为 .app-main（flex column）的子项占满剩余高度 */
+.page--fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 页面转场 */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* ---------- 通用元素 ---------- */
+
+.card {
+  background: var(--c-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--c-border);
+}
+
+.section-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  margin: 16px 0 8px;
+  color: var(--c-text);
+}
+
+.muted {
+  color: var(--c-text-2);
+  font-size: 12.5px;
+}
+
+.btn {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.btn:active {
+  opacity: 0.75;
+}
+.btn--primary {
+  background: var(--c-primary);
+  color: #fff;
+}
+.btn--ghost {
+  background: var(--c-primary-weak);
+  color: var(--c-primary);
+}
+.btn--plain {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
+}
+.btn--block {
+  width: 100%;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--c-text-2);
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.chip--active {
+  color: #fff;
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+}
+
+.scroll-x {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/**
+ * 分类/筛选项网格：窄屏下平铺换行，全部可见可点，
+ * 不用横向滚动（隐藏滚动条的横滑在桌面端几乎发现不了）。
+ */
+.chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 6px;
+}
+.chip-grid .chip {
+  width: 100%;
+  justify-content: center;
+  background: var(--c-card);
+}
+.chip-grid .chip--active {
+  background: var(--c-primary);
+}
+
+/* 频率这类少量选项用 flex wrap 排一行即可 */
+.chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 答案文本：保留换行与缩进 */
+.pre-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  line-height: 1.7;
+  font-size: 13.5px;
+  color: var(--c-text);
+  margin: 0;
+}
+
+/* ---------- 无障碍 ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

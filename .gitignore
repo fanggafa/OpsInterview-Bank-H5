@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.npm-cache/
+*.local
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+*.log
+
+# 本地实测截图 / 临时产物
+shot-*.png
+*.pcap
+
+# 编辑器与系统
+.idea/
+Thumbs.db
