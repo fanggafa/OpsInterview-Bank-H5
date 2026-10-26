@@ -25,10 +25,10 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22.x
           cache: npm
@@ -70,6 +70,10 @@ jobs:
 
       - name: 配置 Pages
         uses: actions/configure-pages@v5
+        with:
+          # Pages 尚未在 Settings 中开启时，自动启用（否则会报
+          # "Get Pages site failed ... Not Found"）
+          enablement: true
 
       - name: 上传产物
         uses: actions/upload-pages-artifact@v3
