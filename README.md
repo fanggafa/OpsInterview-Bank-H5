@@ -5,6 +5,7 @@
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
 - 题库：**119 题**（93 简答 + 16 单选 + 10 多选），10 个分类
+- 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
 > 只想部署出去用？看[部署](#部署)第 4 节「不想配 rewrite？改用 hash 模式」，一行改动零配置上线。
@@ -343,14 +344,10 @@ URL 变成 `/#/bank`、`/#/question/3`。**任何静态托管、甚至直接双�
 
 ### 4.1 GitHub Pages（已配置自动部署）
 
-仓库已带 [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)，**CI 通过后自动发布**。
+**线上地址：https://fanggafa.github.io/OpsInterview-Bank-H5/**
 
-首次使用需在网页开启一次（只做一次）：
-
-1. 仓库 **Settings → Pages**
-2. **Source** 选择 **GitHub Actions**（不要选 “Deploy from a branch”）
-3. 推送 `main` 后，Actions 里的 `Deploy to GitHub Pages` 会构建并发布
-4. 站点地址：`https://<用户名>.github.io/<仓库名>/`
+仓库已带 [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)，推送 `main` 后自动发布。
+工作流包含 `configure-pages` 的 `enablement: true`，**首次部署会自己开启 Pages**，无需手动配置。
 
 工作流已处理 Pages 的两个特殊要求：
 
@@ -359,8 +356,14 @@ URL 变成 `/#/bank`、`/#/question/3`。**任何静态托管、甚至直接双�
 | 项目站点在子路径下 | 自动设 `BASE_PATH=/<仓库名>/` |
 | **Pages 不支持服务器端 rewrite** | 自动用 `VITE_ROUTER_MODE=hash` |
 
-> ⚠️ 这一点很关键：我实测过，history 模式在纯静态托管上，`/bank` 会直接 404，
-> 只有首页能用。所以 Pages 必须用 hash 模式。
+> ⚠️ 这一点很关键：已实测确认，history 模式在纯静态托管上，`/bank`、`/stats`、`/question/1`
+> 都会直接 404，只有首页能用。所以 Pages 必须用 hash 模式。
+
+**已知限制**：hash 模式下 URL 形如 `#/bank`，所以：
+
+- ✅ 分享 `https://fanggafa.github.io/OpsInterview-Bank-H5/#/question/3` 可直达详情
+- ❌ 分享 `https://fanggafa.github.io/OpsInterview-Bank-H5/bank`（不带 `#`）会 404
+  —— 这是 hash 路由的固有行为，不是 bug
 
 ### 4.2 其他平台速查
 
