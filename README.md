@@ -474,6 +474,144 @@ Set-Content -Path README.md -Value $content -Encoding UTF8
 
 ---
 
+## 如何改代码（含 PR 流程）
+
+`main` 分支**已开启保护**，直推会被服务器拒绝：
+
+```
+GH006: Protected branch update failed for refs/heads/main.
+- Changes must be made through a pull request.
+- 2 of 2 required status checks are expected.
+```
+
+所以任何改动都必须走 PR。完整流程：
+
+### 1. 从最新 main 开分支
+
+```bash
+git checkout main
+git pull                      # 确保基于最新代码
+git checkout -b feat/你的改动  # 分支名：feat/ / fix/ / docs/ / chore/
+```
+
+分支命名建议：
+
+| 前缀 | 用于 |
+|---|---|
+| `feat/` | 新功能，如 `feat/daily-question` |
+| `fix/` | 修 bug，如 `fix/gesture-swipe` |
+| `docs/` | 文档 |
+| `chore/` | 工程配置、依赖升级 |
+| `content/` | 题库内容增删改，如 `content/add-mysql-questions` |
+
+### 2. 改代码
+
+常用命令：
+
+```bash
+npm run dev          # 本地开发（http://127.0.0.1:5273）
+npm run test:watch   # 改代码时持续跑测试
+```
+
+### 3. 提交前必须验证
+
+```bash
+npm run verify
+```
+
+这一条命令依次执行：编码检查 → 题库校验 → 全部测试 → 生产构建。
+**任一环节失败都不要提交**。CI 里跑的是同样的检查，本地能过 CI 才可能过。
+
+如果是 UI 改动，还应在浏览器里把宽度切到 **375px** 看一眼（含深色模式）。
+
+### 4. 提交并推送分支
+
+```bash
+git add -A
+git commit -m "feat: 一句话说明改了什么"
+git push -u origin feat/你的改动
+```
+
+> ⚠️ 不要 `git push origin main`，会被拒绝。
+
+### 5. 提 PR 并等待 CI
+
+推送后打开仓库页面，GitHub 会提示 **Compare & pull request**，点进去创建。
+
+PR 描述模板已配置好（`.github/pull_request_template.md`），按模板填即可。
+
+创建后 `CI` 工作流自动运行，**必须等两个 check 都变绿**：
+
+```
+测试与构建 (20.x)
+测试与构建 (22.x)
+```
+
+未通过时 Merge 按钮是灰的。
+
+### 6. 合并
+
+两个 check 全绿后点 **Merge pull request**。
+
+- 选 **Squash and merge**（推荐）：把分支上的多个提交压成一个，main 历史更清晰
+- 合并后 GitHub 会提示删除分支，可以放心删
+
+> ⚠️ **单人仓库必须关掉 Require approvals**。
+> 如果分支保护勾了 `Require approvals: 1`，PR 会永久卡在
+> `Review required — At least 1 approving review is required`，
+> 因为 GitHub **不允许自己批准自己的 PR**。
+>
+> 正确配置（单人开发）：
+>
+> | 选项 | 设置 |
+> |---|---|
+> | Require a pull request before merging | ✅ 开 |
+> | Require approvals | ❌ **关**（或设为 0） |
+> | Require status checks to pass | ✅ 开（选两个 `测试与构建`） |
+> | Require branches to be up to date | ✅ 开 |
+>
+> 这样既能保证「改 main 必须走 PR + CI 必须绿」，又不会被审批卡死。
+> 等以后有第二个协作者时，再把 Require approvals 打开。
+
+### 7. 合并后自动发生什么
+
+| 触发 | 结果 |
+|---|---|
+| 合并进 `main` | `CI` 再跑一遍（验证合并后的代码） |
+| 合并进 `main` | `Deploy to GitHub Pages` 自动部署，约 1 分钟后线上更新 |
+
+线上地址：https://fanggafa.github.io/OpsInterview-Bank-H5/
+
+### 8. 同步本地
+
+```bash
+git checkout main
+git pull
+git branch -d feat/你的改动   # 删除已合并的本地分支
+```
+
+### 常见情况处理
+
+| 情况 | 处理 |
+|---|---|
+| CI 失败，但本地能过 | 看 Actions 里具体哪一步失败；常见是忘记 `git add` 某个新文件 |
+| 想改已推送的 PR | 直接在分支上继续提交并 push，PR 会自动更新 |
+| PR 显示 `This branch has conflicts` | 本地 `git pull origin main` 解决冲突后 push |
+| check 列表里搜不到这两项 | 需要一次 `pull_request` 触发的运行，提任意 PR 跑一次即可 |
+| **CI 全绿但 Merge 按钮灰、提示 `Review required`** | 单人仓库勾了 Require approvals，而 GitHub 不允许自审。去 Settings → Branches 取消 **Require approvals** |
+| 实在要紧急改 main | 不建议。若确有需要，临时关闭分支保护 → 改完立即重新开启 |
+
+### 题库内容的改动
+
+题库改动走同样的 PR 流程，但额外注意：
+
+1. 编辑 `public/data/questions.json`
+2. 跑 `npm run validate:data`（`verify` 已包含）
+3. **人工检查同分类下是否与其他题重复知识点**——脚本查不出这个
+4. 简答题和选择题应是**不同考点**，不要把简答题改写成选项凑数
+
+---
+
 ## 开发笔记
 
 - **主题**通过 `<html data-theme="light|dark">` + CSS 变量驱动，组件里不写死颜色。
@@ -482,6 +620,8 @@ Set-Content -Path README.md -Value $content -Encoding UTF8
 - **手势**绑定用 `watch(stageRef, { flush: 'post' })` 而非 `onMounted`——
   卡片在异步加载后才渲染，`onMounted` 时 DOM 还是骨架屏，会导致手势从未生效。
 - **无数据占位**「—」在大字号下易被误读成装饰线，需用小字号 + 中性色渲染。
+- **路由模式**由 `VITE_ROUTER_MODE` 控制：默认 history（需 rewrite），
+  `hash` 用于 Pages 等无 rewrite 环境。不要为部署改源码。
 - 改动后务必跑**全量** `npm run test`，不能只看被改动的文件。
 
 ---
