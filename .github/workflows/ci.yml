@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一分支的新推送取消旧的进行中任务，避免排队浪费
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 测试与构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          # 编码检查依赖 git ls-files，需要完整文件列表
+          fetch-depth: 1
+
+      - name: 安装 Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 放在最前面：编码问题会污染后续所有步骤的排查
+      - name: 编码检查（防中文乱码）
+        run: npm run check:encoding
+
+      - name: 题库结构校验
+        run: npm run validate:data
+
+      - name: 单元测试
+        run: npm run test
+
+      - name: 生产构建
+        run: npm run build
+
+      - name: 子目录构建（BASE_PATH）
+        run: npm run build
+        env:
+          BASE_PATH: /ops/
+
+      - name: 校验构建产物完整
+        run: |
+          set -e
+          test -f dist/index.html                      || { echo "缺少 index.html"; exit 1; }
+          test -f dist/data/questions.json             || { echo "缺少题库数据"; exit 1; }
+          ls dist/assets/*.js >/dev/null 2>&1          || { echo "缺少 JS 产物"; exit 1; }
+          ls dist/assets/*.css >/dev/null 2>&1         || { echo "缺少 CSS 产物"; exit 1; }
+          grep -q '/ops/assets/' dist/index.html       || { echo "BASE_PATH 未生效"; exit 1; }
+          echo "✓ 构建产物完整，BASE_PATH 生效"
+
+      # 上传构建产物，方便在 Actions 页直接下载部署
+      - name: 上传构建产物
+        if: matrix.node-version == '22.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7

@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "validate:data": "node scripts/validate-data.mjs"
+    "validate:data": "node scripts/validate-data.mjs",
+    "check:encoding": "node scripts/check-encoding.mjs",
+    "verify": "npm run check:encoding && npm run validate:data && npm run test && npm run build"
   },
   "dependencies": {
     "pinia": "^2.2.6",

@@ -25,6 +25,8 @@ npm run dev          # http://127.0.0.1:5273
 | `npm run preview` | 预览构建产物（127.0.0.1:5274） |
 | `npm run test` | 运行 vitest（20 个文件 / 427 个用例） |
 | `npm run validate:data` | 校验题库结构（枚举 / id / 题数 / 字段） |
+| `npm run check:encoding` | 编码守卫（防中文被写坏，见[编码守卫](#编码守卫)） |
+| `npm run verify` | **提交前跑这个**：编码 + 题库 + 测试 + 构建 全流程 |
 
 环境要求：Node.js ≥ 18。
 
@@ -398,6 +400,55 @@ URL 变成 `/#/bank`、`/#/question/3`。**任何静态托管、甚至直接双�
 - `category` / `frequency` 非法值会被忽略并回退为「全部」（防止手改 URL 出现异常状态）。
 - 搜索 300ms 防抖，匹配范围：题干 + 答案 + 标签 + 选项 + 解析，忽略大小写。
 - 列表滚动位置存 `sessionStorage`，从详情页返回时恢复。
+
+---
+
+## 编码守卫
+
+本项目曾发生过一次事故：用 PowerShell 批量处理时，UTF-8 中文被按 GBK 读写，**整个 README 变成乱码且无法回滚**（当时没有 git）。
+
+现在有两道防线：
+
+### 1. `npm run check:encoding`
+
+扫描所有被 git 跟踪的文本文件，检测三类问题：
+
+| 类型 | 说明 | 严重性 |
+|---|---|---|
+| 非法 UTF-8 字节序列 | 文件已损坏，`TextDecoder` 严格解码失败 | ❌ 阻断 |
+| U+FFFD 替换字符 | 曾以错误编码解码过，信息已不可逆丢失 | ❌ 阻断 |
+| 疑似乱码 | **合法 UTF-8 但中文是乱码**（最隐蔽） | ❌ 阻断 |
+| UTF-8 BOM | 项目约定不用 BOM | ⚠ 提示 |
+
+第 3 类靠「常用汉字占比」启发式识别——正常中文里「的了是在我有和就」等高频字占比通常 >10%，
+而 GBK 误解码产生的乱码文本几乎为 0%。实测我复现的那次事故：**占比仅 0.2%**，可稳定拦下。
+
+### 2. CI（`.github/workflows/ci.yml`）
+
+每次 push / PR 到 `main` 自动执行，顺序刻意把编码检查放在最前
+（编码坏了会污染后面所有步骤的排查）：
+
+```
+编码检查 → 题库校验 → 单元测试 → 构建 → BASE_PATH 构建 → 校验产物 → 上传 artifact
+```
+
+- Node 20.x 与 22.x 双版本矩阵
+- 构建产物在 Actions 页面可直接下载部署
+- 同分支新推送自动取消旧任务
+
+### 本地写中文文件的注意事项
+
+**不要用** PowerShell 的 `>`、`Set-Content` 默认编码写中文文件：
+
+```powershell
+# ❌ 会破坏 UTF-8 中文
+Get-Content README.md | Set-Content README.md
+
+# ✓ 显式指定编码
+Set-Content -Path README.md -Value $content -Encoding UTF8
+```
+
+更推荐：用编辑器的 `write` / `edit` 操作，或用 node 脚本处理文本。
 
 ---
 
