@@ -556,6 +556,23 @@ PR 描述模板已配置好（`.github/pull_request_template.md`），按模板�
 - 选 **Squash and merge**（推荐）：把分支上的多个提交压成一个，main 历史更清晰
 - 合并后 GitHub 会提示删除分支，可以放心删
 
+> ⚠️ **单人仓库必须关掉 Require approvals**。
+> 如果分支保护勾了 `Require approvals: 1`，PR 会永久卡在
+> `Review required — At least 1 approving review is required`，
+> 因为 GitHub **不允许自己批准自己的 PR**。
+>
+> 正确配置（单人开发）：
+>
+> | 选项 | 设置 |
+> |---|---|
+> | Require a pull request before merging | ✅ 开 |
+> | Require approvals | ❌ **关**（或设为 0） |
+> | Require status checks to pass | ✅ 开（选两个 `测试与构建`） |
+> | Require branches to be up to date | ✅ 开 |
+>
+> 这样既能保证「改 main 必须走 PR + CI 必须绿」，又不会被审批卡死。
+> 等以后有第二个协作者时，再把 Require approvals 打开。
+
 ### 7. 合并后自动发生什么
 
 | 触发 | 结果 |
@@ -581,6 +598,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | 想改已推送的 PR | 直接在分支上继续提交并 push，PR 会自动更新 |
 | PR 显示 `This branch has conflicts` | 本地 `git pull origin main` 解决冲突后 push |
 | check 列表里搜不到这两项 | 需要一次 `pull_request` 触发的运行，提任意 PR 跑一次即可 |
+| **CI 全绿但 Merge 按钮灰、提示 `Review required`** | 单人仓库勾了 Require approvals，而 GitHub 不允许自审。去 Settings → Branches 取消 **Require approvals** |
 | 实在要紧急改 main | 不建议。若确有需要，临时关闭分支保护 → 改完立即重新开启 |
 
 ### 题库内容的改动
