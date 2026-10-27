@@ -328,6 +328,7 @@ ul {
 .chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   height: 32px;
   padding: 0 12px;
   border-radius: 16px;
@@ -336,6 +337,7 @@ ul {
   background: var(--c-card);
   border: 1px solid var(--c-border);
   white-space: nowrap;
+  min-width: 0;
   transition: all 0.15s ease;
 }
 .chip--active {
@@ -357,17 +359,24 @@ ul {
 }
 
 /**
- * 分类/筛选项网格：窄屏下平铺换行，全部可见可点，
- * 不用横向滚动（隐藏滚动条的横滑在桌面端几乎发现不了）。
+ * 分类/筛选项：flex 换行，**每个胶囊按内容自适应宽度**。
+ *
+ * 为什么不用固定列宽的 grid：分类名长度差异大（「MySQL」5 字符 vs
+ * 「iptables/firewalld」19 字符），固定列宽要么长短名字都浪费空间，
+ * 要么长名字被省略——之前用 `grid-template-columns: minmax(104px, 1fr)`
+ * 就导致分类名撑破胶囊（显示 bug）。
+ *
+ * 用 flex-wrap 后：短名紧凑排在一行，长名占更多宽度，排不下自动换行，
+ * 全部可见可点，也不会有横向滚动（隐藏滚动条的横滑在桌面端几乎发现不了）。
  */
 .chip-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .chip-grid .chip {
-  width: 100%;
-  justify-content: center;
+  flex: 0 1 auto;
+  min-width: 0;
   background: var(--c-card);
 }
 .chip-grid .chip--active {

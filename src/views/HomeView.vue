@@ -4,13 +4,22 @@ import { useRouter } from 'vue-router'
 import Ring from '@/components/Ring.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { formatPercent } from '@/utils/format'
 import { STORAGE_KEYS, categoryColor } from '@/utils/constants'
 import { describeProgress } from '@/utils/practice'
 
 const bank = useBankStore()
 const study = useStudyStore()
+const settings = useSettingsStore()
 const router = useRouter()
+
+/** 右上角：点击直接切换主题（浅 ⇄ 深），不再跳「我的」页 */
+const themeLabel = computed(() => (settings.isDark ? '切换到浅色主题' : '切换到深色主题'))
+
+function toggleTheme() {
+  settings.setTheme(settings.isDark ? 'light' : 'dark')
+}
 
 onMounted(() => {
   bank.load().catch(() => {})
@@ -66,14 +75,26 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
             {{ todayDone ? `今天已经刷了 ${study.todayReviewedCount} 题，继续保持` : '碎片时间，背完这些题' }}
           </p>
         </div>
-        <button class="hero__btn" aria-label="打开设置" @click="router.push('/me')">
-          <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
-            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <button
+          class="hero__btn"
+          :aria-label="themeLabel"
+          :title="themeLabel"
+          @click="toggleTheme"
+        >
+          <!-- 深色模式显示太阳（点了变浅色），浅色模式显示月亮 -->
+          <svg v-if="settings.isDark" viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8" />
             <path
-              d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"
+              d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"
               stroke="currentColor"
               stroke-width="1.6"
               stroke-linecap="round"
+            />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+            <path
+              d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.6 8.6 0 1 0 10.7 10.7z"
+              fill="currentColor"
             />
           </svg>
         </button>

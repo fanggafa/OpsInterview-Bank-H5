@@ -5,8 +5,8 @@ import TabBar from '@/components/TabBar.vue'
 
 const route = useRoute()
 
-/** 底部 TabBar 只在 4 个一级页面显示 */
-const TAB_ROUTES = ['/bank', '/practice', '/stats', '/me']
+/** 底部 TabBar 在 5 个一级页面显示（含首页，否则无法从其他 Tab 回到首页） */
+const TAB_ROUTES = ['/', '/bank', '/practice', '/stats', '/me']
 const showTab = computed(() => TAB_ROUTES.includes(route.path))
 
 /**

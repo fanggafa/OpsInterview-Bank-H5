@@ -27,8 +27,12 @@ const items = computed(() => TAB_ITEMS)
       :aria-current="isActive(item) ? 'page' : undefined"
     >
       <svg class="tabbar__icon" viewBox="0 0 24 24" aria-hidden="true">
+        <!-- 首页：房子 -->
+        <template v-if="item.icon === 'home'">
+          <path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4.5v-5.5h-5V21H5a1 1 0 0 1-1-1v-8.5z" fill="currentColor" opacity=".9" />
+        </template>
         <!-- 题库：矩形堆叠 -->
-        <template v-if="item.icon === 'bank'">
+        <template v-else-if="item.icon === 'bank'">
           <rect x="3" y="5" width="18" height="4" rx="1.5" fill="currentColor" opacity=".9" />
           <rect x="3" y="11" width="18" height="4" rx="1.5" fill="currentColor" opacity=".6" />
           <rect x="3" y="17" width="12" height="3" rx="1.5" fill="currentColor" opacity=".4" />
