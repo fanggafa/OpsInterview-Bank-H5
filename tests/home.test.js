@@ -71,35 +71,33 @@ async function mountHome() {
 describe('首页 · 总进度与双指标', () => {
   it('未作答时两个指标显示「—」而不是 0%', async () => {
     const { wrapper } = await mountHome()
-    const rows = wrapper.findAll('.overview__row strong').map((r) => r.text())
+    const rows = wrapper.findAll('.hero__stat strong').map((r) => r.text())
     expect(rows[1]).toBe('—') // 简答掌握率
     expect(rows[2]).toBe('—') // 选择正确率
   })
 
-  it('无数据时百分比不染强调色（避免「—」被误读成装饰线）', async () => {
+  it('无数据时百分比显示「—」（而非 0%）', async () => {
     const { wrapper } = await mountHome()
-    const strongs = wrapper.findAll('.overview__row strong')
-    expect(strongs[1].classes()).not.toContain('ok')
-    expect(strongs[2].classes()).not.toContain('warn')
+    const strongs = wrapper.findAll('.hero__stat strong')
+    expect(strongs[1].text()).toBe('—')
+    expect(strongs[2].text()).toBe('—')
   })
 
-  it('有数据后按口径显示且染色', async () => {
+  it('有数据后按各自口径显示（简答/选择分开算）', async () => {
     study.markKnow(1)
     study.markUnknown(2)
     const { wrapper } = await mountHome()
-    const strongs = wrapper.findAll('.overview__row strong')
+    const strongs = wrapper.findAll('.hero__stat strong')
     expect(strongs[1].text()).toBe('50%')
-    expect(strongs[1].classes()).toContain('ok')
-    // 选择题还没答，仍为「—」且不染色
+    // 选择题还没答，仍为「—」
     expect(strongs[2].text()).toBe('—')
-    expect(strongs[2].classes()).not.toContain('warn')
   })
 
   it('已刷数与总数正确', async () => {
     study.markKnow(1)
     const { wrapper } = await mountHome()
-    expect(wrapper.text()).toContain('1')
-    expect(wrapper.text()).toContain('/ 4 题')
+    expect(wrapper.find('.hero__stat strong').text()).toContain('1')
+    expect(wrapper.find('.hero__stat em').text()).toContain('/ 4')
   })
 
   it('总进度环按已刷/总数计算', async () => {
@@ -113,13 +111,13 @@ describe('首页 · 总进度与双指标', () => {
 describe('首页 · 今日文案', () => {
   it('今日未刷时显示引导文案', async () => {
     const { wrapper } = await mountHome()
-    expect(wrapper.find('.home-sub').text()).toBe('碎片时间，背完这些题')
+    expect(wrapper.find('.hero__sub').text()).toBe('碎片时间，背完这些题')
   })
 
   it('今日已刷时显示今日题数', async () => {
     study.markKnow(1)
     const { wrapper } = await mountHome()
-    expect(wrapper.find('.home-sub').text()).toContain('今天已经刷了 1 题')
+    expect(wrapper.find('.hero__sub').text()).toContain('今天已经刷了 1 题')
   })
 })
 
@@ -148,7 +146,7 @@ describe('首页 · 快捷入口', () => {
 
   it('右上角按钮进入设置页', async () => {
     const { wrapper, router } = await mountHome()
-    await wrapper.find('.home-theme').trigger('click')
+    await wrapper.find('.hero__btn').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/me')
   })
@@ -159,6 +157,24 @@ describe('首页 · 分类入口', () => {
     const { wrapper } = await mountHome()
     const cats = wrapper.findAll('.cats__item').map((c) => c.find('.cats__name').text())
     expect(cats).toEqual(['Linux基础', 'MySQL'])
+  })
+
+  it('每个分类卡片带 --cat-color 自定义属性', async () => {
+    const { wrapper } = await mountHome()
+    wrapper.findAll('.cats__item').forEach((it) => {
+      expect(it.attributes('style') || '').toContain('--cat-color')
+    })
+  })
+
+  it('不同分类使用不同颜色（分类色板生效）', async () => {
+    const { wrapper } = await mountHome()
+    const items = wrapper.findAll('.cats__item')
+    expect(items[0].attributes('style')).not.toBe(items[1].attributes('style'))
+  })
+
+  it('渲染分类色点（视觉区分）', async () => {
+    const { wrapper } = await mountHome()
+    expect(wrapper.findAll('.cats__dot').length).toBe(2)
   })
 
   it('显示各分类已刷/总数与进度条', async () => {

@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import DifficultyBadge from '@/components/DifficultyBadge.vue'
 import FrequencyBadge from '@/components/FrequencyBadge.vue'
 import { useStudyStore } from '@/stores/studyStore'
-import { STATUS, TYPE_LABEL } from '@/utils/constants'
+import { STATUS, TYPE_LABEL, categoryColor } from '@/utils/constants'
 import { truncate } from '@/utils/format'
 import { isChoice, getType } from '@/utils/question'
 
@@ -24,6 +24,8 @@ const favorite = computed(() => study.isFavorite(props.question.id))
 const summary = computed(() => truncate(props.question.question, 50))
 const choice = computed(() => isChoice(props.question))
 const typeLabel = computed(() => TYPE_LABEL[getType(props.question)])
+/** 分类专属色，用于左侧色条与分类徽标 */
+const catColor = computed(() => categoryColor(props.question.category))
 
 const statusText = computed(() => {
   if (status.value === STATUS.KNOW) return choice.value ? '答对' : '会'
@@ -42,7 +44,7 @@ function toggleFavorite(e) {
 </script>
 
 <template>
-  <article class="qcard card" @click="open">
+  <article class="qcard card" :style="{ '--qcard-hue': catColor }" @click="open">
     <div class="qcard__top">
       <span v-if="index !== null" class="qcard__index">{{ index }}</span>
       <p class="qcard__summary">{{ summary }}</p>
@@ -76,13 +78,26 @@ function toggleFavorite(e) {
     </div>
   </article>
 </template>
-
 <style scoped>
 .qcard {
-  padding: 10px 12px;
+  position: relative;
+  padding: 10px 12px 10px 14px;
   margin-bottom: 8px;
   cursor: pointer;
-  transition: transform 0.12s ease;
+  transition: transform 0.12s ease, border-color 0.14s ease;
+  overflow: hidden;
+}
+/* 左侧分类色条：一眼区分不同分类 */
+.qcard::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--qcard-hue, var(--c-primary));
+  opacity: 0.85;
 }
 .qcard:active {
   transform: scale(0.995);
@@ -136,8 +151,8 @@ function toggleFavorite(e) {
 }
 
 .qcard__cat {
-  color: var(--c-text-2);
-  background: var(--c-bg);
+  color: var(--qcard-hue, var(--c-primary));
+  background: color-mix(in srgb, var(--qcard-hue, var(--c-primary)) 12%, transparent);
 }
 
 .qcard__type {

@@ -231,7 +231,26 @@ const shortAnswered = computed(() => study.shortKnowCount + study.shortUnknownCo
   gap: 8px;
 }
 .metric {
+  position: relative;
   padding: 12px;
+  overflow: hidden;
+}
+/* 左上角渐变色块，两个指标各不同色 */
+.metric::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 64px;
+  height: 3px;
+  border-radius: 0 0 3px 0;
+  background: var(--metric-grad, var(--grad-indigo));
+}
+.metric:nth-child(1) {
+  --metric-grad: var(--grad-indigo);
+}
+.metric:nth-child(2) {
+  --metric-grad: var(--grad-teal);
 }
 .metric__top {
   display: flex;
@@ -251,13 +270,18 @@ const shortAnswered = computed(() => study.shortKnowCount + study.shortUnknownCo
   margin: 6px 0 2px;
   font-size: 24px;
   font-weight: 700;
-  color: var(--c-primary);
   line-height: 1.1;
+  background: var(--metric-grad, var(--grad-indigo));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 /* 无数据：缩小并转中性色，避免「—」在大字号下被看成装饰线 */
 .metric__value--empty {
   font-size: 16px;
   font-weight: 400;
+  background: none;
+  -webkit-text-fill-color: var(--c-text-3);
   color: var(--c-text-3);
 }
 .metric__sub {

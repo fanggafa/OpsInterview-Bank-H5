@@ -1,51 +1,60 @@
 <script setup>
-/** DNS 常用记录类型对照图 */
+/**
+ * DNS 常用记录类型对照图（彩色版）。
+ * 每种记录类型配一个专属色，帮助靠颜色记忆。
+ */
+const ROWS = [
+  { type: 'A', color: 'var(--fig-node-a)', desc: '域名 → IPv4 地址', use: '最常用，网站解析' },
+  { type: 'AAAA', color: 'var(--fig-node-b)', desc: '域名 → IPv6 地址', use: 'IPv6 双栈' },
+  { type: 'CNAME', color: 'var(--fig-node-c)', desc: '别名 → 另一个域名', use: 'CDN、多域名指向' },
+  { type: 'MX', color: 'var(--fig-node-d)', desc: '邮件服务器，带优先级', use: '邮件收发' },
+  { type: 'NS', color: 'var(--fig-node-a)', desc: '该域由哪些 DNS 负责', use: '域名托管、子域委派' },
+  { type: 'TXT', color: 'var(--fig-node-b)', desc: '文本记录', use: '域名验证、SPF' },
+]
 </script>
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 200" role="img" aria-label="DNS 常用记录类型对照">
-      <g font-size="11" fill="currentColor">
-        <!-- 表头 -->
-        <rect x="8" y="10" width="52" height="24" rx="4" fill="currentColor" opacity=".12" />
-        <rect x="64" y="10" width="120" height="24" rx="4" fill="currentColor" opacity=".08" />
-        <rect x="188" y="10" width="144" height="24" rx="4" fill="currentColor" opacity=".08" />
-        <text x="34" y="26" text-anchor="middle" font-weight="700">类型</text>
-        <text x="124" y="26" text-anchor="middle" font-weight="700">作用</text>
-        <text x="260" y="26" text-anchor="middle" font-weight="700">典型用途</text>
+    <svg viewBox="0 0 340 208" role="img" aria-label="DNS 常用记录类型对照">
+      <!-- 表头 -->
+      <rect x="8" y="6" width="50" height="26" rx="6" fill="var(--fig-node-a)" opacity=".12" />
+      <rect x="62" y="6" width="118" height="26" rx="6" fill="var(--fig-stroke)" opacity=".22" />
+      <rect x="184" y="6" width="148" height="26" rx="6" fill="var(--fig-stroke)" opacity=".22" />
+      <g font-size="10.5" fill="var(--fig-text)" font-weight="700">
+        <text x="33" y="23" text-anchor="middle">类型</text>
+        <text x="121" y="23" text-anchor="middle">作用</text>
+        <text x="258" y="23" text-anchor="middle">典型用途</text>
+      </g>
 
-        <!-- 行 -->
-        <g opacity=".95">
-          <line x1="8" y1="40" x2="332" y2="40" stroke="currentColor" stroke-width=".6" opacity=".2" />
-          <text x="34" y="57" text-anchor="middle" font-weight="600">A</text>
-          <text x="124" y="57" text-anchor="middle" opacity=".85">域名 → IPv4 地址</text>
-          <text x="260" y="57" text-anchor="middle" opacity=".7" font-size="10">最常用，网站解析</text>
-
-          <line x1="8" y1="66" x2="332" y2="66" stroke="currentColor" stroke-width=".6" opacity=".2" />
-          <text x="34" y="83" text-anchor="middle" font-weight="600">AAAA</text>
-          <text x="124" y="83" text-anchor="middle" opacity=".85">域名 → IPv6 地址</text>
-          <text x="260" y="83" text-anchor="middle" opacity=".7" font-size="10">IPv6 双栈</text>
-
-          <line x1="8" y1="92" x2="332" y2="92" stroke="currentColor" stroke-width=".6" opacity=".2" />
-          <text x="34" y="109" text-anchor="middle" font-weight="600">CNAME</text>
-          <text x="124" y="109" text-anchor="middle" opacity=".85">别名 → 另一个域名</text>
-          <text x="260" y="109" text-anchor="middle" opacity=".7" font-size="10">CDN、多域名指向同一处</text>
-
-          <line x1="8" y1="118" x2="332" y2="118" stroke="currentColor" stroke-width=".6" opacity=".2" />
-          <text x="34" y="135" text-anchor="middle" font-weight="600">MX</text>
-          <text x="124" y="135" text-anchor="middle" opacity=".85">邮件服务器，带优先级</text>
-          <text x="260" y="135" text-anchor="middle" opacity=".7" font-size="10">邮件收发</text>
-
-          <line x1="8" y1="144" x2="332" y2="144" stroke="currentColor" stroke-width=".6" opacity=".2" />
-          <text x="34" y="161" text-anchor="middle" font-weight="600">NS</text>
-          <text x="124" y="161" text-anchor="middle" opacity=".85">该域由哪些 DNS 服务器负责</text>
-          <text x="260" y="161" text-anchor="middle" opacity=".7" font-size="10">域名托管、委派子域</text>
-
-          <line x1="8" y1="170" x2="332" y2="170" stroke="currentColor" stroke-width=".6" opacity=".2" />
-          <text x="34" y="187" text-anchor="middle" font-weight="600">TXT</text>
-          <text x="124" y="187" text-anchor="middle" opacity=".85">文本记录</text>
-          <text x="260" y="187" text-anchor="middle" opacity=".7" font-size="10">域名验证、SPF 反垃圾</text>
-        </g>
+      <!-- 数据行：每行左侧色条标出类型 -->
+      <g v-for="(r, i) in ROWS" :key="r.type">
+        <rect
+          x="8"
+          :y="40 + i * 28"
+          width="322"
+          height="24"
+          rx="5"
+          :fill="r.color"
+          :opacity="i % 2 === 0 ? '.07' : '.03'"
+        />
+        <!-- 色点：放在最左，与类型名拉开距离 -->
+        <circle cx="20" :cy="52 + i * 28" r="4" :fill="r.color" />
+        <!-- 类型名左对齐（不是居中），避免长单词压到色点上 -->
+        <text
+          x="32"
+          :y="56 + i * 28"
+          font-size="10.5"
+          font-weight="700"
+          :fill="r.color"
+        >
+          {{ r.type }}
+        </text>
+        <text x="78" :y="56 + i * 28" font-size="10" fill="var(--fig-text)" opacity=".9">
+          {{ r.desc }}
+        </text>
+        <text x="196" :y="56 + i * 28" font-size="9.5" fill="var(--fig-muted)">
+          {{ r.use }}
+        </text>
       </g>
     </svg>
     <figcaption>记忆点：A/AAAA 是「地址」，CNAME 是「别名」，MX 是「邮件」，NS 是「谁负责」</figcaption>
@@ -53,24 +62,5 @@
 </template>
 
 <style scoped>
-.fig {
-  margin: 10px 0 2px;
-  padding: 8px 6px 6px;
-  border-radius: var(--radius-sm);
-  background: var(--c-card);
-  border: 1px solid var(--c-border);
-}
-.fig svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  color: var(--c-text-2);
-}
-.fig figcaption {
-  margin-top: 4px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--c-text-3);
-  text-align: center;
-}
+@import './figure-base.css';
 </style>

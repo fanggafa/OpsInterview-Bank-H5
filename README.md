@@ -124,7 +124,41 @@ ops-interview-h5/
 
 ## 维护题库
 
-题库共 **119 题**：93 道简答题 + 16 道单选题 + 10 道多选题。
+题库共 **224 题**：161 道简答题 + 36 道单选题 + 27 道多选题，分布在 23 个分类。
+
+### 分类与编号段
+
+题目按分类**分段编号**，避免未来插题重排 id 打乱用户学习记录：
+
+| 分类 | id 段 | 分类 | id 段 |
+|---|---|---|---|
+| Linux基础 / Shell / 网络基础 / MySQL 等早期分类 | 1 – 119 | DNS | 1000 – 1199 |
+| iptables/firewalld | 1200 – 1399 | Nginx | 1400 – 1599 |
+| LVS/HAProxy | 1600 – 1799 | Tomcat/JVM | 1800 – 1999 |
+| MongoDB | 2000 – 2199 | 消息队列 | 2200 – 2399 |
+| 存储与备份 | 2400 – 2599 | 虚拟化 | 2600 – 2799 |
+| Git/GitLab | 2800 – 2999 | 日志与ELK | 3000 – 3199 |
+| 自动化与配置管理 | 3200 – 3399 | 云与高可用 | 3400 – 3599 |
+
+> 编号段定义在 `scripts/merge-batch.mjs` 的 `ID_RANGES`，新增分类时在此登记。
+
+### 分批合并（推荐方式）
+
+大批量加题时不要直接改 `questions.json`，而是：
+
+```bash
+# 1. 把题目写到 scripts/batchN-xxx.json（数组格式）
+# 2. 合并进主库（按 id 去重、校验分类与编号段）
+node scripts/merge-batch.mjs scripts/batch1-dns.json scripts/batch1-nginx.json
+
+# 3. 校验
+npm run validate:data
+```
+
+合并脚本会拦住：分类不在枚举内、id 超出该分类的编号段、id 重复（自动跳过）。
+
+分批施工期间，尚未填充的分类登记在 `scripts/pending-categories.mjs`，
+校验脚本对它们只提示不报错；**每完成一批就从该文件删掉对应项**，全部删完代表题库完备。
 
 ### 简答题
 
@@ -612,6 +646,120 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 ---
 
+## 答案插图（图表能力）
+
+部分简答题的参考答案里带**内联 SVG 图解**，用来表达流程、链路、优先级对比这类文字难说清的内容。
+
+### 怎么用
+
+在 `answer` 字段里写标记即可：
+
+```json
+{
+  "answer": "按先后顺序共 5 步：\n\n1. 浏览器缓存\n2. /etc/hosts\n\n[[图:dns-resolve]]\n\n一句话记：缓存越靠前越快。"
+}
+```
+
+渲染时 `[[图:id]]` 会被替换成对应的 SVG 组件，其余部分仍是纯文本（支持 `**强调**` 粗体）。
+
+### 已注册的插图
+
+| id | 内容 | 用在哪 |
+|---|---|---|
+| `dns-resolve` | DNS 解析链路（5 步流程） | 题 1001、1005 |
+| `dns-record-types` | DNS 记录类型对照表 | 题 1002 |
+| `iptables-chain-flow` | iptables 五链数据包流向 | 题 1201 |
+| `nginx-location-match` | Nginx location 匹配优先级 | 题 1401 |
+| `nginx-proxy-pass` | proxy_pass 斜杠差异对比 | 题 1402 |
+
+### 新增一张插图
+
+1. 在 `src/components/figures/` 下新建 `.vue` 组件（照抄现有文件的结构）
+2. 在 `src/components/figures/index.js` 的 `FIGURES` 里登记一行
+3. 在题目答案里写 `[[图:你的-id]]`
+
+**id 只允许小写字母、数字和连字符**（正则 `[a-z0-9-]+`）。写错或未注册的 id 会原样显示成文本，不会注入任何 HTML。
+
+### 安全设计（重要）
+
+**全程不使用 `v-html`**：
+
+- 插图按**白名单 id** 取 Vue 组件渲染
+- 文本片段走普通插值（Vue 自动转义）
+- 因此题库内容（哪怕被人恶意改动）无法注入脚本
+
+### 插图配色规范
+
+插图不使用 `currentColor`（全灰看着伤眼），而是用一组语义变量，深浅色各一套：
+
+| 变量 | 用途 |
+|---|---|
+| `--fig-bg` | 插图容器渐变背景 |
+| `--fig-stroke` | 容器描边、分隔虚线 |
+| `--fig-node-a` / `-b` / `-c` / `-d` | 四类节点配色（蓝 / 紫 / 青绿 / 橙） |
+| `--fig-text` / `--fig-muted` | 正文 / 次要文字 |
+
+四个节点色在深色主题下会自动提亮（见 `styles.css` 的 `[data-theme='dark']` 段）。
+
+### 画图注意事项（踩过的坑）
+
+1. **容器样式用 `@import './figure-base.css'`**，那个文件是纯 CSS，**不能带 `<style>` 标签**——
+   带了会让整个 CSS 解析失败，插图页面直接白屏报 `Unknown word </style>`。
+2. **文字要与色点留出间距**：类型名若用 `text-anchor="middle"` 居中，长单词（如 CNAME）会压到左侧色点上。
+   改为左对齐并显式指定 x 坐标。
+3. **不要给单个节点加大面积色块**：深色主题下会变成一大团暗色遮挡邻居文字，用细竖线表达"包含多个子步骤"更清晰。
+4. **Vue 模板里写 `{` 要加 `v-pre`**，否则 `location /api/ {` 会被渲染成 `{'{'}`。
+
+---
+
+## 视觉配色体系
+
+为避免整站一片蓝灰，引入了一套语义化配色变量（定义在 `src/assets/styles.css`）。
+
+### 1. 分类色板
+
+23 个分类各有专属色，映射在 `src/utils/constants.js` 的 `CATEGORY_HUE`：
+
+```js
+export const CATEGORY_HUE = {
+  DNS: 'indigo',
+  Nginx: 'emerald',
+  Redis: 'rose',
+  // …省略
+}
+export function categoryColor(category) // 返回 var(--hue-xxx)
+```
+
+用途：
+- **首页分类卡片**：左侧色点 + 进度条按分类上色
+- **题库列表卡片**：卡片左侧 3px 色条 + 分类徽标上色
+- **统计页条形图**：每行进度条按分类上色
+
+新增分类时要：① 在 `CATEGORIES` 加名称 ② 在 `CATEGORY_HUE` 登记颜色键。未登记的分类会退化为主色。
+
+### 2. 渐变与光效
+
+| 变量 | 用途 |
+|---|---|
+| `--grad-hero` | 首页主卡渐变（蓝→紫） |
+| `--grad-indigo` / `--grad-teal` | 快捷入口图标底色（刷题 / 面试） |
+| `--grad-card` | 卡片淡色渐变底（"继续上次"） |
+| `--shadow-lift` | 强调元素的浮起阴影 |
+
+深色主题下渐变会**自动降饱和**，避免刺眼。
+
+### 3. 组件可覆写变量
+
+部分组件暴露了 CSS 变量供外层定制：
+
+| 组件 | 变量 | 说明 |
+|---|---|---|
+| `Ring` | `--ring-hole-bg` | 环内圈背景（首页在渐变卡上用白色） |
+| `Ring` | `--ring-color` / `--ring-track` | 进度色 / 轨道色 |
+| `QuestionCard` | `--qcard-hue` | 卡片左侧色条与分类徽标颜色 |
+
+---
+
 ## 开发笔记
 
 - **主题**通过 `<html data-theme="light|dark">` + CSS 变量驱动，组件里不写死颜色。
@@ -620,6 +768,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 - **手势**绑定用 `watch(stageRef, { flush: 'post' })` 而非 `onMounted`——
   卡片在异步加载后才渲染，`onMounted` 时 DOM 还是骨架屏，会导致手势从未生效。
 - **无数据占位**「—」在大字号下易被误读成装饰线，需用小字号 + 中性色渲染。
+  若该元素用渐变文字（`-webkit-text-fill-color: transparent`），空态必须显式重置，否则「—」会消失。
 - **路由模式**由 `VITE_ROUTER_MODE` 控制：默认 history（需 rewrite），
   `hash` 用于 Pages 等无 rewrite 环境。不要为部署改源码。
 - 改动后务必跑**全量** `npm run test`，不能只看被改动的文件。
