@@ -54,6 +54,18 @@
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-lift: 0 4px 16px rgba(79, 124, 255, 0.12);
+
+  /* 答案渲染：代码块 / 表格 / 行内代码 */
+  --c-code-bg: #f4f6fb;
+  --c-code-head: #eaeefa;
+  --c-code-border: #e2e7f3;
+  --c-code-text: #2b3245;
+  --c-table-head: #f2f5fd;
+  --c-table-line: #edf0f7;
+  --c-table-zebra: rgba(79, 124, 255, 0.028);
+  --c-answer-bg: #f7f9ff;
+  --c-answer-border: #e6ebf9;
+
   --radius: 12px;
   --radius-sm: 8px;
   --maxw: 480px;
@@ -115,6 +127,17 @@
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-lift: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+  /* 答案渲染：深色下的代码块与表格 */
+  --c-code-bg: #1b2130;
+  --c-code-head: #232b3c;
+  --c-code-border: #2c3547;
+  --c-code-text: #d7e0ef;
+  --c-table-head: #232b3c;
+  --c-table-line: #2a3243;
+  --c-table-zebra: rgba(110, 147, 255, 0.045);
+  --c-answer-bg: #191e29;
+  --c-answer-border: #2a3140;
 }
 
 * {

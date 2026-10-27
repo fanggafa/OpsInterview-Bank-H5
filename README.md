@@ -24,7 +24,7 @@ npm run dev          # http://127.0.0.1:5273
 | `npm run dev` | 开发服务器（127.0.0.1:5273） |
 | `npm run build` | 生产构建到 `dist/` |
 | `npm run preview` | 预览构建产物（127.0.0.1:5274） |
-| `npm run test` | 运行 vitest（20 个文件 / 427 个用例） |
+| `npm run test` | 运行 vitest（25 个文件 / 490 个用例） |
 | `npm run validate:data` | 校验题库结构（枚举 / id / 题数 / 字段） |
 | `npm run check:encoding` | 编码守卫（防中文被写坏，见[编码守卫](#编码守卫)） |
 | `npm run verify` | **提交前跑这个**：编码 + 题库 + 测试 + 构建 全流程 |
@@ -82,7 +82,7 @@ ops-interview-h5/
 │       ├── practice.js              # 刷题队列与断点续刷
 │       ├── gestures.js              # 滑动手势判定（轴锁定 + 阈值 + 速度）
 │       └── scroll.js                # 回到顶部（兼容测试环境）
-├── tests/                           # vitest（20 个文件 / 427 个用例）
+├── tests/                           # vitest（25 个文件 / 490 个用例）
 ├── deploy/nginx.conf.snippet        # Nginx 配置片段
 ├── vercel.json / netlify.toml       # 平台配置
 └── index.html
@@ -704,7 +704,31 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 }
 ```
 
-渲染时 `[[图:id]]` 会被替换成对应的 SVG 组件，其余部分仍是纯文本（支持 `**强调**` 粗体）。
+渲染时 `[[图:id]]` 会被替换成对应的 SVG 组件，其余部分由 `AnswerText.vue` 做**结构化渲染**。
+
+### 答案支持的结构化排版
+
+答案不是一堆纯文本，而是按「白名单语法」解析成真实 DOM 块（依然全程 `v-html` free）：
+
+| 写法 | 渲染结果 | 用途 |
+|---|---|---|
+| `# 标题` ~ `######` | 带层级的标题块 | 分段小标题 |
+| `- 项` / `* 项` | 真 `<ul>`，圆点徽标 | 要点罗列 |
+| `1. 项` | 真 `<ol>`，序号徽标 | 有先后的步骤 |
+| 两空格缩进的 `- 项` | 二级缩进 | 子要点 |
+| `\| 表头 \|` + `\|---\|` + 数据行 | **真 `<table>`**，带斑马纹与对齐 | 对照表（最常用） |
+| ` ```lang ` 围栏 | `<pre><code>` 带语言标签 | 命令、配置、代码 |
+| `**强调**` | `<strong>` 加粗 | 关键结论 |
+| `` `行内代码` `` | 等宽高亮 | 命令、参数、配置项 |
+| `---` | 分隔线 | 分节 |
+| `> 引用` | 引用块 | 补充说明 |
+
+**两条硬性约束**（写题时必须遵守，`npm run validate:data` 会拦）：
+
+1. **代码围栏必须成对闭合**——少一个 ``` 会把后面的正文全吞进代码块
+2. **表格必须有分隔行**（第二行 `|---|---|`）——缺了竖线会被当普通段落，渲染成一长串 `|`
+
+这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
 ### 已注册的插图
 
@@ -802,6 +826,19 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
 | `Ring` | `--ring-color` / `--ring-track` | 进度色 / 轨道色 |
 | `QuestionCard` | `--qcard-hue` | 卡片左侧色条与分类徽标颜色 |
 
+### 4. 答案排版色（`AnswerText` 专用）
+
+答案解析成表格 / 代码块后需要独立的语义色，深浅主题各一套：
+
+| 变量 | 用途 |
+|---|---|
+| `--c-code-bg` / `--c-code-head` / `--c-code-border` | 代码块底色 / 语言标签条 / 描边 |
+| `--c-code-text` | 代码文字色 |
+| `--c-table-head` / `--c-table-line` / `--c-table-zebra` | 表头底 / 分隔线 / 斑马纹 |
+| `--c-answer-bg` / `--c-answer-border` | 答案卡底色与描边 |
+
+配色原则：**代码块用中性冷灰、表格用极淡主色斑马纹**，让「对照表」和「命令行」在视觉上能一眼区分，同时不抢正文注意力。
+
 ---
 
 ## 开发笔记
@@ -813,6 +850,10 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
   卡片在异步加载后才渲染，`onMounted` 时 DOM 还是骨架屏，会导致手势从未生效。
 - **无数据占位**「—」在大字号下易被误读成装饰线，需用小字号 + 中性色渲染。
   若该元素用渐变文字（`-webkit-text-fill-color: transparent`），空态必须显式重置，否则「—」会消失。
+- **答案一律走 `AnswerText` 渲染**，不要再写 `<pre>{{ answer }}</pre>`。
+  纯 `<pre>` 会把 Markdown 表格渲染成一长串 `|`、把列表渲染成挤在一起的行——
+  这正是「文字排序错乱」的根因。`AnswerText` 把答案解析成表格/列表/代码块的真实 DOM，
+  并且新增了 `validate:data` 的围栏成对与表格分隔行检查兜底。
 - **路由模式**由 `VITE_ROUTER_MODE` 控制：默认 history（需 rewrite），
   `hash` 用于 Pages 等无 rewrite 环境。不要为部署改源码。
 - 改动后务必跑**全量** `npm run test`，不能只看被改动的文件。

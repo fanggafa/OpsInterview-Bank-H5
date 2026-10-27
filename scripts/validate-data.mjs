@@ -41,6 +41,56 @@ function charLen(s) {
   return Array.from(s).length
 }
 
+/**
+ * 答案排版结构体检。
+ *
+ * 渲染层（AnswerText）把答案解析成表格 / 列表 / 代码块，
+ * 两种写法错误会让页面变成「文字串行、竖线外露」：
+ * 1. 代码围栏没闭合 → 后面的正文全被吞进代码块
+ * 2. 表格缺分隔行（|---|---|）→ 竖线行被当成普通段落
+ * 这两类问题肉眼在题库 JSON 里很难发现，交给校验脚本兜住。
+ */
+function checkMarkup(text) {
+  const problems = []
+  const lines = String(text).split('\n')
+
+  const fences = lines.filter((l) => l.trim().startsWith('```')).length
+  if (fences % 2 !== 0) {
+    problems.push(`代码围栏未闭合（共 ${fences} 个 \`\`\`，必须成对）`)
+  }
+
+  // 表格块：连续以 | 开头的行，第二行必须是分隔行（代码块内的行不参与）
+  let inFence = false
+  let i = 0
+  while (i < lines.length) {
+    const cur = lines[i]
+    if (cur.trim().startsWith('```')) {
+      inFence = !inFence
+      i++
+      continue
+    }
+    if (inFence || !cur.trim().startsWith('|')) {
+      i++
+      continue
+    }
+    const start = i
+    while (i < lines.length && !inFence && lines[i].trim().startsWith('|')) {
+      if (lines[i].trim().startsWith('```')) break
+      i++
+    }
+    const block = lines.slice(start, i)
+    if (block.length >= 2) {
+      const sep = block[1].trim()
+      const isSep = /^[\s|:-]+$/.test(sep) && sep.includes('-')
+      if (!isSep) {
+        problems.push(`表格第 ${start + 1}~${i} 行缺少分隔行（应为 |---|---| 形式）`)
+      }
+    }
+  }
+
+  return problems
+}
+
 let raw
 try {
   raw = readFileSync(DATA_PATH, 'utf8')
@@ -126,6 +176,9 @@ data.forEach((q, index) => {
       fail(where, '简答题 answer 必须是非空字符串')
     } else if (charLen(q.answer) < MIN_ANSWER_LEN) {
       fail(where, `answer 长度 ${charLen(q.answer)} 低于下限 ${MIN_ANSWER_LEN}`)
+    } else {
+      // 渲染层把答案解析成表格/列表/代码块，结构坏了会出现串行、竖线外露
+      checkMarkup(q.answer).forEach((msg) => fail(where, `answer ${msg}`))
     }
     if (q.options !== undefined) {
       fail(where, '简答题不应包含 options 字段')
@@ -195,8 +248,7 @@ data.forEach((q, index) => {
   }
 
   // tags
-  if (!Array.isArray(q.tags)) {
-    fail(where, 'tags 必须是数组')
+  if (!Array.isArray(q.tags)) {    fail(where, 'tags 必须是数组')
   } else {
     if (q.tags.length < MIN_TAGS || q.tags.length > MAX_TAGS) {
       fail(where, `tags 数量 ${q.tags.length} 不在 ${MIN_TAGS}-${MAX_TAGS} 之间`)

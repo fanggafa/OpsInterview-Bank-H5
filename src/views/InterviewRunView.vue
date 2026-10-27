@@ -153,7 +153,7 @@ function quit() {
             </div>
             <div v-if="submitted && q.explanation" class="explain">
               <p class="explain__label">解析</p>
-              <pre class="pre-text explain__text">{{ q.explanation }}</pre>
+              <AnswerText :answer="q.explanation" />
             </div>
           </template>
 
@@ -327,8 +327,9 @@ function quit() {
 }
 .answer__body {
   margin-top: 10px;
-  padding: 10px;
-  background: var(--c-bg);
+  padding: 11px 12px;
+  background: var(--c-answer-bg);
+  border: 1px solid var(--c-answer-border);
   border-radius: var(--radius-sm);
 }
 
@@ -358,10 +359,6 @@ function quit() {
   margin: 0 0 5px;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--c-text-2);
-}
-.explain__text {
-  font-size: 12.5px;
   color: var(--c-text-2);
 }
 

@@ -219,7 +219,7 @@ const statusText = computed(() => {
 
           <div v-if="submitted && question.explanation" class="explain">
             <p class="explain__label">解析</p>
-            <pre class="pre-text explain__text">{{ question.explanation }}</pre>
+            <AnswerText :answer="question.explanation" />
           </div>
         </template>
 
@@ -428,10 +428,6 @@ const statusText = computed(() => {
   font-weight: 600;
   color: var(--c-text-2);
 }
-.explain__text {
-  font-size: 13px;
-  color: var(--c-text-2);
-}
 
 /* 折叠答案 */
 .answer-toggle {
@@ -469,8 +465,9 @@ const statusText = computed(() => {
 }
 .answer__body {
   margin-top: 12px;
-  padding: 12px;
-  background: var(--c-bg);
+  padding: 12px 13px;
+  background: var(--c-answer-bg);
+  border: 1px solid var(--c-answer-border);
   border-radius: var(--radius-sm);
 }
 
