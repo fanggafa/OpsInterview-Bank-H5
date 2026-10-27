@@ -1,0 +1,90 @@
+[
+  {
+    "id": 5000,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "Prometheus 的存储模型是什么？为什么它能高效存时序数据？",
+    "answer": "**自定义的 TSDB，按「时间分块 + 序列存储」组织**。\n\n**三层结构**：\n```\nTSDB\n └─ Block（默认 2 小时一个块，目录名如 01HXXXX）\n     ├─ chunks/    原始样本（每 chunk 约 120 个样本，按 2 字节 XOR 压缩）\n     ├─ index      倒排索引（label → 序列 ID）\n     └─ meta.json\n └─ WAL（最近 2 小时未落盘的样本，内存 + 磁盘）\n```\n\n**为什么快**：\n\n| 手段 | 效果 |\n|---|---|\n| **Gorilla 压缩** | 时间戳与浮点数用 XOR 差分压缩，**压缩比可达 10-20 倍** |\n| **按时间分块** | 查询只需扫相关时间块，且过期数据能整块删除 |\n| **label 倒排索引** | `label=value` 查找 O(logN)，不用全扫 |\n| **只追加写** | 写入是 append，没有 B-Tree 随机写 |\n\n**关键概念**：\n\n- **series（时间序列）** = 指标名 + 一组 label 的**唯一组合**。序列数是最重要的容量指标\n- **sample（样本）** = `(timestamp, value)`\n- **retention**：`--storage.tsdb.retention.time=15d`（默认 15 天），还有大小上限 `retention.size`\n\n**容量估算公式**：\n```\n磁盘 ≈ 活跃序列数 × 采集间隔内的样本数 × 每样本字节数 × 保留时长\n经验值：每样本约 1-2 字节（压缩后），即 100 万序列 × 15s × 15 天 ≈ 几百 GB\n```\n\n**序列数爆炸是最大的坑**：\n```\nhttp_requests_total{path=\"/api/user/123\"}   ← 高基数 label\n```\n每加一个用户 ID 就是一条新序列。**规则：绝不能把「用户 ID、订单号、请求 ID、动态 URL」放进 label**，改用 `path=\"/api/user/:id\"` 这类模板化。"
+  },
+  {
+    "id": 5001,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "Alertmanager 的分组、静默、抑制分别解决什么问题？",
+    "answer": "**三个机制解决告警风暴的三个不同层面**。\n\n| 机制 | 解决什么 | 例子 |\n|---|---|---|\n| **分组（group_by）** | 同类告警**合并成一条通知** | 20 台机器同时磁盘满 → 一条消息列出 20 个实例 |\n| **静默（silence）** | **人工临时压制**特定告警 | 维护窗口内不告警 |\n| **抑制（inhibit）** | **高优先级自动压制低优先级** | 机器 Down 时，抑制该机器上所有服务告警 |\n\n**配置要点**：\n\n**1. 分组**\n```yaml\nroute:\n  group_by: ['alertname', 'cluster', 'service']\n  group_wait: 30s          # 首次聚合等待（攒一攒再发）\n  group_interval: 5m       # 同一组新告警的最小间隔\n  repeat_interval: 4h      # 未恢复告警的重发间隔\n```\n**`group_wait` 是关键调优项**：太短会发很多条，太长则首次告警延迟。同一故障连锁触发时，30-60 秒能攒住大部分。\n\n**2. 抑制**\n```yaml\ninhibit_rules:\n- source_match:\n    alertname: 'NodeDown'\n  target_match_re:\n    severity: 'warning|info'\n  equal: ['instance']     # 在 instance 相同时才抑制\n```\n**`equal` 是最重要的字段**——它决定「抑制范围有多精确」。漏写会导致 A 机器的故障抑制了 B 机器的告警。\n\n**3. 静默**\n```\namtool silence add alertname=\"DiskFull\" --duration=2h --comment=\"磁盘扩容中\"\n```\n**静默要有到期时间**，且**静默必须记录原因**。最常见的运维事故是「静默忘了解除」，故障发生时没人知道。\n\n**其他实用机制**：\n- **`repeat_interval`**：未恢复告警会周期性重发，避免被遗忘（但不能太频繁）\n- **`inhibition` 与 `group_by` 配合**：先分组降低条数，再用抑制消除因果噪声\n- **抑制不要滥用**：抑制规则写多了会出现「该报的没报」，属于最危险的一类配置错误"
+  },
+  {
+    "id": 5002,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "Node Exporter 有哪些必须关注的指标？如何用它判断机器是否健康？",
+    "answer": "**按四大资源分组，每类记 2-3 个核心指标**。\n\n**CPU**\n```\nnode_cpu_seconds_total{mode=\"idle\"}       # 用法：1 - rate(idle[5m])\nnode_load1 / node_load5 / node_load15\nnode_cpu_seconds_total{mode=\"iowait\"}     # IO 等待\n```\n判断：CPU 使用率 > 80% 持续 5 分钟；**load 超过核数**（`node_load1 > count(node_cpu_seconds_total{mode=\"idle\"}) by (instance)`）。\n\n**内存**\n```\nnode_memory_MemAvailable_bytes            # 关键！不是 MemFree\nnode_memory_MemTotal_bytes\nnode_memory_SwapFree_bytes 与 swap 使用\n```\n判断：`MemAvailable / MemTotal < 10%` 告警。**必须用 `MemAvailable`**——`MemFree` 只算完全空闲的页，把 page cache 也算作已用，会严重误判。\n\n**磁盘**\n```\nnode_filesystem_avail_bytes{fstype!~\"tmpfs|overlay\"}\nnode_filesystem_files_free               # inode 剩余！\nnode_disk_io_time_seconds_total           # IO 利用率\nnode_disk_read_time_seconds_total         # 用于算 await\n```\n**两条都要告警**：空间 < 15% 与 **inode < 15%**。只监控空间会漏掉 inode 耗尽（小文件多的场景极常见）。\n\n**网络**\n```\nnode_network_receive_bytes_total\nnode_network_transmit_bytes_total\nnode_netstat_TcpExt_ListenDrops           # 队列溢出\nnode_netstat_Tcp_CurrEstab                # 当前连接\n```\n\n**必须排除的噪声**：\n```\n# tmpfs、overlay 挂载不是真实磁盘，会误报\nnode_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs\"}\n# 回环与虚拟网卡\nnode_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}\n```\n\n**最容易被忽略的三个指标**：\n1. **`node_filesystem_files_free`（inode）**\n2. **`node_timex_offset_seconds`（时钟偏移）**——超过 1 秒就可能影响分布式一致性\n3. **`node_network_up`**——网卡 down 了才发现就太晚\n\n**一句话**：**Node Exporter 的指标很多，但真正需要告警的只有「将满、将死、将断」三类**，其余留给看板和排查。"
+  },
+  {
+    "id": 5003,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "困难",
+    "question": "Prometheus 出现 `out of order sample` 或 `duplicate sample` 错误，是什么原因？",
+    "answer": "**这两个错误都来自「同一时间序列在同一时间戳写入多次」**。\n\n**`duplicate sample for timestamp`**：\n同一序列、同一时间戳、**不同值**被写入。Prometheus 会拒绝并计数。\n\n**常见原因**：\n\n| 原因 | 场景 |\n|---|---|\n| **Pushgateway 重复推送** | 同一 job/instance 用相同 label 反复 push，pushgateway 保留旧值 |\n| **多个 Exporter 抓同一目标** | 两台 Prometheus 抓同一份数据并 remote_write 到同一后端 |\n| **HA 双实例同时写** | 两个 Prometheus 副本都开着 remote_write 且没做去重 |\n| **exporter 自身时间戳错误** | 某些 exporter 输出 `# TYPE`/时间戳，时钟不同步导致重叠 |\n\n**`out of order sample`**：\n新样本的时间戳**早于**该序列已有的最新时间戳。Prometheus 认可的是「只追加」，不允许插历史。\n\n**常见原因**：\n1. **时钟回退**：服务器 NTP 校正把时间往回调，新样本时间戳变小\n2. **抓取间隔配置冲突**：不同副本抓取时间错位，remote_write 时交叉\n3. **Pushgateway 的旧数据**：pushgateway 里残留了老 job 的数据，被当成新样本抓取\n\n**处置**：\n\n```\n# 1. 看错误计数（哪类最多）\nprometheus_tsdb_out_of_order_samples_total\nprometheus_tsdb_duplicate_samples_total\n\n# 2. 找出问题序列\n#    看日志里的 label 详情\ngrep -i 'out of order\\|duplicate' /var/log/prometheus.log | tail -30\n```\n\n**针对性的修法**：\n\n**Pushgateway**：\n- **push 时必须带 `job` 和 `instance`**，且**用完要删除**\n```\ncurl -X DELETE http://pushgateway:9091/metrics/job/batch_job/instance/host1\n```\n- 不要用 pushgateway 做「常驻指标」（它本来是给批处理任务用的）\n\n**HA 双写**：\n- 两个副本用 `--query.lookback-delta` 配合 external_labels 区分\n- 或用 **Thanos / VictoriaMetrics** 的 HA 去重（按 replica label 去重）\n\n**时钟**：\n- 强制 chrony 同步，且**配置 `makestep` 允许一次性校正**\n- Prometheus 侧可用 `--storage.tsdb.max-block-duration` 减小影响\n\n**容错建议**：\n```\n# 允许一定程度的乱序写入（Prometheus 2.39+）\n--storage.tsdb.out-of-order-time-window=1h\n```\n这是**缓解而非修复**——根本原因还是时钟或重复推送。"
+  },
+  {
+    "id": 5004,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "什么是监控的「四个黄金信号」和 USE 方法？分别适用于什么场景？",
+    "answer": "**两套方法论，适用对象不同**。\n\n**四个黄金信号（Google SRE，针对「服务」）**：\n\n| 信号 | 指标 | 回答什么问题 |\n|---|---|---|\n| **延迟（Latency）** | P50/P95/P99 响应时间 | 用户等得久吗？ |\n| **流量（Traffic）** | QPS、并发数 | 压力有多大？ |\n| **错误（Errors）** | 错误率、5xx 比例 | 请求成功了吗？ |\n| **饱和度（Saturation）** | 队列长度、连接池使用率、CPU | 离打满还有多远？ |\n\n**关键细节：延迟要区分成功与失败的请求**。失败请求往往「很快返回」（快速失败），混在一起算平均会把延迟拉低，掩盖真实问题。\n\n**USE 方法（Brendan Gregg，针对「资源」）**：\n\n| 维度 | 含义 | 例子 |\n|---|---|---|\n| **U**tilization（使用率） | 资源忙的时间占比 | CPU 使用率、磁盘 %util |\n| **S**aturation（饱和度） | 排队程度 | 运行队列长度、`aqu-sz` |\n| **E**rrors（错误） | 错误计数 | 网卡丢包、磁盘重试 |\n\n**对每个资源（CPU/内存/磁盘/网卡）都问这三件事**，就能覆盖大部分故障。\n\n**怎么选**：\n\n```\n服务视角（对外）→ 黄金信号：用户感觉如何\n资源视角（对内）→ USE：哪里接近上限\n```\n\n**两者结合才是完整监控**：\n```\n错误率高（黄金信号）\n  → 查哪个资源饱和（USE）\n  → 发现磁盘 await 高、队列长（USE 的 Saturation）\n  → 定位到具体慢查询\n```\n\n**实践要点**：\n1. **USE 的 Saturation 比 Utilization 更有预警价值**。CPU 90% 但队列为 0，说明还扛得住；CPU 60% 但队列长期 >2，说明已经在排队了\n2. **黄金信号里的 Saturation 容易被忽略**，它是最早的预警信号\n3. **不要只监控平均值**——P99 才是用户体验，平均值会掩盖长尾"
+  },
+  {
+    "id": 5005,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "困难",
+    "question": "PromQL 里 `rate` 为什么要配 `[5m]` 这样的区间？区间选多大合适？",
+    "answer": "**`rate()` 算的是「区间内的平均每秒增长率」，区间决定平滑程度**。\n\n**为什么需要区间**：\nCounter 是单调递增的累计值，直接用差值是「这个间隔内增加了多少」，不是速率。`rate()` 用线性回归拟合区间内的斜率，需要一段数据才能算。\n\n**关键约束：区间必须 ≥ 4 倍抓取间隔**\n\n```\n抓取间隔 15s → rate[5m] 至少覆盖 20 个点\n```\n\n如果 `rate[1m]` 而抓取间隔是 15s，只有 4 个点，**偶尔丢一次抓取就只剩 3 个点**，可能算出错误结果甚至返回空值（`rate` 需要至少 2 个点）。\n\n**区间大小的权衡**：\n\n| 区间 | 效果 | 适用 |\n|---|---|---|\n| 小（1-2 分钟） | 灵敏，但**抖动大**，容易误告警 | 排查时的临时观察 |\n| **中（5 分钟）** | **平衡**，是官方推荐默认值 | 绝大多数告警规则 |\n| 大（30 分钟+） | 平滑，但**故障响应慢**，可能错过短时尖刺 | 容量趋势、SLO 计算 |\n\n**一个必须知道的规则**：**告警规则的 `for` 时长 + rate 区间 ≈ 总响应延迟**。\n```\nrate[5m] + for 5m = 最慢 10 分钟才发现\n```\n对核心服务，这个延迟可能已经太久了——解法是**用更短的区间 + 更长的 for**（`rate[2m]` + `for 10m`），既灵敏又抗抖。\n\n**`rate` 与 `irate` 的区别**：\n- `rate`：区间内**线性回归**，平滑\n- `irate`：只取**最后两个点**算瞬时速率，极灵敏但抖得厉害\n- **告警用 `rate`，看板上看瞬时尖刺用 `irate`**\n\n**三个坑**：\n1. **`rate()` 只能用于 Counter**，用在 Gauge 上结果没有意义\n2. **序列重启（进程重启）会导致计数器归零**，`rate` 会看到一个负的跳变后做补偿，短区间内可能算出异常高值。解法：加 `for` 延迟，或用 `increase()` 配合 `resets()` 检测\n3. **`sum(rate(...))` 而不是 `rate(sum(...))`**——先聚合再 rate 是错的（不同实例的计数器起点不同，直接相加没有意义）。**必须 `sum(rate(...))`**。"
+  },
+  {
+    "id": 5006,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "如何监控「业务指标」而不只是技术指标？举几个具体例子。",
+    "answer": "**技术指标告诉你「系统活着」，业务指标告诉你「生意正常」。**\n\n**技术指标无法发现的故障**：\n- 系统一切正常，但**支付成功率为 0**（第三方接口挂了）\n- CPU/内存/延迟全绿，但**下单量突然掉一半**（活动配置错误）\n- 所有服务健康，但**用户收不到验证码**（短信通道故障）\n\n**业务指标的分层设计**：\n\n| 层次 | 指标 | 例子 |\n|---|---|---|\n| **核心业务** | 直接关联收入/用户 | 订单量、支付成功率、GMV、日活 |\n| **关键路径** | 用户完成任务的链路 | 注册成功率、下单转化率、搜索有结果率 |\n| **依赖健康** | 外部服务的可用性 | 短信通道成功率、第三方支付回调成功率 |\n\n**具体实现方式**：\n\n**1. 从应用埋点暴露成 Prometheus 指标**\n```python\n# 应用内定义\norder_total = Counter('biz_order_total', '订单数', ['status', 'channel'])\npay_success = Counter('biz_pay_success_total', '支付成功数')\n```\n\n**2. 从日志统计（适合不改代码的场景）**\n```\n# mtail / grok_exporter 从日志提取计数\n```\n\n**3. 从数据库查询（对账式监控，最有说服力）**\n```sql\n-- 每分钟查一次，暴露成指标\nSELECT COUNT(*) FROM orders WHERE created_at > NOW() - INTERVAL 1 MINUTE;\n```\n这类监控**独立于应用**，应用自身出 bug 时仍能发现异常——这是它最大的价值。\n\n**几个必须监控的业务指标**：\n\n| 场景 | 指标 | 告警条件 |\n|---|---|---|\n| 电商 | 支付成功率 | < 95% 持续 3 分钟 |\n| 电商 | 下单量 | **环比同时段下降 > 50%** |\n| SaaS | 登录成功率 | < 98% |\n| 短信/推送 | 送达率 | < 90% |\n| 接口型业务 | 第三方回调成功率 | < 95% |\n\n**「环比」比「绝对值」更适合业务指标**——业务量本身有潮汐（白天高夜里低），用固定阈值会半夜误报。**同比（对比上周同一时间）或环比（对比前一小时）** 才准确。\n\n**一个关键实践**：**业务指标告警要打到一个「业务负责人」的群，而不是基础运维群**。因为技术值班无法判断「下单量下降」是故障还是业务活动结束。"
+  },
+  {
+    "id": 5007,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "日志监控（如 ELK/Loki）的关键设计点是什么？如何控制成本？",
+    "answer": "**日志的成本远高于指标，设计核心是「该存的存、不该存的不存」。**\n\n**成本构成**：\n```\n存储（最大头） + 写入吞吐（ES 的 CPU/内存） + 查询负载\n```\n\n**控制成本的六个手段**：\n\n**1. 分级存储（最有效）**\n```\nERROR/WARN  → 存 90 天（可查询）\nINFO        → 存 7 天（采样或只留索引）\nDEBUG       → 生产不采集\n```\n**实践中 DEBUG 日志往往占了 80% 的量**，先干掉它是最大的收益。\n\n**2. 采样**\n```\n# 高频 INFO 日志只保留 10%\n```\n注意：**ERROR 不能采样**。要采样的只能是「量大且重复」的 INFO 日志。\n\n**3. 结构化日志（大幅降低存储）**\n```json\n{\"ts\":\"2024-01-15T10:00:00Z\",\"lvl\":\"ERROR\",\"svc\":\"order\",\"msg\":\"payment failed\",\"order_id\":\"123\"}\n```\n比纯文本多了字段，但**少了大量重复的上下文**，且能被精确索引（不用全文检索）。\n\n**4. 避免高基数字段**\n**不要把 `user_id`、`request_id`、时间戳（精确到毫秒）建成索引字段**——这会让 ES 的倒排索引爆炸。**只有需要按它过滤的字段才建索引**，其余存 `_source` 里即可。\n\n**5. 冷热分离**\n```\n热数据（7 天）→ SSD / ES 热节点\n温数据（30 天）→ 大容量 HDD\n冷数据（1 年）→ 对象存储（S3/OSS），按需恢复\n```\n**ES 的 `ILM`（Index Lifecycle Management）能自动做这件事**。\n\n**6. 用 Loki 而不是 ELK（如果只需「按 label 查找」）**\n\n| | ELK | Loki |\n|---|---|---|\n| 索引 | 全文索引（贵） | **只索引 label**（便宜） |\n| 存储成本 | 高 | **低很多** |\n| 全文检索 | 强 | 弱（需 grep 式扫描） |\n| 适用 | 复杂分析 | **故障排查、按服务/时间查** |\n\n**Loki 的思路是「像 Prometheus 一样对待日志」**——索引 label（service、level、pod），内容压缩存储。对于「查某个服务某段时间的错误日志」这类 90% 的场景，完全够用且便宜得多。\n\n**关键指标（要监控日志系统本身）**：\n```\n写入速率、索引大小、查询延迟、丢弃的日志数（采集端跟不上会丢）\n```\n**「丢弃数 > 0」说明采集链路有瓶颈**，这是最容易被忽略的监控点。"
+  },
+  {
+    "id": 5008,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "困难",
+    "question": "如何设计「告警分级」？P0/P1/P2 分别怎么定义和响应？",
+    "answer": "**分级的目的不是「分优先级」，而是决定「半夜叫不叫人」。**\n\n**三级定义（通用模板）**：\n\n| 级别 | 定义 | 响应 | 通知方式 |\n|---|---|---|---|\n| **P0（紧急）** | **核心功能完全不可用 / 资损** | **立即**，5 分钟内 | 电话 + 短信 + 群 @所有人 |\n| **P1（严重）** | 核心功能部分受损 / 性能严重下降 | 15 分钟内 | 短信 + 群 |\n| **P2（警告）** | 非核心功能异常 / 容量预警 | 当日处理 | 群消息（不打扰） |\n| **P3（提示）** | 趋势性、可延后 | 排期处理 | 看板 / 日报 |\n\n**分级的判断依据（关键）**：\n\n```\n1. 影响多少用户？（全量 > 部分 > 单用户）\n2. 影响什么功能？（支付/登录 > 浏览 > 日志）\n3. 是「已发生」还是「将要发生」？（发生 = P0/P1，将要 = P2）\n4. 有替代方案吗？（有降级方案可以降一级）\n```\n\n**P0 的门槛要极高**：\n- 一家公司 **P0 一年触发几次是正常的**，每月都触发说明分级标准失效了\n- **P0 太多 = 等于没有 P0**（都电话通知，值班工程师会关静音）\n\n**告警内容必须包含什么**：\n```\n必须有：级别、服务、实例、当前值/阈值、开始时间、Runbook 链接\n不能有：冗余的技术细节\n```\n**Runbook 链接是最重要的**——值班工程师往往不是这个服务的负责人，没有操作手册就只能干等。\n\n**告警与值班的匹配**：\n```\nP0 → 主值班 + 备份 + 负责人（三级触达）\nP1 → 主值班\nP2 → 仅群消息，不打扰\n```\n\n**避免告警疲劳的硬规则**：\n1. **每条告警都必须「可行动」**——收到之后能做什么？做不了就不是告警，是通知\n2. **同类告警 24 小时内重复 > 5 次就降级**，并推动根因修复\n3. **定期（每月）review 告警规则**，删掉「从来没触发」和「触发了也没人处理」的\n4. **告警数量本身要监控**（`告警数/天` 突增就是信号）"
+  },
+  {
+    "id": 5009,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "什么是黑盒监控和白盒监控？为什么两者都需要？",
+    "answer": "**一句话：黑盒看「能不能用」，白盒看「为什么不能用」。**\n\n| | 黑盒监控（Blackbox） | 白盒监控（Whitebox） |\n|---|---|---|\n| 视角 | **外部用户视角** | **内部运行视角** |\n| 手段 | 主动探测（探针） | 被动采集（Exporter） |\n| 例子 | `blackbox_exporter` 探 HTTP/TCP/ICMP/DNS | Node/MySQL/Redis Exporter |\n| 发现问题 | **晚**（已经影响用户了） | **早**（资源趋势可预警） |\n| 定位能力 | 弱（只知道不通） | 强（知道哪个指标异常） |\n\n**为什么两者都要**：\n\n**只有白盒**：CPU、内存、JVM 全绿，但用户访问不了——可能是**网络、证书、DNS、CDN、LB** 的问题，这些都反映不到服务内部的指标上。\n\n**只有黑盒**：只知道「502」，不知道是哪个环节、什么原因，排查从零开始。\n\n**黑盒监控的典型配置（`blackbox_exporter`）**：\n```yaml\n# 探测 HTTP\n- job_name: 'blackbox_http'\n  metrics_path: /probe\n  params:\n    module: [http_2xx]\n  static_configs:\n  - targets:\n    - https://api.example.com/health\n    - https://www.example.com/\n  relabel_configs:\n  - source_labels: [__address__]\n    target_label: __param_target\n  - source_labels: [__param_target]\n    target_label: instance\n  - target_label: __address__\n    replacement: blackbox-exporter:9115\n```\n关键指标：`probe_success`、`probe_duration_seconds`、`probe_http_status_code`、`probe_ssl_earliest_cert_expiry`。\n\n**`probe_ssl_earliest_cert_expiry` 是最有价值的黑盒指标之一**——它直接给出证书到期时间戳，能提前告警。\n\n**必须覆盖的黑盒探测点**：\n1. **核心业务 URL**（首页、登录、下单接口）——不是 `/health`，健康检查可能骗人\n2. **DNS 解析**（能否解析、耗时）\n3. **证书到期**（提前 30 天告警）\n4. **第三方依赖**（支付、短信接口）\n5. **多地域探测**（不同地区是否都能访问）\n\n**一个常见错误**：只探 `/health`。应用可能 `/health` 返回 200 但业务接口全挂（比如数据库连不上但健康检查没查 DB）。**要探真实业务路径**。"
+  },
+  {
+    "id": 5010,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "困难",
+    "question": "Prometheus 单机撑不住时，有哪些扩展方案？各自适用什么规模？",
+    "answer": "**四条演进路线，按规模递增**。\n\n| 方案 | 原理 | 适用规模 | 代价 |\n|---|---|---|---|\n| **联邦（Federation）** | 多个 Prometheus 各自抓取，上级汇总 | 中等（多集群） | 配置复杂，数据有缺口 |\n| **远程写 + 单一后端** | `remote_write` 到 VictoriaMetrics/Thanos | **大（最常见）** | 需要部署后端 |\n| **Thanos** | 边车上传块到对象存储 + Query 层 | **超大、长期保留** | 组件多（Sidecar/Store/Query/Compactor） |\n| **VictoriaMetrics** | 兼容 PromQL 的替代实现 | 大，**运维最简单** | 生态略小于 Prometheus |\n\n**各方案的关键点**：\n\n**1. 联邦（Federation）**\n```yaml\n- job_name: 'federate'\n  metrics_path: /federate\n  params:\n    'match[]':\n      - '{job=\"node\"}'\n      - '{__name__=~\"job:.*\"}'\n  static_configs:\n  - targets: ['prometheus-1:9090']\n```\n- **只拉聚合后的指标**（`match[]` 要写窄），否则上级扛不住\n- 适合「多个子集群各自监控，总部看汇总」\n- **缺点**：数据不完整（只能看聚合值，无法下钻）\n\n**2. remote_write（最实用）**\n```yaml\nremote_write:\n- url: http://victoriametrics:8428/api/v1/write\n  queue_config:\n    max_samples_per_send: 10000\n    capacity: 10000\n```\n**优点**：Prometheus 只负责抓取，存储交给专门的后端。**这是绝大多数公司的选择。**\n\n**3. Thanos（长期保留 + 全局视图）**\n核心组件：\n- **Sidecar**：挂在每个 Prometheus 旁，上传 2 小时块到 S3/OSS\n- **Store Gateway**：查询对象存储里的历史块\n- **Query**：统一查询入口，聚合所有数据源\n- **Compactor**：把小块合并成大块、做降采样\n**优点**：存储成本低（对象存储）、可无限保留、能做全局视图\n**代价**：组件多，运维复杂度高\n\n**4. VictoriaMetrics**\n- 单二进制，兼容 PromQL\n- **压缩率比 Prometheus 高 2-5 倍**，写入更快\n- 支持 `vmagent`（替代 Prometheus 抓取）+ `vmalert`（替代规则引擎）\n- **对中小团队最友好**\n\n**选择决策树**：\n```\n序列数 < 100 万，保留 15 天 → 单机 Prometheus 够\n需要 > 15 天保留？\n  ├─ 是 → 对象存储方案（Thanos）或 VictoriaMetrics\n  └─ 否 → 多集群？→ 联邦 或 remote_write\n```\n\n**一个关键前置优化**：**先解决基数爆炸，再考虑扩展**。序列数从 500 万降到 50 万的收益，远大于加机器。"
+  }
+]

@@ -1,0 +1,41 @@
+[
+  {
+    "id": 4821,
+    "type": "short",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "如何设计「多环境部署参数」？Helm values 和 Kustomize 怎么选？",
+    "answer": "**两者解决不同层面的问题，可以互补使用。**\n\n| | Helm | Kustomize |\n|---|---|---|\n| 定位 | **包管理器**（模板 + 版本化发布） | **配置覆盖**（patch 叠加） |\n| 核心机制 | Go template 渲染 | **base + overlay 叠加 patch** |\n| 依赖管理 | ✅ charts 依赖 | ❌ |\n| 学习曲线 | 较高（模板语法） | 低（纯 YAML） |\n| 模板能力 | 强（能循环、条件） | 弱（只能 patch） |\n| 输出可读性 | 渲染后才知道内容 | **最终 YAML 直观** |\n\n**Helm 的多环境写法**：\n```yaml\n# values.yaml          默认值\n# values-dev.yaml      dev 覆盖\n# values-prod.yaml     prod 覆盖\ndeploy: helm upgrade -f values-prod.yaml ./chart\n```\n**优点**：一套 chart 服务所有环境。**缺点**：模板里的 `{{ if }}` 写多了会极难维护。\n\n**Kustomize 的多环境写法**：\n```\nbase/\n  deployment.yaml\n  service.yaml\noverlays/\n  dev/\n    kustomization.yaml   ← patches: 修改 replica、镜像 tag\n  prod/\n    kustomization.yaml\n```\n```yaml\n# overlays/prod/kustomization.yaml\nresources: [../../base]\npatches:\n- target: {kind: Deployment, name: app}\n  patch: |\n    - op: replace\n      path: /spec/replicas\n      value: 10\nimages:\n- name: harbor/app\n  newTag: 2.4.1\n```\n\n**选择建议**：\n\n| 场景 | 推荐 |\n|---|---|\n| 发布第三方/开源组件 | **Helm**（用社区 chart） |\n| 自己的应用，环境差异小 | **Kustomize**（简单直接） |\n| 需要复杂的模板逻辑 | Helm |\n| **GitOps（ArgoCD/Flux）** | 两者都支持，**Kustomize 更原生** |\n| 需要版本化、回滚、依赖 | Helm |\n\n**混合模式（常见于实践）**：\n```\n用 Helm 引入第三方 chart（如 Redis、Ingress）\n用自己的 Kustomize 管理业务应用\nArgoCD 同时支持两者\n```\n\n**三个关键实践**：\n\n1. **配置与代码分离**：values/kustomization 放**独立的配置仓库**，代码仓库不含环境配置\n2. **环境差异最小化**：dev/prod 的差异应该只有「副本数、资源、外部地址」少量几项。**差异项超过 20 个就说明应用本身设计有问题**（配置应该外置到 ConfigMap/环境变量）\n3. **渲染后必须 review**：`helm template` 或 `kustomize build` 输出最终 YAML，**在 PR 里展示 diff**——这样「配置变更」也能被 review"
+  },
+  {
+    "id": 4822,
+    "type": "short",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "流水线跑得慢，如何定位是哪个阶段慢？",
+    "answer": "**先量化，再优化——不要凭感觉猜。**\n\n**Step 1：看每个 stage 的耗时**\n```\n# GitLab：CI/CD → Pipelines → 每个 job 的 Duration\n# Jenkins：Blue Ocean / 每个 stage 的耗时\n# GitHub Actions：每个 step 的耗时（点击展开）\n```\n\n**Step 2：按「绝对耗时」排序，处理最大的三个**\n\n常见耗时分布（典型值）：\n\n| 阶段 | 典型耗时 | 优化方向 |\n|---|---|---|\n| **依赖安装** | 2-5 分钟 | **缓存**（收益最大） |\n| **测试** | 3-15 分钟 | 并行、只跑受影响的 |\n| **构建镜像** | 1-5 分钟 | layer 缓存、远程缓存 |\n| **部署** | 1-3 分钟 | 镜像拉取慢 → 减小镜像 |\n| **队列等待** | **不确定** | 加 runner / 减少并发占用 |\n\n**「队列等待」常被忽略**：流水线「跑得慢」有时根本不是执行慢，而是**排队等 runner**。GitLab 的 job 详情里能看到 `Queued duration`。\n\n**Step 3：逐个优化**\n\n**依赖安装慢（最常见）**：\n```yaml\n# 缓存配置（GitLab）\ncache:\n  key: ${CI_COMMIT_REF_SLUG}\n  paths: [node_modules/, .m2/]\n# GitHub Actions\n- uses: actions/cache@v4\n  with:\n    path: ~/.npm\n    key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}\n```\n**缓存 key 要包含 lock 文件的 hash**——否则依赖变了还用旧缓存。\n\n**测试慢**：\n```\n✓ 拆分成多个并行 job（按测试目录分片）\n✓ 只跑受影响的测试（monorepo）\n✓ 用更快的 runner（CPU 多一倍，测试快一倍）\n✓ 缩减 setup 时间（避免每个 job 都重新装依赖）\n```\n\n**构建镜像慢**：\n```\n✓ --cache-from 远程缓存（CI 场景必配）\n✓ 依赖清单先 COPY（利用 layer 缓存）\n✓ 多阶段构建，只保留运行产物\n✓ 镜像小 → 推送和拉取都快\n```\n\n**Step 4：目标与验收**\n```\nPR 反馈：< 10 分钟（开发者体验的底线）\n主分支完整流水线：< 30 分钟\n```\n**超过这个数，团队会开始绕过流水线。**\n\n**一个反直觉的提示**：**流水线不必对所有分支都跑全量**。PR 跑「快速检查」，合并到 main 才跑「完整测试 + 构建」，能省大量等待时间。"
+  },
+  {
+    "id": 4823,
+    "type": "multiple",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "生产发布后出现故障，复盘时会关注哪些问题？（多选）",
+    "options": [
+      { "key": "A", "text": "为什么测试/预发没发现？检查点的缺口在哪" },
+      { "key": "B", "text": "从故障发生到恢复用了多久？时间花在哪个环节" },
+      { "key": "C", "text": "发布策略是否可以改进（灰度比例、观察时长、回滚条件）" },
+      { "key": "D", "text": "找到责任人并进行处罚" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是**无责复盘**的反面——处罚会导致隐瞒，下次故障信息更少。复盘的目标是「改进系统」而不是「找出罪人」。补充要点：⑤**决策链复盘**：当时为什么没人回滚？是没发现还是不敢回？⑥**监控缺口**：故障是怎么被发现的（用户投诉 vs 告警）？后者才是理想状态；⑦**可复现性**：能否在测试环境复现？不能的话要怎么补能力。核心：把「人为失误」翻译成「系统为什么允许这个失误造成这么大影响」。"
+  },
+  {
+    "id": 4824,
+    "type": "short",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "如何管理庞大的「流水线配置」避免重复？有哪些复用手段？",
+    "answer": "**核心：把流水线当作代码来组织——提取公共部分，参数化差异部分。**\n\n**四个层次的复用**：\n\n**1. 模板包含（最基础）**\n```yaml\n# GitLab\ninclude:\n  - local: /ci-templates/build.yml\n  - project: ops/ci-templates\n    file: /docker-build.yml\n    ref: v1.2\n\n# GitHub Actions\nuses: ./.github/workflows/reusable-build.yml\nuses: org/ci-templates/.github/workflows/build.yml@v1\n```\n**关键：模板要版本化（`ref: v1.2`）**，否则模板改动会影响所有使用者。\n\n**2. 抽象成参数化模板**\n```yaml\n# 模板里用变量而不是硬编码\nbuild:\n  script:\n    - docker build -t ${IMAGE}:${TAG} ${CONTEXT}\n```\n\n**3. 用 `extends` / 锚点（YAML 层面的继承）**\n```yaml\n.build-base:\n  stage: build\n  before_script:\n    - docker login -u $CI_REGISTRY_USER -p $CI_JOB_TOKEN $CI_REGISTRY\n\nbuild-app:\n  extends: .build-base\n  variables: { IMAGE: app }\n```\n\n**4. 生成配置（DRY 的极端形态）**\n```\n用一个脚本/YAML 生成器，从「服务清单 + 模板」生成完整的流水线配置\n```\n适合同构服务很多（如 30 个微服务结构一致）的场景。\n\n**组织建议**：\n\n```\nci-templates/       独立仓库，版本化\n├── build-docker.yml\n├── test-java.yml\n├── deploy-k8s.yml\n└── security-scan.yml\n\n各项目仓库：\n  .gitlab-ci.yml     ← 只 include + 写项目特有部分\n```\n**独立仓库的价值**：模板改动有 PR、有版本、能灰度（各项目按需升级 ref）。\n\n**反模式**：\n\n| 反模式 | 后果 |\n|---|---|\n| **每个项目复制粘贴同一份配置** | 改一处要改 30 个项目 |\n| **模板无版本** | 改模板时所有项目同时受影响 |\n| **过度抽象** | 模板里一堆 `if`，比复制更难懂 |\n| **一个巨型流水线** | 单点故障影响所有项目 |\n\n**判断标准**：**模板应该「明显能被复用」**——如果一段配置只有 2 个项目用且差异很大，不如各写各的。**过度抽象比重复更有害。**"
+  }
+]

@@ -1,0 +1,25 @@
+[
+  {
+    "id": 5036,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "采集间隔 15s，告警规则 `for: 5m`，从故障发生到收到告警最慢约多久？",
+    "options": [
+      { "key": "A", "text": "约 5 分钟" },
+      { "key": "B", "text": "约 5 分钟 + 表达式区间 + 评估周期，可能接近 10 分钟" },
+      { "key": "C", "text": "15 秒" },
+      { "key": "D", "text": "30 分钟" }
+    ],
+    "answer": ["B"],
+    "explanation": "总延迟 ≈ **表达式区间（如 `rate[5m]`）+ `for` 时长 + 评估周期**。因为 `rate[5m]` 需要 5 分钟的数据才能反映完整趋势，`for: 5m` 又要持续 5 分钟，两者相加最慢接近 10 分钟。**这是「告警虽多但都是事后」的根源**。优化方向：用更短区间 + 更长 `for`（`rate[1m]` + `for 10m`），既灵敏又抗抖；或对核心指标直接看瞬时值配短 `for`。"
+  },
+  {
+    "id": 5037,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "如何监控「证书到期」和「域名过期」这类「定时炸弹」？",
+    "answer": "**这类问题「平时完全正常，到期瞬间全站不可用」，必须靠专门的监控。**\n\n**证书监控的三种方式**：\n\n**1. blackbox_exporter（最方便）**\n```yaml\nparams:\n  module: [http_2xx]\n```\n关键指标：\n```\nprobe_ssl_earliest_cert_expiry        # 最早的到期时间戳\n```\n告警规则：\n```\n(probe_ssl_earliest_cert_expiry - time()) / 86400 < 30\n```\n**这是最实用的一条**——直接用「剩余天数」告警。\n\n**2. 脚本主动检查（覆盖内部服务）**\n```bash\n#!/usr/bin/env bash\nfor host in api.example.com internal.example.com:8443; do\n  h=${host%%:*}; p=${host##*:}; [[ $host == *:* ]] || p=443\n  exp=$(echo | openssl s_client -servername \"$h\" -connect \"$h:$p\" 2>/dev/null \\\n        | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)\n  [[ -n $exp ]] || { echo \"$h 无法获取证书\"; continue; }\n  days=$(( ( $(date -d \"$exp\" +%s) - $(date +%s) ) / 86400 ))\n  (( days < 30 )) && echo \"$h 证书 ${days} 天后到期\"\ndone\n```\n\n**3. 证书透明度日志（CT Log）监控**\n```\n监控是否有「未授权的证书」被签发（certificate transparency）\n这类服务（如 certwatch）能发现别人给你的域名签了证书\n```\n\n**域名过期监控**：\n```\nwhois example.com | grep -i 'expiry\\|expiration'\n# 用脚本定期检查，剩余 < 60 天告警\n```\n**域名过期比证书过期更致命**——证书能自动续，域名过期后解析直接消失，且恢复要重新注册（可能被别人抢注）。\n\n**自动续期（Let's Encrypt）**：\n```\ncertbot renew --deploy-hook \"systemctl reload nginx\"\n# 配到 cron 或 systemd timer，每天跑一次\n```\n**必须验证自动续期真的在工作**：`certbot renew --dry-run`。**「配了自动续期但没验证」和「没配」是一样的**——很多事故是续期脚本静默失败半年。\n\n**四个必须覆盖的对象**：\n```\n1. 公网域名证书（含所有子域名）\n2. 内部服务证书（mTLS、内部 API）\n3. 数据库/中间件的 TLS 证书\n4. 域名本身 + K8s 的 TLS Secret\n```\n\n**告警策略建议**：**30 天 P2（群消息）、7 天 P1（短信）、3 天 P0（电话）**，分级提醒避免「一直响所以一直忽略」。"
+  }
+]

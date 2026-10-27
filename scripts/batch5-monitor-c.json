@@ -1,0 +1,56 @@
+[
+  {
+    "id": 5021,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "什么是「SLO 告警」？为什么它比阈值告警更好？",
+    "answer": "**阈值告警看「瞬时值」，SLO 告警看「一段时间内的目标达成情况」。**\n\n**阈值告警的问题**：\n```\n错误率 > 1% 持续 5 分钟  → 告警\n```\n- 5 分钟内 1.5%，但全天错误率只有 0.1% → **不该报警，却被叫醒了**\n- 错误率 0.9% 持续 8 小时 → **累积影响巨大，但不告警**\n\n**SLO 告警看的是「错误预算消耗速率」**：\n```\nSLO: 99.9% 可用（每月允许 43 分钟不可用）\n当前错误预算剩余 80%  → 正常\n错误预算 1 小时内消耗 50%  → 告警（按这个速度 2 小时就烧完全月额度）\n```\n\n**PromQL 写法**：\n```\n# 1 小时内的错误率\nsum(rate(http_requests_total{status=~\"5..\"}[1h]))\n/ sum(rate(http_requests_total[1h]))\n\n# 消耗速率：当前错误率 / 允许的错误率\n# 允许错误率 = 1 - SLO = 0.001\n# budget_burn_rate > 14.4 表示 1 小时烧掉 2%（30 天窗口的 1/720）\n```\n\n**Google SRE 的多窗口多燃烧率方案**（业界标准）：\n\n| 燃烧率 | 长窗口 | 短窗口 | 告警级别 |\n|---|---|---|---|\n| 14.4x | 1 小时 | 5 分钟 | **P0 立即** |\n| 6x | 6 小时 | 30 分钟 | P1 |\n| 1x | 3 天 | 6 小时 | 工单 |\n\n**为什么用「长短双窗口」**：长窗口判断「是否真的在持续燃烧」，短窗口保证「故障恢复后能快速停止告警」。只用长窗口会导致恢复后还在报警，只用短窗口会被抖动触发。\n\n**SLO 告警的三个优势**：\n1. **和业务影响直接关联**——「这个月还能不能兑现 SLO」比「CPU 90%」更有决策价值\n2. **抗噪声**——短时抖动不会触发\n3. **和发布决策挂钩**——错误预算快用完就该停止发布\n\n**落地前提**：必须先有明确的 **SLI**（如「HTTP 5xx 比例」）和 **SLO 目标**，而且**业务方认可**。没有共识的 SLO 只是数字游戏。"
+  },
+  {
+    "id": 5022,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "Prometheus 的 `up` 指标值为 0 表示什么？",
+    "options": [
+      { "key": "A", "text": "目标抓取失败（连接不上、超时或返回非 2xx）" },
+      { "key": "B", "text": "Prometheus 自己挂了" },
+      { "key": "C", "text": "该指标没有数据" },
+      { "key": "D", "text": "目标返回了空响应" }
+    ],
+    "answer": ["A"],
+    "explanation": "`up` 是 Prometheus 自动为每个抓取目标生成的合成指标：**1 = 抓取成功，0 = 抓取失败**。它有几个特殊价值：①**不受目标自己暴露什么指标影响**——目标完全不暴露指标也能有 `up`；②**是最好的「服务存活」告警源**（`up{job=\"x\"} == 0`）；③`up == 0` 的原因要看 `scrape_duration_seconds`、`scrape_samples_scraped` 和 Prometheus 日志。B 是错的——Prometheus 挂了连 `up` 都查不到。"
+  },
+  {
+    "id": 5023,
+    "type": "multiple",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "关于 Prometheus 的数据采集方式，以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "默认 pull 模型，Prometheus 主动去抓目标" },
+      { "key": "B", "text": "Pushgateway 用于「短生命周期任务」，让任务 push 后由 Prometheus 抓取" },
+      { "key": "C", "text": "Pushgateway 里的数据不会自动过期，需要显式删除" },
+      { "key": "D", "text": "Pull 模型无法发现「目标已经挂了」，所以必须用 Push" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 说反了：**pull 模型恰恰最擅长发现目标挂了**——抓不到就是 `up == 0`，立刻知道。Push 模型反而需要额外的心跳机制来检测「没推数据」的情况。C 是 Pushgateway 最大的坑：它就是一个「指标暂存器」，推上去的指标会一直保留直到被删除，导致**已下线的任务还在产生指标**。所以批量任务用完必须 `curl -X DELETE`，且要用 `job`/`instance` 精确指定。补充：**能用 pull 就别用 push**，Pushgateway 只适合 cron job 这类短命任务。"
+  },
+  {
+    "id": 5024,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "如何监控「容器与 K8s」？kube-state-metrics 和 cAdvisor 有什么区别？",
+    "answer": "**两者采集完全不同的数据，缺一不可。**\n\n| | cAdvisor（`/metrics/cadvisor`） | kube-state-metrics |\n|---|---|---|\n| 来源 | **kubelet 内置**，读 cgroup | **监听 apiserver**，把对象状态转成指标 |\n| 数据 | **资源用量**：CPU、内存、网络、磁盘 IO | **对象状态**：Pod 数量、副本数、容器重启次数、节点状态 |\n| 指标 | `container_cpu_usage_seconds_total`、`container_memory_working_set_bytes` | `kube_pod_container_status_restarts_total`、`kube_deployment_status_replicas_unavailable` |\n| 回答 | 「用了多少资源」 | 「期望几台、实际几台」 |\n\n**必须监控的核心指标**：\n\n**容量与调度**\n```\nkube_node_status_condition{condition=\"Ready\",status=\"true\"} == 0   # 节点 NotReady\nkube_pod_status_phase{phase=\"Pending\"} > 0                          # Pod 卡住\nsum(kube_pod_container_resource_requests{resource=\"cpu\"}) by (node) / \n  sum(kube_node_status_allocatable{resource=\"cpu\"}) by (node) > 0.9    # 节点资源分配率\n```\n\n**稳定性**（最重要的几个）\n```\nrate(kube_pod_container_status_restarts_total[15m]) > 0     # 容器反复重启\nkube_deployment_status_replicas_unavailable > 0             # 副本不足\nkube_pod_container_status_terminated_reason{reason=\"OOMKilled\"}  # OOM\n```\n\n**资源用量**\n```\ncontainer_memory_working_set_bytes / container_spec_memory_limit_bytes > 0.9\nrate(container_cpu_usage_seconds_total[5m]) / container_spec_cpu_quota    # CPU 使用率（注意 quota 单位）\n```\n\n**两个关键细节**：\n\n1. **内存要用 `working_set_bytes` 而不是 `usage_bytes`**。`working_set` 才是「不可回收的实际占用」，与 OOM 判定一致；`usage` 包含可回收的 page cache，会虚高。\n\n2. **CPU 使用率要除以 limit 还是 requests？**\n```\n/ limit    → 「离被限流还有多远」（排查 throttle 用）\n/ requests → 「离触发 HPA 还有多远」（扩缩容用）\n```\n两者都要，看目的不同。\n\n**必须排除的噪声**：`POD` 容器（pause 容器），CPU/内存都很小但会造成分母干扰：\n```\ncontainer_name != \"POD\"\n```"
+  },
+  {
+    "id": 5025,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "困难",
+    "question": "一个服务的 P99 延迟突然从 100ms 涨到 800ms，但 QPS 和错误率正常。怎么排查？",
+    "answer": "**「只有延迟涨、错误率和 QPS 都正常」排除了容量和故障，指向「部分请求变慢」。**\n\n**Step 1：确认不是统计假象**\n```\n# 是不是请求量下降导致 P99 的绝对样本数变少（长尾被放大）？\nsum(rate(http_request_duration_seconds_count[5m]))\n# 是不是某个接口把整体 P99 拉高？按 path 拆分\nhistogram_quantile(0.99, sum by (le, path) (rate(http_request_duration_seconds_bucket[5m])))\n```\n**按 path 拆是第一件事**——往往只有一两个接口变慢，把它们的延迟摘掉，整体就正常了。\n\n**Step 2：按维度拆分定位**\n\n| 拆分维度 | 说明 |\n|---|---|\n| **path** | 哪个接口慢 |\n| **instance** | 单台还是全量 |\n| **upstream_addr** | 后端哪台慢 |\n| **status** | 200 和 5xx 的延迟要分开看 |\n\n```\n# 快速判断单台 vs 全量\nhistogram_quantile(0.99, sum by (le, instance) (rate(...[5m])))\n```\n- **单台异常** → 该机器的资源问题（GC、磁盘、CPU 争抢）\n- **全量异常** → 公共依赖（DB、缓存、第三方接口）\n\n**Step 3：常见原因清单（按概率）**\n\n| 原因 | 特征 | 验证 |\n|---|---|---|\n| **GC 停顿** | P99 周期性峰值 | `jstat -gcutil` 看 Full GC |\n| **慢查询** | 与 DB 操作相关的接口变慢 | 慢查询日志、`db.currentOp()` |\n| **锁竞争** | 并发越高越慢 | 线程 dump 看 BLOCKED |\n| **下游接口变慢** | 特定链路 | 拆 trace 看哪个 span 长 |\n| **连接池不够** | 排队等连接 | 池使用率、`wait_time` |\n| **磁盘 IO 抖动** | 与写入相关的接口 | `iostat` 的 await |\n| **网络** | 跨机房调用 | `mtr`、`ss -ti` 看重传 |\n| **大请求** | 少数超大请求拖尾 | 按响应大小分组 |\n\n**Step 4：用 Trace 直接定位**\n```\n在日志中找到一条慢请求的 trace_id，去追踪系统看完整调用链\n```\n**这是最快的方法**——直接看到哪个 span 占了 700ms。\n\n**Step 5：检查「不是你的问题」的情况**\n1. **客户端变慢**：客户端超时时间变长、重试变多 → 服务端看到的是「少数请求特别慢」（其实是对端问题）\n2. **采样偏差**：监控数据源本身的采集延迟\n3. **发版引入**：对比发版时间的延迟曲线，`deploy` 事件要打到 Grafana 上（注解）\n\n**关键提醒**：**P99 从 100 涨到 800 而 P50 没变** → 典型的「长尾问题」，通常是**少数请求走了慢路径**（缓存未命中、特定分片、特定数据量）。看 P50 变化能快速区分「整体退化」vs「长尾恶化」。"
+  }
+]

