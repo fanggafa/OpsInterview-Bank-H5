@@ -9884,6 +9884,3027 @@
     "frequency": "中频"
   },
   {
+    "id": 4000,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "Linux 进程的主要状态有哪些？R、S、D、T、Z 分别代表什么？",
+    "answer": "用 `ps aux` 的 STAT 列看：\n\n| 状态 | 含义 | 说明 |\n|---|---|---|\n| **R** | Running/Runnable | 正在跑或在运行队列里等 CPU |\n| **S** | 可中断睡眠 | 等事件（IO、信号），**最常见** |\n| **D** | 不可中断睡眠 | 等内核态 IO，**kill -9 也杀不掉** |\n| **T** | 停止 | 被 SIGSTOP 或调试器暂停 |\n| **Z** | 僵尸 | 已退出但父进程没回收 |\n| **I** | idle | 内核空闲线程 |\n\n**后缀字母**：\n- `s`：会话首进程\n- `l`：多线程\n- `+`：前台进程组\n- `<`：高优先级（优先级高）\n- `N`：低优先级（nice）\n\n**排障时最该关注的两个**：\n1. **大量 D 状态** → IO 卡死（磁盘故障、NFS 挂载的服务器失联）。此时 `uptime` 的 load 会飙升但 CPU 空闲，因为 load 把 D 也计入\n2. **大量 Z 状态** → 父进程有 bug 没 wait()，长期累积会耗尽 PID",
+    "tags": [
+      "进程状态",
+      "D 状态",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4001,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "僵尸进程和孤儿进程有什么区别？分别怎么处理？",
+    "answer": "**本质区别：有没有父进程来收尸。**\n\n| | 僵尸（Zombie，Z） | 孤儿（Orphan） |\n|---|---|---|\n| 是什么 | 子进程已退出，父进程没调 `wait()` 回收 | 父进程先退出，子进程还活着 |\n| 占用资源 | 只占 PID 表项，不占 CPU/内存 | 正常占资源 |\n| 由谁接管 | 无，需父进程处理 | 被 init(1) 或 subreaper 收养 |\n| 危害 | 大量累积耗尽 PID | 一般无害 |\n\n**僵尸怎么处理**：\n\n1. **正确做法**：让父进程调用 `wait()`/`waitpid()`，或正确处理 `SIGCHLD`\n2. **应急手段**：杀掉父进程，僵尸会被 init 接管并回收\n```\nps -eo stat,ppid,pid,cmd | awk '$1 ~ /^Z/ {print $2}' | sort -u\nkill <父进程PID>\n```\n3. **不能直接 kill -9 僵尸本身**——它已经死了，信号无处可投\n\n**排查口诀**：`ps` 里 STAT 是 `Z` 或 `Z+` → 找它的 **PPID** → 看那个父进程为什么没 wait。\n\n**容器场景的特殊坑**：PID 1 进程（如 shell 脚本）不处理 `SIGCHLD`，僵尸会堆满容器。加 `tini` / `dumb-init` 作为 init 即可解决。",
+    "tags": [
+      "僵尸进程",
+      "孤儿进程",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4002,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "inode 是什么？磁盘有空间却提示 No space left on device 怎么排查？",
+    "answer": "**inode（索引节点）**：文件系统里每个文件对应一条 inode，存**元数据**（权限、属主、大小、时间戳、数据块指针），**不存文件名**（文件名在目录项里）。\n\n**两个独立的上限**：\n- **数据块（block）用完** → 真没空间了\n- **inode 用完** → 提示 `No space left on device`，但 `df -h` 显示还有空间\n\n**排查**：\n```\ndf -i                     # 看 inode 使用率（关键）\ndf -h                     # 看块使用率\n```\n`df -i` 的 `IUse%` 到 100% 就是这个问题。\n\n**谁最吃 inode**：\n1. **大量小文件**：session 文件、缓存碎片、邮件队列、`/var/spool`\n2. **临时文件不清理**：某脚本每次跑生成几千个小文件\n3. 用 `find` 定位：\n```\n# 找哪个目录下小文件最多\nfind /var -xdev -type f | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head\n```\n\n**处理**：\n1. 删掉无用小文件（最直接）\n2. 长期方案：`mkfs` 时用 `-i` 参数调大 `bytes-per-inode`（如把 16K 调到 64K），但**只能重建文件系统**\n3. 用 XFS 的话 inode 是动态分配的，几乎不会耗尽——这也是大文件/容器场景推荐 XFS 的原因之一\n\n**顺带**：`df` 显示已满但 `du` 加不起来，通常是**有进程删了文件但还持有句柄**，用 `lsof | grep deleted` 找出并重启对应进程。",
+    "tags": [
+      "inode",
+      "磁盘满",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4003,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "文件权限中的 SUID、SGID、Sticky Bit 分别是什么？",
+    "answer": "**三个特殊权限位**，落在 `rwx` 的三个位置之外：\n\n| 位 | 显示位置 | 作用 | 例子 |\n|---|---|---|---|\n| **SUID**（4） | user 的 x 位显示为 `s` | 执行时**以文件属主身份**运行 | `/usr/bin/passwd` |\n| **SGID**（2） | group 的 x 位显示为 `s` | 执行时以属组身份运行；**用在目录上**表示新建文件继承该目录属组 | `/usr/bin/wall` |\n| **Sticky**（1） | other 的 x 位显示为 `t` | **只有属主能删自己的文件** | `/tmp` |\n\n**怎么记**：\n```\nchmod 4755 file    # SUID + rwxr-xr-x\nchmod 2775 dir     # SGID + rwxrwxr-x\nchmod 1777 /tmp    # Sticky + rwxrwxrwx\n```\n首位的 4 / 2 / 1 就是这三个位。\n\n**典型用途**：\n- `/tmp` 的 Sticky 位（`drwxrwxrwt`）防止任何用户删别人的临时文件\n- 共享目录（如团队的 `/data/share`）配 SGID，新建文件自动继承目录属组，省去反复 chgrp\n\n**安全警示**：**SUID root 的程序是最危险的东西**。任何能被普通用户写内容的 SUID 程序都等于提权后门。审计命令：\n```\nfind / -perm -4000 -type f 2>/dev/null\n```\n这是每一次主机安全基线检查的必查项。",
+    "tags": [
+      "SUID",
+      "SGID",
+      "Sticky"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4004,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "nice 值和优先级是什么关系？如何调整进程优先级？",
+    "answer": "**nice 值是「谦让程度」，越大越谦让（优先级越低）。**\n\n| 概念 | 范围 | 说明 |\n|---|---|---|\n| **NI**（nice） | **-20 ~ 19** | 用户可调；-20 最高优先级，19 最低 |\n| **PR**（priority） | 0 ~ 39 | 内核展示用，普通进程 `PR = 20 + NI` |\n| **RT** | 实时 | SCHED_FIFO/RR 的 1-99，**高于所有普通进程** |\n\n**调整命令**：\n```\n# 启动时指定（只能是正数，或 root 用负数）\nnice -n 10 ./backup.sh\n\n# 调整已运行的进程\nrenice -n 5 -p 1234\nrenice -n 5 -u www-data       # 按用户\nrenice -n 5 -g 1000           # 按进程组\n```\n\n**关键限制**：\n- **普通用户只能「调低」自己的进程优先级**（nice 值只能增大）\n- 降低 nice（提优先级）必须 root\n- **调高优先级要谨慎**：把业务进程提到 -20 会饿死系统进程（kubelet、日志采集、SSH），反而引发更大问题\n\n**实际最有用的场景**：不是提优先级，而是**降低备份/批处理/压缩任务的优先级**，让它们在业务高峰不抢 CPU：\n```\nnice -n 19 ionice -c3 tar -czf backup.tar.gz /data\n```\n`ionice -c3` 是 idle 级 IO 调度，连磁盘也不抢——这比只调 nice 更有效。",
+    "tags": [
+      "nice",
+      "优先级",
+      "调优"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4005,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "OOM Killer 是怎么挑进程杀的？如何保护关键进程？",
+    "answer": "**挑选依据：`oom_score`，值最高的被杀。**\n\n**`oom_score` 怎么算**（核心因素）：\n1. **内存占用越大，分数越高**（主要因素）\n2. **`oom_score_adj` 调整值**（-1000 ~ 1000，加在分数上）\n3. root 进程有轻微减免（不是绝对保护）\n\n**查看与调整**：\n```\ncat /proc/<pid>/oom_score          # 当前分数\ncat /proc/<pid>/oom_score_adj      # 当前的 adj 值（-1000~1000）\necho -1000 > /proc/<pid>/oom_score_adj   # 尽量保护（不是绝对）\necho 1000  > /proc/<pid>/oom_score_adj   # 优先被杀\n```\n\n**保护关键进程的几种手段**（按可靠性）：\n\n| 手段 | 可靠性 | 说明 |\n|---|---|---|\n| `oom_score_adj = -1000` | 高 | 几乎不会被选，但内存真耗尽时仍可能被杀 |\n| **systemd `OOMScoreAdjust=-1000`** | 高 | 服务级配置，重启后仍生效（**推荐**） |\n| **systemd `MemoryMax` cgroup 限制** | **最高** | 给进程设上限，它自己先 OOM，不拖垮全局 |\n| cgroup v2 `memory.oom.group` | 高 | 让整个 cgroup 一起被杀，避免半死不活 |\n\n**不要把 SSH/sshd 设 -1000 就以为万事大吉**——真到内存耗尽，内核可能杀掉 systemd 或 sshd，机器就登不上了。**正确思路是限流而不是保护**：给业务进程设 `MemoryMax`，让它 OOM 而不是拖垮整机。\n\n**查历史**：\n```\ndmesg -T | grep -i 'killed process'\ngrep -i oom /var/log/messages\n```",
+    "tags": [
+      "OOM",
+      "oom_score_adj",
+      "保护"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4006,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "怀疑某个进程内存持续增长（疑似泄漏），怎么定位是代码问题还是配置问题？",
+    "answer": "**第一步：确认是真增长还是缓存假象**\n```\npidstat -r -p <pid> 1          # 持续观察 RSS 趋势\ncat /proc/<pid>/status | grep -E 'VmRSS|VmSize'\n```\n关键区分：\n- **RSS 单调上升** → 真泄漏\n- **RSS 有峰有谷（周期性）** → 正常，可能是 GC 或缓存\n- 只看一次 `top` 的数值没有任何意义\n\n**第二步：看内存构成**\n```\ncat /proc/<pid>/smaps_rollup     # 汇总\npmap -x <pid>                    # 各段映射大小\n```\n若**堆区持续增长** → 应用层泄漏；若**`[heap]` 不大但 RSS 大** → 可能是：\n1. **mmap/直接内存**（Java 的 DirectByteBuffer、Go 的 arena）\n2. **glibc malloc arena 碎片**（多线程程序常见）——设置 `MALLOC_ARENA_MAX=2` 可缓解\n3. **共享内存 / tmpfs** 挂载的文件\n\n**第三步：定位到代码**\n\n| 语言 | 工具 |\n|---|---|\n| C/C++ | `valgrind --leak-check=full`、`gdb` + `heap` |\n| Java | `jmap -histo:live <pid>`、`jcmd GC.heap_info`、NMT `VM.native_memory` |\n| Go | `pprof` 的 `heap` profile |\n| Python | `tracemalloc`、`objgraph` |\n| 通用 | `bpftrace` 统计 `malloc` 调用栈 |\n\n**第四步：排除系统级因素**\n1. **tmpfs 占用**：`df -h /dev/shm`，很多中间件默认把数据写这里\n2. **page cache 算进进程**：`smaps` 里的 `file` 部分是共享的文件缓存，可在内存紧张时回收\n3. **线程数暴涨**：每线程默认 8MB 栈（虚拟内存），`ls /proc/<pid>/task | wc -l`\n\n**结论判断**：\n- RSS 涨但**系统内存不紧张**（`available` 仍充足）→ 可能无需处理\n- RSS 涨导致 **swap 使用或 OOM** → 必须处理：重启、限流、或修代码\n\n**最容易被忽略的一条**：容器里的 `RSS` 包含共享页，`cat /sys/fs/cgroup/memory.current` 才是 cgroup 视角的真实占用。",
+    "tags": [
+      "内存泄漏",
+      "排查",
+      "RSS"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4007,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "swap 有什么用？为什么很多生产环境建议关掉 swap？",
+    "answer": "**swap 的作用**：把内存里不活跃的页换到磁盘，腾出物理内存给热数据。\n\n**为什么生产（尤其数据库、K8s）建议关**：\n\n| 问题 | 说明 |\n|---|---|\n| **性能悬崖** | swap 在 SSD 上也比内存慢 3-4 个数量级，一旦开始换页，延迟从微秒跳到毫秒 |\n| **不可预测** | 内存压力下偶发卡顿，很难定位（CPU 空闲但请求超时） |\n| **OOM 变得隐蔽** | 有 swap 时系统宁可频繁换页也不触发 OOM Killer，表现为「慢性死亡」而不是快速失败 |\n| **数据库一致性** | MySQL/Redis 被换出会严重拖慢，甚至触发连接超时雪崩 |\n| **kubelet 不认 swap** | K8s 1.22 前默认禁用 swap，1.28 才提供 alpha 支持 |\n\n**推荐的折中做法**（比一刀切更实用）：\n1. **留少量 swap**（如内存的 10-25%），只为「防止极端情况下直接 OOM」，但\n2. **把 `vm.swappiness` 调到 1 或 0**，让内核几乎不使用 swap\n```\nvm.swappiness = 1        # 0 和 1 差别很小，1 更安全（0 在部分内核上行为激进）\nsysctl -w vm.swappiness=1\n```\n3. **确认真的没在用 swap**：`free -h` 的 `Swap used` 应该接近 0；若持续非 0 说明有匿名页被换出，需要查是哪个进程（`smaps` 里的 `Swap` 字段）\n\n**什么时候必须关**：\n- 数据库服务器（MySQL、ES、Redis）\n- Kubernetes 节点\n- 对延迟敏感的服务\n\n**关闭命令**（永久）：\n```\nswapoff -a\nsed -i '/swap/s/^/#/' /etc/fstab\n```\n注意：`swapoff -a` 会把 swap 内容读回内存，**如果 swap 里存的东西比可用内存还多，会直接 OOM**。要先确认 `free` 的可用内存够。",
+    "tags": [
+      "swap",
+      "swappiness",
+      "调优"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4008,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "服务器磁盘 IO 很高，怎么定位是哪个进程、哪块盘、什么操作？",
+    "answer": "**分四步：全局 → 磁盘 → 进程 → 具体文件**。\n\n**Step 1：确认是不是真高**\n```\niostat -x 1 5\n```\n关键指标（别看 `%util` 一个数就下结论）：\n\n| 指标 | 含义 | 阈值 |\n|---|---|---|\n| **`%util`** | 磁盘忙碌时间占比 | >70% 需注意，**SSD/NVMe 常年 100% 也可能正常** |\n| **`await`** | 单次 IO 平均等待（ms） | 机械盘 >20ms、SSD >5ms 就有问题 |\n| **`r/s` `w/s`** | IOPS | 对比磁盘标称值 |\n| **`aqu-sz`** | 平均队列长度 | 持续 >2 说明排队 |\n\n**注意**：单看 `%util` 会误判——现代 NVMe 支持深度队列，100% util 但 await 很小反而是健康的。**以 `await` 和 `aqu-sz` 为主**。\n\n**Step 2：定位进程**\n```\npidstat -d 1 5              # 按进程显示读写速率（最直观）\niotop -o                    # 交互式，直接看谁在读\n```\n\n**Step 3：定位到文件**\n```\n# 谁在写这个盘\nlsof /data\n# 追踪某进程的文件操作\nstrace -p <pid> -e trace=read,write,openat -f\n# 内核级追踪（最强大）\nbpftrace -e 'tracepoint:block:block_rq_issue { printf(\"%s %d bytes\\n\", comm, args->bytes); }'\n```\n\n**Step 4：常见元凶排查清单**\n1. **日志暴涨**：`du -sh /var/log/*` 排序，看是不是某服务疯狂打日志\n2. **数据库慢查询全表扫**：`EXPLAIN` 看是否缺索引\n3. **备份/压缩任务在跑**：`ps aux | grep -E 'tar|gzip|rsync'`\n4. **swap 在换页**（`si/so` 非 0）：这是伪装成磁盘 IO 的内存问题，`vmstat 1` 能看出\n5. **文件系统碎片**：`xfs_db -c frag` 或 `e4defrag`\n6. **容器镜像层写**：overlayfs 的 copy-up 开销\n\n**一句话诊断路径**：`iostat` 看是哪块盘 → `pidstat -d` 看是哪个进程 → `strace`/`bpftrace` 看是哪个文件 → 结合业务解释。",
+    "tags": [
+      "磁盘IO",
+      "iostat",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4009,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "服务器的网络连接数异常多（大量 TIME_WAIT 或 ESTABLISHED），怎么排查？",
+    "answer": "**先分类统计，再定位到进程。**\n\n**Step 1：看状态分布**\n```\nss -s                                   # 汇总统计\nss -ant | awk '{print $1}' | sort | uniq -c | sort -rn\nnetstat -ant | awk '{print $6}' | sort | uniq -c | sort -rn\n```\n\n**Step 2：按状态分别处理**\n\n**大量 `TIME_WAIT`**（主动关闭方留下，正常现象但有上限）：\n- 数量在 2-3 万以内一般正常；超过 `ip_local_port_range` 大小（默认 32768）就要处理\n- 原因：**短连接太多**（HTTP 客户端没复用连接）\n- 缓解：\n```\nnet.ipv4.tcp_tw_reuse = 1        # 允许复用（仅对客户端有效）\nnet.ipv4.ip_local_port_range = 10000 65000   # 扩大端口范围\n```\n- **不要开 `tcp_tw_recycle`**：NAT 环境下会导致连接失败，已在 4.12 删除\n- **根本解法是改造成长连接/连接池**，不是调内核参数\n\n**大量 `ESTABLISHED`**：\n```\nss -ant state established | wc -l\nss -antp | grep ESTAB | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn | head\n```\n看是不是**单一来源 IP 的异常连接**（可能是扫描、压测、DDoS、配置错误导致的连接风暴）。\n\n**Step 3：定位进程**\n```\nss -antp | grep -c <pid>\nlsof -p <pid> | grep -c TCP\n```\n\n**Step 4：检查连接上限**\n```\nulimit -n                       # 进程 fd 上限\nsysctl net.core.somaxconn       # accept 队列\nsysctl net.ipv4.tcp_max_syn_backlog\ncat /proc/sys/fs/file-nr        # 系统级已用/上限\n```\n\n**高频根因**（按概率）：\n1. **应用连接池配错**（maxPoolSize 太大或没复用到连接）\n2. **上游健康检查太频繁**（每 1 秒探测一次 × 100 实例）\n3. **走了 NAT 但服务端没改 `tcp_tw_reuse`**，端口耗尽报 `Cannot assign requested address`\n4. **DDoS/扫描**：单一 IP 大量 SYN_RECV\n\n**端口耗尽的最典型报错**：`connect: Cannot assign requested address` —— 这不是连接数上限问题，是**可用本地端口用完了**。",
+    "tags": [
+      "连接数",
+      "TIME_WAIT",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4010,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "简述 Linux 从开机到登录的启动流程。",
+    "answer": "**六个阶段**：\n\n```\n① 加电自检（POST）→ ② BIOS/UEFI 找引导设备\n→ ③ GRUB2 加载内核与 initramfs\n→ ④ kernel 初始化（驱动、挂根文件系统）\n→ ⑤ systemd（PID 1）启动，按 target 拉起服务\n→ ⑥ 登录（getty / sshd）\n```\n\n**关键细节**：\n\n**③ GRUB**：配置文件 `/boot/grub2/grub.cfg`（由 `/etc/default/grub` 生成）。改引导参数要 `grub2-mkconfig -o /boot/grub2/grub.cfg`，**直接改 grub.cfg 会被下次更新覆盖**。\n\n**③ initramfs**：一个小型根文件系统，含**驱动模块**。为什么需要它？因为根文件系统可能在 LVM、软 RAID、加密卷、或网络存储（iSCSI）上——内核得先加载驱动才能挂载根。驱动没打进去就会 `dracut` panic。\n\n**⑤ systemd / target**（默认 target 取代了 runlevel）：\n\n| runlevel | target |\n|---|---|\n| 3 | multi-user.target（无图形多用户） |\n| 5 | graphical.target |\n| 0 | poweroff.target |\n| 6 | reboot.target |\n| 1 | rescue.target |\n\n**排障切入点**：\n- 卡在 GRUB → 用 rescue 模式或 Live CD\n- 卡在内核 → 看 `dmesg`、加 `init=/bin/bash` 进单用户\n- 卡在 systemd → `systemctl list-units --failed`、`journalctl -b -p err`\n- 卡在某个 mount → `systemctl status <某个.mount>`，多半是 `/etc/fstab` 写错且没加 `nofail`",
+    "tags": [
+      "启动流程",
+      "systemd",
+      "GRUB"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4011,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "systemd 服务里 Type= 有哪些取值？WantedBy、After、Requires 分别控制什么？",
+    "answer": "**Type=** 决定 systemd 什么时候认为「服务已启动完成」：\n\n| Type | 判定「启动成功」的时机 | 适用 |\n|---|---|---|\n| **simple**（默认） | 主进程一 fork 就算成功 | 前台运行的程序 |\n| **exec** | exec 成功后算成功（比 simple 晚一点） | 同上，更准确 |\n| **forking** | 父进程退出、子进程留下才算成功 | 老式自守护进程（daemonize） |\n| **oneshot** | 进程**跑完退出**才算成功 | 初始化脚本、挂载点 |\n| **notify** | 进程调用 `sd_notify(READY=1)` 才算成功 | Nginx、systemd 原生支持 |\n| **idle** | 所有任务完成后再启动 | 极少用 |\n\n**配错 Type 的典型症状**：守护进程用 `simple` → systemd 认为启动成功但实际服务还没 listening，后面的依赖会失败。\n\n**三个关系指令**：\n\n| 指令 | 语义 | 示例 |\n|---|---|---|\n| **WantedBy** | **被谁依赖而启用**（`enable` 后建软链接到该 target 的 `.wants/`） | `multi-user.target` |\n| **After** | **启动顺序**（谁先谁后），**不保证对方启动** | `After=network.target` |\n| **Requires** | **强依赖**——对方失败则自己也失败 | `Requires=postgresql.service` |\n\n**最容易搞混的两个**：\n- `After` = 顺序（弱）：对方没起来自己也照跑\n- `Requires` = 依赖（强）：对方失败自己也被拉倒\n- 想要「等网络就绪才启动」应该用 `After=network-online.target` **加上** `Wants=network-online.target`\n\n**常用命令**：\n```\nsystemctl daemon-reload           # 改了 unit 文件必须执行\ndisplayed  systemctl enable/disable\ndisplayed  systemctl start/stop/restart/status\nsystemctl list-dependencies <svc>\n```",
+    "tags": [
+      "systemd",
+      "Type",
+      "依赖"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4012,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "journalctl 常用参数有哪些？如何让日志持久化保存？",
+    "answer": "**默认日志存在 `/run/log/journal`（内存，重启丢失）**，所以要改到磁盘：\n\n```\nmkdir -p /var/log/journal\nsystemd-tmpfiles --create --prefix /var/log/journal\nsystemctl restart systemd-journald\n```\n或在 `/etc/systemd/journald.conf` 写 `Storage=persistent`。\n\n**最常用的十个参数**：\n\n```\njournalctl -b                    # 本次启动\njournalctl -b -1                 # 上一次启动（排查崩溃很有用）\njournalctl -u nginx --since '10 min ago'\njournalctl -p err -b             # 只看 error 及以上\njournalctl -f                    # 实时跟踪（等同 tail -f）\njournalctl -n 100                # 最后 100 行\njournalctl --since today --until '1 hour ago'\njournalctl _PID=1234             # 按字段过滤\njournalctl -u nginx -o json-pretty\njournalctl --disk-usage          # 磁盘占用\n```\n\n**限制磁盘占用**（很重要的运维动作）：\n```\n# /etc/systemd/journald.conf\nSystemMaxUse=2G\nSystemMaxFileSize=200M\n```\n或临时清理：\n```\njournalctl --vacuum-size=1G\njournalctl --vacuum-time=7d\n```\n\n**用 `_` 字段精确过滤**（比 grep 强得多）：\n```\njournalctl _SYSTEMD_UNIT=nginx.service _COMM=worker\njournalctl /usr/sbin/sshd          # 按可执行文件\n```\n\n**坑**：`journalctl -u` 只能查到 systemd 有记录的日志；**程序自己写文件的日志（`/var/log/app.log`）不在 journalctl 里**，那要走 `tail`/logrotate 体系。",
+    "tags": [
+      "journalctl",
+      "日志",
+      "持久化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4013,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "/proc 是什么文件系统？举几个运维中真正用得上的路径。",
+    "answer": "**`/proc` 是内核暴露的伪文件系统（procfs）**：不占磁盘，内容由内核实时生成，读它就是读内核数据结构。\n\n**真正用得上的路径**：\n\n**系统级**\n```\n/proc/cpuinfo              # CPU 型号核数\n/proc/meminfo              # 内存明细（free 的数据源）\n/proc/loadavg              # 负载\n/proc/uptime               # 运行时长\n/proc/mounts               # 挂载（= /etc/mtab）\n/proc/partitions           # 分区\n/proc/diskstats            # 每块盘的 IO 统计（iostat 的数据源）\n/proc/net/tcp              # TCP 连接表（ss/netstat 的数据源）\n/proc/net/dev              # 网卡收发\n/proc/sys/...              # 对应 sysctl 的全部可调参数\n```\n\n**进程级（`/proc/<pid>/`）**\n```\nstatus          # VmRSS、Threads、State\ncmdline         # 启动命令行（\\0 分隔）\nfd/            # 打开的文件描述符（指向真实的文件/socket）\ncwd            # 进程工作目录（软链）\nexe            # 可执行文件（软链）\nlimits          # ulimit 限制\nsmaps_rollup    # 内存映射汇总（排查内存用）\noom_score       # OOM 评分\ntask/           # 线程目录\n```\n\n**最经典的排障用法**：\n```\n# 1. 进程删了文件但没释放空间（df 满但 du 对不上）\nlsof | grep deleted\n# 2. 不用 lsof 也能看到它打开了哪些文件\nls -l /proc/<pid>/fd | grep deleted\n# 3. 找到进程的真实路径\nreadlink -f /proc/<pid>/exe\n# 4. 直接看某个 socket 属于谁\nss -antp\n```\n\n**`/proc/sys` 与 sysctl 的关系**：`sysctl net.ipv4.ip_forward=1` 实际就是 `echo 1 > /proc/sys/net/ipv4/ip_forward`。永久生效要写 `/etc/sysctl.d/*.conf`，**直接改 `/proc/sys` 重启就丢**。",
+    "tags": [
+      "proc",
+      "内核",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4014,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "接手一台陌生服务器（或做日常巡检），你的检查清单是什么？",
+    "answer": "**按「硬件 → 系统 → 服务 → 网络 → 安全 → 备份」六层**，每条都能一条命令查。\n\n**1. 硬件与虚拟化**\n```\ndmidecode -t system | head          # 机型\nlscpu; nproc; free -h; lsblk -f\nlspci | grep -i 'eth\\|raid'\n```\n\n**2. 系统基本盘**\n```\ncat /etc/os-release; uname -r\nuptime                              # 负载\nsystemctl list-units --failed       # 失败的服务（必看）\ntimedatectl                         # 时间是否同步（差 1 分钟就能炸）\n```\n\n**3. 资源水位**\n```\ndf -h; df -i                         # 空间 + inode 都要看\nfree -h                             # 注意 available 不是 free\nvmstat 1 3; iostat -x 1 3\ntop -b -n1 | head -20\n```\n\n**4. 网络与端口**\n```\nip -br a; ip r                            # IP 与路由\nss -lntup                                # 监听端口清单（对照业务）\nsystemctl status firewalld / iptables -L -n\ncat /etc/resolv.conf\n```\n\n**5. 安全与账户**\n```\nlast | head -20                      # 最近登录\nwho; w\nawk -F: '$3==0' /etc/passwd          # uid 0 的账户（除 root 外都异常）\nfind / -perm -4000 -type f 2>/dev/null    # SUID 文件\ngrep -v '^#' /etc/ssh/sshd_config | grep -i 'permitroot\\|password'\n```\n\n**6. 定时任务与备份**\n```\ncrontab -l; ls /etc/cron.d/; cat /etc/crontab\nsystemctl list-timers\nls -lt /var/log | head               # 日志是否在轮转\n```\n\n**巡检的产出**：不要只跑命令，要回答三个问题：\n1. **有没有「不该出现的东西」**（多余账号、异常端口、失败的 unit）\n2. **有没有「马上就要出问题」的**（磁盘 85%、inode 80%、时间不同步）\n3. **有没有「没人知道是干嘛的」**（陌生进程、陌生 cron、陌生端口）——这类最危险",
+    "tags": [
+      "巡检",
+      "安全基线",
+      "清单"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4015,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "LVM 是什么？磁盘空间不够时如何在线扩容？",
+    "answer": "**LVM（逻辑卷管理）** 在物理盘和文件系统之间加了一层抽象，好处是**能在线扩容、能跨盘拼容量、能快照**。\n\n**三层结构**：\n```\nPV（物理卷）    ← 一块盘或一个分区\n  ↓\nVG（卷组）      ← 把多个 PV 汇成一个「池子」\n  ↓\nLV（逻辑卷）    ← 从池子里切出来给文件系统用\n```\n\n**在线扩容步骤（以 XFS 为例，最常用）**：\n\n```\n# 1. 看现状\ndf -h /data\nvgs; lvs; pvs\n# 2. 加新盘进 VG（如果 VG 还有空间，跳过这步）\npvcreate /dev/sdb\nvgextend data_vg /dev/sdb\n# 3. 扩 LV（+50G 或全部 +100%FREE）\nlvextend -L +50G /dev/data_vg/data_lv\nlvextend -l +100%FREE /dev/data_vg/data_lv\n# 4. 扩文件系统\nxfs_growfs /data                 # XFS：挂载点\ndisplayed  resize2fs /dev/data_vg/data_lv   # ext4：设备路径\n```\n\n**关键点**：\n- **XFS 只能扩不能缩**；ext4 能缩但必须卸载\n- **`lvextend` 只是扩了块设备，文件系统不会自动长**——必须再跑 `xfs_growfs`/`resize2fs`。很多人卡在这一步，`df` 没变化\n- **完全在线**，业务无感知\n\n**快照**（LVM 最实用的另一个功能，做备份前的一致性快照）：\n```\nlvcreate -L 10G -s -n data_snap /dev/data_vg/data_lv\n# 备份完成后\nlvremove /dev/data_vg/data_snap\n```\n注意：快照空间用完会失效，要监控 `lvs` 的 `Data%`；且**大量写入时快照性能会明显下降**。\n\n**缩容的坑**：ext4 缩容必须 `umount` → `e2fsck` → `resize2fs` → `lvreduce`，顺序错一步就丢数据。生产环境一般**宁可不缩**。",
+    "tags": [
+      "LVM",
+      "扩容",
+      "磁盘"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4016,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "服务器时间不对会导致什么问题？chrony 和 ntpd 怎么选？chronyc 常用命令？",
+    "answer": "**时间不同步的杀伤力远超想象**：\n\n| 问题 | 现象 |\n|---|---|\n| **证书校验失败** | TLS 握手报 `certificate not yet valid` / `expired` |\n| **日志顺序错乱** | 排障时时间线对不上，越排越乱 |\n| **分布式一致性** | 数据库主从、etcd/Kafka 的租约与超时判断失准 |\n| **TOTP/双因子登录失败** | 验证码永远不对 |\n| **定时任务错时触发** | 业务在错误的时刻执行 |\n| **计费与对账偏差** | 金融场景直接是资损 |\n\n**chrony vs ntpd**：\n\n| | chrony | ntpd |\n|---|---|---|\n| 首次同步 | **秒级** | 可能需要几分钟到几小时 |\n| 虚拟化环境 | **表现好**（能处理时钟漂移） | 容易失步 |\n| 断网恢复 | 快速校正 | 慢慢追 |\n| 现状 | **RHEL8+/现代发行版默认** | 老系统 |\n\n**结论：新系统用 chrony，老系统才用 ntpd。**\n\n**chronyc 常用命令**：\n```\nchronyc sources -v          # 看时间源状态\nchronyc sourcestats -v      # 漂移统计\nchronyc tracking            # 本机与参考源的偏差（最关键）\nchronyc makestep            # 立即强制校正（不等渐进调整）\n```\n\n**`chronyc sources` 的 `^*` 含义**：\n- `^*` = 当前选中的同步源（**必须有它**）\n- `^-` = 候选但未被选中\n- `^?` = 不可达或有异常\n\n**如果全是没有 `^*`**：说明对不上时间源。检查：\n1. UDP 123 是否被防火墙拦\n2. `/etc/chrony.conf` 里的 `server` 是否可达\n3. 虚拟机上宿主机时间本身是否准确\n\n**配置要点**（`/etc/chrony.conf`）：\n```\nserver ntp.aliyun.com iburst     # iburst 让首次同步快很多\nmaxdistance 16.0                 # 防止同步到不可信源\nmakestep 1.0 3                   # 前 3 次遇大偏差直接跳变\n```\n`makestep` 很关键：默认 chrony 只在小幅调整，偏差大时要灰度很久；**设了 `makestep 1.0 3` 开机时才敢直接跳变**。",
+    "tags": [
+      "时间同步",
+      "chrony",
+      "时区"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4017,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "用 `chmod 750 file` 后，文件的属主、属组、其他人分别拥有什么权限？",
+    "options": [
+      {
+        "key": "A",
+        "text": "属主 rwx，属组 r-x，其他人无权限"
+      },
+      {
+        "key": "B",
+        "text": "属主 rwx，属组 rwx，其他人 r--"
+      },
+      {
+        "key": "C",
+        "text": "属主 r-x，属组 r-x，其他人 ---"
+      },
+      {
+        "key": "D",
+        "text": "属主 rw-，属组 r--，其他人 ---"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "数字权限按「r=4、w=2、x=1」逐位相加，三位分别是属主/属组/其他人：7=rwx、5=r-x、0=---。速记：**逢 7 必是 rwx，5 是 r-x（能读能进不能改），4 是只读**。补充：`chmod -R` 递归时注意目录必须有 x 才能进入，只给 r 会导致无法 cd。",
+    "tags": [
+      "权限",
+      "chmod",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4018,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "以下哪些现象能说明系统正在使用 swap？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "free -h 的 Swap used 持续非 0"
+      },
+      {
+        "key": "B",
+        "text": "vmstat 1 中 si/so 两列持续非 0"
+      },
+      {
+        "key": "C",
+        "text": "某进程 /proc/<pid>/status 的 VmSwap 大于 0"
+      },
+      {
+        "key": "D",
+        "text": "load average 变高"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 不是 swap 的指标：load 高可能来自 CPU 排队、D 状态 IO 等待，与是否换页无关（虽然换页严重时也会拉高 load）。三项的组合判断：`Swap used` 非 0 说明**历史上发生过换出**（哪怕当前不活跃）；`si/so` 非 0 说明**正在进行换页**；`VmSwap` 能精确到是哪个进程被换出。生产上真正要警惕的是 B（正在不停换页），A 里少量残留页可以忽略。",
+    "tags": [
+      "swap",
+      "判断",
+      "指标"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4019,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "`iostat -x` 输出里，判断磁盘是否真有瓶颈，最该看哪两个指标？",
+    "options": [
+      {
+        "key": "A",
+        "text": "%util 和 tps"
+      },
+      {
+        "key": "B",
+        "text": "await 和 aqu-sz（平均等待与队列长度）"
+      },
+      {
+        "key": "C",
+        "text": "kB_read/s 和 kB_wrtn/s"
+      },
+      {
+        "key": "D",
+        "text": "rrqm/s 和 wrqm/s"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "`%util` 在现代 NVMe/SSD 上很容易常年 100% 却完全健康（深度队列并发处理），单看它会误判。`await`（单次 IO 平均耗时）和 `aqu-sz`（平均排队数）才反映真实体验。经验阈值：机械盘 await > 20ms、SSD > 5ms、NVMe > 1ms 就该查。带宽类指标（C）只能说明流量大小，不能说明慢。",
+    "tags": [
+      "iostat",
+      "IO瓶颈",
+      "指标"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4020,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "关于 systemd 的 unit 依赖关系，以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "After= 只控制启动顺序，对方失败不影响自己"
+      },
+      {
+        "key": "B",
+        "text": "Requires= 是强依赖，对方启动失败自己也会被拉倒"
+      },
+      {
+        "key": "C",
+        "text": "WantedBy= 决定 systemctl enable 后软链到哪个 target"
+      },
+      {
+        "key": "D",
+        "text": "只要写了 After=network.target，网络就一定已就绪"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是经典误区：`network.target` 只表示「网络子系统已启动」，**不保证网卡拿到 IP**。要等网络真正可用必须用 `After=network-online.target` 并且 `Wants=network-online.target`（两者都要，缺一不可）。另一个高频坑：改了 unit 文件必须 `systemctl daemon-reload`，否则改动不生效。",
+    "tags": [
+      "systemd",
+      "依赖",
+      "After"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4021,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`df -h` 显示磁盘使用率 100%，但 `du -sh /*` 加起来只有 40%，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "df 统计有 bug"
+      },
+      {
+        "key": "B",
+        "text": "有进程删除了文件但仍持有句柄，空间没有释放"
+      },
+      {
+        "key": "C",
+        "text": "文件系统有坏块"
+      },
+      {
+        "key": "D",
+        "text": "需要执行 fsck"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "Linux 的文件只有在**最后一个句柄和最后一个硬链接都释放**后才真正删除。进程删了日志文件但没重启，空间就一直被占着。排查：`lsof | grep deleted` 或 `ls -l /proc/*/fd | grep deleted`。处理：重启或优雅 reload 那个进程（如 `systemctl reload nginx`）。另一种可能：空间被挂载点覆盖（比如 `/data` 下又挂了一块盘，原来的文件被挡住了）——用 `mount --bind` 或先 umount 检查。",
+    "tags": [
+      "磁盘满",
+      "deleted",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4022,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "排查「系统变慢但 CPU/内存/磁盘看起来都正常」，以下哪些方向值得查？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "大量 D 状态进程（可能卡在 NFS/iSCSI 等网络存储上）"
+      },
+      {
+        "key": "B",
+        "text": "dmesg 里的硬件错误、网卡 down/up、OOM 记录"
+      },
+      {
+        "key": "C",
+        "text": "DNS 解析超时（应用侧每请求多几百毫秒）"
+      },
+      {
+        "key": "D",
+        "text": "把 CPU 频率调到最高即可解决"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是无依据的猜测。这类「指标正常但就是慢」的问题，真正的高频元凶是：①**D 状态**——NFS 服务器失联会让进程卡在内核态，`kill -9` 都杀不掉，load 飙升但 CPU 空闲；②**DNS**——`/etc/resolv.conf` 配了不可达的 nameserver，每次解析等 5 秒超时；③**内核/硬件事件**——`dmesg -T` 里的链路抖动、磁盘重传；④**上下文切换**——`vmstat` 的 `cs` 异常高说明锁竞争严重。排查顺序：`vmstat 1` → `dmesg -T | tail -50` → `cat /proc/sys/kernel/...`。",
+    "tags": [
+      "变慢",
+      "D 状态",
+      "DNS"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4023,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "如何找出占用 CPU 最高的线程，并定位到具体代码？",
+    "answer": "**这是 JVM 应用「CPU 100%」排查的标准四步**，对任何多线程程序都适用。\n\n**Step 1：找进程**\n```\ntop -c              # 按 P 排序，记下 PID\n# 或用 ps 精准排序\nps -eo pid,comm,%cpu --sort=-%cpu | head\n```\n\n**Step 2：找线程**\n```\ntop -H -p <pid>                    # 交互式看线程\nps -mp <pid> -o THREAD,tid,time    # 全部线程\n```\n记下**最热的线程 TID**。\n\n**Step 3：转成十六进制**\n```\nprintf '%x\\n' <tid>\n```\n得到如 `1a2b`。\n\n**Step 4：抓栈**\n\n**Java 应用**（最常见的场景）：\n```\njstack <pid> > /tmp/jstack.txt\ngrep -A 30 'nid=0x1a2b' /tmp/jstack.txt\n```\n看那个线程在跑什么方法——通常是死循环、正则回溯、或大对象序列化。\n\n**C/其他应用**：\n```\ngdb -p <pid> -batch -ex 'thread apply all bt' < /dev/null\nstrace -p <pid> -c -f            # 看系统调用分布\nperf top -p <pid>                # 直接看热点函数（需要 perf）\n```\n\n**高频根因**：\n1. **死循环 / 忙等**（代码 bug，`while(true)` 里没有 sleep）\n2. **正则回溯爆炸**（`(a+)+b` 匹配长字符串，CPU 直接打满）\n3. **GC 线程狂转**（`jstack` 里看到 `GC task thread`，说明是**内存问题伪装成 CPU 问题**）\n4. **加密/压缩**（大量 TLS 握手、日志压缩）\n\n**关键提醒**：如果 `jstack` 里最热的是 **GC 线程**，那就别查代码了——去查内存（堆太小、对象创建太快、Full GC 频繁）。`jstat -gcutil <pid> 1000` 一看就明白。",
+    "tags": [
+      "CPU 100%",
+      "jstack",
+      "定位"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4024,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "如何查看和修改文件描述符、进程数等资源限制？各层的优先级是什么？",
+    "answer": "**三层限制，层层生效取最小**：\n\n| 层级 | 查看 | 修改 |\n|---|---|---|\n| **进程级（当前 shell）** | `ulimit -a` | `ulimit -n 65535`（**只对当前 shell 及其子进程**） |\n| **用户级（登录时）** | `ulimit -Hn`、`-Sn` | `/etc/security/limits.conf` + `/etc/security/limits.d/*.conf` |\n| **systemd 服务级** | `systemctl show <svc> -p LimitNOFILE` | unit 里写 `LimitNOFILE=65535` |\n| **系统级（全局）** | `cat /proc/sys/fs/file-max`、`file-nr` | `sysctl fs.file-max=...` |\n\n**优先级与坑**：\n\n1. **systemd 服务不读 `limits.conf`**！这是最大的坑。`limits.conf` 只对 PAM 登录会话（su/sudo/ssh）生效。systemd 起的服务要改 **unit 文件**的 `LimitNOFILE=`，或改 `/etc/systemd/system.conf` 的 `DefaultLimitNOFILE=`。\n2. `soft` 不能超过 `hard`；`hard` 只有 root 能改。\n3. **root 用户不受 limits.conf 限制**——root 的 pam_limits 默认被跳过（除了 `root` 用户名的显式条目）。\n\n**limits.conf 写法**：\n```\n*      soft  nofile  65535\n*      hard  nofile  65535\n*      soft  nproc   32768\nroot   soft  nofile  65535\n```\n**需要重新登录才生效**（新开 session）。\n\n**验证是否真的生效**：\n```\n# 不要在改成根 shell 里验证，要看目标进程的\ncat /proc/<pid>/limits | grep 'open files'\n```\n\n**「Too many open files」排查顺序**：\n1. `cat /proc/<pid>/limits` 看上限\n2. `ls /proc/<pid>/fd | wc -l` 看实际用了多少\n3. `lsof -p <pid> | grep -c 'REG\\|sock'` 看是不是有泄漏\n4. 是**泄漏**就修代码；是**正常量大**才调上限",
+    "tags": [
+      "ulimit",
+      "文件描述符",
+      "systemd"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4025,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "logrotate 的工作原理是什么？配置写错会导致什么问题？",
+    "answer": "**工作原理**：由 cron / systemd timer（默认每日一次）触发 `logrotate`，它读 `/etc/logrotate.conf` 与 `/etc/logrotate.d/*`，按规则切割、压缩、删除旧日志。\n\n**最关键的一件事：它不会告诉你应用「重新打开日志文件」。**\n\n```\n/var/log/app/*.log {\n    daily\n    rotate 7\n    compress\n    delaycompress\n    missingok\n    notifempty\n    create 0640 www-data www-data\n    sharedscripts\n    postrotate\n        systemctl reload nginx > /dev/null 2>&1 || true\n    endscript\n}\n```\n\n**为什么必须 postrotate**：logrotate 把 `app.log` 重命名为 `app.log.1` 后，应用还拿着**旧的 fd** 往 `app.log.1` 里写。不 reload 的话，新 `app.log` 永远是 0 字节，磁盘空间也不会释放（因为旧文件的句柄还被占着）。\n\n**验证的两个经典症状**：\n- `ls -l /proc/<pid>/fd | grep deleted` 里出现 `app.log.1 (deleted)` → **典型的没 reload**\n- `df` 没降下来但日志目录已经切了\n\n**常用参数**：\n\n| 参数 | 作用 |\n|---|---|\n| `daily/weekly/monthly` | 切割周期 |\n| `size 100M` | 按大小切（可与周期并存，两者满足任一个就切） |\n| `rotate N` | 保留 N 个旧文件 |\n| `compress` | gzip 压缩 |\n| `copytruncate` | 先复制再清空（**不 reload 的替代方案**，但会有丢日志窗口） |\n| `maxage` | 超过 N 天强制删除 |\n| `missingok` / `notifempty` | 文件不存在不报错 / 空文件不切 |\n\n**注意 `copytruncate` 的代价**：copy 和 truncate 之间新写入的日志会丢，且大文件时会有一段时间占双倍空间。**优先用 postrotate + reload，实在不行才用 copytruncate**。\n\n**手动测试**（不等到 cron 时间）：\n```\nlogrotate -d /etc/logrotate.d/app     # -d 只演练不执行（强烈建议先跑这个）\nlogrotate -f /etc/logrotate.d/app     # -f 强制执行\n```",
+    "tags": [
+      "logrotate",
+      "日志轮转",
+      "reload"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4026,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "内核参数 `net.core.somaxconn`、`net.ipv4.tcp_max_syn_backlog`、`net.ipv4.tcp_abort_on_overflow` 分别控制什么？",
+    "answer": "**三个参数描述的是「TCP 建连的两个队列溢出」。**\n\n**两个队列**：\n```\nSYN 队列（半连接）   ← 收到 SYN，回 SYN+ACK，等第三次握手\ntcp_max_syn_backlog   控制它的大小\n        ↓ 握手完成\nACCEPT 队列（全连接）  ← 已完成握手，等应用 accept()\nsomaxconn + backlog   控制它的大小（取二者较小值）\n```\n\n| 参数 | 控制 | 溢出后果 |\n|---|---|---|\n| **`net.core.somaxconn`** | ACCEPT 队列上限 | 队列满 → 新连接被**丢弃**（客户端看到握手成功但应用没响应，或超时） |\n| **`net.ipv4.tcp_max_syn_backlog`** | SYN 队列上限 | 队列满 → SYN 被丢弃，客户端**重传 SYN**（表现为连接慢，但不是失败） |\n| **`net.ipv4.tcp_abort_on_overflow`** | ACCEPT 队列满时的行为 | `0`（默认）= **静默丢弃**；`1` = 直接回 RST，客户端立刻失败 |\n\n**为什么 `tcp_abort_on_overflow` 默认是 0**：\n- 回 RST 会让客户端立刻报错，看似「快失败」\n- 但很多客户端会重试，而**静默丢弃给了应用一点时间消化**——服务端往往只是瞬时忙，客户端重传后就能连上\n- 所以生产上通常保持 0；只有当「快速失败」比「大量重试」更可控时才设 1\n\n**调参建议**：\n```\nnet.core.somaxconn = 65535\nnet.ipv4.tcp_max_syn_backlog = 8192\n```\n注意 **`somaxconn` 只是上限**，应用自己的 `listen()` backlog 参数也要够大。**两者取较小值**——Nginx 的 `listen ... backlog=65535`、Redis 的 `tcp-backlog`、Tomcat 的 `acceptCount` 都要一起调，只调内核参数没用。\n\n**怎么看是否真溢出**：\n```\nnetstat -s | grep -i 'listen\\|overflow\\|SYNs to LISTEN'\nss -lnt                                   # Send-Q 列就是 backlog 上限，Recv-Q 是当前排队数\n```\n`ss -lnt` 的 **Recv-Q 接近 Send-Q** 就是正在溢出。",
+    "tags": [
+      "TCP队列",
+      "somaxconn",
+      "内核参数"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4027,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "如何安全地重启一台生产服务器？需要提前确认什么？",
+    "answer": "**核心原则：重启前把「回来之后能不能自己活」确认清楚。**\n\n**一、确认现在能不能重启**\n\n| 检查项 | 命令 | 为什么 |\n|---|---|---|\n| 还有谁连着 | `w`、`ss -tn state established` | 避免打断别人的运维操作 |\n| 业务已切走 | 从 LB 摘流量、确认无请求 | 否则重启期间全部报错 |\n| 有无备份任务在跑 | `ps aux \\| grep -E 'tar\\|rsync\\|mysqldump'` | 中断会导致半途的备份不可用 |\n| 集群状态健康 | 副本集/集群有主、数据已同步 | 重启后能正常加入 |\n| 挂载点都正常 | `df -h`、`mount \\| grep -v proc` | 有 stale NFS 挂载会卡在 shutdown |\n\n**二、确认「重启后能自动起来」**\n\n这是最容易翻车的地方：\n```\nsystemctl list-unit-files --state=enabled    # 服务是否设了开机启动\nsystemctl is-enabled nginx mysql docker\ncat /etc/fstab                              # 有没有写错（错一条就进 emergency 模式）\nmount -a --fake --verbose                   # 演练 fstab，不实际挂载\n```\n\n**`/etc/fstab` 是重启事故的第一杀手**：写错一个 UUID 或加了一个不可达的 NFS，机器就卡在 emergency mode，只能去机房。**关键点：非根挂载一定加 `nofail`**：\n```\nUUID=xxx /data xfs defaults,nofail 0 0\n```\n\n**三、重启前留退路**\n```\n# 1. 备份关键配置\ncp /etc/fstab /etc/fstab.bak\ntar -czf /root/conf-$(date +%F).tar.gz /etc/nginx /etc/mysql\n# 2. 确认有无 IPMI/带外管理（否则起不来就瞎了）\n# 3. 确认有人能在机房/控制台操作\n```\n\n**四、重启与验证**\n```\nshutdown -r +5 \"维护重启，5 分钟后执行\"    # 给人留反应时间\n# 起来之后\nuptime; systemctl list-units --failed; df -h; ss -lntup\n```\n\n**五、最容易被忘的一条**：**先 `systemctl daemon-reload` 再重启**。改过 unit 文件但没 reload，重启后服务可能起不来（或起的是旧配置）。",
+    "tags": [
+      "重启",
+      "fstab",
+      "维护"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4028,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "XFS 和 ext4 怎么选？各自的关键差异是什么？",
+    "answer": "**结论先行**：**大容量/大文件/高并发写 → XFS；小文件多/需要缩容 → ext4**。\n\n| 维度 | XFS | ext4 |\n|---|---|---|\n| **inode** | **动态分配**，不会 inode 耗尽 | 格式化时固定，小文件多会耗尽 |\n| **大文件** | 强（支持超大文件、延迟分配） | 一般 |\n| **并发写** | 强（分配组 AG，多核并行） | 有全局锁瓶颈 |\n| **缩容** | **不支持**（只能扩） | 支持（必须卸载） |\n| **扩容** | 在线 `xfs_growfs` | 在线 `resize2fs` |\n| **修复** | `xfs_repair`（通常很快） | `e2fsck`（大盘可能几小时） |\n| **默认发行版** | RHEL/CentOS 7+ | Debian/Ubuntu 传统上 |\n\n**为什么 CentOS 7 改成 XFS 默认**：大数据量下 inode 动态分配 + AG 并行是决定性优势，`e2fsck` 在 TB 级盘上耗时过长也是重要原因。\n\n**实际选择建议**：\n- **数据库盘、日志盘、容器存储** → XFS（大盘、大文件、并发写）\n- **海量小文件**（如邮件队列、session 文件） → XFS 的 inode 动态更安全；但**目录项多时 ext4 的 htree 也够用**，两者差异不大\n- **需要缩容的场景**（虚拟机磁盘调整）→ ext4\n- **已有环境别轻易换**：换文件系统意味着重装/迁移\n\n**`mkfs` 时的关键参数**：\n```\n# XFS：只影响日志与条带，inode 不用管\nmkfs.xfs -f -l size=128m -d agcount=8 /dev/sdb\n# ext4：小文件多的场景必须调大 inode 数\nmkfs.ext4 -i 65536 -m 1 /dev/sdb\n```\n`-i 65536` = 每 64KB 一个 inode（默认 16KB），`-m 1` = 保留块比例从 5% 降到 1%（大容量盘必调，否则白扔几十 GB）。",
+    "tags": [
+      "XFS",
+      "ext4",
+      "选型"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4029,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "sudo 的配置怎么理解？如何给用户有限的提权？",
+    "answer": "**`/etc/sudoers` 的一行结构**：\n```\n用户  主机=(可切换到的用户) 命令\nroot  ALL=(ALL:ALL)          ALL          # 完整的 root 权限\n```\n\n**给「有限提权」的三种做法**：\n\n**1. 限定命令**\n```\n# 只能重启 nginx\ndeploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx\n```\n注意：**命令要写绝对路径**，且结尾不加通配符。写 `systemctl *` 等于给全部 systemd 控制权（`systemctl edit` 就能改服务、拿 root）。\n\n**2. 用命令别名**\n```\nCmnd_Alias SVC = /usr/bin/systemctl restart nginx, /usr/bin/systemctl reload nginx\nCmnd_Alias LOG = /usr/bin/journalctl -u nginx *\ndeploy ALL=(root) NOPASSWD: SVC, LOG\n```\n`LOG` 里带 `*` 也是危险的（`journalctl -u nginx -o ...` 可能有注入），**能用白名单就不写通配符**。\n\n**3. 按组管理**（推荐）\n```\n%deploy ALL=(root) NOPASSWD: SVC\n```\n用户加入 `deploy` 组即可，避免逐人维护。\n\n**必须知道的四条安全规则**：\n\n1. **永远用 `visudo` 编辑**，它会在保存前做语法检查。写错一行 `sudoers` = 所有人无法 sudo，包括 root 补救都困难\n2. **`!requiretty`**：老系统默认要求 tty，脚本里 sudo 会失败，加 `Defaults:deploy !requiretty`\n3. **`NOPASSWD` 要谨慎**：免密意味着 token/SSH key 泄漏即提权。生产上更稳妥的是**保留密码 + 记录日志**\n4. **命令路径要防绕过**：`/usr/bin/vim` 给了等于给 root（`:!sh` 就能逃逸），**间接提权的编辑器、分页器、打包工具都不能给**\n\n**审计**：\n```\nsudo -l -U deploy            # 看某人有什么权限\nsudo -l                      # 看自己\ngrep -r 'NOPASSWD' /etc/sudoers /etc/sudoers.d/\n```\n**记住**：`/etc/sudoers.d/*` 里的文件若有语法错误同样会锁死 sudo，也要用 `visudo -f`。",
+    "tags": [
+      "sudo",
+      "sudoers",
+      "提权"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4030,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "内核报 hung_task、soft lockup、blocked for more than 120 seconds，分别说明什么？",
+    "answer": "这三个是**内核卡死类告警**，含义完全不同，处理思路也不同。\n\n| 告警 | 含义 | 典型原因 |\n|---|---|---|\n| **`task X blocked for more than 120 seconds`**（hung_task） | 某进程在 **D 状态**超过 `hung_task_timeout_secs`（默认 120s） | IO 卡死：坏盘、NFS/iSCSI 失联、驱动 bug |\n| **`soft lockup`** | 某 CPU **内核态**跑死循环超过 `watchdog_thresh`（默认 22s），期间无法调度 | 内核驱动 bug、虚拟机 vCPU 被宿主机抢占 |\n| **`hard lockup`** | 更严重：CPU 连中断都响应不了，NMI watchdog 触发 | 内核死锁、硬件故障 |\n| **`blocked for more than 120s`**（D 状态） | 同 hung_task | 详见下方分类 |\n\n**关键区分**：\n- **soft lockup** = **CPU 忙**，在跑死循环，能响应中断但没法调度别的进程\n- **hung task** = **CPU 闲**，进程卡在等 IO，什么也不干\n- 看 `dmesg` 里的调用栈判断方向：栈里有 `sync`、`io_schedule`、`nfs_*` → IO 类；栈在某个驱动函数里 → 驱动类\n\n**排查思路**：\n\n```\ndmesg -T | grep -iE 'hung_task|lockup|blocked for'\ncat /proc/sys/kernel/hung_task_timeout_secs\n```\n\n**hung_task / D 状态卡死的高频根因**：\n1. **NFS/iSCSI 存储失联**：`mount` 里有 stale 挂载，所有访问它的进程全卡 D。**只能 umount -f 或重启**\n2. **磁盘坏道 / 扇区重试**：`dmesg` 有 `I/O error`、`sector` 相关记录\n3. **RAID 卡电池失效进写穿模式**（性能骤降，不致命）\n4. **云盘抖动**：云厂商侧限流，`await` 爆表\n\n**soft lockup 的高频根因**：\n1. **虚拟机 CPU 抢占**：宿主机超卖，`steal` 率高 → 调 `watchdog_thresh` 或降低超卖\n2. **内核模块 bug**，需要升级内核\n3. **容器内大量 `fork`/`clone`**\n\n**缓解手段**（不改根因）：\n```\n# 调大阈值，避免误报（治标）\nkernel.hung_task_timeout_secs = 300\nkernel.watchdog_thresh = 60\n```\n**不建议直接关 watchdog**（`kernel.watchdog_thresh=0`）—— 那只是让日志消失，机器该卡还是卡。",
+    "tags": [
+      "hung_task",
+      "lockup",
+      "内核"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4031,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "NUMA 是什么？它对性能有什么影响？为什么有些服务要绑核？",
+    "answer": "**NUMA（非统一内存访问）**：多路 CPU 时，每个 CPU 有自己的**本地内存**，访问本地内存快、访问其他 CPU 的内存（远端）慢，延迟差可达 1.5-2.5 倍。\n\n**为什么是个问题**：\n```\nNUMA Node 0: CPU0 CPU1  +  本地内存 64G\nNUMA Node 1: CPU2 CPU3  +  本地内存 64G\n```\n如果进程在 CPU0 上跑，但内存被分配在 Node 1 → 每次访存都要**跨 QPI/UPI 总线**，数据库、Redis 这类内存密集型服务性能会明显掉。\n\n**排查命令**：\n```\nnumactl --hardware          # 有几个 node、各自内存\nnumastat                    # 各 node 的命中/未命中统计\nnumastat -p <pid>           # 具体进程的分布（关键）\n```\n`numastat` 里 **`numa_foreign` 高**说明跨节点访问频繁，就是问题所在。\n\n**三种应对手段**：\n\n**1. 让内核自己优化（默认行为）**\n内核会尽量把内存分配在**正在运行的 CPU 所属节点**。大多数服务无需干预。\n\n**2. 显式绑核 + 绑定内存（对性能敏感的数据库）**\n```\nnumactl --cpunodebind=0 --membind=0 ./mysqld      # 只用 Node 0 的 CPU 和内存\nnumactl --interleave=all ./redis-server           # 或交叉分配，避免单节点爆满\n```\n注意 `--membind` 会**限制可用内存总量**（只有该节点的一半），进程可能 OOM，要评估。\n\n**3. 关闭 NUMA（简单粗暴）**\n```\n# 内核参数加 numa=off\n# 或 BIOS 里设 Node Interleaving = Enabled\n```\n代价是抹掉了本地/远端差异，平均下来都变「中等慢」，适合负载无法预测的场景。\n\n**K8s 场景**：1.21+ 有 **CPU Manager 的 static 策略** + **Topology Manager**，能给 Guaranteed QoS 的 Pod 做 NUMA 亲和。配置：`--cpu-manager-policy=static` + `--topology-manager-policy=single-numa-node`。\n\n**一句话**：**只有内存密集型、且观察到 `numa_foreign` 很高的服务才需要动 NUMA**，其他场景让内核自己处理即可，乱绑核反而降低整体吞吐。",
+    "tags": [
+      "NUMA",
+      "绑核",
+      "性能"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4032,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "SELinux 是什么？三种模式有什么区别？为什么它经常成为「莫名其妙访问被拒」的原因？",
+    "answer": "**SELinux 是强制访问控制（MAC）**：除了传统的「用户/属组/权限位」（DAC），再加一层「**进程能访问什么类型的资源**」的策略，**root 也受约束**。\n\n**三种模式**：\n\n| 模式 | 行为 | 用途 |\n|---|---|---|\n| **Enforcing** | 拒绝并记录到审计日志 | 生产默认 |\n| **Permissive** | **只记录不拒绝**（等于只观察） | 排查/调试（**定位问题的首选**） |\n| **Disabled** | 完全关闭 | 不推荐，且切换需要重启 + 重新打标签 |\n\n**为什么它经常是「莫名其妙被拒」的元凶**：\n\n1. **改端口被拦**：Nginx 从 80 改到 8080 → SELinux 只允许 httpd 监听特定端口类型，直接 `Permission denied`\n2. **改了网站目录**：把站点放到 `/data/www` → 文件标签不是 `httpd_sys_content_t`，Nginx 读不到，报 403\n3. **容器挂载宿主机目录**：卷的内容标签不对，容器内进程访问被拒\n\n**排查的标准流程**：\n\n```\n# 1. 确认当前状态\ngetenforce                          # Enforcing / Permissive / Disabled\nsestatus\n\n# 2. 看有没有被拒记录（关键）\nausearch -m avc -ts recent\ndmesg | grep -i avc                 # 老系统也可看这里\n\n# 3. 临时判定：切 permissive 观察是否恢复\nsetenforce 0\n# 若问题消失 → 确认是 SELinux；切回\nsetenforce 1\n```\n\n**正确修复方式（不是关掉它）**：\n```\n# 允许端口（而非关 SELinux）\nsemanage port -a -t http_port_t -p tcp 8080\n# 修正文件标签\nrestorecon -Rv /data/www\nchcon -t httpd_sys_content_t /data/www/index.html    # 临时，restorecon 会还原\n# 允许布尔开关\ngetsebool -a | grep httpd\nsetsebool -P httpd_can_network_connect on\n```\n\n**核心命令速记**：**`ausearch -m avc`** 是唯一的入口，它告诉你「谁被拒绝访问了什么」，然后再决定是加端口、改标签还是开布尔值。\n\n**面试要点**：不要一上来就说「关掉 SELinux」。正确回答是**先用 permissive 定位，再用 semanage/restorecon/布尔值做最小放行**。",
+    "tags": [
+      "SELinux",
+      "AVC",
+      "访问被拒"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4033,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "网卡 bond 有哪些模式？生产上最常用哪种？为什么？",
+    "answer": "**七种模式（mode 0-6）**，按「要不要交换机配合」分两类。\n\n| mode | 名称 | 交换机需配置 | 带宽叠加 | 冗余 |\n|---|---|---|---|---|\n| **0** | balance-rr（轮询） | 需 LACP/静态聚合 | ✅ 是 | ✅ |\n| **1** | **active-backup** | **不需要** | ❌ 否 | ✅ |\n| 2 | balance-xor | 需配置 | ✅ | ✅ |\n| **3** | broadcast | 需配置 | ❌ | ✅（全发） |\n| **4** | **802.3ad（LACP）** | **必须配 LACP** | ✅ 是 | ✅ |\n| 5 | balance-tlb | 不需要 | 部分（仅发送） | ✅ |\n| 6 | balance-alb | 不需要 | 部分 | ✅ |\n\n**生产上最常用的两种**：\n\n**mode=4（LACP）**——性能与冗余兼得，**要求交换机侧真的配了 `channel-group mode active`**。没配的话 bond 起不来，网卡显示 `down`。\n\n**mode=1（active-backup）**——**最保险**，无需交换机配合，插上就能用。代价是**不叠加带宽**（一主一备），只有冗余。\n\n**为什么很多人最后选 mode=1**：\n1. 跨部门沟通成本低（不用找网络组改交换机）\n2. **虚拟化/云环境根本不允许 LACP**（云主机网卡不支持）\n3. 单口 10G 往往已经够用，双口叠加的收益小于配置复杂度\n\n**常见坑**：\n\n1. **mode 0/2/4 下单个 TCP 连接不会变快**：链路聚合是按「流」哈希分发的，**同一条 TCP 连接只能走一条物理链路**。想单连接提速只能换单口更快的网卡\n2. **`miimon` 必须配**（如 `miimon=100`），否则断链检测不生效，切不过去\n3. **mode=4 的两个口速率必须一致**\n4. **交换机端口要成组同一个 VLAN**\n\n**查看状态**：\n```\ncat /proc/net/bonding/bond0        # 看当前模式、活动口、链路状态\nip -br link show bond0\n```\n输出里 `MII Status: up` 和 `Currently Active Slave:` 是排障关键——**活动口是哪个、另一端是否 down**。",
+    "tags": [
+      "bond",
+      "网卡",
+      "高可用"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4034,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "tar 命令的常用参数有哪些？如何做增量备份？",
+    "answer": "**最常用的四条命令**（记住这四个够用 90%）：\n\n```\n# 打包（条件压缩）\ntar -czf backup.tar.gz /data          # z=gzip，最快\n# 解开\ntar -xzf backup.tar.gz -C /restore    # -C 指定解到哪\n# 只看内容不解\ntar -tzf backup.tar.gz | head\n# 追加到已有包（只能对未压缩的 .tar）\ntar -rf backup.tar newfile\n```\n\n**参数助记**：`c`=create `x`=extract `t`=list `z`=gzip `j`=bzip2 `J`=xz `f`=file `v`=verbose `C`=指定目录 `p`=保留权限。\n\n**压缩算法对比**：\n\n| 参数 | 算法 | 压缩率 | 速度 | 建议 |\n|---|---|---|---|---|\n| `-z` | gzip | 中 | 快 | **默认选择** |\n| `-j` | bzip2 | 高 | 慢 | 已过时 |\n| `-J` | xz | **最高** | **最慢** | 归档长期保存 |\n| 无 | 不压缩 | — | 最快 | 极大数据，配合外部压缩 |\n\n**增量备份**（tar 本身只支持「按时间戳」的粗糙增量）：\n```\n# -N 只打包比某个时间新的文件\ntar -czf inc.tar.gz -N \"2025-01-01\" /data\n# -g 快照文件，支持真正的增量（记录上次备份的状态）\ntar -czf full.tar.gz -g /var/backup/snap /data      # 首次=全量\ntar -czf inc.tar.gz  -g /var/backup/snap /data      # 后续=增量\n```\n**`-g` 的坑**：恢复时必须**从全量开始按顺序**恢复，中间的增量包少一个就断链。生产上更推荐 `rsync --link-dest` 做增量（空间省且能直接访问）。\n\n**三个必须知道的细节**：\n1. **`-C` 要放在源路径之前**，`tar -xzf a.tar -C /dst` 才是对的；`tar -C /dst -xzf a.tar` 也行但容易记错\n2. **`--exclude` 要写在源目录前面**，否则不生效\n3. **备份到管道时要 `--checkpoint` 看进度**，几 TB 的包没进度会让人以为卡死\n\n**验证备份可用性**（最重要但最常被跳过的一步）：\n```\ntar -tzf backup.tar.gz > /dev/null && echo OK\ntar -dzf backup.tar.gz                    # 与文件系统比对，能发现损坏\n```",
+    "tags": [
+      "tar",
+      "备份",
+      "增量"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4035,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 信号是什么？SIGTERM、SIGKILL、SIGHUP 有什么区别？为什么 kill -9 要慎用？",
+    "answer": "**信号是内核/进程间传递的异步通知**，进程可以选择处理、忽略或使用默认行为。\n\n**三个必须分清的信号**：\n\n| 信号 | 编号 | 可否被捕获 | 用途 |\n|---|---|---|---|\n| **SIGTERM** | 15 | **可以** | 「请优雅退出」——**默认的 kill 就是它** |\n| **SIGKILL** | 9 | **不可以** | 强杀，内核直接回收，进程没有任何机会 |\n| **SIGHUP** | 1 | 可以 | 终端断开；**守护进程习惯用它做「重载配置」** |\n| SIGINT | 2 | 可以 | Ctrl+C |\n| SIGQUIT | 3 | 可以 | Ctrl+\\，通常触发 core dump |\n| SIGSEGV | 11 | 可以（但通常来不及） | 段错误 |\n\n**为什么 `kill -9` 要慎用**：\n\n1. **不给清理机会**：进程无法 flush 缓冲区、无法关闭文件句柄、无法通知下游。数据库可能留下未完成的事务，日志可能丢最后几行\n2. **`-9` 杀不掉 D 状态进程**：进程卡在内核态 IO 上，信号只在返回用户态时才处理，所以 `kill -9` 毫无作用。这种情况要解决的是 IO 本身\n3. **服务重启时会带着脏状态**：临时文件、锁文件、共享内存段残留，可能导致下次启动失败\n4. **掩盖了真正的问题**：进程为什么卡住？`-9` 之后就查不到了\n\n**正确的处置顺序**：\n```\nkill <pid>              # SIGTERM，等 5-10 秒\n# 还没退\nkill -HUP <pid>         # 若是守护进程可能需要重载而不是退出\n# 确认进程真卡住了\ncat /proc/<pid>/status | grep State     # 是不是 D\n# 最后才\nkill -9 <pid>\n```\n\n**`systemctl stop` 的优雅退出逻辑**：发 SIGTERM → 等 `TimeoutStopSec`（默认 90s）→ **才发 SIGKILL**。所以**要给应用配足停机时间**，否则等于被强杀。\n\n**常用排查**：\n```\nkill -l                    # 列出所有信号\ncat /proc/<pid>/status | grep SigCgt    # 该进程捕获了哪些信号（位图）\nstrace -p <pid> -e trace=signal          # 观察信号接收\n```",
+    "tags": [
+      "信号",
+      "SIGTERM",
+      "kill -9"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4036,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "`vm.overcommit_memory` 三个取值分别是什么？为什么 Redis 要求设成 1？",
+    "answer": "**它控制内核对「内存分配请求」的态度**——是直接答应，还是先算算账。\n\n| 取值 | 含义 | 行为 |\n|---|---|---|\n| **0** | 启发式（默认） | 内核估算，明显不合理的请求会被拒 |\n| **1** | **总是答应** | 只要不超过「提交上限」就批准，**不做可行性检查** |\n| **2** | 严格 | 允许的提交总量 ≤ `swap + RAM × overcommit_ratio%`，**超了就拒** |\n\n**关键概念：虚拟内存 ≠ 物理内存**。`malloc(1GB)` 只是「预订」，内核可以给一整块虚拟地址而不实际分配物理页（**延迟分配，lazy allocation**）。真正分配发生在**首次写入**（page fault）时。\n\n**为什么 Redis 要求 `overcommit_memory = 1`**：\n\nRedis 做 **BGSAVE / AOF rewrite 时会 fork 子进程**。fork 需要「复制」父进程的地址空间——但不会真复制（**写时复制 COW**），只是把页表标成共享。\n\n问题在于：**fork 时内核要评估「这个请求是否合理」**。如果父进程用了 10GB，`overcommit_memory=0/2` 可能判定「再要 10GB 不现实」→ **fork 直接失败**。\n\n失败后果：\n```\nCan't save in background: fork: Cannot allocate memory\n```\n**注意**：Redis 主进程可能只用了 10GB，但 fork 视角下要「预留 10GB」，而机器总内存 16GB → 判定不合理 → 拒绝。实际因为 COW，真需要的内存远小于这个数。\n\n所以官方明确要求：\n```\nvm.overcommit_memory = 1\n```\n**这不是为了「让 Redis 多吃内存」，而是为了让 fork 不被误判拒绝。**\n\n**设成 1 的风险与缓解**：\n- 风险：过度承诺后内存真不够 → **OOM Killer 出手**\n- 缓解：给 Redis 设 `maxmemory`（如物理内存 60%），并配 `maxmemory-policy`，让它在被 OOM 之前自己淘汰\n\n**验证**：\n```\ncat /proc/sys/vm/overcommit_memory\ncat /proc/meminfo | grep -i commit        # CommitLimit / Committed_AS\n```\n`Committed_AS / CommitLimit` 超过 100% 时，在 mode=2 下新分配会直接失败。",
+    "tags": [
+      "overcommit",
+      "fork",
+      "Redis"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4037,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "时区、locale、字符集在 Linux 里是三个独立的东西吗？各有什么坑？",
+    "answer": "**是三个完全独立的东西**，混在一起是大量「莫名其妙」故障的根源。\n\n| 概念 | 控制什么 | 配置方式 |\n|---|---|---|\n| **时区（timezone）** | 系统时间如何显示 | `/etc/localtime`、`timedatectl set-timezone` |\n| **locale** | 语言、日期/数字/货币格式、字符分类 | `LANG`、`LC_*`、`/etc/locale.conf` |\n| **字符集（codeset）** | 字节 ↔ 字符的映射 | locale 里的 `.UTF-8` 后缀 |\n\n**关键区分**：\n```\ndate                                  # 受时区影响\necho $LANG                           # locale\ndate +%s                              # 时间戳不受时区影响\n```\n**内核时钟永远是 UTC**，时区只在「显示」时起作用。\n\n**三个高频坑**：\n\n**1. 时区对不对和「时间准不准」是两件事**\n```\ntimedatectl\n#   Time zone: Asia/Shanghai (CST, +0800)   ← 时区\n#   NTP synchronized: yes                    ← 时间同步（另一回事）\n```\n时区对了但 NTP 没同步 → 时间仍然错；NTP 准了但时区错 → 日志还是差 8 小时。**两个都要检查**。\n\n**2. `LANG=C` 导致中文乱码 / 排序错误**\n```\nLANG=C sort file           # 按字节排序，中文会乱\nLANG=zh_CN.UTF-8 sort file # 按语言排序\n```\n脚本里**用 `LC_ALL=C` 是正确做法**（保证排序/比较稳定可预测），但**输出给用户的中文内容不能用 C locale**。\n\n**3. 容器里的 locale 缺失**\n`alpine` 默认只有 `C.UTF-8`，`locale -a` 看不到 `zh_CN.UTF-8`。此时：\n- Java 应用读中文文件名会乱码\n- `sort`、`awk` 对多字节字符处理异常\n解决：镜像里装 `locale` 并 `localedef` 生成，或显式设 `LANG=C.UTF-8`。\n\n**统一做法（推荐）**：\n```\ntimedatectl set-timezone Asia/Shanghai\nlocalectl set-locale LANG=zh_CN.UTF-8\necho 'export LANG=zh_CN.UTF-8' >> /etc/profile\n```\n容器镜像里也显式设 `ENV LANG=C.UTF-8 TZ=Asia/Shanghai`。\n\n**还有第四个坑**：`/etc/localtime` 若是**空文件或符号链接到错误的 zoneinfo**，`date` 会静默回退到 UTC，没有任何报错。要 `ls -l /etc/localtime` 确认它指向 `/usr/share/zoneinfo/Asia/Shanghai`。",
+    "tags": [
+      "时区",
+      "locale",
+      "LANG"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4038,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`free -h` 输出中的 `available` 与 `free` 差在哪？",
+    "options": [
+      {
+        "key": "A",
+        "text": "available = free + 可回收的 page cache 与 slab"
+      },
+      {
+        "key": "B",
+        "text": "两者完全相同，只是显示单位不同"
+      },
+      {
+        "key": "C",
+        "text": "available 是 swap 可用量"
+      },
+      {
+        "key": "D",
+        "text": "free 包含了 buffer，available 不包含"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "Linux 会把空闲内存用作 page cache 加速 IO，所以 `free` 越来越小是**正常且健康**的。`available` 估算「不触发 swap 的情况下还能给新进程多少内存」，即 free + 大部分可回收的 buffer/cache。判断该不该加内存要看 `available`，不是 `free`。补充：`available` 还会保留一部分 low watermark，所以它通常小于 `free + buff/cache`。",
+    "tags": [
+      "free",
+      "available",
+      "内存"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4039,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "以下哪些操作会让 inode 使用量上升？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "在同一个目录下创建大量小文件"
+      },
+      {
+        "key": "B",
+        "text": "往一个已有的大文件末尾追加内容"
+      },
+      {
+        "key": "C",
+        "text": "创建大量软链接（符号链接）"
+      },
+      {
+        "key": "D",
+        "text": "创建硬链接"
+      }
+    ],
+    "answer": [
+      "A",
+      "C"
+    ],
+    "explanation": "A 和 C 会消耗新 inode：每个文件、每个软链接都是一条独立 inode。B 不会——追加内容只增加数据块，inode 数量不变。D 也不会：**硬链接共享同一个 inode**（只是目录项多一条，链接计数 +1），这正是硬链接和软链接的本质差异。这也是为什么大量硬链接**省 inode 空间**，而软链接反而更费。",
+    "tags": [
+      "inode",
+      "硬链接",
+      "软链接"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4040,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "进程处于 D 状态且 `kill -9` 无效，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "进程被 SIGSTOP 暂停了"
+      },
+      {
+        "key": "B",
+        "text": "进程卡在内核态等待 IO，信号要等它返回用户态才处理"
+      },
+      {
+        "key": "C",
+        "text": "进程是僵尸，已经被父进程回收"
+      },
+      {
+        "key": "D",
+        "text": "权限不足无法发送信号"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "D 状态是「不可中断睡眠」，通常卡在磁盘 IO、NFS 挂载、驱动等内核路径上。信号是**在返回用户态时才被处理**的，只要进程还在内核里等，`-9` 就只是挂起待处理。A 是 T 状态，`kill -CONT` 可恢复；C 是 Z 状态，本身已死不需要杀，要处理的是父进程。**D 状态的正确处置是解决 IO 本身**（umount -f、重启机器、修存储），而不是反复 kill。",
+    "tags": [
+      "D 状态",
+      "kill -9",
+      "IO"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4041,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "关于 `systemd` 的 `Restart=` 参数，以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "`Restart=always` 无论正常退出还是异常退出都会重启"
+      },
+      {
+        "key": "B",
+        "text": "`Restart=on-failure` 只在非 0 退出码或被信号杀死时重启"
+      },
+      {
+        "key": "C",
+        "text": "`RestartSec=` 控制重启前的等待时间，可避免重启风暴"
+      },
+      {
+        "key": "D",
+        "text": "配了 Restart 之后，`systemctl stop` 也会被自动重新拉起"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：**systemd 会区分「主动停止」和「意外退出」**，`systemctl stop` 触发的退出不会被 Restart 重启（这是设计上的必要行为，否则永远停不下来）。补充要点：⑤`StartLimitIntervalSec` / `StartLimitBurst` 限制「一段时间内最多重启几次」，超限后进入 failed 状态——**这是防止无限重启风暴的关键配置**；⑥`Restart=always` 与 `oneshot` 类型冲突；⑦若配了 `Restart`，建议同时配 `RestartSec`（如 5s）和 `StartLimitBurst`（如 5 次 / 10 分钟）。",
+    "tags": [
+      "systemd",
+      "Restart",
+      "重启策略"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4042,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "`chmod 1777 /tmp` 中的 `1` 表示什么权限？",
+    "options": [
+      {
+        "key": "A",
+        "text": "SUID"
+      },
+      {
+        "key": "B",
+        "text": "SGID"
+      },
+      {
+        "key": "C",
+        "text": "Sticky Bit（只有属主能删除自己创建的文件）"
+      },
+      {
+        "key": "D",
+        "text": "表示这是一个目录"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "特殊权限位：**4=SUID、2=SGID、1=Sticky**。`/tmp` 是 `drwxrwxrwt`（t 就是 sticky），所有人都能写，但**只有文件属主（或 root）能删除自己的文件**——否则任何人都能删别人的临时文件。SUID 让程序以属主身份运行（如 `passwd`），SGID 在目录上让新建文件继承目录属组，这三者常被一起考。",
+    "tags": [
+      "Sticky",
+      "权限",
+      "特殊位"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4043,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "排查「系统负载很高但 CPU 使用率很低」，以下哪些方向是对的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "查 D 状态进程数量（load 把不可中断睡眠的进程也计入）"
+      },
+      {
+        "key": "B",
+        "text": "检查是否有 NFS/iSCSI 挂载失联"
+      },
+      {
+        "key": "C",
+        "text": "用 vmstat 看 si/so 判断是否在频繁换页"
+      },
+      {
+        "key": "D",
+        "text": "直接增加 CPU 核数"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "**load average 统计的是「R + D」状态的进程数**，所以大量 IO 阻塞会把 load 拉高而 CPU 空闲——这是「load 高 CPU 低」的经典解释。D 完全无用：瓶颈不在 CPU，加核只会白花钱。补充排查项：⑤`vmstat 1` 的 `b` 列（阻塞进程数）持续非 0；⑥`iostat` 看是否是磁盘瓶颈；⑦**K8s 环境要注意 load 是宿主机全局的，不代表容器内压力**。",
+    "tags": [
+      "load",
+      "D 状态",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4044,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "`tar -czf backup.tar.gz /data` 与 `tar -czf backup.tar.gz -C / data` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "前者包内路径是绝对路径 /data，后者是相对路径 data"
+      },
+      {
+        "key": "B",
+        "text": "两者完全一样"
+      },
+      {
+        "key": "C",
+        "text": "前者更快"
+      },
+      {
+        "key": "D",
+        "text": "后者无法解压"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "tar 默认会去掉开头的 `/`（现代 GNU tar 会提示 `Removing leading '/'`），但**包内路径就是 `data` 或 `data/xxx`**；用 `-C / data` 则从 `/` 进入再打包 `data`，效果其实一样。真正的区别在于**用 `-C` 能精确控制「包内顶层目录是什么」**，比如 `tar -czf b.tgz -C /data app` 会让包里是 `app/...` 而不是 `data/app/...`。恢复时 `-C /target` 决定解到哪。实践建议：**永远用 `-C` 显式指定起点**，避免包内路径不可控。",
+    "tags": [
+      "tar",
+      "-C",
+      "打包路径"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4045,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "关于 `sudo` 配置，以下哪些是正确或必要的做法？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "用 visudo 编辑，保存前会做语法检查"
+      },
+      {
+        "key": "B",
+        "text": "授权命令要写绝对路径，避免 PATH 劫持"
+      },
+      {
+        "key": "C",
+        "text": "给用户可以执行的编辑器（如 vim）等于给了 root 权限"
+      },
+      {
+        "key": "D",
+        "text": "sudoers 文件语法写错不影响使用"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 严重错误：**sudoers 语法损坏会让所有人无法 sudo**（包括 root 补救都很麻烦），所以必须用 `visudo`（或 `visudo -f /etc/sudoers.d/xxx`）。C 的原因是 vim 里 `:!sh` 就能逃到 shell。补充：⑤`NOPASSWD` 要谨慎（token 泄漏即提权），生产上宁可不免密但要记日志；⑥`/etc/sudoers.d/` 下的文件同样有语法检查，也要 visudo；⑦审计用 `sudo -l -U <user>` 和 `grep -r NOPASSWD`。",
+    "tags": [
+      "sudo",
+      "visudo",
+      "安全"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4046,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "`vmstat 1` 输出中 `wa` 列很高，最应该优先排查什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "CPU 主频是否过低"
+      },
+      {
+        "key": "B",
+        "text": "磁盘 IO 是否成为瓶颈（iostat 看 await/队列）"
+      },
+      {
+        "key": "C",
+        "text": "内存是否不足"
+      },
+      {
+        "key": "D",
+        "text": "网络带宽是否跑满"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "`wa`（io wait）是「CPU 空闲但在等 IO」的时间占比，高说明**进程在等磁盘**，直接指向 IO 瓶颈，用 `iostat -x` 看 `await` 和 `aqu-sz` 确认。但要注意一个重要例外：**`wa` 高也可能是内存不足导致的换页**（`si/so` 同时非 0），此时是内存问题伪装成 IO 问题。所以正确顺序是：先看 `si/so` 排除 swap，再看磁盘。C 不完全错，但如果只是因为 swap 才 wa 高，那才是内存问题。",
+    "tags": [
+      "wa",
+      "IO等待",
+      "指标"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4047,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "关于 `logrotate`，以下哪些说法正确？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "切割后必须让应用重新打开日志文件（reload），否则磁盘空间不释放"
+      },
+      {
+        "key": "B",
+        "text": "`copytruncate` 可以避免 reload，但会有丢日志窗口"
+      },
+      {
+        "key": "C",
+        "text": "`rotate 7` 表示保留 7 个历史文件"
+      },
+      {
+        "key": "D",
+        "text": "logrotate 会自动检测文件系统并清理磁盘"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：logrotate 只按配置切割/压缩/删除**它管理的那些日志文件**，不感知磁盘水位，也不会清理其他东西。A 是最关键的一条——应用仍持有旧 fd，会继续往重命名后的 `app.log.1` 写，导致新 `app.log` 是空的且空间不释放。判断特征：`ls -l /proc/<pid>/fd | grep deleted` 出现 `app.log.1 (deleted)`。D 类需求要用「磁盘水位监控 + 告警」解决。",
+    "tags": [
+      "logrotate",
+      "copytruncate",
+      "日志"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4200,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`set -e` 有什么坑？为什么有时加了它错误还是被吞掉？",
+    "answer": "**`set -e` 的规则**：任何命令返回非 0 就立即退出脚本。但有一堆**例外**：\n\n**1. 在 `if` / `while` / `&&` / `||` / `!` 里不生效**\n```\nif grep -q x file; then ...; fi    # grep 失败不会退出\ncmd1 && cmd2                        # cmd1 失败不会退出\ngrep x file || true                 # 常见「故意忽略」写法\n```\n**这是最反直觉的一条**：一旦命令出现在条件位置，`-e` 就失效。\n\n**2. 命令替换里的失败不触发**\n```\nresult=$(false)      # 不会退出！\n```\n要捕获就用 `set -e` + 显式判断：\n```\nresult=$(cmd) || { echo '失败'; exit 1; }\n```\n\n**3. `local` 关键字会吞掉退出码**\n```\nf() { local x=$(false); echo $?; }   # 输出 0！\n```\n因为 `local` 是一个命令，`$?` 变成了 `local` 自己的返回码。**必须拆成两行**：\n```\nf() { local x; x=$(false); }\n```\n\n**4. 未定义变量不报错**（那是 `-u` 的事）\n\n**5. 管道里只有最后一个命令的返回码**——这就是为什么要 `set -o pipefail`。\n\n**实践建议**：\n```\nset -euo pipefail\n```\n但**不要迷信它**：关键步骤还是显式判断，尤其是要自定义错误信息、清理临时文件的时候：\n```\ntrap 'rm -f \"$tmp\"' EXIT\nif ! cmd; then echo \"错误：具体原因\" >&2; exit 1; fi\n```",
+    "tags": [
+      "set -e",
+      "陷阱",
+      "错误处理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4201,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`$@`、`$*`、`$#`、`$?`、`$$`、`$!` 分别是什么？`$@` 和 `$*` 为什么必须区分？",
+    "answer": "| 变量 | 含义 |\n|---|---|\n| `$0` | 脚本名（或 `bash`） |\n| `$1..$9`、`${10}` | 位置参数 |\n| `$#` | 参数**个数** |\n| **`$@`** | **所有参数，每个是独立的一项** |\n| **`$*`** | 所有参数，**合并成一个字符串** |\n| `$?` | 上一条命令退出码 |\n| `$$` | **当前 shell 的 PID** |\n| `$!` | 最后一个**后台**进程的 PID |\n\n**`$@` vs `$*` 的决定性差异**（必须加引号才体现）：\n\n```\n# 传参：./a.sh \"hello world\" b\n\n\"$@\"  →  两个参数：  \"hello world\"  \"b\"      ✅ 正确\n\"$*\"  →  一个参数：  \"hello world b\"           ❌ 丢了边界\n$@    →  被分词：hello world b（三个）        ❌ 空格被拆\n$*    →  被分词：hello world b（三个）        ❌\n```\n\n**结论**：\n- **要透传参数一律写 `\"$@\"`**\n- `$*` 几乎只在「明确要把参数拼成一串」时用（如拼进日志）\n- **不加引号是 bug**：`$@` 和 `$*` 都会发生单词分割\n\n**典型错误**：\n```\n# 错：路径带空格就炸\nfor f in $*; do rm \"$f\"; done\n# 对\nfor f in \"$@\"; do rm -- \"$f\"; done\n```\n\n**`$!` 的经典用法**（后台任务等待与清理）：\n```\nlong_job &\npid=$!\ntrap \"kill $pid 2>/dev/null\" EXIT\nwait $pid\n```",
+    "tags": [
+      "位置参数",
+      "$@",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4202,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何让 Shell 脚本支持长选项参数（如 `--file xxx --verbose`）？",
+    "answer": "**三种做法，按复杂度递进**。\n\n**1. `getopts`（POSIX，只支持短选项）**\n```\nwhile getopts \"f:vh\" opt; do\n  case $opt in\n    f) FILE=$OPTARG ;;\n    v) VERBOSE=1 ;;\n    h) usage; exit 0 ;;\n    \\?) echo \"未知选项\" >&2; exit 1 ;;\n  esac\ndone\nshift $((OPTIND - 1))      # 剩下的是非选项参数\n```\n注意：`getopts` **不支持 `--long`**，且**选项必须在位置参数前面**。\n\n**2. 手写 `while + case`（最常用，支持长选项）**\n```\nwhile [[ $# -gt 0 ]]; do\n  case \"$1\" in\n    -f|--file) FILE=\"$2\"; shift 2 ;;\n    -v|--verbose) VERBOSE=1; shift ;;\n    -h|--help) usage; exit 0 ;;\n    --) shift; break ;;        # 显式结束选项\n    -*) echo \"未知选项 $1\" >&2; exit 1 ;;\n    *) POSITIONAL+=(\"$1\"); shift ;;\n  esac\ndone\n```\n**关键点**：\n- `shift 2` 是消费「选项 + 值」两个参数\n- **`\"$1\"` 要加引号**\n- 用 `POSITIONAL+=(\"$1\")` 收集剩余参数，最后 `set -- \"${POSITIONAL[@]}\"` 还原\n\n**3. `getopt` 命令（支持长选项，但 GNU 扩展）**\n```\nOPTS=$(getopt -o f:vh --long file:,verbose,help -n \"$0\" -- \"$@\") || exit 1\neval set -- \"$OPTS\"     # 注意 eval 的安全风险\n```\n**`eval` 有注入风险**，脚本里接收外部参数时要谨慎；且 macOS 自带的是 BSD getopt，**行为与 GNU 不同**，跨平台脚本别用。\n\n**实践推荐**：日常运维脚本用**方案 2**（零依赖、可控、支持长选项）。需要 `--opt=value` 形式时，在 case 里加一个 `--file=*` 分支：\n```\n--file=*) FILE=\"${1#*=}\"; shift ;;\n```",
+    "tags": [
+      "参数解析",
+      "getopts",
+      "选项"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4203,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`,` 和 `||`、`;` 和 `&&` 有什么区别？`{ }` 与 `( )` 分组有什么不同？",
+    "answer": "**四个连接符的语义**：\n\n| 写法 | 含义 | 前一命令失败时 |\n|---|---|---|\n| `a ; b` | 无条件顺序执行 | **b 照常执行** |\n| `a && b` | 短路与，a 成功才执行 b | b 不执行 |\n| `a \\|\\| b` | 短路或，a 失败才执行 b | b 执行 |\n| `a & b` | a 放后台，继续执行 b | — |\n\n**最常见错误**：\n```\ncmd1 && cmd2; cmd3      # cmd3 无论如何都执行\n```\n\n**`{ }` 与 `( )` 的关键区别**：\n\n| | `{ cmd; }` | `( cmd )` |\n|---|---|---|\n| **子 shell** | **不创建**，在当前 shell 执行 | **创建子 shell** |\n| 变量影响 | **保留**改动 | **丢失**改动 |\n| `cd` 影响 | 改变当前目录 | 只影响子 shell |\n| 语法要求 | **末尾必须有分号**，两侧要有空格 | 不需要 |\n\n```\ncd /tmp && { echo ok; }     # 之后仍在 /tmp\ncd /tmp && ( echo ok )      # 之后回到原目录\n```\n\n**实用场景**：\n```\n# 1. 只重定向一组命令的输出去日志\n{ cmd1; cmd2; cmd3; } > /var/log/batch.log 2>&1\n\n# 2. 用子 shell 临时切目录，不影响外层\n(\n  cd /data/app || exit 1\n  ./deploy.sh\n)\n\n# 3. 子 shell 隔离环境变量（避免污染）\n( export PATH=/opt/bin:$PATH; myscript )\n```\n\n**注意 `{ }` 的两个语法陷阱**：\n- **必须是 `{ ` 和 `; }`**（前后都有空格，分号结尾）。写成 `{cmd;}` 直接语法错误\n- 组内最后一条命令的退出码就是整个组的退出码",
+    "tags": [
+      "连接符",
+      "子shell",
+      "语法"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4204,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`jq` 和 `grep`/`awk` 相比，处理 JSON 有什么优势？常用写法有哪些？",
+    "answer": "**核心优势：JSON 是有结构的数据，`grep`/`awk` 只能按行和分隔符猜。**\n\n问题：JSON 可以是一行、可以缩进、字段顺序随机、值里含逗号和引号。用 `grep` 抓 `Name` 常常抓到错误的匹配。\n\n**`jq` 直接按路径访问，正则/空格/换行都不是问题。**\n\n**最常用的十条**：\n\n```\n# 1. 格式化输出（调试接口必备）\ncurl -s api/x | jq .\n# 2. 取一个字段\njq -r '.data.name'\n# 3. 取数组每个元素的字段\njq -r '.items[] | .id'\n# 4. 过滤（选 status 为 200 的）\njq '.items[] | select(.status == 200)'\n# 5. 构造新对象\njq '{id: .id, name: .data.name}'\n# 6. 统计数量\njq '.items | length'\n# 7. 求和/求最大\njq '[.items[].count] | add'\njq '[.items[].count] | max'\n# 8. 转成 tab 分隔，方便喂给 awk/while\njq -r '.items[] | [.id, .name] | @tsv'\n# 9. 合并多个文件\njq -s '.' a.json b.json\n# 10. 只输出原始值（不加引号）——**最常见**\njq -r '.token'\n```\n\n**三个必须知道的坑**：\n\n1. **`-r` 不加会带引号**：`echo $(curl ... | jq .name)` 会输出 `\"foo\"` 而不是 `foo`\n2. **字段不存在时返回 `null`（且退出码仍是 0）**，不会报错。要检测必须显式判断：\n```\njq -e '.name' f.json > /dev/null || echo '缺字段'\n```\n(`-e` 让 null/false 返回非 0 退出码，这是脚本化的关键)\n3. **大 JSON 逐行处理**：用 `jq -c`（compact）输出每行一个 JSON，再配 `while read` 流式处理，避免整体吃内存\n\n**和 `--slurp` / `--stream` 的配合**：超大文件（GB 级）用 `jq --stream` 流式解析，否则 `jq .` 会直接把内存吃光。",
+    "tags": [
+      "jq",
+      "JSON",
+      "解析"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4205,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`awk` 的 `NR` 和 `FNR`、`$0` 和 `$1` 分别是什么？如何统计日志里某个字段的 Top N？",
+    "answer": "**基础变量**：\n\n| 变量 | 含义 |\n|---|---|\n| `$0` | 整行 |\n| `$1`…`$NF` | 第 1 个到最后一个字段 |\n| `NF` | 当前行的字段数 |\n| **`NR`** | 已处理的**总行号**（跨文件累计） |\n| **`FNR`** | 当前**文件内**的行号（每个文件从 1 开始） |\n| `FS` | 输入分隔符（默认空格/Tab） |\n| `OFS` | 输出分隔符 |\n\n**`NR` vs `FNR` 的经典用途**：`awk 'FNR==NR {a[$1]; next} $1 in a' f1 f2` —— 用 `FNR==NR` 判断「正在处理第一个文件」，做 join/lookup。\n\n**统计 Top N 的三种写法**：\n\n**1. 纯 `awk`（一步到位，推荐）**\n```\n# 统计访问日志里 IP 的 Top 10\nawk '{print $1}' access.log | sort | uniq -c | sort -rn | head -10\n\n# 用 awk 直接聚合（不用 uniq）\nawk '{c[$1]++} END {for (k in c) print c[k], k}' access.log \\\n  | sort -rn | head -10\n```\n\n**2. 做更多计算（如按状态码分组算平均响应时间）**\n```\nawk '{sum[$9] += $NF; cnt[$9]++}\n     END {for (s in sum) printf \"%s %.2f ms (%d)\\n\", s, sum[s]/cnt[s], cnt[s]}' access.log\n```\n\n**3. 提取 URI 的 Top 10（带过滤）**\n```\nawk '$9 == 200 {print $7}' access.log | sort | uniq -c | sort -rn | head -10\n```\n\n**三个坑**：\n1. **`sort -rn` 的 `-n` 不能少**，否则按字符串排（10 < 9）\n2. **`uniq -c` 必须先 `sort`**，它只能合并**相邻**的重复行\n3. **`sort` 在 `LANG=C` 与 UTF-8 下结果不同**，脚本里建议 `LC_ALL=C sort`\n\n**性能提示**：几十 GB 的日志用 `awk` 一次扫完比 `grep | sort | uniq` 快得多（单遍扫描、无中间进程）。",
+    "tags": [
+      "awk",
+      "NR",
+      "Top N"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4206,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 里怎么安全读取文件（逐行、按字段）？`while read` 有哪些坑？",
+    "answer": "**标准写法（必须记住）**：\n```\nwhile IFS= read -r line; do\n  echo \"$line\"\ndone < file.txt\n```\n\n**三个参数缺一不可**：\n\n| 参数 | 作用 | 不写会怎样 |\n|---|---|---|\n| **`IFS=`** | 空赋值 = **不裁剪前后空白** | 行首尾空格被吃掉，配置文件对齐全乱 |\n| **`-r`** | 不处理反斜杠转义 | `\\t`、`\\` 被转义，Windows 路径全废 |\n| **`< file`（重定向）** | 从文件读，而不是管道 | 见下方坑 1 |\n\n**坑 1：管道会创建子 shell，变量丢失**\n```\n# 错：count 永远是 0\ncat file | while read -r line; do count=$((count+1)); done\necho $count\n\n# 对：用重定向\ncount=0\nwhile read -r line; do count=$((count+1)); done < file\necho $count\n```\n\n**坑 2：最后一行没有换行符会被漏掉**\n```\nwhile IFS= read -r line || [[ -n \"$line\" ]]; do\n  ...\ndone < file\n```\n`|| [[ -n $line ]]` 是为了处理「文件末尾无换行」的情况（**很多程序生成的文本没有末尾换行**）。\n\n**坑 3：在循环里执行读 stdin 的命令**\n```\n# ssh/gpg/ffmpeg 等会抢走 stdin，导致后续行被吞\nwhile read -r line; do\n  ssh host \"cmd\" < /dev/null      # 必须加 < /dev/null\n  cmd                                 # 或 cmd <&3 用 fd 3\n...\n```\n\n**按字段读（不要用 `read a b c` 硬编码）**：\n```\nwhile IFS=: read -r user _ uid gid _ home shell; do\n  echo \"$user $uid\"\ndone < /etc/passwd\n```\n`_` 占位是好习惯，跳过不关心的字段。\n\n**按分隔符读 CSV（含引号的情况别用 read）**：серь若字段里含逗号或引号，`read` 完全无能为力——用 `awk -F,` 或 Python/`csvkit`。",
+    "tags": [
+      "while read",
+      "IFS",
+      "读文件"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4207,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何在 Shell 里做并发执行并控制并发数？",
+    "answer": "**三种方案，按控制力递进。**\n\n**1. `& + wait`（无并发限制，最简单）**\n```\nfor h in host1 host2 host3; do\n  ping -c1 \"$h\" &\ndone\nwait\necho '全部完成'\n```\n缺点：**一次性全放出去**，1000 台机器会直接打爆本机。\n\n**2. 分批（每次 N 个，最简单可靠）**\n```\nN=10\nfor i in $(seq 1 $N); do\n  ip=$(sed -n \"${i}p\" ips.txt)\n  [ -n \"$ip\" ] && ping -c1 \"$ip\" &\ndone\nwait\n```\n**经典坑**：`seq` 的范围写死会漏掉余数行——要用 `while read` 配计数器。\n\n**3. 用 fd 做信号量（真正可靠的并发控制，推荐）**\n```\nN=10\nexec 3> >(true)           # 占位\nexec 3>&-\n\nrun() {\n  while IFS= read -r host; do\n    while (( $(jobs -r | wc -l) >= N )); do sleep 0.1; done\n    ping -c1 \"$host\" > /dev/null && echo \"$host up\" &\n  done < hosts.txt\n  wait\ndone\nrun\n```\n\n**更简洁的信号量写法（用 `xargs -P`，运维脚本首选）**：\n```\ncat hosts.txt | xargs -P 10 -I{} sh -c 'ping -c1 {} > /dev/null && echo \"{} up\"'\n```\n**`xargs -P` 是最推荐的做法**：并发数明确、不用管 PID、天然支持管道。\n\n**关键坑**：\n1. **`&` 之后子进程的输出会交错**，要每条输出都完整就给每个任务重定向到独立文件，最后 `cat`\n2. **`wait` 只能等当前 shell 的子进程**，不能等 `nohup` 脱离的\n3. **收集结果不要用全局变量**（子进程改动不回传），改用临时文件或 `xargs` 的输出流\n4. **失败了怎么办**：`xargs --halt now,fail=1` 遇错立即停，或不加则继续跑完\n\n**实测经验**：并发数不是越大越好。网络类任务 10-20 通常最优，纯 CPU 类到核数就饱和。**盲目 `-P 200` 会让目标机和你自己的本机都雪崩。**",
+    "tags": [
+      "并发",
+      "xargs -P",
+      "控制"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4208,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 里怎么做严格的参数校验与错误处理？给出一个脚本骨架。",
+    "answer": "**一个可直接套用的生产级骨架**：\n\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\n\nreadonly SCRIPT_NAME=$(basename \"$0\")\n\nusage() {\n  cat <<EOF\n用法: $SCRIPT_NAME -f <文件> [-o <输出>] [-v]\n  -f FILE   必填，输入文件\n  -o DIR    可选，输出目录（默认 /tmp）\n  -v        详细输出\nEOF\n  exit \"${1:-1}\"\n}\n\nlog()  { printf '[%s] %s\\n' \"$(date '+%F %T')\" \"$*\" >&2; }\ndie()  { log \"错误: $*\"; exit 1; }\n\n# --- 参数解析 ---\nFILE=''; OUT=/tmp; VERBOSE=0\nwhile [[ $# -gt 0 ]]; do\n  case \"$1\" in\n    -f|--file)    [[ -n \"${2:-}\" ]] || die \"-f 需要参数\"; FILE=\"$2\"; shift 2 ;;\n    -o|--output)  OUT=\"${2:-}\"; shift 2 ;;\n    -v|--verbose) VERBOSE=1; shift ;;\n    -h|--help)    usage 0 ;;\n    *)            usage 1 ;;\n  esac\ndone\n\n# --- 前置校验 ---\n[[ -n \"$FILE\" ]]         || die \"缺少 -f 参数\"\n[[ -r \"$FILE\" ]]         || die \"文件不存在或不可读: $FILE\"\n[[ -d \"$OUT\" ]]          || die \"输出目录不存在: $OUT\"\ncommand -v jq >/dev/null  || die \"依赖缺失: jq\"\n\n# --- 清理陷阱 ---\ntmp=$(mktemp)\ntrap 'rm -f \"$tmp\"' EXIT\n\n# --- 主逻辑 ---\nlog \"处理 $FILE -> $OUT\"\n... || die \"处理失败\"\nlog '完成'\n```\n\n**骨架里每个部分的用意**：\n\n| 部分 | 为什么必须有 |\n|---|---|\n| `set -euo pipefail` | 早失败（但别迷信，关键步骤仍需显式判断） |\n| `usage` 里 `<<EOF` | 无需维护多行 echo |\n| `log` 输出到 `>&2` | **日志不能污染 stdout**（否则被 `| jq` 时格式损坏） |\n| `case \"$1\"` 前加 `[[ -n ${2:-} ]]` | 防止 `-f` 后面没值；`${2:-}` 是防 `set -u` 报错 |\n| `command -v` | 探测依赖，比「跑起来才发现」好得多 |\n| `mktemp` + `trap EXIT` | **保证异常退出也能清理临时文件** |\n| `readonly` | 防止后面误改变量 |\n\n**几个容易被忽略的点**：\n1. **`${2:-}` 而不是 `$2`**：`set -u` 下访问未定义变量会直接崩\n2. **`trap ... EXIT` 也能捕获 Ctrl+C**（EXIT 陷阱在 INT 后也会触发）\n3. **校验要在做任何写操作之前**，避免「改了一半才失败」\n4. **错误信息写到 stderr**：`>&2`，这样 `script > out` 时用户仍能看到错误",
+    "tags": [
+      "参数校验",
+      "骨架",
+      "错误处理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4209,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "写一个「检查端口是否开放」的脚本，如何避免常见误判？",
+    "answer": "**最可靠的是 `bash` 的 `/dev/tcp`**（无需装 telnet/nc）：\n```\ntimeout 3 bash -c \"echo > /dev/tcp/$host/$port\" 2>/dev/null \\\n  && echo \"$host:$port 开放\" \\\n  || echo \"$host:$port 不可用\"\n```\n\n**为什么必须加 `timeout`**：目标被防火墙 **DROP**（不是 REJECT）时，TCP 会重传 SYN 到几十秒。没有 `timeout`，脚本看起来像卡死。**这是最常见的误判来源**。\n\n**`nc` 版本的问题**：\n```\nnc -z host 80            # 传统 netcat，工作中\nnc -vz host 80           # 带输出\n```\n但 **`-z` 在不同实现（openbsd-nc / ncat / 传统）行为不一致**，容器里往往没装。**脚本里优先用 `/dev/tcp`**。\n\n**避免误判的四条规矩**：\n\n**1. 区分「端口不通」和「被拒绝」**\n```\n# 明确要区分时用 nc 的退出码（0=通，1=拒绝，其他=超时）\n```\nDROP = 超时（等很久）；REJECT = RST（立刻返回）。**运维结论完全相反**：DROP 通常是防火墙，REJECT 通常是没监听或策略拒绝。\n\n**2. 只测 TCP 连通 ≠ 服务健康**\n端口开放只能说明**内核 accept 队列接受连接**，不代表应用真能工作（可能连上就没响应）。要真验证用：\n```\ncurl -sf --max-time 3 http://host:port/health\n```\n**健康检查必须打业务接口，不能只看端口。**\n\n**3. 不要用 `ping` 判断主机存活**\n很多机器禁 ICMP。`ping` 不通但端口通是**完全正常**的现象。判定主机死活用 TCP 探测而不是 ICMP。\n\n**4. 批量探测要控并发 + 控超时**\n```\nwhile read -r host port; do\n  ( timeout 2 bash -c \"echo > /dev/tcp/$host/$port\" 2>/dev/null \\\n      && echo \"OK $host:$port\" || echo \"FAIL $host:$port\" ) &\n  # 控制并发\n  while (( $(jobs -r | wc -l) >= 20 )); do sleep 0.1; done\ndone < targets.txt\nwait\n```\n\n**一个完整可用的函数**：\n```bash\ncheck_port() {\n  local host=$1 port=$2 t=${3:-2}\n  timeout \"$t\" bash -c \"exec 3<>/dev/tcp/$host/$port\" 2>/dev/null && return 0\n  return 1\n}\n```\n注意用 `exec 3<>` **双向打开**，比 `echo >` 更准确（能捕获只监听不接收的异常情况）。",
+    "tags": [
+      "端口探测",
+      "/dev/tcp",
+      "timeout"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4210,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`${var:-default}` 与 `${var:=default}` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "前者只在展开时用默认值，不改变 var；后者会把默认值赋给 var"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "C",
+        "text": "前者会赋值，后者不会"
+      },
+      {
+        "key": "D",
+        "text": "前者用于数组，后者用于标量"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "四个扩展容易混：`${v:-d}` 未设置或为空则用 d，**不赋值**；`${v:=d}` 同上但**会赋值**；`${v:+d}` 设置了才用 d（反向）；`${v:?msg}` 未设置则报错退出（做必填校验最好用）。注意带 `:` 表示「空也算未设置」，不带 `:`（如 `${v-d}`）只在「未定义」时生效，空字符串不触发。",
+    "tags": [
+      "参数扩展",
+      "默认值",
+      "语法"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4211,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "以下哪些写法能正确地在脚本里处理「命令失败就退出」？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "set -euo pipefail"
+      },
+      {
+        "key": "B",
+        "text": "cmd || { echo '失败'; exit 1; }"
+      },
+      {
+        "key": "C",
+        "text": "if ! cmd; then echo '失败'; exit 1; fi"
+      },
+      {
+        "key": "D",
+        "text": "cmd; echo $?; exit 0"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 无论 cmd 成败都 exit 0，是最典型的「脚本永远返回成功」bug——CI 里这种脚本会让流水线全绿但实际什么都没做成。补充：A 还要注意 `local x=$(cmd)` 会吞掉退出码，要拆成两行；C 里 `!` 取反是判断的正确姿势，但注意 `! cmd` 之后 `$?` 反映的是取反结果，会误导后续判断。",
+    "tags": [
+      "set -e",
+      "pipefail",
+      "退出码"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4212,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`grep` 的常用参数和常见坑有哪些？为什么 `grep -r` 有时特别慢？",
+    "answer": "**常用参数**：\n```\ngrep -i     忽略大小写\ngrep -v     反向匹配（排除）\ngrep -n     显示行号\ngrep -c     只输出匹配行数\ngrep -l     只输出文件名\ngrep -w     全词匹配（避免 foo 匹配到 foobar）\ngrep -E     扩展正则（= egrep），支持 ( | ) 无需转义\ngrep -F     固定字符串（= fgrep），**最快**\ngrep -A/-B/-C 3   显示后/前/上下 3 行\ngrep -o     只输出匹配部分\ngrep --include='*.log' --exclude-dir=.git\n```\n\n**性能：`-F` 比默认快 2-5 倍，`-E` 比 `-F` 慢**。查纯文本永远优先 `grep -F`。\n\n**为什么 `grep -r` 慢**：\n1. **它会走进无关目录**：`.git`、`node_modules`、`/proc`（无限流）、二进制文件、符号链接环\n2. **没指定 `--include`**：扫描了图片、压缩包等二进制\n\n**正确姿势**：\n```\ngrep -rn --include='*.log' --exclude-dir={.git,node_modules,dist} 'error' .\n```\n\n**六个常见坑**：\n\n1. **`grep -v` 是「排除匹配行」，不是「排除文件」**。排除文件用 `--exclude`\n2. **模式以 `-` 开头会被当参数**：`grep -- '--foo' file` 或 `grep -e '--foo'`\n3. **正则里 `.`、`*`、`[` 要转义**：查 `1.2.3` 要写 `grep -F '1.2.3'`\n4. **`grep -c` 统计的是「行数」不是「匹配次数」**：一行里有 5 个 error 只算 1。要次数用 `grep -o ... | wc -l`\n5. **`grep -r` 遇到符号链接环会告警但不停止**，加 `-r`（跟随）要小心，默认 `-r` 不跟符号链接、`-R` 才跟\n6. **编码问题**：GBK 文件用 UTF-8 匹配会完全失配。先用 `file` 确认编码\n\n**和 `ag`/`rg` 的差距**：`ripgrep` 默认忽略 `.gitignore`、并行扫描、对二进制跳过，比 `grep -r` 快 10 倍以上。**代码搜索用 `rg`，日志搜特定文件用 `grep -F`。**",
+    "tags": [
+      "grep",
+      "参数",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4213,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`sed` 的常用用法有哪些？`-i` 有哪些坑？",
+    "answer": "**核心定位：按行做「查找替换/删除/插入」。**\n\n**最常用**：\n```\nsed 's/old/new/' file          # 替换每行第一个\nsed 's/old/new/g' file         # 替换所有（g）\nsed 's/old/new/2' file         # 只替换第 2 个\nsed -n '10,20p' file           # 打印 10-20 行（-n 必须，否则全打印）\nsed '/^#/d' file               # 删除注释行\nsed '/pattern/d' file          # 删除匹配行\nsed '3i\\新行' file             # 第 3 行前插入\nsed '$a\\末行' file             # 末尾追加\nsed -n '/start/,/end/p' file   # 按区间打印（日志截取神器）\n```\n**`sed -n '/start/,/end/p'` 是日志排障的高频用法**——直接截出两个标记之间的内容。\n\n**`-i` 原地修改的坑**：\n\n**1. GNU sed 与 BSD/macOS 语法不兼容**\n```\nsed -i 's/a/b/' f            # GNU（Linux）\nsed -i '' 's/a/b/' f         # BSD（macOS）：必须给个空备份后缀\n```\n跨平台脚本要额外判断 `uname`。\n\n**2. `-i` 会直接改文件，无法回滚**\n生产上的正确做法：**先备份再改**\n```\ncp file file.bak && sed -i 's/a/b/' file\n# 或先看会改成什么样\nsed 's/a/b/' file | diff file -\n```\n\n**3. `-i` 修改的是 inode 吗？**\nGNU sed 的 `-i` 实际是「**写临时文件 + 重命名覆盖**」，**inode 会变**。后果：\n- 如果文件被硬链接或进程持有 fd，改的是新 inode，旧句柄看不到变化\n- **配置文件被服务 reload 后才发现改动没生效**——因为服务读的可能是旧 inode\n- **容器挂载的配置文件被 sed -i 后，宿主机看到的可能还是旧的**（configmap 挂载场景）\n\n**4. 特殊字符必须转义或换分隔符**\n```\nsed 's/\\/usr\\/local/\\/opt/'      # 反斜杠地狱\nsed 's|/usr/local|/opt|g'         # 换分隔符（推荐）\nsed 's/[&/]/\\\\&/g'              # 替换内容里含 & 时要转义\n```\n`&` 在替换串里表示「整个匹配内容」，忘转义会出现莫名其妙的重复。\n\n**`sed` 与 `awk` 的选择**：简单替换/删行用 `sed`；需要按字段计算、聚合用 `awk`。**别用 `sed` 做算术**，那是 `awk` 的活。",
+    "tags": [
+      "sed",
+      "-i",
+      "坑"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4214,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`find` 的常用组合有哪些？`-exec` 和 `xargs` 有什么区别？",
+    "answer": "**`find` 的核心是「条件 + 动作」的组合**。\n\n**最常用的六种**：\n```\n# 1. 按时间（清理日志的标准用法）\nfind /var/log -name '*.log' -mtime +7\n# 2. 按大小（找大文件）\nfind / -type f -size +1G -exec ls -lh {} \\; \n# 3. 按权限（安全审计）\nfind / -perm -4000 -type f 2>/dev/null     # SUID\n# 4. 按属主\nfind /data -user nobody\n# 5. 排除目录（避免扫 .git/node_modules）\nfind . -type f -name '*.log' -not -path './.git/*'\n# 6. 执行动作\nfind /tmp -name '*.tmp' -delete\n```\n\n**时间参数的三种写法（易混）**：\n\n| 参数 | 含义 |\n|---|---|\n| `-mtime +7` | 修改时间 **7 天前**（>7×24h） |\n| `-mtime -7` | **7 天内**修改过 |\n| `-mmin +60` | 60 分钟前 |\n| `-newer file` | 比某文件新 |\n| `-cmin` / `-amin` | 状态变更 / 访问时间 |\n\n**`-exec` vs `xargs`**：\n\n| | `-exec cmd {} \\;` | `-exec cmd {} +` | `xargs` |\n|---|---|---|---|\n| 调用次数 | **每个文件一次** | 批量（接近命令行上限） | 批量 |\n| 特殊文件名 | **安全**（直接传参） | **安全** | 需 `-0` 才安全 |\n| 速度 | 慢（进程开销） | 快 | 快 |\n\n**推荐：优先 `-exec ... +`**（安全又批量），次选 `xargs -0`。\n\n**`xargs` 必须配 `-print0` 的两个理由**：\n```\n# 错：文件名含空格会被拆成多个参数\nfind . -name '*.log' | xargs rm\n# 对\nfind . -name '*.log' -print0 | xargs -0 rm -f --\n```\n1. **`-print0`/`-0` 用 NUL 分隔**，空格、换行、引号都不是问题\n2. **末尾 `--`** 防止文件名以 `-` 开头被当成选项\n3. `-r`（GNU）或无输入时不执行——不加的话空输入会执行一次裸命令\n\n**`find` 性能坑**：\n- 遍历 `/` 一定要 `-xdev`（不跨文件系统）或明确路径，否则会扫到 `/proc` 无限流\n- **先给 `-name` 再用 `-exec`**，否则对全部文件执行\n- `-path` 的匹配串**必须写全**：`-path '*.git*'` 会误伤 `digital`，安全写法是 `-path '*/.git/*'`",
+    "tags": [
+      "find",
+      "xargs",
+      "批量"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4215,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 里怎么做字符串处理（截取、替换、分割、去重）？",
+    "answer": "**纯 Shell 参数扩展（无外部命令，最快）**：\n```\nf=/data/app/logs/app.log\n\n${f##*/}        # app.log      删掉最后一个 / 及之前（取文件名）\n${f%/*}         # /data/app/logs  删掉最后一个 / 及之后（取目录）\n${f%.*}         # /data/app/logs/app  去扩展名\n${f##*.}        # log          取扩展名\n\n${var#prefix}   # 删最短前缀匹配\n${var##prefix}  # 删最长前缀匹配（# = 从左删）\n${var%suffix}   # 删最短后缀\n${var%%suffix}  # 删最长后缀（% = 从右删）\n\n${var/a/b}      # 替换第一个 a 为 b\n${var//a/b}     # 替换所有\n${var/#a/b}     # 只在开头\n${var/%a/b}     # 只在结尾\n\n${#var}         # 长度\n${var:2:5}      # 从下标 2 取 5 个字符\n${var^^}        # 全部转大写（bash 4+）\n${var,,}        # 全部转小写\n```\n**助记：`#` 在键盘左侧（从左删），`%` 在右侧（从右删）；单个删最短，双写删最长。**\n\n**分割**：\n```\nIFS=',' read -ra arr <<< \"a,b,c\"     # 拆成数组（推荐）\n```\n\n**去重与集合运算**：\n```\nsort -u f                          # 去重\nsort f | uniq -d                   # 只留重复行\ncomm -12 <(sort a) <(sort b)       # 交集\ncomm -23 <(sort a) <(sort b)       # 差集（在 a 不在 b）\n```\n\n**三个坑**：\n1. **`${var:-x}` 与 `${var#x}` 不能混用**——前者是默认值，后者是删除前缀\n2. **变量未加引号会被分词**，含空格的路径必须 `\"$var\"`\n3. **`${var^^}` 需 bash 4+**，`/bin/sh`（dash）不支持，脚本开头要 `#!/usr/bin/env bash`\n\n**性能建议**：频繁字符串操作时用参数扩展，**不要每次都 `awk`/`sed` 起子进程**——循环 10 万次时差距是几十秒 vs 几分钟。",
+    "tags": [
+      "字符串",
+      "参数扩展",
+      "截取"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4216,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "Shell 脚本如何做「幂等」与「可重入」，保证重复执行不产生副作用？",
+    "answer": "**幂等的本质：先判断状态，再决定动作；不要盲目执行。**\n\n**五条模式**：\n\n**1. 用「存在性检查」包裹**\n```\n[[ -d /data/app ]] || mkdir -p /data/app\ngrep -q '^export PATH' ~/.bashrc || echo 'export PATH=...' >> ~/.bashrc\n```\n**`>>` 是幂等的天敌**——重跑会重复追加。要么用 `grep -q` 守卫，要么改用覆盖式模板。\n\n**2. 覆盖优于追加（幂等写法）**\n```\n# 反例：每次跑都多一行\ncat conf >> /etc/sysctl.conf\n# 正例：生成的完整配置整体覆盖（幂等）\ncat > /etc/sysctl.conf <<'EOF'\nnet.ipv4.ip_forward = 1\nEOF\n```\n\n**3. 用“标记文件”做一次性动作**\n```\n[[ -f /var/lib/xxx/.installed ]] && exit 0\n# ... 安装逻辑\ntouch /var/lib/xxx/.installed\n```\n适合不可重入的操作（初始化数据库、改密码）。\n\n**4. 用 API 的幂等语义**\n- `mkdir -p`（存在不报错）\n- `systemctl enable --now`（已启用也不报错）\n- `sysctl -w`（覆盖）\n- `apt-get install`（幂等）\n\n**5. 用锁防止并发重入**\n```\nexec 9> /var/lock/myscript.lock\nflock -n 9 || { echo '已有实例在跑'; exit 1; }\n```\n**`flock -n` 是 crontab 脚本的必备护身符**——任务执行时间超过间隔时，不加锁会叠跑，可能拖垮机器。\n\n**测试可重入性的方法**：\n```\n./script.sh && ./script.sh     # 连跑两次\n```\n第二次的输出应该完全相同、无副作用。**这是上线前的强制检查。**\n\n**几个高频非幂等点**：\n1. `>>` 追加配置\n2. `useradd` / `CREATE DATABASE`（重复执行报错）\n3. 计数类操作（`INCR` 语义）\n4. 随机端口/文件名生成（每次不同）\n5. `rm -rf` 后重建（中间失败会留下半成品）",
+    "tags": [
+      "幂等",
+      "可重入",
+      "flock"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4217,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`trap` 能捕获哪些信号？写一个带清理逻辑的完整示例，并说明常见坑。",
+    "answer": "**`trap` 是脚本的「异常安全出口」**，用来保证临时文件清理、进程回收、锁释放。\n\n**可捕获的信号**：`EXIT`（伪信号，正常/异常退出都触发）、`INT`（Ctrl+C）、`TERM`、`HUP`、`ERR`（`set -e` 触发时）、`DEBUG`、`RETURN`。\n\n**完整示例**：\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\n\ntmp=$(mktemp -d)\ncleanup() {\n  local code=$?\n  rm -rf \"$tmp\"\n  exit \"$code\"            # 保留原退出码\n}\ntrap cleanup EXIT\n\n# 后台任务\nlong_job &\npid=$!\ntrap cleanup EXIT INT TERM\n```\n\n**五个必须知道的坑**：\n\n**1. 捕获 EXIT 后要显式 `exit $?`**\n```\n# 错：trap 里 exit 0 会把失败变成成功\ntrap 'rm -f \"$tmp\"' EXIT\n# 对：\ncleanup() { local rc=$?; rm -rf \"$tmp\"; exit $rc; }\ntrap cleanup EXIT\n```\n这是**最隐蔽的 bug**：脚本失败但返回 0，CI 终于还是绿的。\n\n**2. `EXIT` 陷阱会在 `INT`/`TERM` 之后自动触发**\n所以写 `trap cleanup EXIT` **通常就够了**，不需要再写 `INT TERM`。写了反而会执行两次清理（`rm -rf` 两次无害，但 `exit` 逻辑会乱）。\n\n**3. `trap` 里的 `$?` 只在 EXIT/ERR 时有意义**\n在 INT/TERM 陷阱里 `$?` 是 130/143，要自己判断。\n\n**4. 子 shell 不会继承 trap（除非 `set -E` + `trap -E`）**\n```\nset -E\ntrap 'echo ERR at $LINENO' ERR     # -E 让子 shell 也继承 ERR 陷阱\n```\n\n**5. `trap '' SIGNAL` 是忽略，`trap - SIGNAL` 是恢复默认**\n```\ntrap '' INT      # 屏蔽 Ctrl+C（危险，脚本会杀不掉）\ntrap - INT       # 恢复默认行为\n```\n\n**实际最有价值的三个用途**：\n1. **临时文件清理**：避免 `/tmp` 堆积\n2. **锁文件释放**：`flock` 用 fd 时随进程退出自动释放，但手写 `.lock` 文件必须 trap 清理\n3. **失败时输出上下文**：`trap 'echo \"失败于第 $LINENO 行\"' ERR` —— **排障利器**",
+    "tags": [
+      "trap",
+      "信号",
+      "清理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4218,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何在 Shell 脚本里做日志输出？为什么不能直接 echo？",
+    "answer": "**直接 `echo` 的四个问题**：\n\n| 问题 | 后果 |\n|---|---|\n| 无时间戳 | 出问题时无法对齐时间线 |\n| 无级别 | 无法区分信息/警告/错误 |\n| **输出到 stdout** | 污染管道输出（`script \\| jq` 直接失败） |\n| 无来源标识 | 多脚本混跑时分不清是谁打的 |\n\n**推荐的最小骨架**：\n```bash\nlog() {\n  local level=$1; shift\n  printf '%s [%s] %s\\n' \"$(date '+%F %T')\" \"$level\" \"$*\" >&2\n}\ninfo()  { log INFO  \"$@\"; }\nwarn()  { log WARN  \"$@\"; }\nerror() { log ERROR \"$@\"; }\ndie()   { error \"$@\"; exit 1; }\n```\n\n**关键设计点**：\n\n**1. 日志走 stderr（`>&2`）**\n这是**最重要的一条**。stdout 留给「数据」，stderr 留给「过程信息」：\n```\n# 这样才对：数据给下游，日志给人看\nmyscript.sh | jq '.id'\nmyscript.sh 2>/dev/null | xargs ...   # 需要时还能丢弃日志\n```\n\n**2. 用 `printf` 而不是 `echo`**\n`echo` 在不同 shell 里对 `-n`、`-e`、反斜杠的处理不一致（POSIX 都允许不同实现），**`printf` 是唯一可靠的**。\n\n**3. 同时落文件**：\n```\nexec > >(tee -a /var/log/myscript.log) 2>&1\n```\n用进程替换把 stdout/stderr 同时送到终端和文件。注意这会改变 fd，`set -e` 的行为不受影响。\n\n**4. 不要给日志加颜色到文件**\n```\n# 只在 tty 上加颜色\n[[ -t 2 ]] && RED='\\033[31m' || RED=''\n```\n`-t 2` 判断 stderr 是不是终端。**无脑加 ANSI 码会让日志文件里全是乱码控制符**，grep 都费劲。\n\n**5. 敏感信息脱敏**\n日志里绝不能出现密码、token。写个 `mask()` 函数处理：\n```\nmask() { sed -E 's/(password|token|secret)=[^ ,]*/\\1=***/g'; }\n```\n\n**常见错误**：`echo -e \"a\\tb\"` 在 dash 下不会解释 `\\t`，输出字面 `\\t`。改成 `printf 'a\\tb\\n'`。",
+    "tags": [
+      "日志",
+      "stderr",
+      "printf"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4219,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何用 Shell 做简单的 HTTP 请求与接口健康检查？`curl` 常用参数有哪些？",
+    "answer": "**脚本里 `curl` 的必备参数组合**：\n```\ncurl -sSfL --max-time 5 -o /dev/null -w '%{http_code}' https://api/health\n```\n\n| 参数 | 作用 | 为什么必须 |\n|---|---|---|\n| **`-s`** | 静默（不显示进度条） | 否则日志被进度条污染 |\n| **`-S`** | **出错时仍显示错误**（配合 `-s`） | 只有 `-s` 会连错误信息一起吞掉 |\n| **`-f`** | HTTP ≥400 时返回非 0 退出码 | **不加的话 500 也算「成功」** |\n| `-L` | 跟随重定向 | 跳转后误判 |\n| `--max-time` | 总超时（秒） | **防止脚本挂死** |\n| `--connect-timeout` | 连接超时 | 区分连不上 vs 响应慢 |\n| `-w '%{http_code}'` | 输出状态码 | 脚本里要精确判断 |\n| `-o /dev/null` | 丢弃 body | 只看状态 |\n| `-H` | 自定义 header | 认证 |\n| `-d` / `--data` | POST body | 接口测试 |\n\n**`-f` 是最容易漏的一个**：不加的话，服务返回 500、`curl` 退出码仍是 0，健康检查永远绿。\n\n**健康检查脚本**：\n```bash\ncheck() {\n  local url=$1 expect=${2:-200}\n  local code\n  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -L \"$url\" 2>/dev/null) || {\n    echo \"FAIL $url 连接失败\"; return 1\n  }\n  if [[ \"$code\" == \"$expect\" ]]; then\n    echo \"OK $url $code\"; return 0\n  fi\n  echo \"FAIL $url 期望 $expect 实际 $code\"; return 1\n}\n```\n\n**几个坑**：\n1. **`-w` 输出会混进 body**：不 `-o /dev/null` 的话，body 和状态码拼在一起没法解析\n2. **`-sS` 顺序有讲究**：`-s` 后加 `-S` 才生效；写成 `-S -s` 两者都会被应用（顺序无关，但习惯上 `-sS`）\n3. **TLS 证书问题**：测试环境可 `-k`（跳过校验），**生产绝对不能加 `-k`**\n4. **`--retry` 家族**：`--retry 3 --retry-delay 2 --retry-connrefused` 简单场景够用，不用自己写重试循环\n5. **JSON 接口要 `-H 'Content-Type: application/json'`**，否则服务端会按表单解析",
+    "tags": [
+      "curl",
+      "健康检查",
+      "HTTP"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4220,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "写一个「批量分发并执行命令到多台机器」的脚本，要考虑哪些问题？",
+    "answer": "**核心难点不在「怎么连」，在「怎么并发、怎么汇总、怎么不炸」。**\n\n**最小可用骨架**：\n```bash\n#!/usr/bin/env bash\nset -uo pipefail       # 注意：这里不用 -e，单台失败不该中断全部\n\nHOSTS=${1:-hosts.txt}\nCMD=$2\nOUT=results/$(date +%s)\nmkdir -p \"$OUT\"\n\nexec_host() {\n  local h=$1\n  if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \\\n        \"$h\" \"$CMD\" > \"$OUT/$h.out\" 2> \"$OUT/$h.err\"; then\n    echo \"OK   $h\"\n  else\n    echo \"FAIL $h (exit $?)\"\n  fi\nexport -f exec_host           # 导出函数给 xargs 用\nexport CMD OUT\n\ntr -d '\\r' < \"$HOSTS\" | grep -v '^#' | grep -v '^$' \\\n  | xargs -P 10 -I{} bash -c 'exec_host \"$@\"' _ {}\n\necho '失败清单：'\ngrep -l . \"$OUT\"/*.err 2>/dev/null | sed 's|.*/||;s|\\.err$||'\n```\n\n**必须处理的问题**：\n\n| 问题 | 处理方式 |\n|---|---|\n| **并发控制** | `xargs -P 10`；数量别超目标机承受能力 |\n| **超时** | `ssh ConnectTimeout`（连不上） + `timeout` 包住命令（跑太久） |\n| **免交互** | `BatchMode=yes` 避免卡在密码提示；`StrictHostKeyChecking=accept-new` 免首次确认 |\n| **逐机独立输出** | 每台一个文件，否则输出交错无法看 |\n| **单台失败不中断** | 循环里不能用 `set -e`；用结果文件汇总 |\n| **Windows 换行** | `tr -d '\\r'`（主机清单常从 Excel/Windows 拷来） |\n| **身份认证** | 优先 SSH key + 堡垒机；**不要脚本里写密码** |\n\n**六个高频坑**：\n1. **`ssh` 会抢 stdin**，在 `while read` 循环里必须 `ssh ... < /dev/null`，否则后续行被吞\n2. **`$CMD` 里有变量/引号** 会在远端解析，引号层级极易错。稳妥做法是**把脚本上传后执行**（`scp` + `ssh bash script.sh`）\n3. **远端环境不同**（不同 PATH、不同 shell）→ 命令用绝对路径\n4. **`-A` 代理转发**容易把本机 agent 暴露给不可信跳板，慎用\n5. **大量并发会让目标机 SSH 拒绝**（`MaxStartups`），串行+小并发更稳\n6. **汇总结果要能复现**：把失败清单和每次的输出目录路径打出来\n\n**更好的选择**：超过 20 台就该用 **Ansible**（`ansible all -m shell -a '...'`）或 **Parallel-SSH（pssh）**——它们都解决了上面的所有问题。手写脚本只适合「临时、几台、一次性」。",
+    "tags": [
+      "批量执行",
+      "ssh",
+      "并发"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4221,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 中如何安全地处理用户输入与外部数据？有哪些注入风险？",
+    "answer": "**Shell 的注入风险比 SQL 更隐蔽，因为「数据」和「代码」的边界很模糊。**\n\n**三类典型风险**：\n\n**1. 变量拼成命令执行**\n```\n# 极度危险：用户输入 \"a; rm -rf /\" 就会被执行\ncmd=\"ls $DIR\"; $cmd\n# 稍好但仍有风险：eval 是代码注入\nread -r x; eval \"echo $x\"\n```\n**`eval` 应当视为「把用户输入当代码跑」**，能用就不用。\n\n**2. 命令行参数注入**\n```\n# 输入是 \"-rf /\" 会被当成选项\nrm $FILES\n# 正确\nrm -- \"$@\"\n```\n**`--` 是防选项注入的唯一手段**，所有危险命令（rm、chown、mv）都要加。\n\n**3. 文件名/路径注入**\n```\n# 文件名含空格、换行、以 - 开头都会出问题\nfind . -name '*.log' | xargs rm\n# 正确：NUL 分隔 + --\nfind . -name '*.log' -print0 | xargs -0 rm -f --\n```\n\n**安全处理数据的五条原则**：\n\n1. **一律加引号**：`\"$var\"`、`\"$@\"`\n2. **校验输入格式**（白名单优于黑名单）\n```\n# 只允许 IP\n[[ $ip =~ ^[0-9]{1,3}(\\.[0-9]{1,3}){3}$ ]] || die \"非法 IP\"\n# 只允许字母数字\n[[ $name =~ ^[a-zA-Z0-9_-]+$ ]] || die \"非法名称\"\n```\n3. **用 `--` 终结选项**\n4. **不要把数据拼进命令串**，用参数数组：\n```\n# 危险\nssh host \"tar -czf /tmp/$name.tar.gz /data\"\n# 安全（本地展开，远端只收结果）\nname=$(printf '%q' \"$name\")     # 或先在本地校验\n```\n5. **`printf '%q'` 做转义**（bash 内置）：\n```\nsafe=$(printf '%q' \"$unsafe\")\n```\n它会输出可直接放入 shell 命令的安全形式。\n\n**`$()` 与反引号的差别**：都能执行命令替换，但 `$()` 可嵌套、引号处理更清晰，**且不会被误解析**。反引号在嵌套时几乎无法正确书写。\n\n**最后一条**：**不要让脚本处理「不可信的人的输入」**。面向运维人员的脚本，第一道防线是权限和审计，Shell 层的转义是第二道。",
+    "tags": [
+      "注入",
+      "安全",
+      "转义"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4222,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`while read line; do ...; done < file` 中，如果改成 `cat file | while read line; do ...; done`，会有什么问题？",
+    "options": [
+      {
+        "key": "A",
+        "text": "循环里对变量的修改在循环结束后丢失（管道创建了子 shell）"
+      },
+      {
+        "key": "B",
+        "text": "没有任何区别"
+      },
+      {
+        "key": "C",
+        "text": "管道版本更快"
+      },
+      {
+        "key": "D",
+        "text": "管道版本无法读取最后一行"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "这是 Shell 最经典的陷阱之一。管道会让右侧 cmd（`while` 循环）在**子 shell** 中执行，循环里 `count=$((count+1))` 只改子 shell 的副本，循环结束后外面看到的还是 0。修复方式：①用重定向 `< file`（推荐）；②用进程替换 `< <(cmd)`；③bash 4.2+ 开 `shopt -s lastpipe`（让管道最后一段在当前 shell 执行）。注意 `lastpipe` 只在**非交互**且未开 job control 时生效。",
+    "tags": [
+      "管道",
+      "子shell",
+      "变量"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4223,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "以下哪些是 `crontab` 的常见坑？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "cron 的 PATH 很短，脚本里必须用命令的绝对路径或自己设 PATH"
+      },
+      {
+        "key": "B",
+        "text": "cron 执行时没有终端、没有登录 shell，`~/.bashrc` 里的环境变量不会加载"
+      },
+      {
+        "key": "C",
+        "text": "没加锁且执行时间超过间隔时，会叠跑多个实例"
+      },
+      {
+        "key": "D",
+        "text": "crontab 里的 % 必须转义为 \\%，否则会被当成换行"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "四项都是真实坑。补充：⑤**cron 默认用 `/bin/sh`**，脚本用了 bash 语法（`[[ ]]`、数组）必须显式 `SHELL=/bin/bash` 或脚本里写 `#!/bin/bash` 并在 crontab 里 `bash /path/script.sh`；⑥**输出会以邮件形式发给用户**，不重定向会产生大量 mail 堆积（`>/dev/null 2>&1` 或追加日志）；⑦**时区**：cron 用系统时区，容器里常是 UTC；⑧**秒级任务不支持**，最少 1 分钟，需要更细用 systemd timer 或循环脚本。",
+    "tags": [
+      "crontab",
+      "定时任务",
+      "坑"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4224,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "如何用 Shell 实现「文件锁」防止脚本被并发执行？`flock` 和手写锁有什么区别？",
+    "answer": "**`flock` 是唯一可靠的方式**，手写「检查文件是否存在」有**检查-创建竞态**。\n\n**flock 的两种用法**：\n\n**1. 命令行包装（最简洁）**\n```\nflock -n /var/lock/backup.lock /opt/scripts/backup.sh\n```\n获取锁失败立即退出（`-n` = non-blocking）。**整个脚本被 flock 包住，退出时自动释放**。\n\n**2. 脚本内 fd 方式（更灵活，推荐）**\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\n\nexec 9>/var/lock/myscript.lock\nif ! flock -n 9; then\n  echo '已有实例在运行，退出' >&2\n  exit 0            # 注意：不是 1，避免 cron 报错\nfi\n# 从这里开始是临界区\n```\n**关键点**：锁绑定在 **fd 9** 上，进程退出 fd 关闭 → 锁自动释放。**不会因为 kill -9 留下僵尸锁文件**。\n\n**为什么手写锁不可靠**：\n```\n# 有竞态的写法\nif [ -f /tmp/myscript.lock ]; then exit 1; fi\ntouch /tmp/myscript.lock     # ← 这中间可能有另一个实例也通过了检查\ntrap 'rm -f /tmp/myscript.lock' EXIT   # kill -9 时不会执行 → 锁永久残留\n```\n两个致命缺陷：\n1. **检查与创建不是原子操作**（`O_EXCL` 才原子，但 shell 里还要写临时文件）\n2. **进程被杀时锁不释放**，下次永远跑不起来（需要人工删锁）\n\n**`flock` 的四个实用参数**：\n\n| 参数 | 作用 |\n|---|---|\n| `-n` | 拿不到锁立即失败（不等待） |\n| `-w 30` | 最多等 30 秒 |\n| `-x` / `-s` | 排他锁（默认）/ 共享锁 |\n| `-E 0` | 拿不到锁时返回指定退出码（便于上层判断） |\n\n**crontab 的标准写法**：\n```\n*/5 * * * * flock -n /var/lock/job.lock /opt/job.sh >> /var/log/job.log 2>&1\n```\n**这一行解决了「叠跑」问题**——比在脚本里写检查更简单可靠。\n\n**验证锁是否生效**：\n```\nflock -n /var/lock/test.lock sleep 10 &\nflock -n /var/lock/test.lock echo 'should fail'    # 应立即失败\n```",
+    "tags": [
+      "flock",
+      "文件锁",
+      "并发"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4225,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 脚本里怎么处理日期时间（格式化、计算、比较）？",
+    "answer": "**`date` 是核心工具**（GNU date，macOS 参数不同）。\n\n**格式化**：\n```\ndate '+%Y-%m-%d %H:%M:%S'      # 2024-01-15 10:30:00\ndate '+%F %T'                   # 同上（快捷写法）\ndate -d 'yesterday' '+%F'\ndate -d '7 days ago' '+%F'       # 7 天前\ndate -d '1 month ago' '+%F'\ndate -d 'next Monday' '+%F'\ndate -d '2024-01-15' +%s         # 转时间戳\ndate -d @1700000000 '+%F'        # 时间戳转日期\ndate +%s                         # 当前时间戳\ndate -u '+%F %T'                 # UTC\ndate +%s%3N                      # 毫秒（GNU）\n```\n\n**日期计算**：\n```\n# 相差天数\nd1=$(date -d '2024-01-01' +%s); d2=$(date -d '2024-02-01' +%s)\necho $(( (d2-d1)/86400 ))\n```\n**先转时间戳再做算术**，这是唯一可靠的方式。\n\n**文件名带时间戳**：\n```\nfile=\"backup_$(date +%Y%m%d_%H%M%S).tar.gz\"\n```\n\n**比较**：\n```\n# 字符串比较（格式固定为 YYYY-MM-DD 时可行）\n[[ \"$a\" > \"$b\" ]] && echo 'a 更晚'\n# 更严谨：比时间戳\n[[ $(date -d \"$a\" +%s) -gt $(date -d \"$b\" +%s) ]]\n```\n\n**五个坑**：\n\n1. **`-d` 是 GNU 扩展**，macOS/BSD 的 date 不支持。跨平台用 `gdate`（brew coreutils）或改用 `python -c`\n2. **时区要显式指定**：`TZ=Asia/Shanghai date`，否则容器里（UTC）算出来的日期可能差一天\n3. **`date -d \"1 month ago\"` 有月末陷阱**：3 月 31 日减一个月得到 3 月 3 日（2 月只有 28 天）→ 得到的是 2 月 29 还是 3 月 3 取决于实现。**做月度对账要格外小心**\n4. **`%s%3N` 只有 GNU date 支持**（毫秒），BSD 不支持\n5. **时间戳是 UTC 秒**，与时区无关；但 `date +%s` 输出再 `date -d @` 解析时会按本地时区显示",
+    "tags": [
+      "date",
+      "时间",
+      "格式化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4226,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`sh` 和 `bash`、`dash`、`zsh` 有什么区别？为什么脚本要写 `#!/usr/bin/env bash`？",
+    "answer": "**核心区别在「是否 POSIX 兼容」**。\n\n| shell | 特点 | 用在哪 |\n|---|---|---|\n| **sh** | POSIX 标准，**不同系统指向不同**（Ubuntu→dash，CentOS→bash） | 系统脚本、`/etc/init.d` |\n| **dash** | 极简、启动快，**不支持数组/`[[ ]]`/`$'...'`** | Ubuntu 的 `/bin/sh` |\n| **bash** | 功能最全（数组、`[[ ]]`、`=~`、`${var^^}`） | 运维脚本默认 |\n| **zsh** | 交互体验好（补全、主题），语法有差异 | 个人终端 |\n| **ksh** | 老牌，特性接近 bash | AIX/老 Unix |\n\n**为什么写 `#!/usr/bin/env bash` 而不是 `#!/bin/bash`**：\n\n| 写法 | 问题 |\n|---|---|\n| `#!/bin/bash` | 硬编码路径；**在 macOS/FreeBSD/部分 NixOS 上 bash 不在 `/bin/bash`** |\n| **`#!/usr/bin/env bash`** | 从 `PATH` 找 bash，**跨平台可靠** |\n| `#!/bin/sh` | 若同时用了 bash 特性 → **在 Ubuntu 上直接语法错误** |\n\n**这是运维脚本最常见的「在我机器上能跑」原因**：开发机 `sh` 是 bash，线上 `sh` 是 dash。\n\n**bash 特性在 dash 下的报错示例**：\n```\narr=(a b c)         # dash: Syntax error: \"(\" unexpected\nif [[ -f x ]]      # dash: [[: not found\ns=$'a\\tb'          # dash: 不支持 $'...'\n```\n\n**实用建议**：\n1. **运维脚本一律 `#!/usr/bin/env bash`** + `bash script.sh` 显式调用（绕过可执行位问题）\n2. **crontab 里写 `bash /path/script.sh`**，因为 cron 默认用 sh\n3. **需要 POSIX 兼容时**（如 `/etc/init.d`、容器 entrypoint、Alpine 基础镜像）用 `#!/bin/sh` 并**只写 POSIX 语法**\n4. **Alpine 默认没有 bash**！Dockerfile 里用 bash 必须 `apk add bash`\n\n**怎么检查脚本是否 POSIX 兼容**：`shellcheck -s sh script.sh` 会按 POSIX 规则检查。",
+    "tags": [
+      "sh",
+      "bash",
+      "shebang"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4227,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "给一个「一键健康巡检」脚本的完整设计思路，包含哪些维度？",
+    "answer": "**设计原则：先给「红绿灯结论」，再给明细；所有阈值可配置。**\n\n**七个维度 + 对应命令**：\n\n| 维度 | 命令 | 告警阈值 |\n|---|---|---|\n| **CPU** | `top -bn1`、`vmstat 1 3` | load > 核数、`%sy` 高 |\n| **内存** | `free -h`、`vmstat` 的 `si/so` | `available` < 10%、swap 在用 |\n| **磁盘** | `df -h`、`df -i` | 使用率 > 85%（**块和 inode 都要看**） |\n| **IO** | `iostat -x` | `await` 超阈值、`aqu-sz` > 2 |\n| **网络** | `ss -s`、`ss -lntup` | 连接数异常、TIME_WAIT 超 2 万 |\n| **服务** | `systemctl --failed` | **任何 failed 都是问题** |\n| **时间** | `chronyc tracking` | 偏差 > 1s |\n\n**骨架**：\n```bash\n#!/usr/bin/env bash\nset -uo pipefail\nWARN=0\n\nok()   { printf '  ✓ %s\\n' \"$*\"; }\nbad()  { printf '  ✗ %s\\n' \"$*\"; WARN=$((WARN+1)); }\nhead() { printf '\\n[%s]\\n' \"$*\"; }\n\nhead '磁盘'\nwhile read -r use mnt; do\n  u=${use%\\%}\n  if (( u >= 85 )); then bad \"$mnt 使用率 ${use}\"; else ok \"$mnt ${use}\"; fi\ndone < <(df -hP | awk 'NR>1 && $1 !~ /^(tmpfs|overlay|devtmpfs)$/ {print $5, $6}')\n\nhead '服务'\nfailed=$(systemctl --failed --no-legend | wc -l)\n(( failed == 0 )) && ok '无失败服务' || bad \"$failed 个服务失败\"\n\nprintf '\\n===== 结论：%s =====\\n' \"$([[ $WARN -eq 0 ]] && echo 正常 || echo \"$WARN 项异常\")\"\n[[ $WARN -eq 0 ]]\n```\n\n**四个设计要点**：\n\n1. **退出码要反映结果**（末尾 `[[ $WARN -eq 0 ]]`），这样能被监控/CI 直接消费\n2. **`df -hP` 用 `-P`**：POSIX 输出格式，避免长设备名换行导致解析错位（**这是巡检脚本最经典的解析 bug**）\n3. **过滤 `tmpfs`/`overlay`**：容器环境里全是这类，不排除会误报\n4. **阈值外置**：用环境变量或配置文件，别写死在代码里\n\n**必须自己在机器上跑一遍再上线**——巡检脚本本身报错会让人对整站监控失去信任。",
+    "tags": [
+      "巡检",
+      "脚本设计",
+      "健康"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4228,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`exit 0`、`exit 1`、`exit 2` 在脚本里分别意味着什么？`return` 和 `exit` 有什么区别？",
+    "options": [
+      {
+        "key": "A",
+        "text": "0 表示成功，非 0 表示失败（具体含义由脚本自定义）；return 用于函数/被 source 的脚本，exit 退出整个进程"
+      },
+      {
+        "key": "B",
+        "text": "1 表示成功，0 表示失败"
+      },
+      {
+        "key": "C",
+        "text": "两者完全相同"
+      },
+      {
+        "key": "D",
+        "text": "exit 只能用在函数里"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**约定：0 = 成功，1-255 = 失败**（与 C 的 main 返回值一致）。常用惯例：1 通用错误、2 用法错误、126 不可执行、127 命令未找到、128+N 被信号 N 杀死（如 130 = Ctrl+C）。`return` 在函数里返回给调用者，在 `source` 的脚本里返回到当前 shell；`exit` 无论在哪都终止整个进程。注意 `exit` 参数只有低 8 位有效（`exit 256` 实际是 0）。",
+    "tags": [
+      "exit",
+      "return",
+      "退出码"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4229,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何用 `shellcheck` 提升脚本质量？它常报哪些问题？",
+    "answer": "**`shellcheck` 是 Shell 的「静态分析 / linter」，几乎能拦下 80% 的低级错误。**\n\n**用法**：\n```\nshellcheck script.sh\nshellcheck -s bash script.sh        # 指定方言\nshellcheck -x script.sh             # 跟随 source 的文件\nshellcheck -f gcc script.sh         # 输出格式适合 IDE\n```\n**CI 里直接用 `shellcheck -S warning *.sh`**（只报 warning 及以上），退出码非 0 即失败。\n\n**最常报的六类问题**：\n\n| 编号 | 问题 | 后果 |\n|---|---|---|\n| **SC2086** | 变量没加引号 `$var` | 分词/通配符展开，含空格路径直接坏 |\n| **SC2046** | `$(cmd)` 没加引号 | 同上 |\n| **SC2181** | 用 `$?` 判断而非直接 `if cmd` | `cmd` 之后插一条 echo 就失效 |\n| **SC2006** | 用反引号而非 `$()` | 不可嵌套、易错 |\n| **SC2164** | `cd` 没检查是否成功 | cd 失败后在错误目录执行危险操作 |\n| **SC2015** | `a && b \\|\\| c` 逻辑易错 | c 在 b 失败时也执行 |\n\n**SC2086 是最常见的**，几乎每份手写脚本都有：\n```\n# 错\nrm $files\n# 对\nrm -- \"$files\"\n```\n\n**如何优雅地忽略误报**：\n```\n# 单行豁免\n# shellcheck disable=SC2086\necho $PATH_WITH_INTENTIONAL_WORD_SPLIT\n# 文件级豁免（放在 shebang 后）\n# shellcheck disable=SC1091,SC2034\n```\n**但豁免要写理由**，否则会积累成「全文件 disable」等于没检查。\n\n**实际经验**：\n1. **首次跑会有几十条警告**，不要一次全改——按 SC2086 / SC2181 / SC2164 三类优先修（这三是真 bug）\n2. **SC1091（无法跟随 source）用 `-x`** 或豁免\n3. **GitHub Actions 有现成的 `shellcheck` action**，配上即可\n\n**它检查不了的**：逻辑错误、业务语义、并发问题。**lint 通过 ≠ 脚本正确**，但能省掉大量低级返工。",
+    "tags": [
+      "shellcheck",
+      "静态检查",
+      "规范"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4230,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 里 `[ ]`、`[[ ]]`、`(( ))` 有什么区别？什么时候必须用哪个？",
+    "answer": "**三种测试语法的本质区别**：\n\n| 语法 | 是什么 | POSIX | 特点 |\n|---|---|---|---|\n| **`[ ]`** | 外部命令 `/usr/bin/[`（也内置于 shell） | ✅ | 古老，坑多 |\n| **`[[ ]]`** | bash/ksh **关键字** | ❌ | 更安全，功能多 |\n| **`(( ))`** | 算术求值（返回 0=真） | ❌ | 数值运算专用 |\n\n**`[ ]` 的四个坑**：\n\n1. **变量必须加引号，否则空值报错**\n```\n[ $x = a ]     # x 为空时变成 [ = a ] → 报错 \"unary operator expected\"\n[ \"$x\" = a ]   # 安全\n```\n2. **`<` `>` 要转义**（否则被当重定向）\n```\n[ \"$a\" \\< \"$b\" ]\n```\n3. **`-a`/`-o` 逻辑优先级不直观**，且 `[` 不支持 `&&`\n4. **不支持正则、不支持 `[[ ]]` 的 `=~`**\n\n**`[[ ]]` 的优势**：\n```\n[[ -f $f && -r $f ]]        # 支持 && ||，不用 -a/-o\n[[ $a == *.log ]]           # 支持通配符匹配（右侧不加引号）\n[[ $s =~ ^[0-9]+$ ]]        # 支持正则（bash 3.2+）\n[[ $a < $b ]]               # 字符串比较不用转义\n[[ -z ${var:-} ]]           # 未定义变量不报错\n```\n**最强的一条：`[[ ]]` 里变量不加引号也不会分词**（但这不意味着可以不加，风格上仍建议加）。\n\n**`(( ))` 的用途**：\n```\n(( i++ ))\n(( total = a + b ))\nif (( n > 10 )); then ...\n# 注意：(( )) 里变量不用 $，会自动求值\n(( x = 1 + 2 ))      # x 变为 3\n[[ $x -eq 3 ]]       # 数值比较也可以用 [[ ]]\n```\n\n**选择规则**：\n- **写 bash 脚本 → 一律 `[[ ]]`**（除了需要 POSIX 兼容时）\n- **数值运算 → `(( ))`**\n- **`/bin/sh` 脚本 → 只能 `[ ]`**，且所有变量加引号\n\n**`[ ]` 里数值比较用 `-eq -ne -lt -gt`，字符串用 `= !=`**。写 `[ $a > 5 ]` 是**字符串比较 + 重定向**，双重错误。",
+    "tags": [
+      "[ ]",
+      "[[ ]]",
+      "测试语法"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4231,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "如何用 Shell 解析日志并生成 Top 统计报表？给出一个完整可用的示例。",
+    "answer": "**以 Nginx access.log 为例**（格式：`IP - - [时间] \"方法 URI 协议\" 状态 字节`）。\n\n**1. 基础 Top 10**\n```\n# 访问量最大的 IP\nawk '{print $1}' access.log | sort | uniq -c | sort -rn | head -10\n\n# 最热门的 URI\nawk '{print $7}' access.log | sort | uniq -c | sort -rn | head -10\n\n# 状态码分布\nawk '{print $9}' access.log | sort | uniq -c | sort -rn\n\n# 流量最大的 URI（按字节求和）\nawk '{sum[$7]+=$10} END {for (u in sum) printf \"%-50s %10.2f MB\\n\", u, sum[u]/1048576}' access.log \\\n  | sort -k2 -rn | head -10\n```\n\n**2. 带时间过滤（只统计某小时）**\n```\nawk '$4 ~ /15\\/Jan\\/2024:10:/ {print $1}' access.log | sort | uniq -c | sort -rn | head\n```\n\n**3. 算平均响应时间（需要 `$request_time` 字段）**\n```\nawk '{s+=$NF; n++} END {if(n) printf \"平均 %.3f s（%d 条）\\n\", s/n, n}' access.log\n```\n\n**4. 找出慢请求 Top 20**\n```\nawk '$NF > 1 {print $NF, $7, $1}' access.log | sort -rn | head -20\n```\n\n**5. 一次性生成结构化报表**\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\nLOG=${1:?需要日志文件参数}\n\nprintf '=== 总览 ===\\n'\nprintf '总请求数：%s\\n' \"$(wc -l < \"$LOG\")\"\nprintf '独立 IP：%s\\n'   \"$(awk '{print $1}' \"$LOG\" | sort -u | wc -l)\"\nprintf '5xx 数量：%s\\n'  \"$(awk '$9 ~ /^5/ {n++} END {print n+0}' \"$LOG\")\"\n\nprintf '\\n=== Top 10 IP ===\\n'\nawk '{print $1}' \"$LOG\" | sort | uniq -c | sort -rn | head -10\n\nprintf '\\n=== 状态码分布 ===\\n'\nawk '{print $9}' \"$LOG\" | sort | uniq -c | sort -rn\n```\n\n**关键技巧**：\n\n| 技巧 | 说明 |\n|---|---|\n| **单遍扫描聚合** | `awk` 一次读完就出结果，比 `grep \\| sort \\| uniq` 快数倍 |\n| **`END{n=0}` 防 0 输出** | `n+0` 保证空结果输出 0 而不是空行 |\n| **`LC_ALL=C sort`** | 加快排序且结果稳定 |\n| **`sort -k2 -rn`** | 多列排序时必须用 `-k` 指定列 |\n| **先过滤再聚合** | 大文件上只聚合关心的行 |\n\n**大文件（10GB+）的处理**：用 `LC_ALL=C` + 直接 `awk` 单遍扫描；不要先 `sort` 整个文件（内存爆）。需要分布统计时用 `awk` 先按 key 计数，再对计数结果排序。",
+    "tags": [
+      "日志分析",
+      "Top",
+      "统计"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4232,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "以下哪些做法能提升 Shell 脚本的可靠性？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "用 flock 防止并发重入"
+      },
+      {
+        "key": "B",
+        "text": "关键命令前加 timeout，防止永久挂起"
+      },
+      {
+        "key": "C",
+        "text": "用 trap EXIT 清理临时文件并保留原退出码"
+      },
+      {
+        "key": "D",
+        "text": "所有命令都用 `|| true` 保证脚本不中断"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是反模式：「全部 `|| true`」等于关掉了 `set -e` 的所有保护，脚本永远返回 0，出了问题毫无感知——这是「CI 全绿但部署没成功」的典型成因。正确做法是**只在明确可忽略的地方**用（如 `grep -c` 找不到时返回 1）。补充可靠手段：⑤`set -euo pipefail`；⑥记录每步耗时便于定位慢在哪；⑦失败时输出上下文（`trap 'echo 失败于 $LINENO' ERR`）；⑧版本化脚本（git + 变更记录）。",
+    "tags": [
+      "可靠性",
+      "flock",
+      "timeout"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4233,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`nohup`、`&`、`disown`、`setsid`、`systemd` 分别是怎样让程序在后台存活的？有什么区别？",
+    "answer": "**核心问题：终端关闭时（SIGHUP），程序怎么才能不死。**\n\n| 方式 | 效果 | 终端关闭 | 说明 |\n|---|---|---|---|\n| **`cmd &`** | 放后台 | **会死**（收到 SIGHUP） | 只是后台，不代表能活 |\n| **`nohup cmd &`** | 忽略 SIGHUP | **能活** | 输出默认到 `nohup.out` |\n| **`disown -h %1`** | 从 shell 的 job 表移除 | **能活** | 已启动的进程也可补救 |\n| **`setsid cmd`** | 新建会话（脱离控制终端） | **能活** | 更彻底，与终端完全无关 |\n| **`systemd` service** | 由 init 托管 | **能活** | **生产唯一正确做法** |\n\n**五者的关系**：\n```\n&        → 后台，但仍是当前 shell 的 job，终端关了就死\nnohup    → 忽略 SIGHUP，但 stdin 重定向到 /dev/null\nsetsid   → 新会话 + 新进程组，彻底断开关联\ndisown   → 事后补救（从 job 表移除，不再收 SIGHUP）\nsystemd  → 由 PID 1 托管，开机自启、崩溃重启、日志接管\n```\n\n**nohup 的两个细节**：\n1. **默认输出到 `nohup.out`**，在 `/var/log` 或用户家目录堆积，要显式重定向：`nohup cmd > /var/log/x.log 2>&1 &`\n2. **只管 SIGHUP**，其他信号（如 SIGTERM）照常生效\n\n**为什么生产必须用 systemd**：\n```\n# /etc/systemd/system/myapp.service\n[Service]\nExecStart=/opt/app/bin/app\nRestart=always\nRestartSec=5\nStandardOutput=journal\n```\n好处：开机自启（`enable`）、崩溃自动重启、日志进 journald（可 `journalctl -u`）、`systemctl stop` 能优雅退出、资源限制（`LimitNOFILE`、`MemoryMax`）。\n\n**什么时候还能用 nohup**：临时跑一个长时间任务（如数据导入），且不打算长期维护。**但要记住它的 PID，任务结束后清理。**\n\n**排查后台任务**：\n```\nps -ef | grep <name>            # 找 PID\njobs -l                          # 当前 shell 的 job\npstree -p <pid>                  # 看进程树\n```",
+    "tags": [
+      "nohup",
+      "后台",
+      "systemd"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4234,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "脚本里怎么安全地「一次性替换多个文件中的字符串」？批量替换要注意什么？",
+    "answer": "**标准做法：`grep -l` 筛选 + `xargs` 批量 `sed`，先备份。**\n\n**安全的批量替换**：\n```\n# 1. 先看会影响哪些文件（dry run，必做）\ngrep -rl --include='*.conf' 'old.domain' /etc/app\n\n# 2. 备份\ntar -czf /root/conf-backup-$(date +%F).tar.gz /etc/app\n\n# 3. 批量替换\ngrep -rlZ --include='*.conf' 'old.domain' /etc/app \\\n  | xargs -0 sed -i 's/old\\.domain/new\\.domain/g'\n\n# 4. 验证\ngrep -rn 'old.domain' /etc/app    # 应该没有输出\ngrep -rn 'new.domain' /etc/app | head\n```\n\n**四个关键点**：\n\n**1. `grep -rlZ` 的 `-Z` 不能少**——文件名含空格时会断\n**2. `-i` 改的是新 inode**（GNU sed 写临时文件再 rename），**服务要 reload 才生效**；容器里挂载的 configmap 更不能 `sed -i`（会破坏挂载点），应改源头\n**3. 正则里的 `.` 要转义**：`old.domain` 会误匹配 `oldXdomain`\n**4. 先 `grep` 再 `sed`**，不要反过来——`sed` 直接跑没输出，你永远不知道改了什么\n\n**更稳妥的替代方案**：\n\n**方案 A：用 `sed` 但不覆盖（生成新文件）**\n```\nsed 's/old/new/g' file > file.new && diff file file.new   # 确认后再 mv\n```\n\n**方案 B：用 `perl -pi -e`（支持更丰富语法）**\n```\nperl -pi -e 's/old\\.domain/new.domain/g' *.conf\n```\n比 sed 多了零宽断言、非贪婪等能力。\n\n**方案 C：大项目用 `rpl` 或 `ag + 编辑器`**\n\n**五个必须警惕的场景**：\n1. **配置文件里有密码/证书** → 替换后要重新加密\n2. **`.git` 目录别动** → `--exclude-dir=.git`\n3. **二进制文件** → `grep -I`（忽略二进制）\n4. **权限会变** → `sed -i` 后文件权限按 umask 重置，`/etc/shadow` 这类文件会炸\n5. **行尾差异** → Windows CRLF 文件替换后可能多 `\\r`\n\n**最保险的做法**：生产上**改源头（IaC/配置中心），不直接改文件**。批量 sed 只适合救火场景。",
+    "tags": [
+      "批量替换",
+      "sed",
+      "备份"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4235,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`cmd > out.log 2>&1` 与 `cmd 2>&1 > out.log` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "前者 stdout 和 stderr 都进文件；后者 stderr 仍输出到终端，只有 stdout 进文件"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "C",
+        "text": "后者会覆盖文件"
+      },
+      {
+        "key": "D",
+        "text": "前者只重定向 stderr"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "重定向是**从左到右依次生效**的。`> out.log` 先把 stdout 指向文件，然后 `2>&1` 让 stderr 复制「当前的」stdout → 两者都进文件。反过来 `2>&1` 先让 stderr 指向当前 stdout（终端），再 `> out.log` 只改 stdout → 错误仍打在终端。**速记：`2>&1` 必须写在 `>` 后面**。",
+    "tags": [
+      "重定向",
+      "2>&1",
+      "顺序"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4236,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "提升脚本可维护性，以下哪些做法是对的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "函数化，把重复逻辑抽出来"
+      },
+      {
+        "key": "B",
+        "text": "用 shellcheck 做静态检查"
+      },
+      {
+        "key": "C",
+        "text": "所有配置项集中在文件顶部，便于修改"
+      },
+      {
+        "key": "D",
+        "text": "把逻辑写在一个巨大的 main 函数里更清晰"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 相反：超长 main 函数是最难维护的形态。好脚本的结构是「**顶部常量 → 若干单一职责的小函数 → 末尾一个 main 调用**」，每个函数可单独测试。补充：⑤加 `usage()` 和 `-h`；⑥关键步骤打日志（带时间戳）；⑦用 `trap` 做清理；⑧版本化（git + 变更记录）；⑨交叉验证 `bash -n`（语法）+ `shellcheck`（语义）。",
+    "tags": [
+      "可维护性",
+      "函数化",
+      "规范"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4237,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`find . -name '*.log' | xargs rm` 在什么情况下会误删文件？",
+    "options": [
+      {
+        "key": "A",
+        "text": "文件名含空格时会被拆成多个参数，可能删到别的文件"
+      },
+      {
+        "key": "B",
+        "text": "文件数量超过 100 个时"
+      },
+      {
+        "key": "C",
+        "text": "文件权限不足时"
+      },
+      {
+        "key": "D",
+        "text": "永远不会误删"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "xargs 默认按空白字符分词，文件名 `my file.log` 会被当成 `my` 和 `file.log` 两个参数传给 rm → 误删。正确写法 `find ... -print0 | xargs -0 rm -f --`。C 是权限问题会导致删不掉而不是误删。补充：**末尾的 `--`** 也很重要，防止文件名以 `-` 开头被当成选项（如 `-rf`）。",
+    "tags": [
+      "xargs",
+      "分词",
+      "误删"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4238,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "以下哪些是 `set -euo pipefail` 中 `-u`（nounset）的作用或坑？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "引用未定义变量时脚本直接退出，能提前暴露拼写错误"
+      },
+      {
+        "key": "B",
+        "text": "`$@` 在无参数时会报错，需写成 `${@:-}` 或用 `$#` 判断"
+      },
+      {
+        "key": "C",
+        "text": "`${var:-default}` 这种带默认值的写法不受影响"
+      },
+      {
+        "key": "D",
+        "text": "启用后所有变量都会被自动初始化"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：`-u` 只是报错，不会自动初始化任何变量。C 正确——带 `:-`、`-`、`:=`、`:+` 等扩展的写法会安全处理未定义。**B 的一个重要补充**：`$@` 和 `$*` 在 `-u` 下若用 `\"${@}\"` 形式通常不报错，但 `$1`、`$2` 这类位置参数未传时会直接退出，所以脚本里访问可选参数必须写 `${1:-}`。常见踩坑：`shift` 后没检查 `$#` 就访问 `$1`。",
+    "tags": [
+      "set -u",
+      "nounset",
+      "坑"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4239,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`for i in $(cat file)` 有什么问题？正确写法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "按空白分词，含空格的行会被拆开；应该用 while IFS= read -r"
+      },
+      {
+        "key": "B",
+        "text": "没有问题，是标准写法"
+      },
+      {
+        "key": "C",
+        "text": "速度太慢"
+      },
+      {
+        "key": "D",
+        "text": "文件超过 1 万行会失败"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "`$(cat file)` 会先做**分词（word splitting）+ 通配符展开**，所以 `a b c` 这一行会变成 3 次循环，`*.txt` 这种内容会被展开成文件名。正确写法：`while IFS= read -r line; do ...; done < file`。补充：若一定要用 for，至少 `IFS=$'\\n'` 并临时关掉 glob（`set -f`），但那还是不如 while 干净。**这是 shellcheck SC2046 + 分词问题的最典型组合。**",
+    "tags": [
+      "for",
+      "分词",
+      "while read"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4240,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "关于 `awk`，以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "`NR` 是累计总行号，`FNR` 是当前文件内行号"
+      },
+      {
+        "key": "B",
+        "text": "`$0` 是整行，`$NF` 是最后一个字段"
+      },
+      {
+        "key": "C",
+        "text": "`END{}` 块在读完所有输入后执行，常用于输出聚合结果"
+      },
+      {
+        "key": "D",
+        "text": "awk 无法按多个分隔符切分字段"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：`FS` 可以用正则，如 `-F'[,: ]+'` 支持多分隔符；也能用 `-F'\\t'`。补充高频用法：⑤`awk 'FNR==NR'` 判断「正在读第一个文件」做 join；⑥`printf` 比 `print` 能控制精度（`%.2f`）；⑦`BEGIN{}` 在读取前执行，常用于设 `OFS`；⑧`NF` 还可以判断字段数（如 `NF==5` 过滤日志行）。",
+    "tags": [
+      "awk",
+      "字段",
+      "语法"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4241,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "写一个「删除 7 天前日志并输出统计」的脚本时，如何避免删错和漏统计？",
+    "answer": "**四个关键点：先数再删、限定范围、防误删、可干跑。**\n\n**安全版本**：\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\n\nLOG_DIR=${1:-/var/log/app}\nDAYS=${2:-7}\n[[ -d \"$LOG_DIR\" ]] || { echo \"目录不存在：$LOG_DIR\" >&2; exit 1; }\n\n# 1. 先统计再删除（两步，可核对）\nmapfile -d '' files < <(\n  find \"$LOG_DIR\" -type f -name '*.log' -mtime \"+$DAYS\" -print0\n)\ncount=${#files[@]}\nif (( count == 0 )); then\n  echo \"$(date '+%F %T') 无需清理\"\n  exit 0\nfi\n\necho \"$(date '+%F %T') 待清理 $count 个文件，合计 $(du -ch \"${files[@]}\" | tail -1 | cut -f1)\"\n\n# 2. 试跑模式：只打印不删\nif [[ ${DRY_RUN:-0} == 1 ]]; then\n  printf '  %s\\n' \"${files[@]}\"\n  echo '(dry-run，未删除)'\n  exit 0\nfi\n\n# 3. 安全删除：-print0/-0/-- 三重保护\nprintf '%s\\0' \"${files[@]}\" | xargs -0 -r rm -f --\necho \"$(date '+%F %T') 已清理 $count 个文件\"\n```\n\n**四个防护点的用意**：\n\n| 防护 | 避免的问题 |\n|---|---|\n| `-type f` | 误删同名**目录** |\n| `-name '*.log'` | 误删非日志文件（**限定范围是最关键的一条**） |\n| `-print0` + `xargs -0` + `--` | 文件名含空格/换行/以 `-` 开头时误删 |\n| `DRY_RUN` | 上线前先看会删什么 |\n\n**三个容易出事的细节**：\n1. **`-mtime +7` 是「7×24 小时前」不是「7 个自然日」**，跨时区/夏令时要注意\n2. **`${files[@]}` 必须加引号**，否则含空格的路径又会被拆\n3. **`du -ch` 在文件数极多时会超 `ARG_MAX`**，所以这里先用数组再传参；真遇到 10 万级文件应改成 `find | xargs du -ch`\n\n**生产建议**：删之前**先归档压缩**（`gzip` 或 `mv` 到归档目录），保留可追溯性，然后再删原始文件。直接 `rm` 是不可逆的。",
+    "tags": [
+      "日志清理",
+      "find",
+      "安全"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4242,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "脚本中 `cd /some/dir` 之后接 `rm -rf *`，最大的风险是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "cd 失败时仍在原目录执行 rm -rf *（可能删掉当前工作目录的所有内容）"
+      },
+      {
+        "key": "B",
+        "text": "rm 速度太慢"
+      },
+      {
+        "key": "C",
+        "text": "没有风险，脚本是安全的"
+      },
+      {
+        "key": "D",
+        "text": "cd 会自动创建目录"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "这是 **shellcheck SC2164** 专门警告的问题。若 `/some/dir` 不存在，`cd` 失败但脚本继续（除非 `set -e`），接着 `rm -rf *` 就在**原来的目录**（可能是 `/` 或用户的 home）里删了个干净。正确写法：`cd /some/dir || exit 1`，或 `cd /some/dir && rm -rf -- *`，或 `set -e` 配合。**再加一道保险**：先判断 `[[ -d \"$DIR\" ]]`，并对 `rm` 用变量而不是通配符。",
+    "tags": [
+      "cd",
+      "SC2164",
+      "风险"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4243,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何在 Shell 里做「重试（retry）」？指数退避怎么写？",
+    "answer": "**基础版（固定次数 + 固定间隔）**：\n```bash\nretry() {\n  local n=$1 max=$2; shift 2\n  local i=1\n  until \"$@\"; do\n    if (( i >= max )); then\n      echo \"重试 $max 次仍失败: $*\" >&2\n      return 1\n    fi\n    echo \"第 $i 次失败，${n}s 后重试: $*\" >&2\n    sleep \"$n\"\n    (( i++ ))\n  done\n}\n\nretry 5 3 curl -sf https://api/health\n```\n\n**指数退避 + 抖动（生产推荐）**：\n```bash\nretry_backoff() {\n  local max=$1; shift\n  local delay=1 i=1\n  until \"$@\"; do\n    (( i > max )) && { echo '重试耗尽' >&2; return 1; }\n    # 抖动：避免大量客户端同时重试造成雪崩\n    local jitter=$(( RANDOM % 1000 ))\n    sleep \"$(awk -v d=$delay -v j=$jitter 'BEGIN{printf \"%.2f\", d + j/1000}')\"\n    delay=$(( delay * 2 > 60 ? 60 : delay * 2 ))   # 翻倍，上限 60 秒\n    (( i++ ))\n  done\n}\n```\n\n**四个设计要点**：\n\n| 要点 | 原因 |\n|---|---|\n| **上限** | 无限重试会变成攻击自己 |\n| **指数退避** | 下游正在恢复时反复打只会拖更久 |\n| **抖动（jitter）** | 100 个客户端同时重试 → 同一时刻雪崩（**最重要的细节**） |\n| **区分错误类型** | 网络超时可重试；**参数错误、404、认证失败重试无意义** |\n\n**只重试可重试的错误**：\n```bash\ncase $code in\n  5xx|429|000) retry ... ;;    # 可重试\n  *) die \"不可重试的错误 $code\" ;;\nesac\n```\n\n**现成的工具**（不必自己写）：\n```\ncurl --retry 3 --retry-delay 2 --retry-connrefused --retry-max-time 30 URL\n```\n`curl` 的 `--retry` 家族已经实现了大部分场景的需求。\n\n**验证重试是否真生效**：用 `bash -x` 跑，或让第一次故意失败（如临时改端口）。",
+    "tags": [
+      "重试",
+      "退避",
+      "抖动"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4244,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "关于 Shell 中的 `read` 命令，以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "`read` 默认按 IFS 分词，赋给多个变量"
+      },
+      {
+        "key": "B",
+        "text": "`-r` 禁止反斜杠转义，处理路径时建议总是加上"
+      },
+      {
+        "key": "C",
+        "text": "`read` 会去掉行首尾的空白（除非 IFS= 空赋值）"
+      },
+      {
+        "key": "D",
+        "text": "`read` 不需要 stdin 就能读取文件内容"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：`read` 只从 **stdin（fd 0）** 读，读文件必须重定向（`< file`）或用 `read ... < file`、`read -u` 指定 fd。C 的关键是 `IFS=` 的用法：**`IFS= read -r line` 就是 `IFS=` 空赋值，阻止裁剪**——这是读配置文件的必备写法。补充：⑤`read -s` 静默（读密码）；⑥`read -t 5` 超时返回非 0；⑦`read -a arr` 直接读进数组；⑧`read` 返回值在文件末尾（EOF）时为 1，可用于 `while read` 循环。",
+    "tags": [
+      "read",
+      "IFS",
+      "参数"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4245,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "如何在 Shell 里安全地处理「命令输出包含中文/特殊字符」的场景？",
+    "answer": "**核心原则：只处理数据，不把它当代码；显式指定编码；避免分词。**\n\n**1. 编码要显式统一**\n```\n# 处理前确认编码，避免 GBK/UTF-8 混用\nfile -i data.txt\niconv -f GBK -t UTF-8 data.txt > data.utf8.txt\n```\n**最常见的故障**：Windows 导出的 CSV 是 GBK，`grep 中文` 永远匹配不上，`awk` 切出来的字段是乱码。\n\n**2. 排序与比较要固定 locale**\n```\nLC_ALL=C sort file        # 按字节排序，结果稳定可预测\nLC_ALL=en_US.UTF-8 sort   # 按语言规则\n```\n**脚本里涉及排序/去重/比较时用 `LC_ALL=C`**，否则同样的输入在不同机器上结果不同（这是跨环境 bug 的高发源）。\n\n**3. 中文依赖 locale**\n```\necho $LANG; locale -a\nexport LANG=zh_CN.UTF-8\n```\n**容器里要注意**：alpine 默认只有 `C.UTF-8`，处理中文前要 `apk add locale` 并 `localedef`。\n\n**4. 输出到终端 vs 文件**\n```\n# 只有终端才用颜色，文件里加 ANSI 码会让 grep 失效\nif [[ -t 1 ]]; then\n  GREEN='\\033[32m'; NC='\\033[0m'\nelse\n  GREEN=''; NC=''\nfi\n```\n\n**5. 特殊字符用 set -f 防通配**\n```\nset -f        # 关闭 globbing\nset +f        # 恢复\n```\n处理含 `*`、`?`、`[` 的内容时（如正则、文件名）必须关掉通配符展开。\n\n**6. 用 `printf` 而非 `echo`**\n```\nprintf '%s\\n' \"$content\"    # 不解释反斜杠，最安全\n```\n`echo` 在 dash 下对 `\\t`、`-n` 的处理和 bash 不同，**跨 shell 不可靠**。\n\n**7. 字节与字符的区别**\n```\n${#var}              # 字符数（依赖 locale）\nwc -c                # 字节数\necho -n \"$str\" | wc -m   # 字符数\n```\n**中文在 UTF-8 下占 3 字节**，用 `wc -c` 算长度会得到 3 倍于字符数的值——判断截断时要格外小心。\n\n**8. 拼接与截断的中文陷阱**\n```\n# 按字节截断会切碎多字节字符，出现乱码\nstr=\"中文测试\"; echo \"${str:0:2}\"     # bash 4 按字符截断，安全\nprintf '%.6s' \"$str\"                    # 可能按字节，危险\n```\n**结论**：bash 4+ 用 `${var:0:N}`（按字符）；需要跨 shell 时改用 `awk` 的 `substr`（按字符）。",
+    "tags": [
+      "中文",
+      "locale",
+      "编码"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4246,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何用 Shell 实现「配置文件的读取与覆盖写入」而不会破坏原文件？",
+    "answer": "**三个原则：读取容错、写入原子、变更备份。**\n\n**1. 安全读取配置（`source` 的陷阱）**\n```\n# 危险：直接把配置文件当脚本 source，里面可能有任意命令\nsource /etc/app.conf\n# 安全：只读 KEY=VALUE 形式，白名单解析\nwhile IFS='=' read -r k v; do\n  [[ $k =~ ^[A-Z_][A-Z0-9_]*$ ]] || continue\n  v=${v%%#*}                       # 去掉行尾注释\n  declare -g \"$k=${v// /}\"\n done < /etc/app.conf\n```\nsource 一个运维可写的文件等于给它执行权限。若必须 source，要 `chown root`、`chmod 600`。\n\n**2. 原子写入（不能边写边被读）**\n```\ntmp=$(mktemp)\ncat > \"$tmp\" <<'EOF'\nkey = value\nEOF\n# 校验通过后再原子替换（rename 是原子的）\nmv -f \"$tmp\" /etc/app/app.conf\n```\n**为什么不直接 `> file`**：重定向会立即**截断原文件**，如果写的过程中失败（磁盘满、Ctrl+C），配置文件就变成半截。`mv` 是原子的，读方要么看到旧的要么看到新的。\n\n**3. 只改一行要保留其他内容**\n```\n# 推荐用 sed + 备份，且只匹配精确的键\ncp /etc/app/app.conf /etc/app/app.conf.bak\nsed -i -E 's|^max_conn\\s*=.*|max_conn = 500|' /etc/app/app.conf\n# 若键不存在则追加\ngrep -q '^max_conn' /etc/app/app.conf || echo 'max_conn = 500' >> /etc/app/app.conf\n```\n\n**4. 幂等的完整写法**\n```bash\nset_config() {\n  local file=$1 key=$2 val=$3\n  local tmp; tmp=$(mktemp) || return 1\n  awk -v k=\"$key\" -v v=\"$val\" '\n    BEGIN{done=0}\n    $0 ~ \"^\"k\"[ \\t]*=\" { print k\" = \"v; done=1; next }\n    { print }\n    END{ if(!done) print k\" = \"v }\n  ' \"$file\" > \"$tmp\" && mv -f \"$tmp\" \"$file\"\n}\n```\n**这个函数是幂等的**：跑一次和跑十次结果相同，键不存在时自动追加。\n\n**5. 写入后要验证并 reload**\n```\n# 语法检查（不同服务命令不同）\nnginx -t && systemctl reload nginx\n```\n**改配置必须验证 + reload**，否则改动不生效还可能下次启动失败。",
+    "tags": [
+      "配置读写",
+      "原子",
+      "幂等"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4400,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP 的流量控制和拥塞控制有什么区别？拥塞控制有哪四个阶段？",
+    "answer": "**两个完全不同的问题**：\n\n| | 流量控制（Flow Control） | 拥塞控制（Congestion Control） |\n|---|---|---|\n| 解决谁的问题 | **接收方**处理不过来 | **网络**处理不过来 |\n| 依据 | 接收窗口 `rwnd` | 拥塞窗口 `cwnd` |\n| 谁通知 | 接收方在 ACK 里告知 | **发送方自己探测** |\n\n**实际发送量 = min(rwnd, cwnd)**。\n\n**拥塞控制四阶段**：\n\n**1. 慢启动（Slow Start）**\n- `cwnd` 从 1 MSS 开始，**每个 RTT 翻倍**（指数增长）\n- 到 `ssthresh` 阈值后转拥塞避免\n- 「慢」是相对「一上来就发满带宽」而言，不是真的慢\n\n**2. 拥塞避免（Congestion Avoidance）**\n- 每个 RTT `cwnd` 只 **+1 MSS**（线性增长）\n- 小心试探上限\n\n**3. 快速重传（Fast Retransmit）**\n- 收到 **3 个重复 ACK** 就立刻重传，不等超时\n- 这让恢复时间从「等 RTO 超时」缩短到「一个 RTT」\n\n**4. 快速恢复（Fast Recovery）**\n- `ssthresh` 设为当前 `cwnd` 的一半，`cwnd` 设为 `ssthresh`（不等回到 1）\n- 直接进入拥塞避免，**比超时后重回慢启动快得多**\n\n**两种丢包的反应不同**（面试重点）：\n\n| 事件 | 判断 | 动作 |\n|---|---|---|\n| **超时（RTO）** | 严重拥塞 | `ssthresh = cwnd/2`、`cwnd = 1`、**重回慢启动** |\n| **3 个重复 ACK** | 轻度丢包（链路抖动） | 快速重传 + 快速恢复，`cwnd` 减半 |\n\n**现代算法**：`CUBIC`（Linux 默认）用三次函数代替线性增长，更适合高带宽长距离；`BBR`（Google）**不依赖丢包**判断拥塞，而是测带宽和 RTT，在有丢包的链路上表现更好。",
+    "tags": [
+      "流量控制",
+      "拥塞控制",
+      "TCP"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4401,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TCP 粘包是什么？为什么 UDP 没有粘包问题？怎么解决？",
+    "answer": "**「粘包」不是 TCP 的 bug，是应用层没定义消息边界。**\n\n**本质**：TCP 是**字节流**协议，只保证「字节有序到达」，**不保证消息边界**。发送方两次 `write()` 的数据，接收方可能一次 `read()` 全拿到（粘在一起），也可能一条消息分两次到达（拆包）。\n\n**为什么 UDP 没有**：UDP 是**数据报**协议，每个 `sendto()` 的报文独立，接收端一次 `recvfrom()` 就是完整的一个报文（有边界，但有大小限制，超 MTU 会分片）。\n\n**三种解决方案**：\n\n**1. 定长消息（最简单）**\n```\n每条消息固定 100 字节，不足补齐\n```\n缺点：浪费空间，不灵活。\n\n**2. 分隔符（文本协议常用）**\n```\n每条消息以 \\n 或 \\r\\n 结尾\n```\nRedis 的 RESP 协议、HTTP 头都用类似思路。缺点：消息体里不能出现该分隔符，需要转义。\n\n**3. 长度前缀（二进制协议标准做法）**\n```\n[4 字节长度][N 字节消息体]\n```\n接收方先读 4 字节得到长度 N，再读 N 字节。**这是最通用、最高效的方案**，gRPC、Kafka 都用。\n\n**关键实现细节**：长度前缀的字节序要统一（网络序大端），且**必须处理「读到的字节数 < 期望」的情况**——需要循环读直到读满，不能假设一次 `read()` 就够。\n\n**HTTP 是怎么解决的**（教科书级案例）：\n- `Content-Length` 头 → 长度前缀\n- `Transfer-Encoding: chunked` → 分块，每块前面带十六进制长度，最后 0 长度结束\n\n**常见错误回答**：「粘包是 TCP 的缺陷」——错。TCP 只承诺字节流，边界是应用层的责任。",
+    "tags": [
+      "粘包",
+      "消息边界",
+      "TCP"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4402,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "MTU 和 MSS 是什么？PMTUD 是做什么的？为什么 VPN/隧道会导致「大包不通」？",
+    "answer": "**两个层级的大小限制**：\n\n| | MTU | MSS |\n|---|---|---|\n| 层 | 二层（链路层） | 四层（TCP） |\n| 含义 | 一个帧能承载的**最大数据长度** | TCP 报文里**最大数据段长度** |\n| 典型值 | 以太网 **1500 字节** | **1460 = 1500 - 20(IP) - 20(TCP)** |\n\n**为什么差 40**：IP 头 20 字节 + TCP 头 20 字节。\n\n**分片（Fragmentation）**：\n- IP 层发现包 > MTU 时会**分片**，接收端重组\n- 分片很糟糕：**任何一片丢了整个包就要重传**，且中间设备处理碎片开销大\n\n**PMTUD（路径 MTU 发现）**：\n- 发送方设 `DF=1`（Don't Fragment），让包**不许分片**\n- 中间路由器遇到超 MTU 的包 → 回 **ICMP「Fragmentation Needed」**（Type 3 Code 4），带 MTU 值\n- 发送方据此调小 MSS\n\n**为什么 VPN / 隧道会导致「大包不通」**（超高频的线上故障）：\n\n```\n原始包 1500 字节\n  ↓ 加隧道头（IPsec 约 50-70 字节，GRE 24 字节，VXLAN 50 字节）\n变成 1570 字节 > 物理 MTU 1500\n```\n\n隧道内外网卡若没设 `DF` 或中间设备**屏蔽了 ICMP**（很常见的「安全策略」），PMTUD 就失效：\n- 小包（ping、HTTP 请求）正常\n- **大包静默丢弃** → 表现为「能连上但传不了数据」「SSH 能登录但一 `ls -l` 就卡死」\n\n**这是「SSH 能连但卡住」「HTTP 页面能开但下载失败」的经典原因。**\n\n**排查与修复**：\n```\n# 测路径 MTU（Linux，-M do 禁止分片）\nping -M do -s 1472 目标IP        # 1472+28=1500，通了说明 MTU 正常\nping -M do -s 1400 目标IP        # 逐步减小找到临界值\n```\n修复：\n1. **把隧道内网卡 MTU 调小**（如 IPsec 用 1400，VXLAN 用 1450）\n2. **显式钳制 MSS**：\n```\niptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu\n```\n3. **别屏蔽 ICMP Type 3 Code 4**——它不承载数据，但对网络正常工作至关重要",
+    "tags": [
+      "MTU",
+      "MSS",
+      "PMTUD"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4403,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TCP 和 UDP 各有哪些典型应用？为什么 DNS 用 UDP，而 HTTP/3 反而跑到 UDP 上？",
+    "answer": "**基础对比**：\n\n| | TCP | UDP |\n|---|---|---|\n| 连接 | 面向连接 | 无连接 |\n| 可靠性 | 重传、确认 | 不保证 |\n| 有序 | 保证 | 不保证 |\n| 开销 | 头 20 字节 + 握手 | 头 8 字节，无握手 |\n| 速度 | 慢（建连 + 拥塞控制） | 快 |\n\n**典型应用**：\n\n**TCP**：HTTP/1.1、HTTPS、SSH、SMTP、MySQL、Redis —— 凡是**不能丢数据**的都用它。\n\n**UDP**：DNS、DHCP、NTP、SNMP、游戏、视频直播、VoIP —— 凡是**宁可丢也不要延迟**的都用它。\n\n**为什么 DNS 用 UDP**：\n1. **一问一答，一个包就能搞定**——建立 TCP 连接的成本（1 RTT 握手）比查询本身还高\n2. DNS 是**关键路径**：每次上网都要解析，延迟必须极低\n3. 丢了重传就行（应用层自己重试）\n\n注意：**DNS 在响应 > 512 字节、或做区域传送（AXFR）、或加密（DoT/DoH）时会切到 TCP**。\n\n**为什么 HTTP/3（QUIC）用 UDP**（这是面试高频的反直觉问题）：\n\n这不是「退回去用不可靠协议」，而是**在 UDP 之上自己实现了可靠传输**：\n\n| 问题 | TCP 的困境 | QUIC 的解法 |\n|---|---|---|\n| **队头阻塞** | 一个包丢了，后面所有流都等（内核层面的字节流） | 每条流独立重传，**互不阻塞** |\n| **握手延迟** | TCP 3 次 + TLS 2 次 = 2-3 RTT | **握手与加密合并**，1 RTT 甚至 0 RTT（重连） |\n| **连接迁移** | IP 变了连接就断（手机切 WiFi→4G 要重连） | 用 Connection ID 标识，**IP 变了连接不断** |\n| **协议僵化** | 中间设备（防火墙、NAT）只认 TCP，改不动 | UDP 上层全在用户态，**可快速迭代** |\n| **移动网络优化** | 内核实现，改不动 | 用户态，可按场景定制拥塞算法 |\n\n**代价**：UDP 在很多企业网络/CDN 上被限速或封禁；CPU 开销比内核态 TCP 高（用户态协议栈）。\n\n**一句话**：**「TCP 提供可靠字节流」和「可靠传输」不是一回事**——QUIC 证明你可以用 UDP 造一个更好的可靠传输。",
+    "tags": [
+      "TCP",
+      "UDP",
+      "QUIC"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4404,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "NAT 有哪几种类型？为什么 P2P 打洞在有些 NAT 下能成功、有些不行？",
+    "answer": "**四种 NAT（按限制程度递增）**：\n\n| 类型 | 行为 | 打洞 |\n|---|---|---|\n| **Full Cone（完全锥形）** | 内部地址映射到固定公网端口后，**任何外部主机都能通过该端口访问** | ✅ 容易 |\n| **Restricted Cone（受限锥形）** | 只有**内部主机先发过包的目标 IP** 才能进来 | ✅ 可 |\n| **Port Restricted Cone（端口受限锥形）** | 必须**IP + 端口**都匹配过才能进来 | ⚠️ 需协调 |\n| **Symmetric（对称）** | **每个「目标 IP:端口」分配不同的映射端口** | ❌ 极难 |\n\n**打洞（Hole Punching）原理**：\n\n```\nA 和 B 都在 NAT 后，想直连\n1. 双方都先向 stun 服务器发包，得知自己的公网 IP:端口\n2. 通过信令服务器交换对方的公网地址\n3. A 主动向 B 的公网地址发包（在 A 的 NAT 上「打洞」）\n4. B 也主动向 A 发包 → 双方 NAT 上都有了对方的放行规则\n```\n\n**为什么对称 NAT 打不动**：\n- A 先向 stun 服务器发包 → NAT 分配端口 P1\n- A 再向 B 发包 → 因为是**不同的目标**，对称 NAT 会分配**另一个端口 P2**\n- B 拿着 P1 去连 A，但 A 的 NAT 只对「到 stun 的流量」放了 P1，对 B 是 P2\n- **B 拿到的地址根本连不上 A**\n\n**这就是为什么很多视频通话/P2P 需要 TURN 中继**：对称 NAT 情况下只能靠服务器中转（STUN 只能发现地址，TURN 负责转发）。\n\n**判断自己是不是对称 NAT**：向两个不同的 stun 服务器查询，若返回的公网端口**不同** → 对称 NAT。\n\n**CGNAT（运营商级 NAT，最棘手）**：运营商在用户之后再套一层 NAT，用户完全无法做端口映射。**表现**：家里机器怎么配都访问不了，且光猫做 DMZ 也没用。这是 IPv6 普及的主要动力之一。",
+    "tags": [
+      "NAT",
+      "P2P",
+      "打洞"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4405,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP/1.0、1.1、2.0、3.0 的关键差异是什么？",
+    "answer": "| 版本 | 关键特性 | 解决的问题 |\n|---|---|---|\n| **1.0** | 每个请求一个连接，**短连接** | — |\n| **1.1** | **持久连接（keep-alive）**、pipeline、Host 头、chunked | 频繁建连的开销 |\n| **2.0** | **二进制分帧、多路复用、头部压缩（HPACK）、服务端推送** | 1.1 的队头阻塞 |\n| **3.0（QUIC）** | 基于 **UDP**、0/1-RTT 握手、**流级重传**、连接迁移 | TCP 的队头阻塞与握手延迟 |\n\n**1.1 的两个核心问题**（面试必问）：\n\n**1. 队头阻塞（HOL Blocking）**\n- 浏览器同域并发一般 6 个连接，超出的请求要**排队**\n- 一个慢请求会卡住同连接后面的所有请求\n- 这就是「域名分片（domain sharding）」和「雪碧图」等优化手段的由来\n\n**2. 头部冗余**\n- 每个请求都带完整的 Cookie、User-Agent（可能几百字节）\n- 小请求的实际 payload 可能只有几十字节，**头部占比超过 80%**\n\n**2.0 怎么解决**：\n- **多路复用**：一个 TCP 连接上跑多条流，各自有 stream id，互不阻塞（**应用层解决了**）\n- **HPACK**：头部用索引表压缩，重复的头只传索引\n- **二进制分帧**：比文本协议解析更快、更不易出错\n\n**2.0 的残留问题**：\n- **TCP 层队头阻塞仍在**：一个 TCP 包丢了，所有流都等重传\n- 所以 2.0 在**高丢包网络**下反而不如 1.1 快（这也是 QUIC 的动机）\n\n**3.0（QUIC）的关键改进**：\n- **流级重传**：一个流丢包只影响该流\n- **握手合并**：TCP 3 次 + TLS 1.3 = 1 RTT（甚至重连时 0 RTT）\n- **连接迁移**：手机从 WiFi 切 4G，连接不断\n\n**实战结论**：\n- 内网/低延迟场景 1.1 与 2.0 差异不大\n- **高延迟、高丢包（如移动网络、跨国）** → 3.0 收益明显\n- 2.0 需要 HTTPS（浏览器不支持明文 h2c），且**服务端要有足够连接不被打散**",
+    "tags": [
+      "HTTP",
+      "版本",
+      "队头阻塞"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4406,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TLS 1.2 和 TLS 1.3 的握手有什么差别？为什么说 1.3 更快也更安全？",
+    "answer": "**TLS 1.2：2-RTT 握手；TLS 1.3：1-RTT（首次），0-RTT（重连）。**\n\n**TLS 1.2 握手（简化）**：\n```\n客户端 → ClientHello（支持的算法）\n服务端 → ServerHello + Certificate + ServerKeyExchange + [完成]\n客户端 → ClientKeyExchange + ChangeCipherSpec + Finished\n服务端 → ChangeCipherSpec + Finished\n共 2 个 RTT 才开始传数据\n```\n\n**TLS 1.3 握手**：\n```\n客户端 → ClientHello + [key share]（直接带上密钥交换参数）\n服务端 → ServerHello + [key share] + Certificate + Finished（一把发完）\n客户端 → Finished\n1 个 RTT 完成\n```\n\n**关键差别**：\n\n| | TLS 1.2 | TLS 1.3 |\n|---|---|---|\n| 握手 RTT | 2 | **1**（重连 **0**） |\n| 密钥交换 | RSA 或 ECDHE（明文协商） | **只有 ECDHE**（前向安全） |\n| 加密的起点 | Finished 之后 | **ServerHello 之后就开始加密**（含证书） |\n| 支持的算法 | 一堆历史包袱（RC4、SHA-1、CBC） | **砍掉所有弱算法** |\n| **0-RTT** | 无 | 有（重连时，但有重放风险） |\n\n**为什么更安全**：\n1. **强制前向安全（PFS）**：删除了 RSA 密钥交换，即使服务器私钥泄漏，**过去的流量也解密不了**\n2. **删除弱算法**：CBC 模式、RC4、SHA-1、静态 DH 全部移除，不再有降级攻击面\n3. **证书也加密**：1.3 里 Certificate 消息在加密通道内，**中间人看不到你在访问谁**\n\n**0-RTT 的风险（重点）**：0-RTT 数据用的是「旧的会话密钥」，**可被重放**。所以：\n- **只能用于幂等请求**（GET）\n- 绝不用于 POST、支付、修改状态\n- 服务端要配 `early_data` 白名单\n\n**实践要点**：\n- Nginx 的 `ssl_protocols TLSv1.2 TLSv1.3;`\n- **TLS 1.3 需要 OpenSSL 1.1.1+**，老系统升不上来就只能用 1.2\n- 抓包调试 1.3 很难（证书加密了），要 `SSLKEYLOGFILE` 才能在 Wireshark 里解密",
+    "tags": [
+      "TLS",
+      "握手",
+      "1.3"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4407,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTPS 证书校验有哪些环节？证书链不完整会导致什么问题？",
+    "answer": "**四个校验环节**：\n\n1. **域名匹配**：证书里的 SAN（`subjectAltName`）必须包含请求的域名。**CN 字段早已废弃**，只看 SAN\n2. **有效期**：`notBefore` ~ `notAfter`，**系统时间错一点就会失败**\n3. **信任链**：从服务器证书 → 中间 CA → 根 CA，根 CA 必须在客户端信任库里\n4. **吊销状态**：CRL 或 OCSP（浏览器多改成 CRLset 或直接不检查）\n\n**证书链不完整是最常见的事故**。\n\n**现象**：\n- **浏览器能打开，但 curl / Java / Python 报错**（浏览器会自己补下载中间证书，命令行工具不会）\n- App 报 `SSLHandshakeException`、`unable to find valid certification path`\n\n**原因**：服务器只发了「服务器证书」，没发「中间 CA 证书」。浏览器见证书里带了 AIA 扩展（`Authority Information Access`）会自动去下载中间证书，所以你不容易发现；但**其他客户端不会这么做**。\n\n**验证方法**：\n```\n# 看服务端到底发了几个证书\nopenssl s_client -connect example.com:443 -showcerts </dev/null\n# 应该至少有 2 个：实体证书 + 中间证书\n\n# 模拟严格校验\nopenssl s_client -connect example.com:443 -CAfile /etc/ssl/certs/ca-certificates.crt </dev/null \\\n  | grep 'Verify return code'\n# 输出 code 0 才是链完整\n```\n\n**修复**：在 `fullchain.pem` 里把**服务器证书 + 中间证书**按顺序拼接（**服务器证书必须在最前**）：\n```\ncat server.crt intermediate.crt > fullchain.pem\n```\nNginx：`ssl_certificate fullchain.pem; ssl_certificate_key privkey.pem;`\n\n**其他高频证书问题**：\n1. **证书过期**：**一定要配到期监控**，这是最容易忘、后果最严重的问题\n2. **SNI 缺失**：一个 IP 多域名时，客户端不发 SNI 会拿到错误的证书\n3. **自签证书**：内部服务要么用内网 CA 并分发根证书，要么接受「所有客户端都要 `-k`」\n4. **时钟偏差**：机器时间错到证书有效期外，报 `certificate is not yet valid`",
+    "tags": [
+      "证书",
+      "证书链",
+      "校验"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4408,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "负载均衡有哪几种会话保持方式？各自的局限是什么？",
+    "answer": "**六种方式，按可靠性排序**：\n\n| 方式 | 原理 | 局限 |\n|---|---|---|\n| **源 IP 哈希**（LVS `sh`、HAProxy `source`） | 同一 IP 落同一后端 | **移动网络/NAT 出口**会导致大量用户挤同一后端；客户端 IP 变化时失效 |\n| **Cookie 插入**（Nginx `sticky`、HAProxy `cookie`） | LB 在后端响应里插入 cookie，后续按 cookie 路由 | 需要七层；后端生成的 cookie 可能冲突 |\n| **Cookie 学习** | LB 观察应用自己写的 JSESSIONID，学习映射关系 | 应用需先写 cookie；无 cookie 的请求无法保持 |\n| **URL/参数哈希** | 按 URI 或 query 参数路由 | 只适合「同资源落同后端」（如缓存场景） |\n| **应用层共享 Session** | 把 Session 存 Redis/DB，**任意后端都能处理** | **需要改应用**，但有状态服务就此无状态化 |\n| **一致性哈希** | 按 key 环形分布，节点变化影响小 | 适合缓存路由，不适合会话 |\n\n**正确的决策顺序**：\n\n1. **优先让服务无状态**（共享 Session 到 Redis）——这是唯一根本解\n2. 短期过渡用 **Cookie 保持**（最精确，因为按会话而不是按 IP）\n3. 源 IP 哈希只用于「实在没法改」的场景，且**知道它的坑**\n\n**源 IP 哈希的三个典型坑**：\n\n1. **NAT 出口集中**：一个大企业出口 IP 只有一个，几万员工全落同一后端，**负载完全失效**\n2. **移动网络切换**：手机从 WiFi 切 4G，源 IP 变了 → 会话丢失需重新登录\n3. **四层无法感知 HTTP**：不能按 URI 路由，也不能插 cookie\n\n**验证会话保持是否生效**：\n```\nfor i in {1..10}; do curl -s -b cookies.txt -c cookies.txt http://lb/whoami; done\n# 看返回的机器名是否一直是同一台\n```\n\n**还有一个关键问题**：**会话保持会放大后端故障的影响**。一个后端挂了，绑在它上面的所有会话都要重新登录/丢失状态。这也是为什么要做共享 Session。",
+    "tags": [
+      "会话保持",
+      "负载均衡",
+      "Cookie"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4409,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "服务端大量 SYN_RECV 状态，是什么问题？SYN Flood 怎么防御？",
+    "answer": "**`SYN_RECV` 表示「收到了 SYN，回了 SYN+ACK，但还没收到第三次 ACK」**——半连接队列里的条目。\n\n**正常情况**：`SYN_RECV` 应该是瞬时且极少的。\n\n**大量 `SYN_RECV` 的三种可能**：\n\n1. **SYN Flood 攻击**：大量伪造源 IP 发 SYN，永远等不到 ACK\n2. **客户端太慢**：弱网、高延迟链路（跨国）导致 ACK 迟迟不回\n3. **服务端溢出**：SYN 队列满导致丢弃，客户端重传\n\n**排查**：\n```\nss -ant state syn-recv | wc -l\nss -ant state syn-recv | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn | head\nnetstat -s | grep -i 'SYNs to LISTEN\\|overflow'\n```\n\n**关键判断：源 IP 是否分散**\n- **高度分散（很多不同 IP）** → SYN Flood\n- **集中在少数 IP** → 可能是正常业务（某个客户端卡）或定向攻击\n\n**防御手段（分层）**：\n\n**1. 内核参数（基础防护）**\n```\nnet.ipv4.tcp_syncookies = 1              # 关键！用 cookie 代替半连接队列\nnet.ipv4.tcp_max_syn_backlog = 8192      # 半连接队列上限\nnet.core.somaxconn = 65535               # 全连接队列\nnet.ipv4.tcp_synack_retries = 2          # 减少重试（默认 5 次约 180 秒）\n```\n**`tcp_syncookies=1` 是最有效的单条措施**：队列满时不丢 SYN，而是用加密 cookie 无状态地完成握手。代价是丢掉 TCP 的某些选项（如窗口缩放）。\n\n**2. 反向代理/负载均衡层**\n- 让 LB 承担握手（**LVS DR 模式在四层转发**，攻击流量过不了 LB 的队列）\n- CDN/云 WAF（最有效，攻击在边缘被清掉）\n\n**3. 限速与黑名单**\n```\n# iptables recent 模块：每 IP 每秒最多 20 个新连接\niptables -A INPUT -p tcp --dport 443 --syn \\\n  -m recent --name synflood --set\niptables -A INPUT -p tcp --dport 443 --syn \\\n  -m recent --name synflood --update --seconds 1 --hitcount 20 -j DROP\n```\n\n**4. 不要做的事**\n- **别开 `tcp_syncookies=0`**（很多人为了性能关掉，等于拆掉防线）\n- **别把 `tcp_max_syn_backlog` 调到无限大**（内存有限，队列越大越容易被吃光）\n- **不要在攻击期间反复重启服务**（重启会丢队列，客户端全部重连，雪上加霜）\n\n**真实案例的判断线索**：如果 `ss -s` 显示 `synrecv` 几万但 `estab` 正常，且 CPU 不高、带宽没打满 —— 那就是典型的 SYN Flood（攻击成本低、不需要打通）。",
+    "tags": [
+      "SYN Flood",
+      "SYN_RECV",
+      "防御"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4410,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`iptables` 和 `nftables` 有什么关系？为什么新系统推荐 nftables？",
+    "answer": "**`nftables` 是 `iptables` 的官方继任者**，不是替代品的新名字，是**重新实现**。\n\n| | iptables | nftables |\n|---|---|---|\n| 内核子系统 | `ip_tables`（IPv4）、`ip6_tables`、`arp_tables` 各一套 | **`nf_tables` 统一**（IPv4/IPv6/ARP/bridge 同一套） |\n| 规则匹配 | **线性链表逐条遍历** | **集合 + 哈希查找**，规则多时快得多 |\n| 原子更新 | 修改要重写整条链 | **支持事务式原子提交** |\n| 命令 | `iptables`、`ip6tables`、`ebtables`、`arptables` 四个 | **一个 `nft`** |\n| 语法 | 一堆选项 | 更像编程语言（可定义变量、映射、集合） |\n| 现状 | **只是 nf_tables 上的兼容层**（`iptables-nft`） | 主流发行版默认 |\n\n**关键事实：现代发行版上的 `iptables` 命令，底层已经是 nftables**。用 `iptables-nft` 兼容层转换。\n\n**为什么规则多时 nftables 更快**：\n\niptables 对每个包**从上到下逐条匹配**，1000 条规则最坏要匹配 1000 次。\n\nnftables 支持**集合和映射（set/map）**：\n```\nnft add set inet filter blacklist { type ipv4_addr\\; }\nnft add element inet filter blacklist { 1.2.3.4, 5.6.7.8, ... }\nnft add rule inet filter input ip saddr @blacklist drop\n```\n**10000 个 IP 封禁只需一条规则 + O(1) 哈希查找**，而 iptables 时代要么写 10000 条规则，要么用 `ipset`（在这点上 ipset 已经解决了问题）。\n\n**该用哪个**：\n- **已有环境、脚本、文档** → 继续用 iptables，别为了「新」而迁移\n- **新系统、规则量大、需要 IPv4/IPv6 统一管理** → nftables\n- **K8s 节点** → 跟着发行版默认走，别手动改成另一个\n\n**注意**：**不要把 iptables 和 nftables 规则混在一起配**。两者操作的是同一内核子系统，混用会导致规则互相覆盖、排查时看漏。确认当前用的是哪套：\n```\niptables -V                    # 输出含 nf_tables 或 legacy\niptables-save | head\nnft list ruleset | head\n```",
+    "tags": [
+      "iptables",
+      "nftables",
+      "对比"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4411,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP 常见状态码怎么分类？401、403、429、502、503、504 分别怎么排查？",
+    "answer": "**五类**：`1xx` 信息、`2xx` 成功、`3xx` 重定向、**`4xx` 客户端错误**、**`5xx` 服务端错误**。\n\n**排障时要先分清「谁的问题」**：\n\n| 状态码 | 含义 | 排查方向 |\n|---|---|---|\n| **401** | 未认证 | 缺 token/cookie、token 过期、`Authorization` 头没带 |\n| **403** | 已认证但**无权限** | 账号权限、`iptables`/WAF 拦、目录权限、**SELinux** |\n| **404** | 资源不存在 | 路由配置、文件路径、Nginx `try_files`、发版后静态文件没上传 |\n| **429** | 限流触发 | 应用或网关限流阈值、客户端 QPS 突增 |\n| **500** | 服务端内部异常 | **应用日志**（这是唯一方向） |\n| **502** | **上游返回无效响应** | 后端挂了/端口不通/后端返回了非 HTTP 内容 |\n| **503** | 服务不可用 | 后端全挂、连接池满、维护中、过载 |\n| **504** | **上游超时** | 后端处理慢、`proxy_read_timeout` 太短、DB 慢查询 |\n\n**502 和 504 的关键区分**（面试极高频）：\n\n| | 502（Bad Gateway） | 504（Gateway Timeout） |\n|---|---|---|\n| 本质 | **连接层面失败**——连不上后端，或后端返回了无法解析的内容 | **时间层面失败**——连上了，但后端在超时时间内没响应完 |\n| Nginx 日志里 | `upstream prematurely closed connection`、`connect() failed`、`no live upstreams` | `upstream timed out (110: Connection timed out)` |\n| 排查 | 后端进程是否活着、端口是否监听、是否有 `HTTP 到 HTTPS` 端口配错 | 后端慢在哪（**要去看后端的日志和耗时**） |\n| 谁的问题 | 常常是**基础设施**（后端重启、发布、端口） | 常常是**业务代码**（慢查询、外部接口慢） |\n\n**最常见的 502 原因（按概率）**：\n1. **发版时后端重启**，Nginx 连不上——加 `proxy_next_upstream` + 优雅停机可缓解\n2. **后端端口配错**：比如 `proxy_pass http://127.0.0.1:8080` 但服务在 8000\n3. **协议不匹配**：后端是 HTTPS 而 Nginx 用 `http://` 去连\n4. **超长 header/请求体** 被后端拒绝，返回非法响应\n5. **keepalive 连接的竞态**：后端关闭了空闲连接，Nginx 复用导致失败（配 `proxy_http_version 1.1` + `Connection \"\"` 并调 `keepalive_timeout` 缓解）\n\n**403 的一个隐蔽原因**：**SELinux**。`ls` 权限都对、Nginx 配置也对，但就是 403 → `audit.log` 里会有 AVC 拒绝记录。",
+    "tags": [
+      "状态码",
+      "502",
+      "504"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4412,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`curl` 如何排查 HTTP 问题？`-v`、`--trace`、`-w` 分别看什么？",
+    "answer": "**`curl` 是最重要的 HTTP 排障工具**，比浏览器 DevTools 更适合服务器端排查。\n\n**四个层次的信息**：\n\n**1. `-v`（verbose）——看握手与请求头**\n```\ncurl -v https://api.example.com/health\n```\n输出分区解读：\n```\n*   Trying 10.0.0.1:443...              ← DNS 与连接\n* Connected to api.example.com          ← TCP 建连成功\n* TLS handshake, Server hello ...       ← TLS 握手\n> GET /health HTTP/1.1                  ← > 是发送的请求\n> Host: api.example.com\n< HTTP/1.1 200 OK                       ← < 是收到的响应\n< Content-Type: application/json\n```\n**卡在哪一步就知道是哪一层的问题**：\n- 卡在 `Trying` → DNS 或网络不通\n- 卡在 `Connected` 之后 → TLS 握手或等响应\n- 立刻 `< 502` → 网关问题\n\n**2. `-w`（write out）——看量化指标**\n```\ncurl -o /dev/null -s -w 'code=%{http_code} dns=%{time_namelookup} conn=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total}\\n' https://api/\n```\n**`ttfb`（Time To First Byte）是关键**：\n- `ttfb - time_appconnect` ≈ 后端处理时间\n- `ttfb` 大但 `conn` 小 → 后端慢\n- `conn` 大 → 网络/握手慢\n\n**3. `--trace` 或 `--trace-ascii`——看完整字节流**\n```\ncurl --trace-ascii /tmp/trace.txt https://api/\n```\n用于看实际发了什么（排查 header 被中间设备篡改、body 编码问题）。\n\n**4. 常用组合**\n```\n# 只看状态码\ncurl -s -o /dev/null -w '%{http_code}' URL\n# 跟随重定向并显示最终地址\ncurl -sIL -o /dev/null -w '%{url_effective} %{http_code}' URL\n# 指定方法/头/体\ncurl -X POST -H 'Content-Type: application/json' -d '{\"a\":1}' URL\n# 忽略证书（仅测试）\ncurl -k URL\n# 限定协议版本\ncurl --http2 URL\n# 带认证\ncurl -u user:pass URL\n# 上传文件\ncurl -F 'file=@/path/f.png' URL\n```\n\n**三个高频坑**：\n1. **`-L` 不加会停在 302**，看到的是重定向响应而不是最终页面\n2. **默认不会发 `Expect: 100-continue`**，但大文件 POST 时某些服务会拒，可 `-H 'Expect:'` 禁用\n3. **`--resolve` 可以绕过 DNS 直连指定 IP**（发版验证神器）：\n```\ncurl --resolve api.example.com:443:10.0.0.5 https://api.example.com/health\n```\n这样能在 DNS 还没切的时候验证新机器。",
+    "tags": [
+      "curl",
+      "排查",
+      "-w"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4413,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "「访问某个域名很慢，但换个域名就快」——如何系统排查？",
+    "answer": "**这个描述指向「域名相关」的因素**，排查要覆盖 DNS、TLS、路由、CDN 四个方向。\n\n**Step 1：量化到具体环节**\n```\ncurl -o /dev/null -s -w 'dns=%{time_namelookup} conn=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total}\\n' https://slow.example.com\n```\n\n| 哪一项大 | 说明 | 排查 |\n|---|---|---|\n| **`time_namelookup`** | **DNS 慢** | 见 Step 2 |\n| `time_connect` | TCP 建连慢 | 路由、防火墙、跨地域 |\n| **`time_appconnect`** | **TLS 握手慢** | 证书链、OCSP、加密算法 |\n| `time_starttransfer` | 后端处理慢 | 与应用/其它域名对比 |\n| `time_total` | 传输慢 | 带宽、包大小 |\n\n**Step 2：DNS 方向**（最常见的元凶）\n```\ndig slow.example.com +trace        # 看完整解析链\nnslookup slow.example.com\n```\n**高频原因**：\n1. **解析到多个 IP，其中一个不通/慢**：客户端的策略是重试，超时才换——表现为「有时候快有时候慢」。**用 `dig` 确认是否返回了多 IP，逐个 `curl --resolve` 测**\n2. **权威 DNS 响应慢**：`+trace` 能看到每一跳的耗时\n3. **本地 `/etc/resolv.conf` 的超时太长**：`options timeout:2 attempts:2`\n4. **search 域不对导致多次无效查询**（K8s 里 `ndots:5` 的经典问题）\n\n**Step 3：TLS 方向**\n```\nopenssl s_client -connect slow.example.com:443 -servername slow.example.com </dev/null | head -20\n```\n**高频原因**：\n1. **证书链不完整**：客户端要额外去 AIA 下载中间证书 → 每个新连接多一次外部请求\n2. **OCSP 请求慢**（某些客户端会同步请求吊销检查）\n3. **证书里的 OCSP URL 不可达** → 客户端等超时\n4. **不支持会话复用/OCSP stapling**：每次都是完整握手\n\n**Step 4：网络路径方向**\n```\ntraceroute -T -p 443 slow.example.com\nmtr -T -P 443 slow.example.com      # 持续统计，比 traceroute 更好\ndig slow.example.com +short          # 拿到 IP 后逐个测\n```\n看是否有某个跳点丢包/延迟突变。\n\n**Step 5：对比验证**\n```\n# 直接连 IP（绕过 DNS 与 SNI 之外的所有因素）\ncurl -o /dev/null -s -w '%{time_total}\\n' --resolve slow.example.com:443:<IP> https://slow.example.com/\n# 换 IP 试（多 IP 场景）\ncurl --resolve fast.example.com:443:<另一IP> https://fast.example.com/\n```\n\n**真实案例的经验排序**：\n1. **多 IP 中有一个坏**（占一半以上）\n2. **证书链不完整**（TLS 慢几秒，典型）\n3. **DNS 解析绕了远路**（跨国权威服务器）\n4. **CDN 节点调度错误**（解析到远端节点）\n\n**一键判断工具**：`curl -w` 的五段耗时 + `openssl s_client` 的握手耗时，两者组合能在 5 分钟内定位到层。",
+    "tags": [
+      "慢",
+      "DNS",
+      "分段"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4414,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`traceroute` 和 `mtr` 有什么区别？为什么 traceroute 有时全是星号？",
+    "answer": "**`traceroute` 是一次性快照，`mtr` 是持续统计。**\n\n| | traceroute | mtr |\n|---|---|---|\n| 方式 | 一次性发几组 TTL | **持续发，实时统计** |\n| 输出 | 每跳 3 次探测 | 每跳的丢包率、各次延迟、平均/最差 |\n| 用途 | 看「路径长什么样」 | 看「哪一跳真的有问题」 |\n| 关键优势 | — | **能看到偶发丢包** |\n\n**为什么必须用 mtr**：traceroute 显示某一跳 100% 丢包，但**最终目标可达**——这往往是**中间路由器限制了 ICMP 响应**，而不是真故障。mtr 持续跑 100 个包，若丢包只在中间某跳而后面的跳都正常，**说明那一跳只是不响应探测**；若从某跳开始**丢包率持续到终点**，那才是真问题。\n\n**traceroute 全是星号的六个原因**：\n\n1. **防火墙/安全组屏蔽 ICMP**（最常见）——很多云环境默认不响应 ICMP，但 TCP 照常工作。**换成 `traceroute -T -p 443` 用 TCP 探测往往就通了**\n2. **中间设备对 ICMP TTL 超时消息限速**\n3. **目标主机禁止 ICMP**\n4. **用了 UDP 探测而目标不响应**（Linux traceroute 默认 UDP，Windows 默认 ICMP）\n5. **NAT 环境**：NAT 设备不转发 TTL 超时消息\n6. **非对称路由**：去程和回程不同路径，回程的 ICMP 到不了你\n\n**实用命令**：\n```\n# 强制用 TCP SYN 探测（穿透大多数防火墙）\ntraceroute -T -p 443 目标\nmtr -T -P 443 -c 100 目标\n\n# 用 ICMP（Windows tracert 的等价）\ntraceroute -I 目标\n\n# 只解析 IP 不查 DNS（快，也避免 DNS 干扰）\ntraceroute -n 目标\n\n# mtr 生成报告（便于贴给别人）\nmtr -r -c 100 目标              # report 模式\nmtr --json -c 100 目标 | jq .  # 结构化输出\n```\n\n**解读 mtr 输出的关键**：\n- `Loss%` 只在**某一跳高、后续跳正常** → 该跳限制 ICMP，**不是问题**\n- `Loss%` 从某跳开始**持续到终点** → **真丢包，问题在该跳或之前**\n- `StDev`（抖动）大 → 链路不稳定\n\n**一个反直觉结论**：`traceroute` 的路径信息**本身就可能不准**——因为每跳探测包可能走不同路径（负载均衡、ECMP）。要判断真实路径，多次跑取交集。",
+    "tags": [
+      "traceroute",
+      "mtr",
+      "路径"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4415,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "子网划分怎么算？`192.168.10.0/26` 有多少台主机？网段和广播地址分别是什么？",
+    "answer": "**核心公式**：\n```\n主机数 = 2^(32 - 前缀长度) - 2     减 2 是网段地址和广播地址\n```\n\n**`192.168.10.0/26` 计算过程**：\n\n| 项目 | 计算 | 结果 |\n|---|---|---|\n| 掩码位数 | /26 → 主机位 = 32-26 = **6** | |\n| 子网掩码 | 255.255.255.**192**（26 位 = 24 + 2，第 4 段前 2 位为 1 → 11000000 = 192） | `255.255.255.192` |\n| 地址块大小 | 256 - 192 = **64** | |\n| 主机数 | 2^6 - 2 = **62** | |\n| 网段地址 | 10 对 64 取整 → **192.168.10.0** | |\n| 可用范围 | **192.168.10.1 ~ 192.168.10.62** | |\n| 广播地址 | **192.168.10.63** | |\n| 下一个子网 | **192.168.10.64** | |\n\n**速算方法（第四段记忆表）**：\n\n| 前缀 | 掩码第 4 段 | 块大小 | 主机数 |\n|---|---|---|---|\n| /24 | 0 | 256 | 254 |\n| /25 | 128 | 128 | 126 |\n| **/26** | **192** | **64** | **62** |\n| /27 | 224 | 32 | 30 |\n| /28 | 240 | 16 | 14 |\n| /29 | 248 | 8 | 6 |\n| /30 | 252 | 4 | **2**（点对点链路专用） |\n| /31 | 254 | 2 | 2（RFC 3021，点对点） |\n| /32 | 255 | 1 | 1（单主机路由） |\n\n**块大小 = 256 - 掩码第 4 段**，这是最快的算法。\n\n**判断两个 IP 是否同网段**（实际工作中最常用）：\n```\n# Linux：ipcalc 或直接用 python\npython3 -c \"import ipaddress; print(ipaddress.ip_network('192.168.10.0/26'))\"\n\n# 手算：把 IP 和掩码都转二进制，做 AND\n192.168.10.70  AND  255.255.255.192 = 192.168.10.64  → 属于 64 网段，不在 0-63 里\n```\n\n**三个实际坑**：\n1. **`/30` 只剩 2 个可用地址**，但**云厂商的点对点链路常用 `/30`**（网关占一个）\n2. **云环境的 VPC 子网保留地址更多**：AWS/Aliyun 会额外保留前几个和最后一个（如 AWS 保留 5 个），实际可用比理论少\n3. **广播地址在部分云网络上不可用**，别用 `ping 广播地址` 来判断\n\n**快速判断工具**：`ipcalc 192.168.10.0/26` 直接给出全部信息，比手算可靠。",
+    "tags": [
+      "子网",
+      "广播地址",
+      "计算"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4416,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "VLAN 是什么？同 VLAN 和跨 VLAN 通信分别怎么走？",
+    "answer": "**VLAN（虚拟局域网）**：把一个物理交换机划分成多个**逻辑隔离的广播域**，不通过路由器就无法互相通信。\n\n**为什么需要**：\n- 广播域太大 → 广播风暴、ARP 表爆炸\n- 安全隔离（生产/测试/管理网分开）\n- 灵活组网（同一 VLAN 可以跨交换机）\n\n**两种链路**：\n\n| | Access 口 | Trunk 口 |\n|---|---|---|\n| 用途 | 连接终端（PC、服务器） | 连接交换机/路由器 |\n| 帧格式 | **不带 VLAN 标签**（untagged） | **带 802.1Q 标签**（tagged） |\n| 可承载 | **1 个 VLAN** | **多个 VLAN** |\n\n**同 VLAN 通信**（同交换机）：\n```\n主机 A (VLAN 10) → 交换机查 MAC 表 → 主机 B (VLAN 10)\n直接二层转发，不经过网关\n```\n\n**跨 VLAN 通信**（必须经过三层）：\n```\n主机 A (VLAN 10) → 网关(交换机三层口/路由器) → 主机 B (VLAN 20)\n```\n两种实现：\n1. **单臂路由（Router-on-a-Stick）**：路由器一个物理口配多个子接口，每个子接口对应一个 VLAN\n```\ninterface g0/0.10\n  encapsulation dot1Q 10\n  ip address 192.168.10.1 255.255.255.0\n```\n2. **三层交换机 SVI**：交换机内部虚拟接口\n```\ninterface Vlan10\n  ip address 192.168.10.1 255.255.255.0\n```\n\n**Linux 上的 VLAN 配置**：\n```\n# 创建 VLAN 接口\nip link add link eth0 name eth0.100 type vlan id 100\nip addr add 192.168.100.1/24 dev eth0.100\nip link set eth0.100 up\n```\n对应配置文件在 `/etc/sysconfig/network-scripts/ifcfg-eth0.100`（RHEL）或 Netplan（Ubuntu）。\n\n**云环境的对应概念**：VPC 子网 ≈ VLAN，但**云上跨子网通信默认走 VPC 路由器**，安全组要放通。\n\n**高频故障**：\n1. **Trunk 口没放通该 VLAN** → 该 VLAN 的主机完全不通\n2. **PVID（Native VLAN）两端不一致** → 未打标签的帧被归到错误 VLAN\n3. **MTU**：VLAN 标签占 4 字节，大包要注意\n4. **虚拟机/容器场景**：宿主机网卡要开 promisc 或配置 bridge VLAN filtering\n\n**排查**：`ip -d link show eth0.100` 看 `vlan protocol 802.1Q id 100` 是否生效。",
+    "tags": [
+      "VLAN",
+      "Trunk",
+      "二层"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4417,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "跨机房/跨云组网有哪些方案？各有什么优劣？",
+    "answer": "**五种主流方案，按「网络层 vs 应用层」分**。\n\n| 方案 | 层次 | 延迟 | 成本 | 适用 |\n|---|---|---|---|---|\n| **专线（MPLS/云专线）** | L2/L3 | **最低（稳定）** | 最高 | 核心业务、数据库主从 |\n| **VPN（IPsec/SSL）** | L3 | 中（走公网，抖动大） | 低 | 办公网、非核心 |\n| **SD-WAN** | L3+ | 中（智能选路） | 中 | 多分支、混合云 |\n| **云厂商对等连接/云联网** | L3 | 低 | 中 | 同云多 VPC、多云互联 |\n| **应用层打通（消息/API）** | L7 | 高 | 低 | 数据同步、最终一致 |\n\n**各方案的关键优劣**：\n\n**1. 专线**\n- 优：延迟稳定（可量化 SLA）、带宽保证、不过公网\n- 劣：**贵、开通周期长（数周）**、不灵活\n- 场景：数据库主从复制、异地容灾的热备链路\n\n**2. IPsec VPN**\n- 优：便宜、当天可开通\n- 劣：**公网抖动直接影响业务**、UDP 500/4500 常被封、MTU 要调小（见 MTU 一节）\n- 场景：办公网接入、测试环境互联\n- **关键坑**：IPsec 加密封装会增加 50-70 字节，**必须同步调小 MTU**，否则大包不通\n\n**3. SD-WAN**\n- 优：多链路智能选路（专线 + 宽带混合）、按应用分流\n- 劣：设备成本和运维复杂度\n- 场景：多分支企业、混合云\n\n**4. 云联网 / 对等连接**\n- 优：云内原生，无需自建，延迟低\n- 劣：**跨云仍需公网或专线**，且不同云的路由表配置不同\n- 典型：阿里云 CEN、AWS Transit Gateway\n\n**5. 应用层打通（最重要的补充）**\n- **很多「跨机房需求」其实不该在网络层解决**\n- 用 Kafka/RocketMQ 做异步数据同步、用 API 网关做服务互调\n- 优：不受网络质量直接影响（有重试和缓冲）、易于演进\n- 劣：**最终一致**，不适合强一致性场景\n\n**决策树**：\n```\n需要强一致 / 数据库主从？\n  ├─ 是 → 专线（或云厂商的专用链路）\n  └─ 否 → 能接受最终一致？\n       ├─ 是 → 应用层同步（MQ/CDC），最省事\n       └─ 否 → SD-WAN 或 VPN\n```\n\n**最容易被忽略的三件事**：\n1. **MTU**：所有隧道方案都要调小 MTU 或做 MSS clamp\n2. **DNS**：跨机房解析要走就近的 DNS，否则每次请求都绕远\n3. **时钟**：跨机房的时间同步（chrony 走本地源），否则分布式一致性算法会误判",
+    "tags": [
+      "跨机房",
+      "组网",
+      "选型"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4418,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`ss` 和 `netstat` 有什么区别？为什么现在推荐 `ss`？",
+    "answer": "**`ss` 是 `netstat` 的现代替代品**（iproute2 包），直接读内核的 `/proc/net/*`，而 `netstat` 走 `/proc` 全量解析。\n\n| | netstat | ss |\n|---|---|---|\n| 性能 | **慢**（几万连接时卡死几秒） | **快**（直接 netlink 查询） |\n| 状态过滤 | 只能 `grep` | **内置 `state` 语法** |\n| 输出 | 固定列 | 可自定义 `-o` 各字段 |\n| 依赖 | net-tools（**已从多数发行版移除**） | iproute2（默认装） |\n| 定时器信息 | 无 | **`-o` 显示重传、keepalive 计时器** |\n\n**最实用的十条 `ss`**：\n```\nss -lntp                    # 监听端口（-l 监听 -n 数字 -t tcp -p 进程）\nss -lntup                   # 含 UDP\nss -ant                     # 所有 TCP 连接\nss -ant state established   # 只看向上的连接（**比 grep 快得多**）\nss -ant state time-wait | wc -l\nss -s                       # 汇总统计\nss -tnp                     # 显示进程（-p）\nss -tn dst :443             # 按目标端口过滤\nss -o state established '( dport = :443 )'\nss -ti                       # 含 TCP 内部信息（cwnd、rtt、重传）\n```\n\n**`ss -ti` 是隐藏利器**——能看到每条连接：\n```\nrtt:0.15/0.02   cwnd:10   retrans:0/2   lost:1\n```\n- `retrans`（重传数）非 0 → 链路有问题\n- `cwnd` 很小但 RTT 低 → 拥塞窗口被压\n- **这是判断「网络层抖不抖」的最直接证据**，不用抓包\n\n**`ss -s` 的输出解读**：\n```\nTCP:   120 (estab 45, closed 60, orphaned 0, timewait 58)\n```\n- `closed 60` 中是 `timewait 58` → 短连接多\n- `orphaned` 非 0 → 有 socket 被进程放弃了（可能是 bug）\n\n**三个坑**：\n1. **`-p` 需要 root**（或同用户），否则看不到进程名\n2. **`ss -l` 的 `Recv-Q` 是 accept 队列当前长度，`Send-Q` 是 backlog 上限**——`Recv-Q` 接近 `Send-Q` 说明在溢出\n3. **容器里看 `ss -p` 显示的是容器内 PID**，要配合 `crictl ps` 对照宿主机\n\n**没有 `ss` 的极端情况**：直接读 `/proc/net/tcp`（十六进制格式），能查但很难读。",
+    "tags": [
+      "ss",
+      "netstat",
+      "连接"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4419,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`/etc/resolv.conf` 里有哪些关键字段？`options` 该怎么调？",
+    "answer": "**一个典型的文件**：\n```\nnameserver 10.0.0.2\nnameserver 10.0.0.3\nsearch corp.example.com example.com\noptions timeout:1 attempts:2 rotate ndots:2\n```\n\n| 字段 | 含义 | 注意 |\n|---|---|---|\n| **`nameserver`** | DNS 服务器（最多 3 个生效） | 用 `nameserver` 而非 `server` |\n| **`search`** | 补全域列表 | **列表越长越慢**，每个查询都要试一遍 |\n| **`domain`** | 单个搜索域（旧写法） | 与 search 互斥 |\n| **`options`** | 调优参数 | 见下 |\n\n**`options` 的关键项**：\n\n| 参数 | 默认 | 说明 |\n|---|---|---|\n| **`timeout:1`** | 5 秒 | **单次查询超时**。默认 5 秒是灾难——DNS 挂了每个请求白等 5 秒 |\n| **`attempts:2`** | 2 | 重试次数 |\n| **`ndots:2`** | 1 | 域名含 ≥n 个点才先查原名，否则先拼 search |\n| **`rotate`** | 无 | 多个 nameserver 轮询（默认只用第一个） |\n| `single-request` | 无 | 串行发送 A 和 AAAA 查询（老旧设备兼容） |\n\n**最影响性能的一条**：**超时设置**。默认 5 秒 × 2 attempts × 3 nameserver = **最长 30 秒**才能判定解析失败。DNS 出问题时，表现为「整个系统卡住」。生产建议 `timeout:1 attempts:1`。\n\n**`ndots` 的经典陷阱**（K8s 里必踩）：\n```\nsearch default.svc.cluster.local svc.cluster.local cluster.local\noptions ndots:5\n```\n查询 `api.github.com`（2 个点 < 5）→ 会依次尝试：\n```\napi.github.com.default.svc.cluster.local   ✗\napi.github.com.svc.cluster.local           ✗\napi.github.com.cluster.local               ✗\napi.github.com.                            ✓\n```\n**每个失败都增加延迟**。解法：①`ndots:2`；②域名末尾加 `.`（`api.github.com.`）跳过 search；③用 FQDN。\n\n**验证与排查**：\n```\ndig example.com                    # 看 SERVER 和 QUERY TIME\ndig +search example.com            # 走 search 域\ndig @10.0.0.2 example.com         # 指定服务器\ntcpdump -i any port 53 -n         # 抓 DNS 查询看实际发了什么\n```\n**`dig +trace`** 能看到完整解析链，判断是本地 DNS 慢还是权威慢。",
+    "tags": [
+      "resolv.conf",
+      "DNS",
+      "ndots"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4420,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "ARP 是什么？ARP 欺骗怎么实现、怎么防御？",
+    "answer": "**ARP（地址解析协议）**：把 IP 地址解析成 MAC 地址。工作在二层，**无状态、无认证**——这就是它脆弱的根源。\n\n**正常工作方式**：\n```\n主机 A 要访问 192.168.1.1（不知道 MAC）\n→ 广播 ARP Request：\"谁是 192.168.1.1？\"\n→ 网关单播 ARP Reply：\"我是，MAC 是 aa:bb:cc:dd:ee:ff\"\n→ A 缓存进 ARP 表\n```\n\n**ARP 欺骗原理**：\n攻击者 B 不断向 A 发送伪造的 ARP Reply：\n```\n\"192.168.1.1（网关）的 MAC 是 [B 的 MAC]\"\n```\nA 会**无条件接受**（因为是 Reply，不需要先 Request），于是 A 把网关的 MAC 改成 B 的。之后：\n```\nA → 网关 的流量全部经过 B（中间人）\nB 可以监听、篡改、或者直接丢弃\n```\n这就是**中间人攻击（MITM）**。\n\n**ARP 欺骗的迹象**：\n```\narp -a                       # 看 ARP 表\nip neigh                     # 现代写法\n```\n**典型特征**：**多个 IP 对应同一个 MAC 地址**（网关和其他主机的 MAC 一样）。\n\n**防御手段（分层次）**：\n\n**1. 静态 ARP 绑定（最直接，但不适合大规模）**\n```\nip neigh add 192.168.1.1 lladdr aa:bb:cc:dd:ee:ff dev eth0 nud permanent\n```\n或写 `/etc/ethers` + `arp -f`。麻烦在于每台机器都要配。\n\n**2. 交换机端口安全（DAI，最有效）**\n- **Dynamic ARP Inspection**：交换机校验 ARP 报文里的 MAC/IP 绑定是否与 DHCP snooping 绑定表一致\n- **IP Source Guard**：端口限制可用的 IP\n- 需要交换机支持（企业级接入交换机多数支持）\n\n**3. 网络隔离**\n- **VLAN 隔离**：缩小广播域，减少被欺骗范围\n- **私有 VLAN**：同 VLAN 内端口间也隔离\n\n**4. 加密（根本上绕过二层）**\n- 全站 HTTPS：即使被中间人，TLS 也能发现\n- IPsec/VPN\n\n**5. 监控**\n```\narpwatch -i eth0            # 监听 ARP 变化并告警\n# 或用 arping 主动检测\narping -c 3 192.168.1.1\n```\n\n**面试要点**：ARP 欺骗的根源是「**ARP 协议本身没有认证机制**」。所有防御都是在外围补（交换机、主机表、加密），协议层无法修复。IPv6 的 NDP 有 SEND 扩展但**几乎没部署**。",
+    "tags": [
+      "ARP",
+      "欺骗",
+      "防御"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4421,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "DNS 有哪些记录类型？CNAME 和 A 记录能用在同一域名上吗？",
+    "answer": "**最常用的八种记录**：\n\n| 类型 | 作用 | 示例 |\n|---|---|---|\n| **A** | 域名 → IPv4 | `www A 1.2.3.4` |\n| **AAAA** | 域名 → IPv6 | `www AAAA 2400:...` |\n| **CNAME** | 别名 → 另一个域名 | `www CNAME example.com.` |\n| **MX** | 邮件服务器（带优先级） | `@ MX 10 mail.example.com.` |\n| **TXT** | 文本（**SPF/DKIM/域名验证**） | `@ TXT \"v=spf1 ...\"` |\n| **NS** | 该域的权威服务器 | `@ NS ns1.example.com.` |\n| **SOA** | 该域的起始授权（含 TTL、主服务器） | 区域文件必有一条 |\n| **SRV** | 服务位置（端口+主机+优先级） | `_sip._tcp SRV 10 5 5060 sip.` |\n\n**CNAME 和 A 能在同一域名上共存吗？——不能**（这是面试必考点）。\n\n原因：**CNAME 表示「这个域名的所有记录都指向另一个域名」**，它的语义排斥任何其他记录。同时存在属于**协议违规**，多数 DNS 服务器会拒绝加载这样的区域文件。\n\n```\n# 错的\nwww CNAME example.com.\nwww A 1.2.3.4\n```\n**例外**：DNSSEC 的 `RRSIG`/`NSEC` 等签名记录可以和 CNAME 共存（它们不是「数据记录」）。\n\n**为什么不建议在根域（`example.com`）用 CNAME**：\n- 根域通常要配 MX（邮件）、TXT（SPF）、NS，这些和 CNAME 冲突\n- 很多 DNS 服务商直接禁止\n- **解决方案（ALIAS / ANAME / CNAME flattening）**：服务商在解析时把目标域名的 IP 查出来，直接返回 A 记录。阿里云 DNS 叫「显性 URL/别名」、Cloudflare 叫 CNAME Flattening\n\n**TTL 的实践建议**：\n```\n@ A 1.2.3.4    TTL 600      # 变更前先调小 TTL（如 60），改完再调回\n```\n**变更域名解析前，必须提前把 TTL 降到 60 秒并等一个 TTL 周期**，否则改完要等原来的 TTL（可能 24 小时）才全网生效。**这是 DNS 变更最重要的操作纪律。**\n\n**`СNAME` 与 `A` 的排查**：`dig www.example.com +short` 看实际返回什么，多条记录时注意轮询顺序。",
+    "tags": [
+      "DNS记录",
+      "CNAME",
+      "TTL"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4422,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "一个 HTTP 请求从客户端到服务端，中间可能经过哪些设备？每层各做什么？",
+    "answer": "**按「客户端 → 网络 → 服务端」逐层展开**。\n\n```\n浏览器\n  ↓ ① DNS 解析\n本地 DNS → 根 → 顶级域 → 权威服务器\n  ↓ ② TCP/TLS 建连\n  ↓ ③ 发起 HTTP 请求\n客户端网络\n  ↓ ④ 家宽路由器 / 企业出口（NAT）\n  ↓ ⑤ ISP 网络 → 骨干网\n  ↓ ⑥ CDN 边缘节点（如有）\n  ↓ ⑦ WAF / DDoS 清洗\n  ↓ ⑧ 负载均衡（LVS / F5 / 云 SLB）\n  ↓ ⑨ 反向代理（Nginx / HAProxy）\n  ↓ ⑩ 应用网关 / API 网关\n服务端\n  ↓ ⑪ 应用服务（Tomcat / Go / Python）\n  ↓ ⑫ 数据库 / 缓存 / 消息队列\n```\n\n**每一层做什么、常见故障**：\n\n| # | 设备/环节 | 做什么 | 常见故障 |\n|---|---|---|---|\n| ① | DNS | 域名 → IP | 解析慢、多 IP 有坏的、缓存未生效 |\n| ④ | NAT | 内网 → 公网地址转换 | 端口耗尽、对称 NAT 打洞失败 |\n| ⑥ | CDN | 就近缓存静态资源 | 缓存未刷新、回源失败、节点调度错 |\n| ⑦ | WAF | 拦截攻击 | **误杀正常请求**（403 的常见原因） |\n| ⑧ | LB（四层） | 按连接分发 | 后端摘除不及时 → 502 |\n| ⑨ | 反向代理 | 七层路由、TLS 卸载 | `proxy_pass` 配错、超时设置太短 → 502/504 |\n| ⑩ | API 网关 | 鉴权、限流 | 限流阈值太低 → 429 |\n| ⑪ | 应用 | 业务逻辑 | 慢查询、GC、线程池满 |\n| ⑫ | 依赖 | 数据存取 | 连接池耗尽、主从延迟 |\n\n**排障的黄金法则：从两端往中间夹**\n\n1. **先确认「哪一段」**\n```\n# 从客户端\ncurl -w 'dns=%{time_namelookup} conn=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer}\\n' -o /dev/null -s https://x/\n# 从服务端\nss -tn state established '( sport = :443 )' | wc -l\ntail -f /var/log/nginx/access.log\n```\n2. **两边的日志对不上，就是中间环节**\n   - 客户端报错但服务端没日志 → 请求没到（DNS/LB/WAF）\n   - 服务端有请求但客户端报错 → **响应丢了**（超时、连接被中断）\n3. **逐跳跳过验证**\n```\n# 绕过 DNS\ncurl --resolve api.x.com:443:<IP> https://api.x.com/\n# 绕过 CDN（直连源站 IP）\n# 绕过 LB（直连后端某台）\ncurl -H 'Host: api.x.com' http://<后端IP>/\n```\n**逐跳排除是定位「哪一层出问题」最快的方式。**\n\n**面试加分点**：不要只背流程，要说明**「每一层都会引入延迟和故障点」**，排障思路是「**分段测量、逐跳排除**」而不是「凭经验猜」。",
+    "tags": [
+      "链路",
+      "分层",
+      "排障"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4423,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TCP 半连接队列和全连接队列溢出分别有什么表现？",
+    "answer": "**两个队列，溢出表现完全不同**。\n\n```\n[ SYN 队列（半连接） ]\n  收到 SYN，回 SYN+ACK，等 ACK\n  上限：tcp_max_syn_backlog\n        ↓ 握手完成\n[ ACCEPT 队列（全连接） ]\n  已完成握手，等应用 accept()\n  上限：min(somaxconn, 应用 listen backlog)\n```\n\n| | SYN 队列溢出 | ACCEPT 队列溢出 |\n|---|---|---|\n| **表现** | 客户端**重传 SYN**，连接**变慢但最终能成功** | 客户端**握手成功**，但请求**无响应或超时** |\n| 原因 | SYN Flood、高延迟链路 | **应用 accept 太慢**（线程池满、GC） |\n| 谁的问题 | 网络/攻击 | **应用** |\n| 关键指标 | `netstat -s \\| grep 'SYNs to LISTEN'` | `ss -lnt` 的 `Recv-Q` 接近 `Send-Q` |\n\n**最典型的现象对比**：\n\n**SYN 队列溢出**：用户感觉「**打开网页很慢，但多刷新几次能打开**」\n**ACCEPT 队列溢出**：用户感觉「**网页一直转圈，最后超时**」，但服务端日志里**根本没有这个请求**\n\n**排查命令**：\n```\n# SYN 队列\nnetstat -s | grep -i 'SYNs to LISTEN sockets dropped'\nss -ant state syn-recv | wc -l\n\n# ACCEPT 队列\nss -lnt                             # 看 Recv-Q / Send-Q\nnetstat -s | grep -i 'listen queue\\|overflowed'\n```\n**`ss -lnt` 是最直接的**：`Recv-Q` 是当前排队等 accept 的连接数，`Send-Q` 是上限。**Recv-Q 持续接近 Send-Q 就是正在溢出。**\n\n**修复**：\n\n**SYN 队列**：\n```\nnet.ipv4.tcp_max_syn_backlog = 8192\nnet.ipv4.tcp_syncookies = 1        # 队列满时无状态处理，最关键\n```\n\n**ACCEPT 队列**：\n```\n# 1. 内核上限\nnet.core.somaxconn = 65535\n# 2. 应用自己的 backlog（两者取小）\nnginx: listen 80 backlog=65535;\ntomcat: acceptCount=\"500\"\nredis: tcp-backlog 511\n# 3. 根本解：让应用更快 accept（多进程、减少阻塞、加机器）\n```\n\n**关键认知**：**ACCEPT 队列溢出不是「网络问题」，是「应用处理不过来」**。调内核参数只能延缓，真正要解决的是应用的 accept 吞吐。",
+    "tags": [
+      "半连接",
+      "全连接",
+      "队列"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4424,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "如何理解 TCP keepalive？和应用层心跳有什么区别？什么时候该用哪个？",
+    "answer": "**两个完全不同层次的东西**。\n\n| | TCP keepalive | 应用层心跳 |\n|---|---|---|\n| 层次 | 内核（四层） | 应用（七层） |\n| 默认开启 | **默认关闭**（需 `SO_KEEPALIVE`） | 由应用实现 |\n| 探测内容 | 发空 ACK 探活 | 通常是业务请求（ping） |\n| 默认周期 | 7200 秒（**2 小时！**） | 通常 10-60 秒 |\n| 能检测什么 | 连接**对端是否活着** | 服务**是否真能工作** |\n| 中间设备 | 很多 NAT/防火墙会丢弃 | 正常业务流量 |\n\n**TCP keepalive 的默认值很坑**：\n```\nnet.ipv4.tcp_keepalive_time = 7200     # 空闲 2 小时才发第一个探测\nnet.ipv4.tcp_keepalive_intvl = 75      # 之后每 75 秒\nnet.ipv4.tcp_keepalive_probes = 9      # 9 次无响应才断\n```\n**最长 2 小时 + 9×75 秒 ≈ 2 小时 11 分才判定死连接。** 对长连接服务完全不可接受。\n\n**为什么很多长连接「莫名其妙断开」**：\n- **NAT/防火墙的空闲超时**：云厂商 SLB 默认 900 秒（15 分钟），NAT 网关可能 5 分钟\n- 连接空闲太久被中间设备回收，两端都不知道\n- 之后一端发数据 → 对端已无此连接 → **RST**\n- 表现为「**连接是好的，但突然发数据报错**」\n\n**解决这个问题的标准做法：应用层心跳**\n```\n# 应用每 30-60 秒发一次 ping\n# 保证连接不被中间设备判定为空闲\n```\n心跳周期要**小于中间设备的最小空闲超时**。经验值：\n- 有负载均衡/API 网关：**30-60 秒**\n- 纯内网直连：可以长一些（几分钟）\n\n**配合 keepalive 的调优**（应用层心跳之外再加一层保险）：\n```\nnet.ipv4.tcp_keepalive_time = 300\nnet.ipv4.tcp_keepalive_intvl = 30\nnet.ipv4.tcp_keepalive_probes = 3\n```\n或在应用里设 socket 选项（Java 的 `SO_KEEPALIVE` + `TcpKeepAliveTime`）。\n\n**什么情况用哪个**：\n\n| 场景 | 选择 |\n|---|---|\n| 长连接 RPC（gRPC、Dubbo） | **两者都要**（应用心跳保活 + keepalive 兜底） |\n| 数据库连接池 | 连接池自带心跳（`validationQuery`），配 keepalive |\n| 短连接（HTTP/1.0） | 都不需要 |\n| 移动端推送 | **必须**应用层心跳（NAT 超时很短） |\n\n**一句话**：**TCP keepalive 只管「TCP 连接是否还通」，应用层心跳才知道「服务是否真能工作」。生产环境两者都需要，但主责在应用层。**",
+    "tags": [
+      "keepalive",
+      "心跳",
+      "长连接"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4425,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "抓到的包显示「TCP Retransmission」「Dup ACK」「RST」，分别说明什么？",
+    "answer": "**三个信号代表三种不同的问题**。\n\n**1. TCP Retransmission（重传）**\n- **含义**：发送方没收到 ACK，超时后重发\n- **说明**：**包丢了**，或 ACK 丢了\n- **进一步看**：\n  - 两侧都重传 → 链路丢包或拥塞\n  - **只有一方重传** → 可能是对方处理慢（ACK 攒批）或该方向拥塞\n\n| 现象 | 判断 |\n|---|---|\n| 大量重传 + RTT 增大 | 链路拥塞 |\n| 少量重传（<0.1%） | 正常（互联网本来就有丢包） |\n| **重传率高（>1%）** | 链路有问题，要查中间设备 |\n\n**2. Dup ACK（重复确认）**\n- **含义**：接收方收到了乱序的段，重复发同一个 ACK（期待的那个序号没到）\n- **说明**：**中间有一段丢了**，后续的段到了但缺的那个没到\n- **关键**：收到 **3 个 Dup ACK** 触发快速重传（这是 TCP 优化丢包恢复的机制）\n\n**Dup ACK 是「丢包」的证据，不是「重复包」**——这是最容易误解的地方。\n\n**3. RST（Reset）**\n**含义：连接被立即终止**。这是一个「强制手段」，没有礼貌的挥手。\n\n**四种常见原因**：\n\n| 触发的 RST | 原因 |\n|---|---|\n| **服务端回 RST** | 端口没监听、或 `SYN` 到达时队列满、或应用主动 reset |\n| **客户端回 RST** | 连接已关闭但仍有数据到达 |\n| **中间设备回 RST** | **防火墙策略**（REJECT 而非 DROP）、负载均衡摘除后端 |\n| **超时后被回收** | NAT/防火墙把空闲连接记录清了，之后的数据触发 RST |\n\n**这是「502 或「连接被拒绝」的常见根源**。\n\n**Wireshark 过滤器**：\n```\ntcp.analysis.retransmission          # 重传\ntcp.analysis.duplicate_ack           # Dup ACK\ntcp.flags.reset == 1                 # RST\ntcp.analysis.flags && !tcp.analysis.window_update   # 各类异常\ntcp.port == 443 && tcp.analysis.retransmission     # 组合\n```\n\n**统计重传率的方法**（比看单个包有用）：\n```\n# 抓一段时间后统计\ntcpdump -i eth0 -s 100 -c 10000 port 443 -w /tmp/cap.pcap\n# 然后\n# Wireshark: Statistics → TCP Stream Graphs → Throughput\n# 或 tshark 统计：\ntshark -r /tmp/cap.pcap -q -z follow,tcp,ascii,0\n```\n\n**在线看（不用抓包）**：\n```\nss -ti | grep retrans\n```\n**每条连接的 `retrans:X/Y` 就是重传次数**，这是最快的判断方式。\n\n**关键判断心法**：\n- **重传 + Dup ACK 一起出现** → 链路丢包（网络问题）\n- **只有 RST** → 连接被强杀（策略/端口/超时）\n- **重传但 RTT 正常** → 可能是 ACK 路径不对称",
+    "tags": [
+      "重传",
+      "Dup ACK",
+      "RST"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4426,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP 三次握手中，第三次握手（客户端 → 服务端的 ACK）的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "确认客户端的接收能力，并让服务端确认客户端已收到自己的 SYN"
+      },
+      {
+        "key": "B",
+        "text": "开始传输数据"
+      },
+      {
+        "key": "C",
+        "text": "仅仅是个形式，没有实际作用"
+      },
+      {
+        "key": "D",
+        "text": "协商窗口大小"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "三次握手的本质是**双方各自确认对方的收发能力**：①SYN 让服务端知道客户端能发；②SYN+ACK 让客户端知道服务端能收发；③ACK 让服务端知道**客户端能收**（这一点很关键——只两次握手的话，服务端无法确认客户端收到了自己的 SYN+ACK，历史连接请求可能造成资源浪费）。第三次握手还可以携带数据（TCP Fast Open 之外的常规情况也可以，但多数实现要先完成握手）。",
+    "tags": [
+      "三次握手",
+      "ACK",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4427,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "以下哪些情况会导致 TCP 连接出现大量 TIME_WAIT？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "大量短连接，连接用完立刻关闭"
+      },
+      {
+        "key": "B",
+        "text": "本机作为主动关闭方（服务端主动断开）"
+      },
+      {
+        "key": "C",
+        "text": "客户端没有启用连接复用（HTTP/1.0 或连接池配错）"
+      },
+      {
+        "key": "D",
+        "text": "服务端进程崩溃"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "TIME_WAIT 只会出现在**主动关闭方**。D 进程崩溃是被动断开，反而会产生 FIN_WAIT 或直接 RST，不产生 TIME_WAIT。三个正确项的本质都是「本机作为主动关闭方 + 连接多」：短连接（A）和连接复用缺失（C）都制造大量连接，B 决定是谁留 TIME_WAIT。**核心解法是改成长连接/连接池**，而不是调内核参数——`tcp_tw_reuse` 只在客户端侧有效，服务端 TIME_WAIT 多说明架构上有问题。",
+    "tags": [
+      "TIME_WAIT",
+      "短连接",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4428,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "抓包时如何只抓某个进程的流量？有哪些高效过滤技巧？",
+    "answer": "**`tcpdump` 是包级抓取，本身不支持「按进程过滤」**——它只看到网络接口上的包，不知道属于哪个进程。\n\n**三个解决方案**：\n\n**1. `ss -tnp` 拿到端口，再按端口抓（最实用）**\n```\nss -tnp | grep <pid>          # 找到该进程用的端口\nss -tnp | grep 12345          # 直接看端口对应的进程\ntcpdump -i any -nn 'port 8080' -w /tmp/x.pcap\n```\n**绝大多数场景这样够用**——已知服务端口，抓该端口即可。\n\n**2. `bpftrace` 按进程抓（精确）**\n```\nbpftrace -e 'kprobe:tcp_sendmsg /comm == \"mysqld\"/ { @bytes[comm] = sum(arg2); }'\n# 或用 tcpconnect/tcpaccept 工具（bcc 包）\ntcpconnect -P <pid>            # 追踪该进程的主动连接\ntcptraceroute\n```\n\n**3. `strace` 看 socket 操作（不看包内容）**\n```\nstrace -f -p <pid> -e trace=network -s 200\n```\n\n**高效过滤技巧（这才是抓包的核心）**：\n\n**常用过滤器**：\n```\n# 基础\ntcpdump -i eth0 -nn 'host 10.0.0.5'                  # 与某 IP 通信\ntcpdump -nn 'tcp port 443'                          # 端口\ntcpdump -nn 'src 10.0.0.5 and dst port 8080'        # 组合\ntcpdump -nn 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0'  # 只看建连/断开\ntcpdump -nn 'tcp[tcpflags] & tcp-rst != 0'           # 只看 RST\ntcpdump -nn 'icmp'                                  # ICMP\ntcpdump -nn 'not port 22'                           # 排除 SSH（**重要，否则会抓到自己的连接**）\n```\n\n**性能与体积控制**：\n```\ntcpdump -i any -nn -s 200 -c 1000 'port 8080' -w /tmp/x.pcap\n#        -s 200  只抓每包前 200 字节（够看头部）\n#        -c 1000 抓 1000 个包就停\n#        -w      直接写文件（不解析，快很多）\n```\n**`-s` 是必调的**：默认抓全包，1Gbps 下几秒就是几百 MB。只看头部的话 96-200 字节足够。\n\n**轮转与限流**（长时间抓包必备）：\n```\ntcpdump -i any -nn -s 200 'port 8080' \\\n  -w /tmp/cap-%Y%m%d-%H%M%S.pcap -G 3600 -C 100 --no-promiscuous-mode &\n# -G 3600  每小时切一个文件\n# -C 100   超过 100MB 切文件\n```\n\n**三个坑**：\n1. **`-i any` 时链路层类型不同**，某些过滤器可能失效；能指定网卡就指定\n2. **抓包本身有开销**：高流量下 `tcpdump` 会丢包（`-n` + `-s` + 减少过滤范围能缓解）\n3. **容器里抓包要进 netns**：`nsenter -t <pid> -n tcpdump ...` 或 `kubectl debug`\n\n**分析阶段**：抓完用 `tshark -r x.pcap -V | less` 或直接拖进 Wireshark（**手机上看时间线、看 TCP 流图最快**）。",
+    "tags": [
+      "tcpdump",
+      "抓包",
+      "过滤"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4429,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "IPv6 和 IPv4 的关键差异有哪些？为什么 IPv6 普及慢？",
+    "answer": "**关键差异**：\n\n| | IPv4 | IPv6 |\n|---|---|---|\n| 地址长度 | 32 位（43 亿） | **128 位**（几乎无限） |\n| 地址表示 | 点分十进制 | **冒号十六进制**（`2001:db8::1`） |\n| 报文头 | 变长（含选项） | **定长 40 字节**，选项放扩展头 |\n| 校验和 | 有 | **无**（由链路层保障） |\n| 分片 | 路由器可分片 | **只有源端可分片** |\n| 广播 | 有 | **无广播，用组播** |\n| ARP | 有 | 用 **NDP**（ICMPv6） |\n| 地址配置 | DHCP 或手工 | **SLAAC 无状态自动配置** |\n| NAT | 必须（地址不够） | **不需要**（但通常仍会配） |\n\n**为什么普及慢（真实原因）**：\n\n1. **NAT 让 IPv4「够用了」**：地址短缺被 NAT 缓解，企业觉得没有必要升级\n2. **双栈改造成本高**：应用、监控、防火墙、负载均衡、日志、合规审计全都要支持\n3. **维护两套的成本**：很多系统的 IPv6 支持是「能配但没验证」——出了问题是新的排查路径\n4. **硬件/中间设备支持参差**：老防火墙、老 LB 对 IPv6 支持有限\n5. **地址规划需要重新设计**：`/64` 是标准子网划分，与 IPv4 的习惯完全不同\n\n**实际运维要点**：\n\n**1. 关键的「回环地址」不同**\n```\nipv4: 127.0.0.1\nipv6: ::1\n```\n应用监听 `0.0.0.0` 只绑定 IPv4；要双栈监听 `::`（多数系统 `::` 会同时接受 IPv4，但 **Linux 的 `net.ipv6.bindv6only` 决定行为**）。\n\n**2. 地址表示法**\n```\n2001:0db8:0000:0000:0000:0000:0000:0001\n可简写为 2001:db8::1\n规则：连续的 0 组用 :: 代替（只能出现一次）\n```\n\n**3. 双栈的监听建议**\n```nginx\nlisten [::]:80 ipv6only=on;\nlisten 80;\n```\n\n**4. 排查命令**\n```\nip -6 addr\nping6 <addr>\nss -6 -lntp\ndig AAAA example.com\ncurl -6 https://x/\n```\n\n**5. 常见故障**\n- **应用只监听了 IPv4** → IPv6 访问失败（`ss -lnt` 看是 `0.0.0.0:80` 还是 `:::80`）\n- **DNS 返回 AAAA 但本机无 IPv6** → 客户端优先尝试 IPv6，超时后回落 → 延迟\n- **防火墙没放通 ICMPv6 的 ND**（邻居发现）→ 完全不通（ICPv6 依赖 ICMPv6，不像 IPv4 那样可以只放通 TCP）",
+    "tags": [
+      "IPv6",
+      "双栈",
+      "差异"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4430,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "如何量化「网络质量差」？除了延迟和丢包还应该看什么？",
+    "answer": "**五个维度，只测延迟和丢包会漏掉关键问题**。\n\n| 维度 | 指标 | 工具 |\n|---|---|---|\n| **延迟** | RTT 均值、**P50/P95/P99** | `ping`、`mtr`、`tcprtt` |\n| **丢包** | 丢包率、重传率 | `mtr`、`ss -ti` 的 retrans |\n| **抖动（Jitter）** | RTT 的**标准差** | `mtr` 的 StDev 列 |\n| **带宽** | 实际吞吐 vs 理论带宽 | `iperf3` |\n| **双向不对称** | 去程/回程的差异 | 两侧同时抓包对比 |\n\n**为什么「P99 比均值重要」**：\n- 均值 20ms 但 P99 是 500ms → **1% 的用户在受苦**，业务指标会明显受影响\n- 高并发系统里 1% 的慢请求会造成**队列积压**，连锁放大\n\n**「抖动」为什么关键**：\n- 实时音视频、游戏对抖动极敏感（RTT 稳定 50ms 比忽高忽低好得多）\n- `mtr` 的 `StDev` 列就是抖动，超过均值说明链路不稳\n\n**双向不对称**（最容易被忽略）：\n```\nA → B 正常，B → A 丢包严重\n```\n**典型表现**：A 上 `mtr B` 一切正常，但 B 上 `mtr A` 全是问题。\n- 原因：路由策略不对称（去程和回程走不同路径）\n- 排查：**两边同时抓包对比**，看哪边重传\n\n**重传率是最诚实的指标**：\n```\nss -ti | grep -oP 'retrans:\\K[^ ]+'\n# 输出形如 0/3（当前/累计）\n```\n**重传率 > 1% 就说明链路有问题**，而且这是**端到端真实体验**，不像 ping 那样受 ICMP 限速影响。\n\n**带宽测试（`iperf3`）的正确姿势**：\n```\n# 服务端\niperf3 -s\n# 客户端（TCP，默认测单向）\niperf3 -c <server> -t 10 -P 4        # 4 个并行流\niperf3 -c <server> -t 10 -P 4 -R     # 反向测（服务器下载）\n# UDP 测（能测丢包与抖动）\niperf3 -c <server> -u -b 100M -t 10\n```\n**`-P 4`（多流）很关键**——单流受 TCP 窗口和丢包影响，测出来的往往不是真实带宽。\n\n**综合判断的方法**：\n```\n延迟低 + 抖动小 + 重传率 0  → 链路健康\n延迟低 + 抖动大            → 中间有队列/限速\n延迟高（P99 高）+ 重传高    → 链路拥塞或质量差\n带宽跑不满但延迟正常        → 可能是 TCP 窗口/单流限制（试多流）\n```\n\n**一句话**：**`ping` 只能告诉你「通不通」，`mtr` 告诉你「哪一跳有问题」，`ss -ti` 的重传率告诉你「体验真实如何」，`iperf3` 告诉你「带宽够不够」。四者配合才是完整的网络质量画像。**",
+    "tags": [
+      "网络质量",
+      "抖动",
+      "重传"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4431,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP 缓存有哪几种？`Cache-Control` 的常用指令和优先级是什么？",
+    "answer": "**两类缓存**：\n\n| 类型 | 位置 | 判断依据 |\n|---|---|---|\n| **强缓存** | 浏览器本地 | `Cache-Control` / `Expires`，**不发请求** |\n| **协商缓存** | 服务端验证 | `ETag`/`Last-Modified`，**发请求但可能返回 304** |\n\n**`Cache-Control` 的关键指令**：\n\n| 指令 | 含义 |\n|---|---|\n| **`max-age=3600`** | 缓存 1 小时（**相对时间，优先级最高**） |\n| **`no-cache`** | **可以缓存，但每次使用前必须向服务器验证**（走协商） |\n| **`no-store`** | **完全不缓存**（敏感数据） |\n| `public` | 中间代理（CDN）也可缓存 |\n| `private` | **只有浏览器可缓存**，CDN 不能 |\n| `must-revalidate` | 过期后必须验证，不能用过期内容 |\n| `s-maxage` | 专门给 CDN 的 max-age（**优先级高于 max-age**） |\n| `immutable` | 内容永不变，连刷新都不重新验证 |\n\n**`no-cache` vs `no-store` 是最容易混的两个**：\n- `no-cache` = 「**可以存，但用之前必须问**」 → 还是会被缓存\n- `no-store` = 「**根本别存**」 → 完全不落盘\n\n**优先级顺序**：\n```\nCache-Control: s-maxage（对 CDN）> max-age > Expires\n```\n`Expires` 是 HTTP/1.0 的绝对时间，**受客户端时钟影响**，现代应只用 `Cache-Control`。\n\n**协商缓存的两个头**：\n\n| 响应头 | 请求头 | 说明 |\n|---|---|---|\n| **`ETag`** | `If-None-Match` | 内容指纹，**更精确**（内容变了才变） |\n| **`Last-Modified`** | `If-Modified-Since` | 修改时间，精度只到秒 |\n\n**`ETag` 优先于 `Last-Modified`**（更精确）。ETag 有强弱之分：`W/\"xxx\"` 是弱校验（语义等价即可）。\n\n**静态资源的实战策略（前端部署核心）**：\n```\n# 带 hash 的文件：永不担心缓存\n/assets/app.a1b2c3.js  →  Cache-Control: public, max-age=31536000, immutable\n# HTML 入口：必须每次验证\n/index.html             →  Cache-Control: no-cache\n```\n**这就是「文件名带 hash」方案的价值**——内容变了文件名就变，可以放心长缓存。\n\n**常见坑**：\n1. **`no-cache` 被误认为「不缓存」**，实际是「每次验证」\n2. **CDN 缓存了 `private` 的内容** → 用户 A 看到用户 B 的数据（**严重安全事故**）\n3. **发版后用户还看到旧页面** → 因为 HTML 被强缓存了。**HTML 必须是 `no-cache`**\n4. **304 响应没有 body**，某些客户端库处理不好\n5. **`Vary` 头**：缓存按 `Accept-Encoding` 等区分，配错会串味",
+    "tags": [
+      "HTTP缓存",
+      "Cache-Control",
+      "ETag"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4432,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "CDN 的工作原理是什么？回源失败/命中率低分别怎么排查？",
+    "answer": "**原理：DNS 调度 + 边缘缓存**。\n\n```\n用户请求 www.example.com\n  ↓ ① DNS 解析时，CDN 的智能 DNS 按用户 IP 返回最近的边缘节点\n  ↓ ② 请求到达边缘节点\n  ↓ ③ 命中缓存 → 直接返回（快）\n  ↓ ④ 未命中 → 回源到源站 → 缓存后返回（慢）\n```\n\n**关键机制**：\n\n| 机制 | 说明 |\n|---|---|\n| **智能 DNS / Anycast** | 把用户导向最近的节点 |\n| **边缘缓存** | 按 URL + 查询参数（可配）缓存 |\n| **回源** | 未命中时回源站取，可选「回源到源站 / 回源到中间层」 |\n| **预热** | 发版前主动把资源推到边缘，避免首批用户回源 |\n| **刷新** | 主动失效缓存（URL 刷新 / 目录刷新） |\n\n**「命中率低」的排查**：\n\n```\n# 1. 看实际缓存头\ncurl -I https://cdn.example.com/static/x.js\n# 关键：X-Cache: HIT / MISS，Age（已缓存多久），Cache-Control\n```\n\n**四个原因**：\n1. **`Cache-Control` 不允许多级缓存**：`private`、`no-store` → CDN 不缓存\n2. **URL 带随机参数**：`?v=123456`（每次不同）→ 每个 URL 都是新资源。**这是最常见的**（前端时间戳方案）\n3. **`Vary` 配置过宽**：按 `User-Agent` 缓存 → 每个 UA 一份\n4. **缓存时间太短**：`max-age=60` → 60 秒就回源一次\n\n**「回源失败」的排查**：\n\n表现：**部分用户 502/504，源站日志里没有请求**（或只有少量）。\n\n1. **确认是哪个 CDN 节点的问题**（不同区域用户受影响不同）\n2. **回源 Host 是否配错**：CDN 回源时 `Host` 头配错 → 源站返回 404/403\n3. **源站是否对 CDN 回源 IP 做了限制**：安全组/WAF 白名单漏了 CDN 的回源段\n4. **源站带宽/连接数被打满**：CDN 未命中时会把流量集中打到源站\n5. **回源协议不匹配**：CDN 用 HTTPS 回源，源站只支持 HTTP\n\n**验证 CDN 是否生效**：\n```\ndig cdn.example.com            # 返回的应该是 CDN 的 IP，不是源站 IP\ncurl -I https://cdn.example.com/x.js | grep -i 'x-cache\\|age\\|via'\n```\n\n**实践建议**：\n- **静态资源用文件名 hash + 长缓存**，避免依赖 CDN 刷新\n- **发版前先预热**关键资源\n- **CDN 只加速静态资源**，动态请求（带用户态数据）要谨慎缓存\n- **HTTPS 证书要同步到 CDN**，别只配了源站",
+    "tags": [
+      "CDN",
+      "回源",
+      "命中率"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4433,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "排查「客户端连不上服务端口」，以下哪些手段是有效的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "在服务端 ss -lntp 确认端口确实在监听，且监听地址不是 127.0.0.1"
+      },
+      {
+        "key": "B",
+        "text": "从客户端 telnet/nc/<dev/tcp> 测试端口连通性"
+      },
+      {
+        "key": "C",
+        "text": "在服务端 tcpdump 抓包，看 SYN 是否到达"
+      },
+      {
+        "key": "D",
+        "text": "重启服务端应用"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是「不看病因就动手术」。三个正确项构成完整的判断链：**A 排除服务端自身**（最常见的坑是监听在 `127.0.0.1` 而非 `0.0.0.0`，本地能连外部连不上）；**B 从客户端视角确认**（`timeout 3 bash -c 'echo > /dev/tcp/IP/PORT'`）；**C 是最关键的定位手段**——若服务端 tcpdump 看不到 SYN，说明包在中间被拦（防火墙/安全组/路由）；若看到了 SYN 但没回，说明是服务端 iptables 的 INPUT 链或应用队列问题。三者结合能精确定位到「服务端 / 网络中间 / 客户端」哪一段。",
+    "tags": [
+      "连通性",
+      "排查",
+      "tcpdump"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4434,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "为什么服务端要关注「出口带宽」？带宽跑满会有什么连带影响？",
+    "answer": "**出口带宽跑满不只是「慢」，会引发连锁反应。**\n\n**直接表现**：\n- 用户端下载慢、页面加载超时\n- **表现为「服务端 CPU 不高、内存不高，但就是响应慢」**\n\n**三个连带影响（最容易误判）**：\n\n**1. 伪装成 CPU/应用问题**\n带宽满时 socket 发送缓冲区堆积，应用的 `write()` 变慢 → 线程阻塞 → 请求排队 → **看起来像应用慢**。\n判断：`sar -n DEV 1` 看 `txkB/s` 是否接近网卡上限，或 `ifconfig` 的 `txqueuelen dropped` 是否增长。\n\n**2. 影响其他不相关的服务**\n同一台机器上一个下载/备份任务占满带宽 → 所有服务变慢。这是**共享资源争抢**的经典问题。\n\n**3. TCP 拥塞控制被动降窗**\n带宽满 → 路由器队列满 → 丢包 → TCP 降窗 → **重传增加** → 进一步加剧拥塞。\n\n**排查命令**：\n```\n# 实时看带宽\niftop -i eth0                    # 按连接显示（需要装）\nsar -n DEV 1 5                   # 系统级\nnload eth0                        # 简洁\n# 按进程\ntcpdump 太底层，用 nethogs\nnethogs eth0\n```\n\n**「带宽跑满」的常见元凶**：\n1. **备份/日志上传任务**（rsync、日志推送）没做限速\n2. **大批量文件下载**（CDN 回源、包更新）\n3. **异常流量**：DDoS、或者某个客户端在狂刷接口\n4. **镜像/软件包分发**没走内网源\n\n**解决手段**：\n\n| 手段 | 效果 |\n|---|---|\n| **限速**（tc / wondershaper） | 限制特定进程/端口的出口速率 |\n| **错峰**（把备份放到低峰） | 最简单有效 |\n| **内网源**（避免走公网） | 从根本上减少流量 |\n| **分离网络**（业务和管理网分开） | 隔离影响 |\n\n**tc 限速示例**（限制 eth0 出口 100Mbps）：\n```\ntc qdisc add dev eth0 root tbf rate 100mbit burst 32kbit latency 400ms\n```\n\n**监控要点**：**出口带宽用率要设告警（如 >70%）**，而且要看**多个时间粒度的峰值**，不能只看日均——**峰值跑满一次就够让业务超时**。",
+    "tags": [
+      "带宽",
+      "出口",
+      "限速"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4435,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "同一个域名，同一时间，一部分用户快、一部分用户慢。如何定位？",
+    "answer": "**这类「部分用户」问题，核心是找出「哪些用户」以及「差异在哪」。**\n\n**Step 1：先确定用户的分组依据**\n\n| 分组维度 | 排查点 |\n|---|---|\n| **地域** | DNS 解析到不同的 CDN 节点 / 不同的机房 |\n| **运营商** | 跨网（电信 → 联通）路由差 |\n| **客户端版本** | 旧版本用了旧接口 / 旧逻辑 |\n| **登录状态** | 不同用户走不同后端集群 |\n| **接入方式** | WiFi vs 4G（NAT 超时、IPv6 差异） |\n| **时间** | 高峰期才有（带宽/队列） |\n\n**Step 2：从「快」和「慢」两侧各取一个样本，做差异对比**\n\n```\n# 关键：携带用户身份信息 curl，看后端是否一致\ncurl -w 'dns=%{time_namelookup} conn=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer}\\n' \\\n  -H 'X-User-Id: A' -o /dev/null -s https://api.example.com/x\n# 慢用户：天南地北都试一遍，并记录 dig 结果\ndig api.example.com +short\n```\n\n**Step 3：三个高频根因**\n\n**① DNS 返回多个 IP，其中一个坏**（最常见）\n```\ndig api.example.com +short\n# 返回 3 个 IP，逐个测：\nfor ip in $(dig +short api.example.com); do\n  echo -n \"$ip \"; curl -s -o /dev/null -w '%{time_total}\\n' --resolve api.example.com:443:$ip https://api.example.com/\ndone\n```\n**这是「一部分用户」问题的头号原因**——DNS 轮询把用户导到了坏 IP，客户端重试超时才换，体验就是「慢」。\n\n**② CDN/多机房节点质量不一致**\n- 不同地域解析到不同节点\n- 某节点回源链路差、或该节点带宽打满\n- 判断：**按地域分别测**，或让 CDN 服务商提供「节点质量报表」\n\n**③ 后端集群不均**\n- 负载均衡把用户分到不同后端\n- **某台后端慢**（慢查询、GC、磁盘）\n- 判断：**看后端日志**中该用户的请求落在哪台，对比该台的响应时间\n\n**Step 4：用数据而不是猜测**\n\n关键是要能**从海量用户中分组统计**：\n```\n# 按后端机器统计平均耗时（假设日志里有 upstream_addr）\nawk '{print $NF, $upstream_time}' access.log | awk '{s[$1]+=$2; n[$1]++} END {for (k in s) printf \"%s %.1f ms (%d)\\n\", k, s[k]/n[k], n[k]}'\n```\n**这个统计一出来，是不是「某台机器慢」立刻清楚。**\n\n**Step 5：验证假设**\n```\n# 假设是坏 IP → 用 --resolve 绕过它再测\ncurl --resolve api.example.com:443:<好IP> https://api.example.com/\n# 假设是某后端 → 用 Host 头直连某台\ncurl -H 'Host: api.example.com' http://<后端IP>/x\n```\n\n**总结方法论**：\n1. **分组**（找出受影响用户群的特征）\n2. **取样**（快慢两侧各抓一个，多维采集）\n3. **对比**（DNS、节点、后端、版本任一环节的差异）\n4. **验证**（构造流量绕过可疑环节）\n\n**一句话**：**「部分用户慢」几乎不可能是代码逻辑问题（那是全量），一定是「路由/节点/数据分布」的差异问题。**",
+    "tags": [
+      "部分用户",
+      "DNS",
+      "定位"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4436,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "`ping` 不通但端口能连上，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "目标主机禁止 ICMP，但允许 TCP"
+      },
+      {
+        "key": "B",
+        "text": "本机 DNS 解析有问题"
+      },
+      {
+        "key": "C",
+        "text": "网络完全不通"
+      },
+      {
+        "key": "D",
+        "text": "目标端口没监听"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "很多服务器/云安全组默认禁 ICMP，这是**完全正常**的现象。**判断主机存活必须用 TCP 探测而不是 ping**：`timeout 3 bash -c 'echo > /dev/tcp/IP/22'`。C 与「端口能连上」矛盾；D 与「能连上」矛盾。这也是为什么「主机存活检测」要用 TCP ping 或 ICMP+TCP 双探。",
+    "tags": [
+      "ping",
+      "ICMP",
+      "存活"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4437,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "关于 HTTPS 证书，以下哪些会导致「浏览器能打开但 curl/Java 报错」？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "服务器只发了实体证书，没发中间 CA 证书"
+      },
+      {
+        "key": "B",
+        "text": "证书过期"
+      },
+      {
+        "key": "C",
+        "text": "使用自签证书，客户端信任库未添加"
+      },
+      {
+        "key": "D",
+        "text": "客户端与服务器时区不同"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "A 是最典型的——**浏览器会自动通过 AIA 扩展下载中间证书，命令行工具不会**。B 和 C 会让**浏览器也报错**（所以严格说它们不只影响 curl），但如果客户端时钟/信任库与浏览器不同，就可能出现「浏览器能开、其他工具不行」。D 是错的：TLS 用的是 UTC 绝对时间，时区不影响校验（真正影响的是**系统时间本身不准**，那是另一回事）。诊断方法：`openssl s_client -connect host:443 -showcerts` 看链长，`-CAfile` 做严格校验。",
+    "tags": [
+      "证书链",
+      "curl",
+      "浏览器"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4438,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP/1.1 的「队头阻塞」指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "同一个 TCP 连接上，前一个请求没响应完，后面的请求要等"
+      },
+      {
+        "key": "B",
+        "text": "服务端处理请求排队"
+      },
+      {
+        "key": "C",
+        "text": "DNS 解析排队"
+      },
+      {
+        "key": "D",
+        "text": "TCP 层的丢包重传"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "HTTP/1.1 虽然支持 keep-alive 复用连接，但**同一连接上的请求必须串行**（响应顺序与请求顺序对应）。一个慢请求会卡住后面所有请求。这也解释了为什么浏览器同域只开 6 个并连接口，以及域名分片、雪碧图等优化手段的由来。D 是 **TCP 层**的队头阻塞（HTTP/2 解决了应用层但没解决 TCP 层，QUIC 才解决）。",
+    "tags": [
+      "队头阻塞",
+      "HTTP/1.1",
+      "性能"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4439,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "关于 TCP 的 `TIME_WAIT`，以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "只有主动关闭方会进入 TIME_WAIT"
+      },
+      {
+        "key": "B",
+        "text": "持续时长是 2MSL（通常是 60 秒）"
+      },
+      {
+        "key": "C",
+        "text": "作用是保证最后的 ACK 能到达，以及旧连接的延迟包不干扰新连接"
+      },
+      {
+        "key": "D",
+        "text": "服务端大量 TIME_WAIT 说明有攻击"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：服务端大量 TIME_WAIT 通常说明**服务端在主动断开短连接**（比如 HTTP 服务端配了短 keepalive），是架构问题不是攻击。补充：⑤`net.ipv4.tcp_tw_reuse=1` 只对**客户端**有效（主动发起连接方），服务端要靠改长连接解决；⑥`tcp_max_tw_buckets` 限制总数，超了会直接 RST；⑦`tcp_tw_recycle` 已在 4.12 内核删除（NAT 下有害）。",
+    "tags": [
+      "TIME_WAIT",
+      "2MSL",
+      "机制"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4440,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "线上出现「偶发 502」，频率不高但持续存在。如何定位？",
+    "answer": "**「偶发」意味着要抓证据而不是猜，核心是「关联分析」。**\n\n**Step 1：先从 Nginx 错误日志取证据**\n```\ngrep -E 'upstream|prematurely|reset|no live' /var/log/nginx/error.log | tail -100\n```\n关键错误文本直接指向原因：\n\n| 日志内容 | 含义 |\n|---|---|\n| `upstream prematurely closed connection` | **后端主动关了连接**（超时关闭、崩溃、重启） |\n| `connect() failed (111: Connection refused)` | 后端进程没在监听 |\n| `no live upstreams` | 所有后端都被健康检查摘除 |\n| `upstream timed out` | 后端处理超时（**这是 504 不是 502**） |\n| `recv() failed (104: Connection reset by peer)` | 后端 RST |\n\n**Step 2：按时间关联后端日志**\n```\n# 记下 502 的精确时间，去后端查那一刻发生了什么\nawk '$9==502 {print $4, $7, $upstream_addr}' access.log | tail\n# 然后看该时刻后端是否在重启/GC/慢\n```\n\n**Step 3：四个高频根因（按概率）**\n\n**① keepalive 连接的竞态（最常见）**\nNginx 复用了后端已关闭的空闲连接。特征：**只在低流量时偶发**。\n修复：\n```nginx\nupstream backend {\n    server 10.0.0.1:8080;\n    keepalive 32;                 # 连接池大小\n}\nlocation / {\n    proxy_http_version 1.1;       # 必须 1.1 才支持 keepalive\n    proxy_set_header Connection \"\";   # 清空后才有 keepalive\n    proxy_next_upstream error timeout http_502;   # 失败自动换一台重试\n}\n```\n**`proxy_next_upstream` 是标配**，能把偶发 502 对用户透明化。\n\n**② 后端优雅停机没配好**\n发版/扩缩容时后端接受 SIGTERM 后立即关闭监听，但 Nginx 还在往里发。\n修复：给后端配 `preStop` 延迟（见 K8s 优雅停机）+ `terminationGracePeriodSeconds`，同时 Nginx 配 `proxy_next_upstream`。\n\n**③ 后端 worker 超时主动关连接**\nTomcat 的 `connectionTimeout`、keepalive 超时短于 Nginx 的 `keepalive_timeout` → 后端先关，Nginx 复用时失败。\n修复：**让后端的空闲超时 > Nginx 的 keepalive 超时**。\n\n**④ 后端进程被 OOM / 重启**\n查该时刻 `dmesg`、K8s 的 `restartCount`。\n\n**Step 4：量化验证**\n```\n# 502 占比\nawk '$9==502 {n++} END {print n}' access.log\n# 按 upstream_addr 分组，看是否集中在某台\nawk '$9==502 {print $upstream_addr}' access.log | sort | uniq -c\n```\n**集中在单台 → 那台机器的问题；均匀分布 → 连接池/协议问题。**\n\n**一行总结**：**偶发 502 有 80% 是 keepalive 竞态，解法是「proxy_http_version 1.1 + Connection \"\" + proxy_next_upstream」三件套。**",
+    "tags": [
+      "502",
+      "keepalive",
+      "定位"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4441,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "为什么「重启网络服务」在远程 SSH 会话里极容易把自己锁在外面？如何避免？",
+    "answer": "**根因：重启网络会先 down 接口，你的 SSH 连接立刻断，而配置可能没改对。**\n\n**典型事故链**：\n```\n1. 远程改 /etc/network/interfaces 或 NetworkManager 配置\n2. 执行 systemctl restart network\n3. 接口 down → SSH 连接断\n4. 新配置有错 → 接口起不来 → 再也连不上，只能去机房\n```\n\n**六种避免手段**：\n\n**1. 用 `ifup`/`ifdown` 单接口，不动全局**\n```\nifdown eth0 && ifup eth0     # 至少只影响一块网卡\n```\n\n**2. 用 `nmcli` 热更新（NetworkManager）**\n```\nnmcli connection modify eth0 ipv4.addresses 10.0.0.5/24\nnmcli connection up eth0          # 只重连这一条\n```\n\n**3. 加一个「定时回滚」保险（最实用）**\n```\n# 起个 5 分钟后恢复原配置的任务，改对了就取消\ncp /etc/sysconfig/network-scripts/ifcfg-eth0 /root/ifcfg-eth0.bak\n( sleep 300; cp /root/ifcfg-eth0.bak /etc/sysconfig/network-scripts/ifcfg-eth0; systemctl restart network ) &\n# 确认连接正常后再 kill 那个后台任务\n```\n**这就是 `at` / `shutdown -c` 这类「延迟自救」的思路。**\n\n**4. 用带外管理（IPMI / 云控制台 VNC）**——**这是最终保障**，所有网络变更前要先确认能进控制台。\n\n**5. 先开一个新会话验证**\n改完配置**不要关现有会话**，另开一个终端测试能否连上，确认没问题再断开。\n\n**6. 用 `screen` / `tmux`**\n至少会话不会因为断线而丢失，重连后能继续看到执行结果（但**不能让网络自己恢复**）。\n\n**原则汇总**：\n```\n改网络前：确认有带外管理 + 有备份 + 有回滚手段\n改网络中：先开第二个会话验证，不要关掉第一个\n改网络后：验证路由、DNS、外部连通性，再清理回滚任务\n```\n\n**一个具体的坑**：`systemctl restart network` 在 CentOS 7 上会重建所有接口，即使你只改了一块。**能用 `nmcli connection up <name>` / `ifup <if>` 就别用 `restart network`。**",
+    "tags": [
+      "重启网络",
+      "SSH",
+      "回滚"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4442,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "`192.168.1.130/26` 所在网段的广播地址是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "192.168.1.191"
+      },
+      {
+        "key": "B",
+        "text": "192.168.1.255"
+      },
+      {
+        "key": "C",
+        "text": "192.168.1.159"
+      },
+      {
+        "key": "D",
+        "text": "192.168.1.128"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "/26 的块大小是 256-192 = **64**，所以网段是 128-191（130 落在这一块）。网段地址 192.168.1.128，广播地址 = 网段 + 块大小 - 1 = **192.168.1.191**，可用地址 129~190（62 个）。速算口诀：**块大小 = 256 - 掩码第四段**，然后找 130 落在哪个 64 的倍数区间。",
+    "tags": [
+      "子网计算",
+      "广播地址",
+      "计算"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4443,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "以下哪些属于「应用层」协议？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "HTTP、DNS"
+      },
+      {
+        "key": "B",
+        "text": "SSH、SMTP"
+      },
+      {
+        "key": "C",
+        "text": "TCP、UDP"
+      },
+      {
+        "key": "D",
+        "text": "MySQL 协议、Redis RESP"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "D"
+    ],
+    "explanation": "TCP、UDP 是**传输层**（四层模型的第三层）。分层速记：**物理/链路（以太网、ARP）→ 网络（IP、ICMP）→ 传输（TCP、UDP）→ 应用（HTTP、DNS、SSH、SMTP、FTP、MySQL协议、RESP）**。注意 DNS 通常走 UDP 53，但它是应用层协议，**传输层用什么不影响它的分层归属**。",
+    "tags": [
+      "分层",
+      "应用层",
+      "协议"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4444,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`ss -lnt` 输出中 `Recv-Q` 列接近 `Send-Q` 列，说明什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "ACCEPT 队列正在溢出，应用 accept 太慢"
+      },
+      {
+        "key": "B",
+        "text": "SYN 队列溢出"
+      },
+      {
+        "key": "C",
+        "text": "带宽跑满"
+      },
+      {
+        "key": "D",
+        "text": "磁盘空间不足"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "在 `ss -l`（监听态）下，**`Recv-Q` 是已完成的握手但还没被 `accept()` 的连接数，`Send-Q` 是这个队列的上限**（取 `somaxconn` 与应用 `listen backlog` 的较小值）。接近或相等说明**应用 accept 太慢**（线程池满、GC、阻塞）。这与 SYN 队列溢出不同：SYN 队列溢出表现为客户端重传 SYN、连接变慢，不在 `ss -l` 的这一列体现。",
+    "tags": [
+      "accept队列",
+      "Recv-Q",
+      "溢出"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4445,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "关于 DNS 的 TTL，以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "变更解析前应先调小 TTL，并等一个旧 TTL 周期后再改"
+      },
+      {
+        "key": "B",
+        "text": "客户端的本地缓存和各级递归 DNS 都会各自按 TTL 缓存"
+      },
+      {
+        "key": "C",
+        "text": "TTL 设为 0 表示不缓存，每次都要查询"
+      },
+      {
+        "key": "D",
+        "text": "改完 TTL 会立刻对所有客户端生效"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：**TTL 是「缓存多久」，改动只影响后续查询**，已缓存的记录要等过期才会更新。这就是「变更前先降 TTL、等一个周期」的原因——否则改完可能要等 24 小时才全网生效。补充：⑤某些运营商 DNS 会**忽略 TTL**（强制长时间缓存），这是国内 DNS 变更最头疼的问题，涉及重大变更应考虑换域名；⑥C 的「TTL=0」在实践中仍有少量缓存（取决于实现），不等于「完全实时」。",
+    "tags": [
+      "TTL",
+      "DNS缓存",
+      "变更"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4446,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "抓包看到大量 `Dup ACK`，最合理的推断是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "链路中间有丢包，接收方在重复索要缺失的段"
+      },
+      {
+        "key": "B",
+        "text": "接收方收到重复的数据包"
+      },
+      {
+        "key": "C",
+        "text": "发送方在重传"
+      },
+      {
+        "key": "D",
+        "text": "连接被重置"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "`Dup ACK` 是**接收方重复发同一个 ACK**，因为它期望的那个序号没到（后续的段先到了，造成乱序），所以它反复催「我要 N」。收到 **3 个 Dup ACK** 会触发发送方的**快速重传**——这是 TCP 应对丢包的优化机制。B 是字面误解（不是「收到重复包」）；C 是 Dup ACK 的**后果**而非原因；D 是 RST 的语义。",
+    "tags": [
+      "Dup ACK",
+      "丢包",
+      "抓包"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4447,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "关于 TCP Fast Open（TFO），以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "允许在握手完成前就携带数据，省掉一个 RTT"
+      },
+      {
+        "key": "B",
+        "text": "需要服务端与客户端都开启，且依赖 cookie 机制"
+      },
+      {
+        "key": "C",
+        "text": "首次连接仍然要标准三次握手（没有 cookie）"
+      },
+      {
+        "key": "D",
+        "text": "开启了就一定能让所有请求更快"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：TFO 只在**重复连接**（已有 cookie）时才有收益，首次连接无收益；而且**中间设备可能丢弃带数据的 SYN**，部分网络下反而回退到普通握手。这也是 TFO 部署率不高的原因。补充：⑤Linux 用 `net.ipv4.tcp_fastopen`（1=客户端、2=服务端、3=双向）；⑥**幂等性要求**：TFO 携带的数据可能被重复处理，所以只能用于幂等请求（这也是 QUIC 的 0-RTT 面临的同样问题）。",
+    "tags": [
+      "TFO",
+      "RTT",
+      "优化"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4448,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP 的 `Retry-After` 响应头用在什么状态码下最合理？",
+    "options": [
+      {
+        "key": "A",
+        "text": "429（限流）和 503（服务暂时不可用）"
+      },
+      {
+        "key": "B",
+        "text": "404"
+      },
+      {
+        "key": "C",
+        "text": "401"
+      },
+      {
+        "key": "D",
+        "text": "301"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "`Retry-After` 告诉客户端「**过多久可以重试**」，因此只对**暂时性**错误有意义。429（Too Many Requests）和 503（Service Unavailable）是最典型的场景，值可以是秒数或 HTTP 日期。404/401/301 都是「确定性的结果」，重试没有意义。**实践价值**：客户端（尤其是爬虫、SDK）按 `Retry-After` 退避能显著减少对服务端的压力；网关限流时配上它比只返回 429 更友好。",
+    "tags": [
+      "Retry-After",
+      "429",
+      "限流"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4449,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "排查「服务端能收到请求但客户端超时无响应」，以下哪些方向是对的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "检查服务端处理耗时是否超过客户端超时时间"
+      },
+      {
+        "key": "B",
+        "text": "检查响应体是否过大导致传输慢（带宽/MTU）"
+      },
+      {
+        "key": "C",
+        "text": "检查中间设备（LB/防火墙）是否有响应超时或大小限制"
+      },
+      {
+        "key": "D",
+        "text": "客户端一定有 bug"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是无依据的结论。三项正确的本质都是「**响应发出去了但客户端没等到**」：A 是处理慢（最符合描述「服务端有日志但客户端超时」）；B 是大响应体在慢链路上传输超时，**或 MTU 问题导致大包被丢弃**（经典症状：小请求正常、大响应超时）；C 是中间设备有阈值（如 Nginx `proxy_read_timeout`、LB 的空闲超时、WAF 的响应大小限制）。**判断关键**：服务端日志里的**耗时**字段——如果耗时很短，问题在传输/中间设备；如果耗时很长，是处理慢。",
+    "tags": [
+      "响应超时",
+      "排查",
+      "MTU"
+    ],
+    "frequency": "中频"
+  },
+  {
     "id": 4600,
     "type": "short",
     "category": "容器与K8s",

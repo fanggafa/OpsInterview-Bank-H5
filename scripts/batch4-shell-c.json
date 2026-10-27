@@ -1,0 +1,154 @@
+[
+  {
+    "id": 4235,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`cmd > out.log 2>&1` 与 `cmd 2>&1 > out.log` 的区别是？",
+    "options": [
+      { "key": "A", "text": "前者 stdout 和 stderr 都进文件；后者 stderr 仍输出到终端，只有 stdout 进文件" },
+      { "key": "B", "text": "两者完全等价" },
+      { "key": "C", "text": "后者会覆盖文件" },
+      { "key": "D", "text": "前者只重定向 stderr" }
+    ],
+    "answer": ["A"],
+    "explanation": "重定向是**从左到右依次生效**的。`> out.log` 先把 stdout 指向文件，然后 `2>&1` 让 stderr 复制「当前的」stdout → 两者都进文件。反过来 `2>&1` 先让 stderr 指向当前 stdout（终端），再 `> out.log` 只改 stdout → 错误仍打在终端。**速记：`2>&1` 必须写在 `>` 后面**。"
+  },
+  {
+    "id": 4236,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "提升脚本可维护性，以下哪些做法是对的？（多选）",
+    "options": [
+      { "key": "A", "text": "函数化，把重复逻辑抽出来" },
+      { "key": "B", "text": "用 shellcheck 做静态检查" },
+      { "key": "C", "text": "所有配置项集中在文件顶部，便于修改" },
+      { "key": "D", "text": "把逻辑写在一个巨大的 main 函数里更清晰" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 相反：超长 main 函数是最难维护的形态。好脚本的结构是「**顶部常量 → 若干单一职责的小函数 → 末尾一个 main 调用**」，每个函数可单独测试。补充：⑤加 `usage()` 和 `-h`；⑥关键步骤打日志（带时间戳）；⑦用 `trap` 做清理；⑧版本化（git + 变更记录）；⑨交叉验证 `bash -n`（语法）+ `shellcheck`（语义）。"
+  },
+  {
+    "id": 4237,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`find . -name '*.log' | xargs rm` 在什么情况下会误删文件？",
+    "options": [
+      { "key": "A", "text": "文件名含空格时会被拆成多个参数，可能删到别的文件" },
+      { "key": "B", "text": "文件数量超过 100 个时" },
+      { "key": "C", "text": "文件权限不足时" },
+      { "key": "D", "text": "永远不会误删" }
+    ],
+    "answer": ["A"],
+    "explanation": "xargs 默认按空白字符分词，文件名 `my file.log` 会被当成 `my` 和 `file.log` 两个参数传给 rm → 误删。正确写法 `find ... -print0 | xargs -0 rm -f --`。C 是权限问题会导致删不掉而不是误删。补充：**末尾的 `--`** 也很重要，防止文件名以 `-` 开头被当成选项（如 `-rf`）。"
+  },
+  {
+    "id": 4238,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "以下哪些是 `set -euo pipefail` 中 `-u`（nounset）的作用或坑？（多选）",
+    "options": [
+      { "key": "A", "text": "引用未定义变量时脚本直接退出，能提前暴露拼写错误" },
+      { "key": "B", "text": "`$@` 在无参数时会报错，需写成 `${@:-}` 或用 `$#` 判断" },
+      { "key": "C", "text": "`${var:-default}` 这种带默认值的写法不受影响" },
+      { "key": "D", "text": "启用后所有变量都会被自动初始化" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：`-u` 只是报错，不会自动初始化任何变量。C 正确——带 `:-`、`-`、`:=`、`:+` 等扩展的写法会安全处理未定义。**B 的一个重要补充**：`$@` 和 `$*` 在 `-u` 下若用 `\"${@}\"` 形式通常不报错，但 `$1`、`$2` 这类位置参数未传时会直接退出，所以脚本里访问可选参数必须写 `${1:-}`。常见踩坑：`shift` 后没检查 `$#` 就访问 `$1`。"
+  },
+  {
+    "id": 4239,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`for i in $(cat file)` 有什么问题？正确写法是？",
+    "options": [
+      { "key": "A", "text": "按空白分词，含空格的行会被拆开；应该用 while IFS= read -r" },
+      { "key": "B", "text": "没有问题，是标准写法" },
+      { "key": "C", "text": "速度太慢" },
+      { "key": "D", "text": "文件超过 1 万行会失败" }
+    ],
+    "answer": ["A"],
+    "explanation": "`$(cat file)` 会先做**分词（word splitting）+ 通配符展开**，所以 `a b c` 这一行会变成 3 次循环，`*.txt` 这种内容会被展开成文件名。正确写法：`while IFS= read -r line; do ...; done < file`。补充：若一定要用 for，至少 `IFS=$'\\n'` 并临时关掉 glob（`set -f`），但那还是不如 while 干净。**这是 shellcheck SC2046 + 分词问题的最典型组合。**"
+  },
+  {
+    "id": 4240,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "关于 `awk`，以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "`NR` 是累计总行号，`FNR` 是当前文件内行号" },
+      { "key": "B", "text": "`$0` 是整行，`$NF` 是最后一个字段" },
+      { "key": "C", "text": "`END{}` 块在读完所有输入后执行，常用于输出聚合结果" },
+      { "key": "D", "text": "awk 无法按多个分隔符切分字段" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：`FS` 可以用正则，如 `-F'[,: ]+'` 支持多分隔符；也能用 `-F'\\t'`。补充高频用法：⑤`awk 'FNR==NR'` 判断「正在读第一个文件」做 join；⑥`printf` 比 `print` 能控制精度（`%.2f`）；⑦`BEGIN{}` 在读取前执行，常用于设 `OFS`；⑧`NF` 还可以判断字段数（如 `NF==5` 过滤日志行）。"
+  },
+  {
+    "id": 4241,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "写一个「删除 7 天前日志并输出统计」的脚本时，如何避免删错和漏统计？",
+    "answer": "**四个关键点：先数再删、限定范围、防误删、可干跑。**\n\n**安全版本**：\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\n\nLOG_DIR=${1:-/var/log/app}\nDAYS=${2:-7}\n[[ -d \"$LOG_DIR\" ]] || { echo \"目录不存在：$LOG_DIR\" >&2; exit 1; }\n\n# 1. 先统计再删除（两步，可核对）\nmapfile -d '' files < <(\n  find \"$LOG_DIR\" -type f -name '*.log' -mtime \"+$DAYS\" -print0\n)\ncount=${#files[@]}\nif (( count == 0 )); then\n  echo \"$(date '+%F %T') 无需清理\"\n  exit 0\nfi\n\necho \"$(date '+%F %T') 待清理 $count 个文件，合计 $(du -ch \"${files[@]}\" | tail -1 | cut -f1)\"\n\n# 2. 试跑模式：只打印不删\nif [[ ${DRY_RUN:-0} == 1 ]]; then\n  printf '  %s\\n' \"${files[@]}\"\n  echo '(dry-run，未删除)'\n  exit 0\nfi\n\n# 3. 安全删除：-print0/-0/-- 三重保护\nprintf '%s\\0' \"${files[@]}\" | xargs -0 -r rm -f --\necho \"$(date '+%F %T') 已清理 $count 个文件\"\n```\n\n**四个防护点的用意**：\n\n| 防护 | 避免的问题 |\n|---|---|\n| `-type f` | 误删同名**目录** |\n| `-name '*.log'` | 误删非日志文件（**限定范围是最关键的一条**） |\n| `-print0` + `xargs -0` + `--` | 文件名含空格/换行/以 `-` 开头时误删 |\n| `DRY_RUN` | 上线前先看会删什么 |\n\n**三个容易出事的细节**：\n1. **`-mtime +7` 是「7×24 小时前」不是「7 个自然日」**，跨时区/夏令时要注意\n2. **`${files[@]}` 必须加引号**，否则含空格的路径又会被拆\n3. **`du -ch` 在文件数极多时会超 `ARG_MAX`**，所以这里先用数组再传参；真遇到 10 万级文件应改成 `find | xargs du -ch`\n\n**生产建议**：删之前**先归档压缩**（`gzip` 或 `mv` 到归档目录），保留可追溯性，然后再删原始文件。直接 `rm` 是不可逆的。"
+  },
+  {
+    "id": 4242,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "脚本中 `cd /some/dir` 之后接 `rm -rf *`，最大的风险是什么？",
+    "options": [
+      { "key": "A", "text": "cd 失败时仍在原目录执行 rm -rf *（可能删掉当前工作目录的所有内容）" },
+      { "key": "B", "text": "rm 速度太慢" },
+      { "key": "C", "text": "没有风险，脚本是安全的" },
+      { "key": "D", "text": "cd 会自动创建目录" }
+    ],
+    "answer": ["A"],
+    "explanation": "这是 **shellcheck SC2164** 专门警告的问题。若 `/some/dir` 不存在，`cd` 失败但脚本继续（除非 `set -e`），接着 `rm -rf *` 就在**原来的目录**（可能是 `/` 或用户的 home）里删了个干净。正确写法：`cd /some/dir || exit 1`，或 `cd /some/dir && rm -rf -- *`，或 `set -e` 配合。**再加一道保险**：先判断 `[[ -d \"$DIR\" ]]`，并对 `rm` 用变量而不是通配符。"
+  },
+  {
+    "id": 4243,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何在 Shell 里做「重试（retry）」？指数退避怎么写？",
+    "answer": "**基础版（固定次数 + 固定间隔）**：\n```bash\nretry() {\n  local n=$1 max=$2; shift 2\n  local i=1\n  until \"$@\"; do\n    if (( i >= max )); then\n      echo \"重试 $max 次仍失败: $*\" >&2\n      return 1\n    fi\n    echo \"第 $i 次失败，${n}s 后重试: $*\" >&2\n    sleep \"$n\"\n    (( i++ ))\n  done\n}\n\nretry 5 3 curl -sf https://api/health\n```\n\n**指数退避 + 抖动（生产推荐）**：\n```bash\nretry_backoff() {\n  local max=$1; shift\n  local delay=1 i=1\n  until \"$@\"; do\n    (( i > max )) && { echo '重试耗尽' >&2; return 1; }\n    # 抖动：避免大量客户端同时重试造成雪崩\n    local jitter=$(( RANDOM % 1000 ))\n    sleep \"$(awk -v d=$delay -v j=$jitter 'BEGIN{printf \"%.2f\", d + j/1000}')\"\n    delay=$(( delay * 2 > 60 ? 60 : delay * 2 ))   # 翻倍，上限 60 秒\n    (( i++ ))\n  done\n}\n```\n\n**四个设计要点**：\n\n| 要点 | 原因 |\n|---|---|\n| **上限** | 无限重试会变成攻击自己 |\n| **指数退避** | 下游正在恢复时反复打只会拖更久 |\n| **抖动（jitter）** | 100 个客户端同时重试 → 同一时刻雪崩（**最重要的细节**） |\n| **区分错误类型** | 网络超时可重试；**参数错误、404、认证失败重试无意义** |\n\n**只重试可重试的错误**：\n```bash\ncase $code in\n  5xx|429|000) retry ... ;;    # 可重试\n  *) die \"不可重试的错误 $code\" ;;\nesac\n```\n\n**现成的工具**（不必自己写）：\n```\ncurl --retry 3 --retry-delay 2 --retry-connrefused --retry-max-time 30 URL\n```\n`curl` 的 `--retry` 家族已经实现了大部分场景的需求。\n\n**验证重试是否真生效**：用 `bash -x` 跑，或让第一次故意失败（如临时改端口）。"
+  },
+  {
+    "id": 4244,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "关于 Shell 中的 `read` 命令，以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "`read` 默认按 IFS 分词，赋给多个变量" },
+      { "key": "B", "text": "`-r` 禁止反斜杠转义，处理路径时建议总是加上" },
+      { "key": "C", "text": "`read` 会去掉行首尾的空白（除非 IFS= 空赋值）" },
+      { "key": "D", "text": "`read` 不需要 stdin 就能读取文件内容" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：`read` 只从 **stdin（fd 0）** 读，读文件必须重定向（`< file`）或用 `read ... < file`、`read -u` 指定 fd。C 的关键是 `IFS=` 的用法：**`IFS= read -r line` 就是 `IFS=` 空赋值，阻止裁剪**——这是读配置文件的必备写法。补充：⑤`read -s` 静默（读密码）；⑥`read -t 5` 超时返回非 0；⑦`read -a arr` 直接读进数组；⑧`read` 返回值在文件末尾（EOF）时为 1，可用于 `while read` 循环。"
+  },
+  {
+    "id": 4245,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "如何在 Shell 里安全地处理「命令输出包含中文/特殊字符」的场景？",
+    "answer": "**核心原则：只处理数据，不把它当代码；显式指定编码；避免分词。**\n\n**1. 编码要显式统一**\n```\n# 处理前确认编码，避免 GBK/UTF-8 混用\nfile -i data.txt\niconv -f GBK -t UTF-8 data.txt > data.utf8.txt\n```\n**最常见的故障**：Windows 导出的 CSV 是 GBK，`grep 中文` 永远匹配不上，`awk` 切出来的字段是乱码。\n\n**2. 排序与比较要固定 locale**\n```\nLC_ALL=C sort file        # 按字节排序，结果稳定可预测\nLC_ALL=en_US.UTF-8 sort   # 按语言规则\n```\n**脚本里涉及排序/去重/比较时用 `LC_ALL=C`**，否则同样的输入在不同机器上结果不同（这是跨环境 bug 的高发源）。\n\n**3. 中文依赖 locale**\n```\necho $LANG; locale -a\nexport LANG=zh_CN.UTF-8\n```\n**容器里要注意**：alpine 默认只有 `C.UTF-8`，处理中文前要 `apk add locale` 并 `localedef`。\n\n**4. 输出到终端 vs 文件**\n```\n# 只有终端才用颜色，文件里加 ANSI 码会让 grep 失效\nif [[ -t 1 ]]; then\n  GREEN='\\033[32m'; NC='\\033[0m'\nelse\n  GREEN=''; NC=''\nfi\n```\n\n**5. 特殊字符用 set -f 防通配**\n```\nset -f        # 关闭 globbing\nset +f        # 恢复\n```\n处理含 `*`、`?`、`[` 的内容时（如正则、文件名）必须关掉通配符展开。\n\n**6. 用 `printf` 而非 `echo`**\n```\nprintf '%s\\n' \"$content\"    # 不解释反斜杠，最安全\n```\n`echo` 在 dash 下对 `\\t`、`-n` 的处理和 bash 不同，**跨 shell 不可靠**。\n\n**7. 字节与字符的区别**\n```\n${#var}              # 字符数（依赖 locale）\nwc -c                # 字节数\necho -n \"$str\" | wc -m   # 字符数\n```\n**中文在 UTF-8 下占 3 字节**，用 `wc -c` 算长度会得到 3 倍于字符数的值——判断截断时要格外小心。\n\n**8. 拼接与截断的中文陷阱**\n```\n# 按字节截断会切碎多字节字符，出现乱码\nstr=\"中文测试\"; echo \"${str:0:2}\"     # bash 4 按字符截断，安全\nprintf '%.6s' \"$str\"                    # 可能按字节，危险\n```\n**结论**：bash 4+ 用 `${var:0:N}`（按字符）；需要跨 shell 时改用 `awk` 的 `substr`（按字符）。"
+  },
+  {
+    "id": 4246,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何用 Shell 实现「配置文件的读取与覆盖写入」而不会破坏原文件？",
+    "answer": "**三个原则：读取容错、写入原子、变更备份。**\n\n**1. 安全读取配置（`source` 的陷阱）**\n```\n# 危险：直接把配置文件当脚本 source，里面可能有任意命令\nsource /etc/app.conf\n# 安全：只读 KEY=VALUE 形式，白名单解析\nwhile IFS='=' read -r k v; do\n  [[ $k =~ ^[A-Z_][A-Z0-9_]*$ ]] || continue\n  v=${v%%#*}                       # 去掉行尾注释\n  declare -g \"$k=${v// /}\"\n done < /etc/app.conf\n```\nsource 一个运维可写的文件等于给它执行权限。若必须 source，要 `chown root`、`chmod 600`。\n\n**2. 原子写入（不能边写边被读）**\n```\ntmp=$(mktemp)\ncat > \"$tmp\" <<'EOF'\nkey = value\nEOF\n# 校验通过后再原子替换（rename 是原子的）\nmv -f \"$tmp\" /etc/app/app.conf\n```\n**为什么不直接 `> file`**：重定向会立即**截断原文件**，如果写的过程中失败（磁盘满、Ctrl+C），配置文件就变成半截。`mv` 是原子的，读方要么看到旧的要么看到新的。\n\n**3. 只改一行要保留其他内容**\n```\n# 推荐用 sed + 备份，且只匹配精确的键\ncp /etc/app/app.conf /etc/app/app.conf.bak\nsed -i -E 's|^max_conn\\s*=.*|max_conn = 500|' /etc/app/app.conf\n# 若键不存在则追加\ngrep -q '^max_conn' /etc/app/app.conf || echo 'max_conn = 500' >> /etc/app/app.conf\n```\n\n**4. 幂等的完整写法**\n```bash\nset_config() {\n  local file=$1 key=$2 val=$3\n  local tmp; tmp=$(mktemp) || return 1\n  awk -v k=\"$key\" -v v=\"$val\" '\n    BEGIN{done=0}\n    $0 ~ \"^\"k\"[ \\t]*=\" { print k\" = \"v; done=1; next }\n    { print }\n    END{ if(!done) print k\" = \"v }\n  ' \"$file\" > \"$tmp\" && mv -f \"$tmp\" \"$file\"\n}\n```\n**这个函数是幂等的**：跑一次和跑十次结果相同，键不存在时自动追加。\n\n**5. 写入后要验证并 reload**\n```\n# 语法检查（不同服务命令不同）\nnginx -t && systemctl reload nginx\n```\n**改配置必须验证 + reload**，否则改动不生效还可能下次启动失败。"
+  }
+]

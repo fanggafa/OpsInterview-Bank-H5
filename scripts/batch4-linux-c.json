@@ -1,0 +1,82 @@
+[
+  {
+    "id": 4028,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "XFS 和 ext4 怎么选？各自的关键差异是什么？",
+    "answer": "**结论先行**：**大容量/大文件/高并发写 → XFS；小文件多/需要缩容 → ext4**。\n\n| 维度 | XFS | ext4 |\n|---|---|---|\n| **inode** | **动态分配**，不会 inode 耗尽 | 格式化时固定，小文件多会耗尽 |\n| **大文件** | 强（支持超大文件、延迟分配） | 一般 |\n| **并发写** | 强（分配组 AG，多核并行） | 有全局锁瓶颈 |\n| **缩容** | **不支持**（只能扩） | 支持（必须卸载） |\n| **扩容** | 在线 `xfs_growfs` | 在线 `resize2fs` |\n| **修复** | `xfs_repair`（通常很快） | `e2fsck`（大盘可能几小时） |\n| **默认发行版** | RHEL/CentOS 7+ | Debian/Ubuntu 传统上 |\n\n**为什么 CentOS 7 改成 XFS 默认**：大数据量下 inode 动态分配 + AG 并行是决定性优势，`e2fsck` 在 TB 级盘上耗时过长也是重要原因。\n\n**实际选择建议**：\n- **数据库盘、日志盘、容器存储** → XFS（大盘、大文件、并发写）\n- **海量小文件**（如邮件队列、session 文件） → XFS 的 inode 动态更安全；但**目录项多时 ext4 的 htree 也够用**，两者差异不大\n- **需要缩容的场景**（虚拟机磁盘调整）→ ext4\n- **已有环境别轻易换**：换文件系统意味着重装/迁移\n\n**`mkfs` 时的关键参数**：\n```\n# XFS：只影响日志与条带，inode 不用管\nmkfs.xfs -f -l size=128m -d agcount=8 /dev/sdb\n# ext4：小文件多的场景必须调大 inode 数\nmkfs.ext4 -i 65536 -m 1 /dev/sdb\n```\n`-i 65536` = 每 64KB 一个 inode（默认 16KB），`-m 1` = 保留块比例从 5% 降到 1%（大容量盘必调，否则白扔几十 GB）。"
+  },
+  {
+    "id": 4029,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "sudo 的配置怎么理解？如何给用户有限的提权？",
+    "answer": "**`/etc/sudoers` 的一行结构**：\n```\n用户  主机=(可切换到的用户) 命令\nroot  ALL=(ALL:ALL)          ALL          # 完整的 root 权限\n```\n\n**给「有限提权」的三种做法**：\n\n**1. 限定命令**\n```\n# 只能重启 nginx\ndeploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx\n```\n注意：**命令要写绝对路径**，且结尾不加通配符。写 `systemctl *` 等于给全部 systemd 控制权（`systemctl edit` 就能改服务、拿 root）。\n\n**2. 用命令别名**\n```\nCmnd_Alias SVC = /usr/bin/systemctl restart nginx, /usr/bin/systemctl reload nginx\nCmnd_Alias LOG = /usr/bin/journalctl -u nginx *\ndeploy ALL=(root) NOPASSWD: SVC, LOG\n```\n`LOG` 里带 `*` 也是危险的（`journalctl -u nginx -o ...` 可能有注入），**能用白名单就不写通配符**。\n\n**3. 按组管理**（推荐）\n```\n%deploy ALL=(root) NOPASSWD: SVC\n```\n用户加入 `deploy` 组即可，避免逐人维护。\n\n**必须知道的四条安全规则**：\n\n1. **永远用 `visudo` 编辑**，它会在保存前做语法检查。写错一行 `sudoers` = 所有人无法 sudo，包括 root 补救都困难\n2. **`!requiretty`**：老系统默认要求 tty，脚本里 sudo 会失败，加 `Defaults:deploy !requiretty`\n3. **`NOPASSWD` 要谨慎**：免密意味着 token/SSH key 泄漏即提权。生产上更稳妥的是**保留密码 + 记录日志**\n4. **命令路径要防绕过**：`/usr/bin/vim` 给了等于给 root（`:!sh` 就能逃逸），**间接提权的编辑器、分页器、打包工具都不能给**\n\n**审计**：\n```\nsudo -l -U deploy            # 看某人有什么权限\nsudo -l                      # 看自己\ngrep -r 'NOPASSWD' /etc/sudoers /etc/sudoers.d/\n```\n**记住**：`/etc/sudoers.d/*` 里的文件若有语法错误同样会锁死 sudo，也要用 `visudo -f`。"
+  },
+  {
+    "id": 4030,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "内核报 hung_task、soft lockup、blocked for more than 120 seconds，分别说明什么？",
+    "answer": "这三个是**内核卡死类告警**，含义完全不同，处理思路也不同。\n\n| 告警 | 含义 | 典型原因 |\n|---|---|---|\n| **`task X blocked for more than 120 seconds`**（hung_task） | 某进程在 **D 状态**超过 `hung_task_timeout_secs`（默认 120s） | IO 卡死：坏盘、NFS/iSCSI 失联、驱动 bug |\n| **`soft lockup`** | 某 CPU **内核态**跑死循环超过 `watchdog_thresh`（默认 22s），期间无法调度 | 内核驱动 bug、虚拟机 vCPU 被宿主机抢占 |\n| **`hard lockup`** | 更严重：CPU 连中断都响应不了，NMI watchdog 触发 | 内核死锁、硬件故障 |\n| **`blocked for more than 120s`**（D 状态） | 同 hung_task | 详见下方分类 |\n\n**关键区分**：\n- **soft lockup** = **CPU 忙**，在跑死循环，能响应中断但没法调度别的进程\n- **hung task** = **CPU 闲**，进程卡在等 IO，什么也不干\n- 看 `dmesg` 里的调用栈判断方向：栈里有 `sync`、`io_schedule`、`nfs_*` → IO 类；栈在某个驱动函数里 → 驱动类\n\n**排查思路**：\n\n```\ndmesg -T | grep -iE 'hung_task|lockup|blocked for'\ncat /proc/sys/kernel/hung_task_timeout_secs\n```\n\n**hung_task / D 状态卡死的高频根因**：\n1. **NFS/iSCSI 存储失联**：`mount` 里有 stale 挂载，所有访问它的进程全卡 D。**只能 umount -f 或重启**\n2. **磁盘坏道 / 扇区重试**：`dmesg` 有 `I/O error`、`sector` 相关记录\n3. **RAID 卡电池失效进写穿模式**（性能骤降，不致命）\n4. **云盘抖动**：云厂商侧限流，`await` 爆表\n\n**soft lockup 的高频根因**：\n1. **虚拟机 CPU 抢占**：宿主机超卖，`steal` 率高 → 调 `watchdog_thresh` 或降低超卖\n2. **内核模块 bug**，需要升级内核\n3. **容器内大量 `fork`/`clone`**\n\n**缓解手段**（不改根因）：\n```\n# 调大阈值，避免误报（治标）\nkernel.hung_task_timeout_secs = 300\nkernel.watchdog_thresh = 60\n```\n**不建议直接关 watchdog**（`kernel.watchdog_thresh=0`）—— 那只是让日志消失，机器该卡还是卡。"
+  },
+  {
+    "id": 4031,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "NUMA 是什么？它对性能有什么影响？为什么有些服务要绑核？",
+    "answer": "**NUMA（非统一内存访问）**：多路 CPU 时，每个 CPU 有自己的**本地内存**，访问本地内存快、访问其他 CPU 的内存（远端）慢，延迟差可达 1.5-2.5 倍。\n\n**为什么是个问题**：\n```\nNUMA Node 0: CPU0 CPU1  +  本地内存 64G\nNUMA Node 1: CPU2 CPU3  +  本地内存 64G\n```\n如果进程在 CPU0 上跑，但内存被分配在 Node 1 → 每次访存都要**跨 QPI/UPI 总线**，数据库、Redis 这类内存密集型服务性能会明显掉。\n\n**排查命令**：\n```\nnumactl --hardware          # 有几个 node、各自内存\nnumastat                    # 各 node 的命中/未命中统计\nnumastat -p <pid>           # 具体进程的分布（关键）\n```\n`numastat` 里 **`numa_foreign` 高**说明跨节点访问频繁，就是问题所在。\n\n**三种应对手段**：\n\n**1. 让内核自己优化（默认行为）**\n内核会尽量把内存分配在**正在运行的 CPU 所属节点**。大多数服务无需干预。\n\n**2. 显式绑核 + 绑定内存（对性能敏感的数据库）**\n```\nnumactl --cpunodebind=0 --membind=0 ./mysqld      # 只用 Node 0 的 CPU 和内存\nnumactl --interleave=all ./redis-server           # 或交叉分配，避免单节点爆满\n```\n注意 `--membind` 会**限制可用内存总量**（只有该节点的一半），进程可能 OOM，要评估。\n\n**3. 关闭 NUMA（简单粗暴）**\n```\n# 内核参数加 numa=off\n# 或 BIOS 里设 Node Interleaving = Enabled\n```\n代价是抹掉了本地/远端差异，平均下来都变「中等慢」，适合负载无法预测的场景。\n\n**K8s 场景**：1.21+ 有 **CPU Manager 的 static 策略** + **Topology Manager**，能给 Guaranteed QoS 的 Pod 做 NUMA 亲和。配置：`--cpu-manager-policy=static` + `--topology-manager-policy=single-numa-node`。\n\n**一句话**：**只有内存密集型、且观察到 `numa_foreign` 很高的服务才需要动 NUMA**，其他场景让内核自己处理即可，乱绑核反而降低整体吞吐。"
+  },
+  {
+    "id": 4032,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "SELinux 是什么？三种模式有什么区别？为什么它经常成为「莫名其妙访问被拒」的原因？",
+    "answer": "**SELinux 是强制访问控制（MAC）**：除了传统的「用户/属组/权限位」（DAC），再加一层「**进程能访问什么类型的资源**」的策略，**root 也受约束**。\n\n**三种模式**：\n\n| 模式 | 行为 | 用途 |\n|---|---|---|\n| **Enforcing** | 拒绝并记录到审计日志 | 生产默认 |\n| **Permissive** | **只记录不拒绝**（等于只观察） | 排查/调试（**定位问题的首选**） |\n| **Disabled** | 完全关闭 | 不推荐，且切换需要重启 + 重新打标签 |\n\n**为什么它经常是「莫名其妙被拒」的元凶**：\n\n1. **改端口被拦**：Nginx 从 80 改到 8080 → SELinux 只允许 httpd 监听特定端口类型，直接 `Permission denied`\n2. **改了网站目录**：把站点放到 `/data/www` → 文件标签不是 `httpd_sys_content_t`，Nginx 读不到，报 403\n3. **容器挂载宿主机目录**：卷的内容标签不对，容器内进程访问被拒\n\n**排查的标准流程**：\n\n```\n# 1. 确认当前状态\ngetenforce                          # Enforcing / Permissive / Disabled\nsestatus\n\n# 2. 看有没有被拒记录（关键）\nausearch -m avc -ts recent\ndmesg | grep -i avc                 # 老系统也可看这里\n\n# 3. 临时判定：切 permissive 观察是否恢复\nsetenforce 0\n# 若问题消失 → 确认是 SELinux；切回\nsetenforce 1\n```\n\n**正确修复方式（不是关掉它）**：\n```\n# 允许端口（而非关 SELinux）\nsemanage port -a -t http_port_t -p tcp 8080\n# 修正文件标签\nrestorecon -Rv /data/www\nchcon -t httpd_sys_content_t /data/www/index.html    # 临时，restorecon 会还原\n# 允许布尔开关\ngetsebool -a | grep httpd\nsetsebool -P httpd_can_network_connect on\n```\n\n**核心命令速记**：**`ausearch -m avc`** 是唯一的入口，它告诉你「谁被拒绝访问了什么」，然后再决定是加端口、改标签还是开布尔值。\n\n**面试要点**：不要一上来就说「关掉 SELinux」。正确回答是**先用 permissive 定位，再用 semanage/restorecon/布尔值做最小放行**。"
+  },
+  {
+    "id": 4033,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "网卡 bond 有哪些模式？生产上最常用哪种？为什么？",
+    "answer": "**七种模式（mode 0-6）**，按「要不要交换机配合」分两类。\n\n| mode | 名称 | 交换机需配置 | 带宽叠加 | 冗余 |\n|---|---|---|---|---|\n| **0** | balance-rr（轮询） | 需 LACP/静态聚合 | ✅ 是 | ✅ |\n| **1** | **active-backup** | **不需要** | ❌ 否 | ✅ |\n| 2 | balance-xor | 需配置 | ✅ | ✅ |\n| **3** | broadcast | 需配置 | ❌ | ✅（全发） |\n| **4** | **802.3ad（LACP）** | **必须配 LACP** | ✅ 是 | ✅ |\n| 5 | balance-tlb | 不需要 | 部分（仅发送） | ✅ |\n| 6 | balance-alb | 不需要 | 部分 | ✅ |\n\n**生产上最常用的两种**：\n\n**mode=4（LACP）**——性能与冗余兼得，**要求交换机侧真的配了 `channel-group mode active`**。没配的话 bond 起不来，网卡显示 `down`。\n\n**mode=1（active-backup）**——**最保险**，无需交换机配合，插上就能用。代价是**不叠加带宽**（一主一备），只有冗余。\n\n**为什么很多人最后选 mode=1**：\n1. 跨部门沟通成本低（不用找网络组改交换机）\n2. **虚拟化/云环境根本不允许 LACP**（云主机网卡不支持）\n3. 单口 10G 往往已经够用，双口叠加的收益小于配置复杂度\n\n**常见坑**：\n\n1. **mode 0/2/4 下单个 TCP 连接不会变快**：链路聚合是按「流」哈希分发的，**同一条 TCP 连接只能走一条物理链路**。想单连接提速只能换单口更快的网卡\n2. **`miimon` 必须配**（如 `miimon=100`），否则断链检测不生效，切不过去\n3. **mode=4 的两个口速率必须一致**\n4. **交换机端口要成组同一个 VLAN**\n\n**查看状态**：\n```\ncat /proc/net/bonding/bond0        # 看当前模式、活动口、链路状态\nip -br link show bond0\n```\n输出里 `MII Status: up` 和 `Currently Active Slave:` 是排障关键——**活动口是哪个、另一端是否 down**。"
+  },
+  {
+    "id": 4034,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "tar 命令的常用参数有哪些？如何做增量备份？",
+    "answer": "**最常用的四条命令**（记住这四个够用 90%）：\n\n```\n# 打包（条件压缩）\ntar -czf backup.tar.gz /data          # z=gzip，最快\n# 解开\ntar -xzf backup.tar.gz -C /restore    # -C 指定解到哪\n# 只看内容不解\ntar -tzf backup.tar.gz | head\n# 追加到已有包（只能对未压缩的 .tar）\ntar -rf backup.tar newfile\n```\n\n**参数助记**：`c`=create `x`=extract `t`=list `z`=gzip `j`=bzip2 `J`=xz `f`=file `v`=verbose `C`=指定目录 `p`=保留权限。\n\n**压缩算法对比**：\n\n| 参数 | 算法 | 压缩率 | 速度 | 建议 |\n|---|---|---|---|---|\n| `-z` | gzip | 中 | 快 | **默认选择** |\n| `-j` | bzip2 | 高 | 慢 | 已过时 |\n| `-J` | xz | **最高** | **最慢** | 归档长期保存 |\n| 无 | 不压缩 | — | 最快 | 极大数据，配合外部压缩 |\n\n**增量备份**（tar 本身只支持「按时间戳」的粗糙增量）：\n```\n# -N 只打包比某个时间新的文件\ntar -czf inc.tar.gz -N \"2025-01-01\" /data\n# -g 快照文件，支持真正的增量（记录上次备份的状态）\ntar -czf full.tar.gz -g /var/backup/snap /data      # 首次=全量\ntar -czf inc.tar.gz  -g /var/backup/snap /data      # 后续=增量\n```\n**`-g` 的坑**：恢复时必须**从全量开始按顺序**恢复，中间的增量包少一个就断链。生产上更推荐 `rsync --link-dest` 做增量（空间省且能直接访问）。\n\n**三个必须知道的细节**：\n1. **`-C` 要放在源路径之前**，`tar -xzf a.tar -C /dst` 才是对的；`tar -C /dst -xzf a.tar` 也行但容易记错\n2. **`--exclude` 要写在源目录前面**，否则不生效\n3. **备份到管道时要 `--checkpoint` 看进度**，几 TB 的包没进度会让人以为卡死\n\n**验证备份可用性**（最重要但最常被跳过的一步）：\n```\ntar -tzf backup.tar.gz > /dev/null && echo OK\ntar -dzf backup.tar.gz                    # 与文件系统比对，能发现损坏\n```"
+  },
+  {
+    "id": 4035,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 信号是什么？SIGTERM、SIGKILL、SIGHUP 有什么区别？为什么 kill -9 要慎用？",
+    "answer": "**信号是内核/进程间传递的异步通知**，进程可以选择处理、忽略或使用默认行为。\n\n**三个必须分清的信号**：\n\n| 信号 | 编号 | 可否被捕获 | 用途 |\n|---|---|---|---|\n| **SIGTERM** | 15 | **可以** | 「请优雅退出」——**默认的 kill 就是它** |\n| **SIGKILL** | 9 | **不可以** | 强杀，内核直接回收，进程没有任何机会 |\n| **SIGHUP** | 1 | 可以 | 终端断开；**守护进程习惯用它做「重载配置」** |\n| SIGINT | 2 | 可以 | Ctrl+C |\n| SIGQUIT | 3 | 可以 | Ctrl+\\，通常触发 core dump |\n| SIGSEGV | 11 | 可以（但通常来不及） | 段错误 |\n\n**为什么 `kill -9` 要慎用**：\n\n1. **不给清理机会**：进程无法 flush 缓冲区、无法关闭文件句柄、无法通知下游。数据库可能留下未完成的事务，日志可能丢最后几行\n2. **`-9` 杀不掉 D 状态进程**：进程卡在内核态 IO 上，信号只在返回用户态时才处理，所以 `kill -9` 毫无作用。这种情况要解决的是 IO 本身\n3. **服务重启时会带着脏状态**：临时文件、锁文件、共享内存段残留，可能导致下次启动失败\n4. **掩盖了真正的问题**：进程为什么卡住？`-9` 之后就查不到了\n\n**正确的处置顺序**：\n```\nkill <pid>              # SIGTERM，等 5-10 秒\n# 还没退\nkill -HUP <pid>         # 若是守护进程可能需要重载而不是退出\n# 确认进程真卡住了\ncat /proc/<pid>/status | grep State     # 是不是 D\n# 最后才\nkill -9 <pid>\n```\n\n**`systemctl stop` 的优雅退出逻辑**：发 SIGTERM → 等 `TimeoutStopSec`（默认 90s）→ **才发 SIGKILL**。所以**要给应用配足停机时间**，否则等于被强杀。\n\n**常用排查**：\n```\nkill -l                    # 列出所有信号\ncat /proc/<pid>/status | grep SigCgt    # 该进程捕获了哪些信号（位图）\nstrace -p <pid> -e trace=signal          # 观察信号接收\n```"
+  },
+  {
+    "id": 4036,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "`vm.overcommit_memory` 三个取值分别是什么？为什么 Redis 要求设成 1？",
+    "answer": "**它控制内核对「内存分配请求」的态度**——是直接答应，还是先算算账。\n\n| 取值 | 含义 | 行为 |\n|---|---|---|\n| **0** | 启发式（默认） | 内核估算，明显不合理的请求会被拒 |\n| **1** | **总是答应** | 只要不超过「提交上限」就批准，**不做可行性检查** |\n| **2** | 严格 | 允许的提交总量 ≤ `swap + RAM × overcommit_ratio%`，**超了就拒** |\n\n**关键概念：虚拟内存 ≠ 物理内存**。`malloc(1GB)` 只是「预订」，内核可以给一整块虚拟地址而不实际分配物理页（**延迟分配，lazy allocation**）。真正分配发生在**首次写入**（page fault）时。\n\n**为什么 Redis 要求 `overcommit_memory = 1`**：\n\nRedis 做 **BGSAVE / AOF rewrite 时会 fork 子进程**。fork 需要「复制」父进程的地址空间——但不会真复制（**写时复制 COW**），只是把页表标成共享。\n\n问题在于：**fork 时内核要评估「这个请求是否合理」**。如果父进程用了 10GB，`overcommit_memory=0/2` 可能判定「再要 10GB 不现实」→ **fork 直接失败**。\n\n失败后果：\n```\nCan't save in background: fork: Cannot allocate memory\n```\n**注意**：Redis 主进程可能只用了 10GB，但 fork 视角下要「预留 10GB」，而机器总内存 16GB → 判定不合理 → 拒绝。实际因为 COW，真需要的内存远小于这个数。\n\n所以官方明确要求：\n```\nvm.overcommit_memory = 1\n```\n**这不是为了「让 Redis 多吃内存」，而是为了让 fork 不被误判拒绝。**\n\n**设成 1 的风险与缓解**：\n- 风险：过度承诺后内存真不够 → **OOM Killer 出手**\n- 缓解：给 Redis 设 `maxmemory`（如物理内存 60%），并配 `maxmemory-policy`，让它在被 OOM 之前自己淘汰\n\n**验证**：\n```\ncat /proc/sys/vm/overcommit_memory\ncat /proc/meminfo | grep -i commit        # CommitLimit / Committed_AS\n```\n`Committed_AS / CommitLimit` 超过 100% 时，在 mode=2 下新分配会直接失败。"
+  },
+  {
+    "id": 4037,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "时区、locale、字符集在 Linux 里是三个独立的东西吗？各有什么坑？",
+    "answer": "**是三个完全独立的东西**，混在一起是大量「莫名其妙」故障的根源。\n\n| 概念 | 控制什么 | 配置方式 |\n|---|---|---|\n| **时区（timezone）** | 系统时间如何显示 | `/etc/localtime`、`timedatectl set-timezone` |\n| **locale** | 语言、日期/数字/货币格式、字符分类 | `LANG`、`LC_*`、`/etc/locale.conf` |\n| **字符集（codeset）** | 字节 ↔ 字符的映射 | locale 里的 `.UTF-8` 后缀 |\n\n**关键区分**：\n```\ndate                                  # 受时区影响\necho $LANG                           # locale\ndate +%s                              # 时间戳不受时区影响\n```\n**内核时钟永远是 UTC**，时区只在「显示」时起作用。\n\n**三个高频坑**：\n\n**1. 时区对不对和「时间准不准」是两件事**\n```\ntimedatectl\n#   Time zone: Asia/Shanghai (CST, +0800)   ← 时区\n#   NTP synchronized: yes                    ← 时间同步（另一回事）\n```\n时区对了但 NTP 没同步 → 时间仍然错；NTP 准了但时区错 → 日志还是差 8 小时。**两个都要检查**。\n\n**2. `LANG=C` 导致中文乱码 / 排序错误**\n```\nLANG=C sort file           # 按字节排序，中文会乱\nLANG=zh_CN.UTF-8 sort file # 按语言排序\n```\n脚本里**用 `LC_ALL=C` 是正确做法**（保证排序/比较稳定可预测），但**输出给用户的中文内容不能用 C locale**。\n\n**3. 容器里的 locale 缺失**\n`alpine` 默认只有 `C.UTF-8`，`locale -a` 看不到 `zh_CN.UTF-8`。此时：\n- Java 应用读中文文件名会乱码\n- `sort`、`awk` 对多字节字符处理异常\n解决：镜像里装 `locale` 并 `localedef` 生成，或显式设 `LANG=C.UTF-8`。\n\n**统一做法（推荐）**：\n```\ntimedatectl set-timezone Asia/Shanghai\nlocalectl set-locale LANG=zh_CN.UTF-8\necho 'export LANG=zh_CN.UTF-8' >> /etc/profile\n```\n容器镜像里也显式设 `ENV LANG=C.UTF-8 TZ=Asia/Shanghai`。\n\n**还有第四个坑**：`/etc/localtime` 若是**空文件或符号链接到错误的 zoneinfo**，`date` 会静默回退到 UTC，没有任何报错。要 `ls -l /etc/localtime` 确认它指向 `/usr/share/zoneinfo/Asia/Shanghai`。"
+  }
+]

@@ -1,0 +1,159 @@
+[
+  {
+    "id": 4419,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`/etc/resolv.conf` 里有哪些关键字段？`options` 该怎么调？",
+    "answer": "**一个典型的文件**：\n```\nnameserver 10.0.0.2\nnameserver 10.0.0.3\nsearch corp.example.com example.com\noptions timeout:1 attempts:2 rotate ndots:2\n```\n\n| 字段 | 含义 | 注意 |\n|---|---|---|\n| **`nameserver`** | DNS 服务器（最多 3 个生效） | 用 `nameserver` 而非 `server` |\n| **`search`** | 补全域列表 | **列表越长越慢**，每个查询都要试一遍 |\n| **`domain`** | 单个搜索域（旧写法） | 与 search 互斥 |\n| **`options`** | 调优参数 | 见下 |\n\n**`options` 的关键项**：\n\n| 参数 | 默认 | 说明 |\n|---|---|---|\n| **`timeout:1`** | 5 秒 | **单次查询超时**。默认 5 秒是灾难——DNS 挂了每个请求白等 5 秒 |\n| **`attempts:2`** | 2 | 重试次数 |\n| **`ndots:2`** | 1 | 域名含 ≥n 个点才先查原名，否则先拼 search |\n| **`rotate`** | 无 | 多个 nameserver 轮询（默认只用第一个） |\n| `single-request` | 无 | 串行发送 A 和 AAAA 查询（老旧设备兼容） |\n\n**最影响性能的一条**：**超时设置**。默认 5 秒 × 2 attempts × 3 nameserver = **最长 30 秒**才能判定解析失败。DNS 出问题时，表现为「整个系统卡住」。生产建议 `timeout:1 attempts:1`。\n\n**`ndots` 的经典陷阱**（K8s 里必踩）：\n```\nsearch default.svc.cluster.local svc.cluster.local cluster.local\noptions ndots:5\n```\n查询 `api.github.com`（2 个点 < 5）→ 会依次尝试：\n```\napi.github.com.default.svc.cluster.local   ✗\napi.github.com.svc.cluster.local           ✗\napi.github.com.cluster.local               ✗\napi.github.com.                            ✓\n```\n**每个失败都增加延迟**。解法：①`ndots:2`；②域名末尾加 `.`（`api.github.com.`）跳过 search；③用 FQDN。\n\n**验证与排查**：\n```\ndig example.com                    # 看 SERVER 和 QUERY TIME\ndig +search example.com            # 走 search 域\ndig @10.0.0.2 example.com         # 指定服务器\ntcpdump -i any port 53 -n         # 抓 DNS 查询看实际发了什么\n```\n**`dig +trace`** 能看到完整解析链，判断是本地 DNS 慢还是权威慢。"
+  },
+  {
+    "id": 4420,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "ARP 是什么？ARP 欺骗怎么实现、怎么防御？",
+    "answer": "**ARP（地址解析协议）**：把 IP 地址解析成 MAC 地址。工作在二层，**无状态、无认证**——这就是它脆弱的根源。\n\n**正常工作方式**：\n```\n主机 A 要访问 192.168.1.1（不知道 MAC）\n→ 广播 ARP Request：\"谁是 192.168.1.1？\"\n→ 网关单播 ARP Reply：\"我是，MAC 是 aa:bb:cc:dd:ee:ff\"\n→ A 缓存进 ARP 表\n```\n\n**ARP 欺骗原理**：\n攻击者 B 不断向 A 发送伪造的 ARP Reply：\n```\n\"192.168.1.1（网关）的 MAC 是 [B 的 MAC]\"\n```\nA 会**无条件接受**（因为是 Reply，不需要先 Request），于是 A 把网关的 MAC 改成 B 的。之后：\n```\nA → 网关 的流量全部经过 B（中间人）\nB 可以监听、篡改、或者直接丢弃\n```\n这就是**中间人攻击（MITM）**。\n\n**ARP 欺骗的迹象**：\n```\narp -a                       # 看 ARP 表\nip neigh                     # 现代写法\n```\n**典型特征**：**多个 IP 对应同一个 MAC 地址**（网关和其他主机的 MAC 一样）。\n\n**防御手段（分层次）**：\n\n**1. 静态 ARP 绑定（最直接，但不适合大规模）**\n```\nip neigh add 192.168.1.1 lladdr aa:bb:cc:dd:ee:ff dev eth0 nud permanent\n```\n或写 `/etc/ethers` + `arp -f`。麻烦在于每台机器都要配。\n\n**2. 交换机端口安全（DAI，最有效）**\n- **Dynamic ARP Inspection**：交换机校验 ARP 报文里的 MAC/IP 绑定是否与 DHCP snooping 绑定表一致\n- **IP Source Guard**：端口限制可用的 IP\n- 需要交换机支持（企业级接入交换机多数支持）\n\n**3. 网络隔离**\n- **VLAN 隔离**：缩小广播域，减少被欺骗范围\n- **私有 VLAN**：同 VLAN 内端口间也隔离\n\n**4. 加密（根本上绕过二层）**\n- 全站 HTTPS：即使被中间人，TLS 也能发现\n- IPsec/VPN\n\n**5. 监控**\n```\narpwatch -i eth0            # 监听 ARP 变化并告警\n# 或用 arping 主动检测\narping -c 3 192.168.1.1\n```\n\n**面试要点**：ARP 欺骗的根源是「**ARP 协议本身没有认证机制**」。所有防御都是在外围补（交换机、主机表、加密），协议层无法修复。IPv6 的 NDP 有 SEND 扩展但**几乎没部署**。"
+  },
+  {
+    "id": 4421,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "DNS 有哪些记录类型？CNAME 和 A 记录能用在同一域名上吗？",
+    "answer": "**最常用的八种记录**：\n\n| 类型 | 作用 | 示例 |\n|---|---|---|\n| **A** | 域名 → IPv4 | `www A 1.2.3.4` |\n| **AAAA** | 域名 → IPv6 | `www AAAA 2400:...` |\n| **CNAME** | 别名 → 另一个域名 | `www CNAME example.com.` |\n| **MX** | 邮件服务器（带优先级） | `@ MX 10 mail.example.com.` |\n| **TXT** | 文本（**SPF/DKIM/域名验证**） | `@ TXT \"v=spf1 ...\"` |\n| **NS** | 该域的权威服务器 | `@ NS ns1.example.com.` |\n| **SOA** | 该域的起始授权（含 TTL、主服务器） | 区域文件必有一条 |\n| **SRV** | 服务位置（端口+主机+优先级） | `_sip._tcp SRV 10 5 5060 sip.` |\n\n**CNAME 和 A 能在同一域名上共存吗？——不能**（这是面试必考点）。\n\n原因：**CNAME 表示「这个域名的所有记录都指向另一个域名」**，它的语义排斥任何其他记录。同时存在属于**协议违规**，多数 DNS 服务器会拒绝加载这样的区域文件。\n\n```\n# 错的\nwww CNAME example.com.\nwww A 1.2.3.4\n```\n**例外**：DNSSEC 的 `RRSIG`/`NSEC` 等签名记录可以和 CNAME 共存（它们不是「数据记录」）。\n\n**为什么不建议在根域（`example.com`）用 CNAME**：\n- 根域通常要配 MX（邮件）、TXT（SPF）、NS，这些和 CNAME 冲突\n- 很多 DNS 服务商直接禁止\n- **解决方案（ALIAS / ANAME / CNAME flattening）**：服务商在解析时把目标域名的 IP 查出来，直接返回 A 记录。阿里云 DNS 叫「显性 URL/别名」、Cloudflare 叫 CNAME Flattening\n\n**TTL 的实践建议**：\n```\n@ A 1.2.3.4    TTL 600      # 变更前先调小 TTL（如 60），改完再调回\n```\n**变更域名解析前，必须提前把 TTL 降到 60 秒并等一个 TTL 周期**，否则改完要等原来的 TTL（可能 24 小时）才全网生效。**这是 DNS 变更最重要的操作纪律。**\n\n**`СNAME` 与 `A` 的排查**：`dig www.example.com +short` 看实际返回什么，多条记录时注意轮询顺序。"
+  },
+  {
+    "id": 4422,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "一个 HTTP 请求从客户端到服务端，中间可能经过哪些设备？每层各做什么？",
+    "answer": "**按「客户端 → 网络 → 服务端」逐层展开**。\n\n```\n浏览器\n  ↓ ① DNS 解析\n本地 DNS → 根 → 顶级域 → 权威服务器\n  ↓ ② TCP/TLS 建连\n  ↓ ③ 发起 HTTP 请求\n客户端网络\n  ↓ ④ 家宽路由器 / 企业出口（NAT）\n  ↓ ⑤ ISP 网络 → 骨干网\n  ↓ ⑥ CDN 边缘节点（如有）\n  ↓ ⑦ WAF / DDoS 清洗\n  ↓ ⑧ 负载均衡（LVS / F5 / 云 SLB）\n  ↓ ⑨ 反向代理（Nginx / HAProxy）\n  ↓ ⑩ 应用网关 / API 网关\n服务端\n  ↓ ⑪ 应用服务（Tomcat / Go / Python）\n  ↓ ⑫ 数据库 / 缓存 / 消息队列\n```\n\n**每一层做什么、常见故障**：\n\n| # | 设备/环节 | 做什么 | 常见故障 |\n|---|---|---|---|\n| ① | DNS | 域名 → IP | 解析慢、多 IP 有坏的、缓存未生效 |\n| ④ | NAT | 内网 → 公网地址转换 | 端口耗尽、对称 NAT 打洞失败 |\n| ⑥ | CDN | 就近缓存静态资源 | 缓存未刷新、回源失败、节点调度错 |\n| ⑦ | WAF | 拦截攻击 | **误杀正常请求**（403 的常见原因） |\n| ⑧ | LB（四层） | 按连接分发 | 后端摘除不及时 → 502 |\n| ⑨ | 反向代理 | 七层路由、TLS 卸载 | `proxy_pass` 配错、超时设置太短 → 502/504 |\n| ⑩ | API 网关 | 鉴权、限流 | 限流阈值太低 → 429 |\n| ⑪ | 应用 | 业务逻辑 | 慢查询、GC、线程池满 |\n| ⑫ | 依赖 | 数据存取 | 连接池耗尽、主从延迟 |\n\n**排障的黄金法则：从两端往中间夹**\n\n1. **先确认「哪一段」**\n```\n# 从客户端\ncurl -w 'dns=%{time_namelookup} conn=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer}\\n' -o /dev/null -s https://x/\n# 从服务端\nss -tn state established '( sport = :443 )' | wc -l\ntail -f /var/log/nginx/access.log\n```\n2. **两边的日志对不上，就是中间环节**\n   - 客户端报错但服务端没日志 → 请求没到（DNS/LB/WAF）\n   - 服务端有请求但客户端报错 → **响应丢了**（超时、连接被中断）\n3. **逐跳跳过验证**\n```\n# 绕过 DNS\ncurl --resolve api.x.com:443:<IP> https://api.x.com/\n# 绕过 CDN（直连源站 IP）\n# 绕过 LB（直连后端某台）\ncurl -H 'Host: api.x.com' http://<后端IP>/\n```\n**逐跳排除是定位「哪一层出问题」最快的方式。**\n\n**面试加分点**：不要只背流程，要说明**「每一层都会引入延迟和故障点」**，排障思路是「**分段测量、逐跳排除**」而不是「凭经验猜」。"
+  },
+  {
+    "id": 4423,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TCP 半连接队列和全连接队列溢出分别有什么表现？",
+    "answer": "**两个队列，溢出表现完全不同**。\n\n```\n[ SYN 队列（半连接） ]\n  收到 SYN，回 SYN+ACK，等 ACK\n  上限：tcp_max_syn_backlog\n        ↓ 握手完成\n[ ACCEPT 队列（全连接） ]\n  已完成握手，等应用 accept()\n  上限：min(somaxconn, 应用 listen backlog)\n```\n\n| | SYN 队列溢出 | ACCEPT 队列溢出 |\n|---|---|---|\n| **表现** | 客户端**重传 SYN**，连接**变慢但最终能成功** | 客户端**握手成功**，但请求**无响应或超时** |\n| 原因 | SYN Flood、高延迟链路 | **应用 accept 太慢**（线程池满、GC） |\n| 谁的问题 | 网络/攻击 | **应用** |\n| 关键指标 | `netstat -s \\| grep 'SYNs to LISTEN'` | `ss -lnt` 的 `Recv-Q` 接近 `Send-Q` |\n\n**最典型的现象对比**：\n\n**SYN 队列溢出**：用户感觉「**打开网页很慢，但多刷新几次能打开**」\n**ACCEPT 队列溢出**：用户感觉「**网页一直转圈，最后超时**」，但服务端日志里**根本没有这个请求**\n\n**排查命令**：\n```\n# SYN 队列\nnetstat -s | grep -i 'SYNs to LISTEN sockets dropped'\nss -ant state syn-recv | wc -l\n\n# ACCEPT 队列\nss -lnt                             # 看 Recv-Q / Send-Q\nnetstat -s | grep -i 'listen queue\\|overflowed'\n```\n**`ss -lnt` 是最直接的**：`Recv-Q` 是当前排队等 accept 的连接数，`Send-Q` 是上限。**Recv-Q 持续接近 Send-Q 就是正在溢出。**\n\n**修复**：\n\n**SYN 队列**：\n```\nnet.ipv4.tcp_max_syn_backlog = 8192\nnet.ipv4.tcp_syncookies = 1        # 队列满时无状态处理，最关键\n```\n\n**ACCEPT 队列**：\n```\n# 1. 内核上限\nnet.core.somaxconn = 65535\n# 2. 应用自己的 backlog（两者取小）\nnginx: listen 80 backlog=65535;\ntomcat: acceptCount=\"500\"\nredis: tcp-backlog 511\n# 3. 根本解：让应用更快 accept（多进程、减少阻塞、加机器）\n```\n\n**关键认知**：**ACCEPT 队列溢出不是「网络问题」，是「应用处理不过来」**。调内核参数只能延缓，真正要解决的是应用的 accept 吞吐。"
+  },
+  {
+    "id": 4424,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "如何理解 TCP keepalive？和应用层心跳有什么区别？什么时候该用哪个？",
+    "answer": "**两个完全不同层次的东西**。\n\n| | TCP keepalive | 应用层心跳 |\n|---|---|---|\n| 层次 | 内核（四层） | 应用（七层） |\n| 默认开启 | **默认关闭**（需 `SO_KEEPALIVE`） | 由应用实现 |\n| 探测内容 | 发空 ACK 探活 | 通常是业务请求（ping） |\n| 默认周期 | 7200 秒（**2 小时！**） | 通常 10-60 秒 |\n| 能检测什么 | 连接**对端是否活着** | 服务**是否真能工作** |\n| 中间设备 | 很多 NAT/防火墙会丢弃 | 正常业务流量 |\n\n**TCP keepalive 的默认值很坑**：\n```\nnet.ipv4.tcp_keepalive_time = 7200     # 空闲 2 小时才发第一个探测\nnet.ipv4.tcp_keepalive_intvl = 75      # 之后每 75 秒\nnet.ipv4.tcp_keepalive_probes = 9      # 9 次无响应才断\n```\n**最长 2 小时 + 9×75 秒 ≈ 2 小时 11 分才判定死连接。** 对长连接服务完全不可接受。\n\n**为什么很多长连接「莫名其妙断开」**：\n- **NAT/防火墙的空闲超时**：云厂商 SLB 默认 900 秒（15 分钟），NAT 网关可能 5 分钟\n- 连接空闲太久被中间设备回收，两端都不知道\n- 之后一端发数据 → 对端已无此连接 → **RST**\n- 表现为「**连接是好的，但突然发数据报错**」\n\n**解决这个问题的标准做法：应用层心跳**\n```\n# 应用每 30-60 秒发一次 ping\n# 保证连接不被中间设备判定为空闲\n```\n心跳周期要**小于中间设备的最小空闲超时**。经验值：\n- 有负载均衡/API 网关：**30-60 秒**\n- 纯内网直连：可以长一些（几分钟）\n\n**配合 keepalive 的调优**（应用层心跳之外再加一层保险）：\n```\nnet.ipv4.tcp_keepalive_time = 300\nnet.ipv4.tcp_keepalive_intvl = 30\nnet.ipv4.tcp_keepalive_probes = 3\n```\n或在应用里设 socket 选项（Java 的 `SO_KEEPALIVE` + `TcpKeepAliveTime`）。\n\n**什么情况用哪个**：\n\n| 场景 | 选择 |\n|---|---|\n| 长连接 RPC（gRPC、Dubbo） | **两者都要**（应用心跳保活 + keepalive 兜底） |\n| 数据库连接池 | 连接池自带心跳（`validationQuery`），配 keepalive |\n| 短连接（HTTP/1.0） | 都不需要 |\n| 移动端推送 | **必须**应用层心跳（NAT 超时很短） |\n\n**一句话**：**TCP keepalive 只管「TCP 连接是否还通」，应用层心跳才知道「服务是否真能工作」。生产环境两者都需要，但主责在应用层。**"
+  },
+  {
+    "id": 4425,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "抓到的包显示「TCP Retransmission」「Dup ACK」「RST」，分别说明什么？",
+    "answer": "**三个信号代表三种不同的问题**。\n\n**1. TCP Retransmission（重传）**\n- **含义**：发送方没收到 ACK，超时后重发\n- **说明**：**包丢了**，或 ACK 丢了\n- **进一步看**：\n  - 两侧都重传 → 链路丢包或拥塞\n  - **只有一方重传** → 可能是对方处理慢（ACK 攒批）或该方向拥塞\n\n| 现象 | 判断 |\n|---|---|\n| 大量重传 + RTT 增大 | 链路拥塞 |\n| 少量重传（<0.1%） | 正常（互联网本来就有丢包） |\n| **重传率高（>1%）** | 链路有问题，要查中间设备 |\n\n**2. Dup ACK（重复确认）**\n- **含义**：接收方收到了乱序的段，重复发同一个 ACK（期待的那个序号没到）\n- **说明**：**中间有一段丢了**，后续的段到了但缺的那个没到\n- **关键**：收到 **3 个 Dup ACK** 触发快速重传（这是 TCP 优化丢包恢复的机制）\n\n**Dup ACK 是「丢包」的证据，不是「重复包」**——这是最容易误解的地方。\n\n**3. RST（Reset）**\n**含义：连接被立即终止**。这是一个「强制手段」，没有礼貌的挥手。\n\n**四种常见原因**：\n\n| 触发的 RST | 原因 |\n|---|---|\n| **服务端回 RST** | 端口没监听、或 `SYN` 到达时队列满、或应用主动 reset |\n| **客户端回 RST** | 连接已关闭但仍有数据到达 |\n| **中间设备回 RST** | **防火墙策略**（REJECT 而非 DROP）、负载均衡摘除后端 |\n| **超时后被回收** | NAT/防火墙把空闲连接记录清了，之后的数据触发 RST |\n\n**这是「502 或「连接被拒绝」的常见根源**。\n\n**Wireshark 过滤器**：\n```\ntcp.analysis.retransmission          # 重传\ntcp.analysis.duplicate_ack           # Dup ACK\ntcp.flags.reset == 1                 # RST\ntcp.analysis.flags && !tcp.analysis.window_update   # 各类异常\ntcp.port == 443 && tcp.analysis.retransmission     # 组合\n```\n\n**统计重传率的方法**（比看单个包有用）：\n```\n# 抓一段时间后统计\ntcpdump -i eth0 -s 100 -c 10000 port 443 -w /tmp/cap.pcap\n# 然后\n# Wireshark: Statistics → TCP Stream Graphs → Throughput\n# 或 tshark 统计：\ntshark -r /tmp/cap.pcap -q -z follow,tcp,ascii,0\n```\n\n**在线看（不用抓包）**：\n```\nss -ti | grep retrans\n```\n**每条连接的 `retrans:X/Y` 就是重传次数**，这是最快的判断方式。\n\n**关键判断心法**：\n- **重传 + Dup ACK 一起出现** → 链路丢包（网络问题）\n- **只有 RST** → 连接被强杀（策略/端口/超时）\n- **重传但 RTT 正常** → 可能是 ACK 路径不对称"
+  },
+  {
+    "id": 4426,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP 三次握手中，第三次握手（客户端 → 服务端的 ACK）的作用是？",
+    "options": [
+      { "key": "A", "text": "确认客户端的接收能力，并让服务端确认客户端已收到自己的 SYN" },
+      { "key": "B", "text": "开始传输数据" },
+      { "key": "C", "text": "仅仅是个形式，没有实际作用" },
+      { "key": "D", "text": "协商窗口大小" }
+    ],
+    "answer": ["A"],
+    "explanation": "三次握手的本质是**双方各自确认对方的收发能力**：①SYN 让服务端知道客户端能发；②SYN+ACK 让客户端知道服务端能收发；③ACK 让服务端知道**客户端能收**（这一点很关键——只两次握手的话，服务端无法确认客户端收到了自己的 SYN+ACK，历史连接请求可能造成资源浪费）。第三次握手还可以携带数据（TCP Fast Open 之外的常规情况也可以，但多数实现要先完成握手）。"
+  },
+  {
+    "id": 4427,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "以下哪些情况会导致 TCP 连接出现大量 TIME_WAIT？（多选）",
+    "options": [
+      { "key": "A", "text": "大量短连接，连接用完立刻关闭" },
+      { "key": "B", "text": "本机作为主动关闭方（服务端主动断开）" },
+      { "key": "C", "text": "客户端没有启用连接复用（HTTP/1.0 或连接池配错）" },
+      { "key": "D", "text": "服务端进程崩溃" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "TIME_WAIT 只会出现在**主动关闭方**。D 进程崩溃是被动断开，反而会产生 FIN_WAIT 或直接 RST，不产生 TIME_WAIT。三个正确项的本质都是「本机作为主动关闭方 + 连接多」：短连接（A）和连接复用缺失（C）都制造大量连接，B 决定是谁留 TIME_WAIT。**核心解法是改成长连接/连接池**，而不是调内核参数——`tcp_tw_reuse` 只在客户端侧有效，服务端 TIME_WAIT 多说明架构上有问题。"
+  },
+  {
+    "id": 4428,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "抓包时如何只抓某个进程的流量？有哪些高效过滤技巧？",
+    "answer": "**`tcpdump` 是包级抓取，本身不支持「按进程过滤」**——它只看到网络接口上的包，不知道属于哪个进程。\n\n**三个解决方案**：\n\n**1. `ss -tnp` 拿到端口，再按端口抓（最实用）**\n```\nss -tnp | grep <pid>          # 找到该进程用的端口\nss -tnp | grep 12345          # 直接看端口对应的进程\ntcpdump -i any -nn 'port 8080' -w /tmp/x.pcap\n```\n**绝大多数场景这样够用**——已知服务端口，抓该端口即可。\n\n**2. `bpftrace` 按进程抓（精确）**\n```\nbpftrace -e 'kprobe:tcp_sendmsg /comm == \"mysqld\"/ { @bytes[comm] = sum(arg2); }'\n# 或用 tcpconnect/tcpaccept 工具（bcc 包）\ntcpconnect -P <pid>            # 追踪该进程的主动连接\ntcptraceroute\n```\n\n**3. `strace` 看 socket 操作（不看包内容）**\n```\nstrace -f -p <pid> -e trace=network -s 200\n```\n\n**高效过滤技巧（这才是抓包的核心）**：\n\n**常用过滤器**：\n```\n# 基础\ntcpdump -i eth0 -nn 'host 10.0.0.5'                  # 与某 IP 通信\ntcpdump -nn 'tcp port 443'                          # 端口\ntcpdump -nn 'src 10.0.0.5 and dst port 8080'        # 组合\ntcpdump -nn 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0'  # 只看建连/断开\ntcpdump -nn 'tcp[tcpflags] & tcp-rst != 0'           # 只看 RST\ntcpdump -nn 'icmp'                                  # ICMP\ntcpdump -nn 'not port 22'                           # 排除 SSH（**重要，否则会抓到自己的连接**）\n```\n\n**性能与体积控制**：\n```\ntcpdump -i any -nn -s 200 -c 1000 'port 8080' -w /tmp/x.pcap\n#        -s 200  只抓每包前 200 字节（够看头部）\n#        -c 1000 抓 1000 个包就停\n#        -w      直接写文件（不解析，快很多）\n```\n**`-s` 是必调的**：默认抓全包，1Gbps 下几秒就是几百 MB。只看头部的话 96-200 字节足够。\n\n**轮转与限流**（长时间抓包必备）：\n```\ntcpdump -i any -nn -s 200 'port 8080' \\\n  -w /tmp/cap-%Y%m%d-%H%M%S.pcap -G 3600 -C 100 --no-promiscuous-mode &\n# -G 3600  每小时切一个文件\n# -C 100   超过 100MB 切文件\n```\n\n**三个坑**：\n1. **`-i any` 时链路层类型不同**，某些过滤器可能失效；能指定网卡就指定\n2. **抓包本身有开销**：高流量下 `tcpdump` 会丢包（`-n` + `-s` + 减少过滤范围能缓解）\n3. **容器里抓包要进 netns**：`nsenter -t <pid> -n tcpdump ...` 或 `kubectl debug`\n\n**分析阶段**：抓完用 `tshark -r x.pcap -V | less` 或直接拖进 Wireshark（**手机上看时间线、看 TCP 流图最快**）。"
+  },
+  {
+    "id": 4429,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "IPv6 和 IPv4 的关键差异有哪些？为什么 IPv6 普及慢？",
+    "answer": "**关键差异**：\n\n| | IPv4 | IPv6 |\n|---|---|---|\n| 地址长度 | 32 位（43 亿） | **128 位**（几乎无限） |\n| 地址表示 | 点分十进制 | **冒号十六进制**（`2001:db8::1`） |\n| 报文头 | 变长（含选项） | **定长 40 字节**，选项放扩展头 |\n| 校验和 | 有 | **无**（由链路层保障） |\n| 分片 | 路由器可分片 | **只有源端可分片** |\n| 广播 | 有 | **无广播，用组播** |\n| ARP | 有 | 用 **NDP**（ICMPv6） |\n| 地址配置 | DHCP 或手工 | **SLAAC 无状态自动配置** |\n| NAT | 必须（地址不够） | **不需要**（但通常仍会配） |\n\n**为什么普及慢（真实原因）**：\n\n1. **NAT 让 IPv4「够用了」**：地址短缺被 NAT 缓解，企业觉得没有必要升级\n2. **双栈改造成本高**：应用、监控、防火墙、负载均衡、日志、合规审计全都要支持\n3. **维护两套的成本**：很多系统的 IPv6 支持是「能配但没验证」——出了问题是新的排查路径\n4. **硬件/中间设备支持参差**：老防火墙、老 LB 对 IPv6 支持有限\n5. **地址规划需要重新设计**：`/64` 是标准子网划分，与 IPv4 的习惯完全不同\n\n**实际运维要点**：\n\n**1. 关键的「回环地址」不同**\n```\nipv4: 127.0.0.1\nipv6: ::1\n```\n应用监听 `0.0.0.0` 只绑定 IPv4；要双栈监听 `::`（多数系统 `::` 会同时接受 IPv4，但 **Linux 的 `net.ipv6.bindv6only` 决定行为**）。\n\n**2. 地址表示法**\n```\n2001:0db8:0000:0000:0000:0000:0000:0001\n可简写为 2001:db8::1\n规则：连续的 0 组用 :: 代替（只能出现一次）\n```\n\n**3. 双栈的监听建议**\n```nginx\nlisten [::]:80 ipv6only=on;\nlisten 80;\n```\n\n**4. 排查命令**\n```\nip -6 addr\nping6 <addr>\nss -6 -lntp\ndig AAAA example.com\ncurl -6 https://x/\n```\n\n**5. 常见故障**\n- **应用只监听了 IPv4** → IPv6 访问失败（`ss -lnt` 看是 `0.0.0.0:80` 还是 `:::80`）\n- **DNS 返回 AAAA 但本机无 IPv6** → 客户端优先尝试 IPv6，超时后回落 → 延迟\n- **防火墙没放通 ICMPv6 的 ND**（邻居发现）→ 完全不通（ICPv6 依赖 ICMPv6，不像 IPv4 那样可以只放通 TCP）"
+  },
+  {
+    "id": 4430,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "如何量化「网络质量差」？除了延迟和丢包还应该看什么？",
+    "answer": "**五个维度，只测延迟和丢包会漏掉关键问题**。\n\n| 维度 | 指标 | 工具 |\n|---|---|---|\n| **延迟** | RTT 均值、**P50/P95/P99** | `ping`、`mtr`、`tcprtt` |\n| **丢包** | 丢包率、重传率 | `mtr`、`ss -ti` 的 retrans |\n| **抖动（Jitter）** | RTT 的**标准差** | `mtr` 的 StDev 列 |\n| **带宽** | 实际吞吐 vs 理论带宽 | `iperf3` |\n| **双向不对称** | 去程/回程的差异 | 两侧同时抓包对比 |\n\n**为什么「P99 比均值重要」**：\n- 均值 20ms 但 P99 是 500ms → **1% 的用户在受苦**，业务指标会明显受影响\n- 高并发系统里 1% 的慢请求会造成**队列积压**，连锁放大\n\n**「抖动」为什么关键**：\n- 实时音视频、游戏对抖动极敏感（RTT 稳定 50ms 比忽高忽低好得多）\n- `mtr` 的 `StDev` 列就是抖动，超过均值说明链路不稳\n\n**双向不对称**（最容易被忽略）：\n```\nA → B 正常，B → A 丢包严重\n```\n**典型表现**：A 上 `mtr B` 一切正常，但 B 上 `mtr A` 全是问题。\n- 原因：路由策略不对称（去程和回程走不同路径）\n- 排查：**两边同时抓包对比**，看哪边重传\n\n**重传率是最诚实的指标**：\n```\nss -ti | grep -oP 'retrans:\\K[^ ]+'\n# 输出形如 0/3（当前/累计）\n```\n**重传率 > 1% 就说明链路有问题**，而且这是**端到端真实体验**，不像 ping 那样受 ICMP 限速影响。\n\n**带宽测试（`iperf3`）的正确姿势**：\n```\n# 服务端\niperf3 -s\n# 客户端（TCP，默认测单向）\niperf3 -c <server> -t 10 -P 4        # 4 个并行流\niperf3 -c <server> -t 10 -P 4 -R     # 反向测（服务器下载）\n# UDP 测（能测丢包与抖动）\niperf3 -c <server> -u -b 100M -t 10\n```\n**`-P 4`（多流）很关键**——单流受 TCP 窗口和丢包影响，测出来的往往不是真实带宽。\n\n**综合判断的方法**：\n```\n延迟低 + 抖动小 + 重传率 0  → 链路健康\n延迟低 + 抖动大            → 中间有队列/限速\n延迟高（P99 高）+ 重传高    → 链路拥塞或质量差\n带宽跑不满但延迟正常        → 可能是 TCP 窗口/单流限制（试多流）\n```\n\n**一句话**：**`ping` 只能告诉你「通不通」，`mtr` 告诉你「哪一跳有问题」，`ss -ti` 的重传率告诉你「体验真实如何」，`iperf3` 告诉你「带宽够不够」。四者配合才是完整的网络质量画像。**"
+  },
+  {
+    "id": 4431,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP 缓存有哪几种？`Cache-Control` 的常用指令和优先级是什么？",
+    "answer": "**两类缓存**：\n\n| 类型 | 位置 | 判断依据 |\n|---|---|---|\n| **强缓存** | 浏览器本地 | `Cache-Control` / `Expires`，**不发请求** |\n| **协商缓存** | 服务端验证 | `ETag`/`Last-Modified`，**发请求但可能返回 304** |\n\n**`Cache-Control` 的关键指令**：\n\n| 指令 | 含义 |\n|---|---|\n| **`max-age=3600`** | 缓存 1 小时（**相对时间，优先级最高**） |\n| **`no-cache`** | **可以缓存，但每次使用前必须向服务器验证**（走协商） |\n| **`no-store`** | **完全不缓存**（敏感数据） |\n| `public` | 中间代理（CDN）也可缓存 |\n| `private` | **只有浏览器可缓存**，CDN 不能 |\n| `must-revalidate` | 过期后必须验证，不能用过期内容 |\n| `s-maxage` | 专门给 CDN 的 max-age（**优先级高于 max-age**） |\n| `immutable` | 内容永不变，连刷新都不重新验证 |\n\n**`no-cache` vs `no-store` 是最容易混的两个**：\n- `no-cache` = 「**可以存，但用之前必须问**」 → 还是会被缓存\n- `no-store` = 「**根本别存**」 → 完全不落盘\n\n**优先级顺序**：\n```\nCache-Control: s-maxage（对 CDN）> max-age > Expires\n```\n`Expires` 是 HTTP/1.0 的绝对时间，**受客户端时钟影响**，现代应只用 `Cache-Control`。\n\n**协商缓存的两个头**：\n\n| 响应头 | 请求头 | 说明 |\n|---|---|---|\n| **`ETag`** | `If-None-Match` | 内容指纹，**更精确**（内容变了才变） |\n| **`Last-Modified`** | `If-Modified-Since` | 修改时间，精度只到秒 |\n\n**`ETag` 优先于 `Last-Modified`**（更精确）。ETag 有强弱之分：`W/\"xxx\"` 是弱校验（语义等价即可）。\n\n**静态资源的实战策略（前端部署核心）**：\n```\n# 带 hash 的文件：永不担心缓存\n/assets/app.a1b2c3.js  →  Cache-Control: public, max-age=31536000, immutable\n# HTML 入口：必须每次验证\n/index.html             →  Cache-Control: no-cache\n```\n**这就是「文件名带 hash」方案的价值**——内容变了文件名就变，可以放心长缓存。\n\n**常见坑**：\n1. **`no-cache` 被误认为「不缓存」**，实际是「每次验证」\n2. **CDN 缓存了 `private` 的内容** → 用户 A 看到用户 B 的数据（**严重安全事故**）\n3. **发版后用户还看到旧页面** → 因为 HTML 被强缓存了。**HTML 必须是 `no-cache`**\n4. **304 响应没有 body**，某些客户端库处理不好\n5. **`Vary` 头**：缓存按 `Accept-Encoding` 等区分，配错会串味"
+  },
+  {
+    "id": 4432,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "CDN 的工作原理是什么？回源失败/命中率低分别怎么排查？",
+    "answer": "**原理：DNS 调度 + 边缘缓存**。\n\n```\n用户请求 www.example.com\n  ↓ ① DNS 解析时，CDN 的智能 DNS 按用户 IP 返回最近的边缘节点\n  ↓ ② 请求到达边缘节点\n  ↓ ③ 命中缓存 → 直接返回（快）\n  ↓ ④ 未命中 → 回源到源站 → 缓存后返回（慢）\n```\n\n**关键机制**：\n\n| 机制 | 说明 |\n|---|---|\n| **智能 DNS / Anycast** | 把用户导向最近的节点 |\n| **边缘缓存** | 按 URL + 查询参数（可配）缓存 |\n| **回源** | 未命中时回源站取，可选「回源到源站 / 回源到中间层」 |\n| **预热** | 发版前主动把资源推到边缘，避免首批用户回源 |\n| **刷新** | 主动失效缓存（URL 刷新 / 目录刷新） |\n\n**「命中率低」的排查**：\n\n```\n# 1. 看实际缓存头\ncurl -I https://cdn.example.com/static/x.js\n# 关键：X-Cache: HIT / MISS，Age（已缓存多久），Cache-Control\n```\n\n**四个原因**：\n1. **`Cache-Control` 不允许多级缓存**：`private`、`no-store` → CDN 不缓存\n2. **URL 带随机参数**：`?v=123456`（每次不同）→ 每个 URL 都是新资源。**这是最常见的**（前端时间戳方案）\n3. **`Vary` 配置过宽**：按 `User-Agent` 缓存 → 每个 UA 一份\n4. **缓存时间太短**：`max-age=60` → 60 秒就回源一次\n\n**「回源失败」的排查**：\n\n表现：**部分用户 502/504，源站日志里没有请求**（或只有少量）。\n\n1. **确认是哪个 CDN 节点的问题**（不同区域用户受影响不同）\n2. **回源 Host 是否配错**：CDN 回源时 `Host` 头配错 → 源站返回 404/403\n3. **源站是否对 CDN 回源 IP 做了限制**：安全组/WAF 白名单漏了 CDN 的回源段\n4. **源站带宽/连接数被打满**：CDN 未命中时会把流量集中打到源站\n5. **回源协议不匹配**：CDN 用 HTTPS 回源，源站只支持 HTTP\n\n**验证 CDN 是否生效**：\n```\ndig cdn.example.com            # 返回的应该是 CDN 的 IP，不是源站 IP\ncurl -I https://cdn.example.com/x.js | grep -i 'x-cache\\|age\\|via'\n```\n\n**实践建议**：\n- **静态资源用文件名 hash + 长缓存**，避免依赖 CDN 刷新\n- **发版前先预热**关键资源\n- **CDN 只加速静态资源**，动态请求（带用户态数据）要谨慎缓存\n- **HTTPS 证书要同步到 CDN**，别只配了源站"
+  },
+  {
+    "id": 4433,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "排查「客户端连不上服务端口」，以下哪些手段是有效的？（多选）",
+    "options": [
+      { "key": "A", "text": "在服务端 ss -lntp 确认端口确实在监听，且监听地址不是 127.0.0.1" },
+      { "key": "B", "text": "从客户端 telnet/nc/<dev/tcp> 测试端口连通性" },
+      { "key": "C", "text": "在服务端 tcpdump 抓包，看 SYN 是否到达" },
+      { "key": "D", "text": "重启服务端应用" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是「不看病因就动手术」。三个正确项构成完整的判断链：**A 排除服务端自身**（最常见的坑是监听在 `127.0.0.1` 而非 `0.0.0.0`，本地能连外部连不上）；**B 从客户端视角确认**（`timeout 3 bash -c 'echo > /dev/tcp/IP/PORT'`）；**C 是最关键的定位手段**——若服务端 tcpdump 看不到 SYN，说明包在中间被拦（防火墙/安全组/路由）；若看到了 SYN 但没回，说明是服务端 iptables 的 INPUT 链或应用队列问题。三者结合能精确定位到「服务端 / 网络中间 / 客户端」哪一段。"
+  },
+  {
+    "id": 4434,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "为什么服务端要关注「出口带宽」？带宽跑满会有什么连带影响？",
+    "answer": "**出口带宽跑满不只是「慢」，会引发连锁反应。**\n\n**直接表现**：\n- 用户端下载慢、页面加载超时\n- **表现为「服务端 CPU 不高、内存不高，但就是响应慢」**\n\n**三个连带影响（最容易误判）**：\n\n**1. 伪装成 CPU/应用问题**\n带宽满时 socket 发送缓冲区堆积，应用的 `write()` 变慢 → 线程阻塞 → 请求排队 → **看起来像应用慢**。\n判断：`sar -n DEV 1` 看 `txkB/s` 是否接近网卡上限，或 `ifconfig` 的 `txqueuelen dropped` 是否增长。\n\n**2. 影响其他不相关的服务**\n同一台机器上一个下载/备份任务占满带宽 → 所有服务变慢。这是**共享资源争抢**的经典问题。\n\n**3. TCP 拥塞控制被动降窗**\n带宽满 → 路由器队列满 → 丢包 → TCP 降窗 → **重传增加** → 进一步加剧拥塞。\n\n**排查命令**：\n```\n# 实时看带宽\niftop -i eth0                    # 按连接显示（需要装）\nsar -n DEV 1 5                   # 系统级\nnload eth0                        # 简洁\n# 按进程\ntcpdump 太底层，用 nethogs\nnethogs eth0\n```\n\n**「带宽跑满」的常见元凶**：\n1. **备份/日志上传任务**（rsync、日志推送）没做限速\n2. **大批量文件下载**（CDN 回源、包更新）\n3. **异常流量**：DDoS、或者某个客户端在狂刷接口\n4. **镜像/软件包分发**没走内网源\n\n**解决手段**：\n\n| 手段 | 效果 |\n|---|---|\n| **限速**（tc / wondershaper） | 限制特定进程/端口的出口速率 |\n| **错峰**（把备份放到低峰） | 最简单有效 |\n| **内网源**（避免走公网） | 从根本上减少流量 |\n| **分离网络**（业务和管理网分开） | 隔离影响 |\n\n**tc 限速示例**（限制 eth0 出口 100Mbps）：\n```\ntc qdisc add dev eth0 root tbf rate 100mbit burst 32kbit latency 400ms\n```\n\n**监控要点**：**出口带宽用率要设告警（如 >70%）**，而且要看**多个时间粒度的峰值**，不能只看日均——**峰值跑满一次就够让业务超时**。"
+  },
+  {
+    "id": 4435,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "同一个域名，同一时间，一部分用户快、一部分用户慢。如何定位？",
+    "answer": "**这类「部分用户」问题，核心是找出「哪些用户」以及「差异在哪」。**\n\n**Step 1：先确定用户的分组依据**\n\n| 分组维度 | 排查点 |\n|---|---|\n| **地域** | DNS 解析到不同的 CDN 节点 / 不同的机房 |\n| **运营商** | 跨网（电信 → 联通）路由差 |\n| **客户端版本** | 旧版本用了旧接口 / 旧逻辑 |\n| **登录状态** | 不同用户走不同后端集群 |\n| **接入方式** | WiFi vs 4G（NAT 超时、IPv6 差异） |\n| **时间** | 高峰期才有（带宽/队列） |\n\n**Step 2：从「快」和「慢」两侧各取一个样本，做差异对比**\n\n```\n# 关键：携带用户身份信息 curl，看后端是否一致\ncurl -w 'dns=%{time_namelookup} conn=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer}\\n' \\\n  -H 'X-User-Id: A' -o /dev/null -s https://api.example.com/x\n# 慢用户：天南地北都试一遍，并记录 dig 结果\ndig api.example.com +short\n```\n\n**Step 3：三个高频根因**\n\n**① DNS 返回多个 IP，其中一个坏**（最常见）\n```\ndig api.example.com +short\n# 返回 3 个 IP，逐个测：\nfor ip in $(dig +short api.example.com); do\n  echo -n \"$ip \"; curl -s -o /dev/null -w '%{time_total}\\n' --resolve api.example.com:443:$ip https://api.example.com/\ndone\n```\n**这是「一部分用户」问题的头号原因**——DNS 轮询把用户导到了坏 IP，客户端重试超时才换，体验就是「慢」。\n\n**② CDN/多机房节点质量不一致**\n- 不同地域解析到不同节点\n- 某节点回源链路差、或该节点带宽打满\n- 判断：**按地域分别测**，或让 CDN 服务商提供「节点质量报表」\n\n**③ 后端集群不均**\n- 负载均衡把用户分到不同后端\n- **某台后端慢**（慢查询、GC、磁盘）\n- 判断：**看后端日志**中该用户的请求落在哪台，对比该台的响应时间\n\n**Step 4：用数据而不是猜测**\n\n关键是要能**从海量用户中分组统计**：\n```\n# 按后端机器统计平均耗时（假设日志里有 upstream_addr）\nawk '{print $NF, $upstream_time}' access.log | awk '{s[$1]+=$2; n[$1]++} END {for (k in s) printf \"%s %.1f ms (%d)\\n\", k, s[k]/n[k], n[k]}'\n```\n**这个统计一出来，是不是「某台机器慢」立刻清楚。**\n\n**Step 5：验证假设**\n```\n# 假设是坏 IP → 用 --resolve 绕过它再测\ncurl --resolve api.example.com:443:<好IP> https://api.example.com/\n# 假设是某后端 → 用 Host 头直连某台\ncurl -H 'Host: api.example.com' http://<后端IP>/x\n```\n\n**总结方法论**：\n1. **分组**（找出受影响用户群的特征）\n2. **取样**（快慢两侧各抓一个，多维采集）\n3. **对比**（DNS、节点、后端、版本任一环节的差异）\n4. **验证**（构造流量绕过可疑环节）\n\n**一句话**：**「部分用户慢」几乎不可能是代码逻辑问题（那是全量），一定是「路由/节点/数据分布」的差异问题。**"
+  }
+]

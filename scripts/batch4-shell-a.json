@@ -1,0 +1,120 @@
+[
+  {
+    "id": 4200,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`set -e` 有什么坑？为什么有时加了它错误还是被吞掉？",
+    "answer": "**`set -e` 的规则**：任何命令返回非 0 就立即退出脚本。但有一堆**例外**：\n\n**1. 在 `if` / `while` / `&&` / `||` / `!` 里不生效**\n```\nif grep -q x file; then ...; fi    # grep 失败不会退出\ncmd1 && cmd2                        # cmd1 失败不会退出\ngrep x file || true                 # 常见「故意忽略」写法\n```\n**这是最反直觉的一条**：一旦命令出现在条件位置，`-e` 就失效。\n\n**2. 命令替换里的失败不触发**\n```\nresult=$(false)      # 不会退出！\n```\n要捕获就用 `set -e` + 显式判断：\n```\nresult=$(cmd) || { echo '失败'; exit 1; }\n```\n\n**3. `local` 关键字会吞掉退出码**\n```\nf() { local x=$(false); echo $?; }   # 输出 0！\n```\n因为 `local` 是一个命令，`$?` 变成了 `local` 自己的返回码。**必须拆成两行**：\n```\nf() { local x; x=$(false); }\n```\n\n**4. 未定义变量不报错**（那是 `-u` 的事）\n\n**5. 管道里只有最后一个命令的返回码**——这就是为什么要 `set -o pipefail`。\n\n**实践建议**：\n```\nset -euo pipefail\n```\n但**不要迷信它**：关键步骤还是显式判断，尤其是要自定义错误信息、清理临时文件的时候：\n```\ntrap 'rm -f \"$tmp\"' EXIT\nif ! cmd; then echo \"错误：具体原因\" >&2; exit 1; fi\n```"
+  },
+  {
+    "id": 4201,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`$@`、`$*`、`$#`、`$?`、`$$`、`$!` 分别是什么？`$@` 和 `$*` 为什么必须区分？",
+    "answer": "| 变量 | 含义 |\n|---|---|\n| `$0` | 脚本名（或 `bash`） |\n| `$1..$9`、`${10}` | 位置参数 |\n| `$#` | 参数**个数** |\n| **`$@`** | **所有参数，每个是独立的一项** |\n| **`$*`** | 所有参数，**合并成一个字符串** |\n| `$?` | 上一条命令退出码 |\n| `$$` | **当前 shell 的 PID** |\n| `$!` | 最后一个**后台**进程的 PID |\n\n**`$@` vs `$*` 的决定性差异**（必须加引号才体现）：\n\n```\n# 传参：./a.sh \"hello world\" b\n\n\"$@\"  →  两个参数：  \"hello world\"  \"b\"      ✅ 正确\n\"$*\"  →  一个参数：  \"hello world b\"           ❌ 丢了边界\n$@    →  被分词：hello world b（三个）        ❌ 空格被拆\n$*    →  被分词：hello world b（三个）        ❌\n```\n\n**结论**：\n- **要透传参数一律写 `\"$@\"`**\n- `$*` 几乎只在「明确要把参数拼成一串」时用（如拼进日志）\n- **不加引号是 bug**：`$@` 和 `$*` 都会发生单词分割\n\n**典型错误**：\n```\n# 错：路径带空格就炸\nfor f in $*; do rm \"$f\"; done\n# 对\nfor f in \"$@\"; do rm -- \"$f\"; done\n```\n\n**`$!` 的经典用法**（后台任务等待与清理）：\n```\nlong_job &\npid=$!\ntrap \"kill $pid 2>/dev/null\" EXIT\nwait $pid\n```"
+  },
+  {
+    "id": 4202,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何让 Shell 脚本支持长选项参数（如 `--file xxx --verbose`）？",
+    "answer": "**三种做法，按复杂度递进**。\n\n**1. `getopts`（POSIX，只支持短选项）**\n```\nwhile getopts \"f:vh\" opt; do\n  case $opt in\n    f) FILE=$OPTARG ;;\n    v) VERBOSE=1 ;;\n    h) usage; exit 0 ;;\n    \\?) echo \"未知选项\" >&2; exit 1 ;;\n  esac\ndone\nshift $((OPTIND - 1))      # 剩下的是非选项参数\n```\n注意：`getopts` **不支持 `--long`**，且**选项必须在位置参数前面**。\n\n**2. 手写 `while + case`（最常用，支持长选项）**\n```\nwhile [[ $# -gt 0 ]]; do\n  case \"$1\" in\n    -f|--file) FILE=\"$2\"; shift 2 ;;\n    -v|--verbose) VERBOSE=1; shift ;;\n    -h|--help) usage; exit 0 ;;\n    --) shift; break ;;        # 显式结束选项\n    -*) echo \"未知选项 $1\" >&2; exit 1 ;;\n    *) POSITIONAL+=(\"$1\"); shift ;;\n  esac\ndone\n```\n**关键点**：\n- `shift 2` 是消费「选项 + 值」两个参数\n- **`\"$1\"` 要加引号**\n- 用 `POSITIONAL+=(\"$1\")` 收集剩余参数，最后 `set -- \"${POSITIONAL[@]}\"` 还原\n\n**3. `getopt` 命令（支持长选项，但 GNU 扩展）**\n```\nOPTS=$(getopt -o f:vh --long file:,verbose,help -n \"$0\" -- \"$@\") || exit 1\neval set -- \"$OPTS\"     # 注意 eval 的安全风险\n```\n**`eval` 有注入风险**，脚本里接收外部参数时要谨慎；且 macOS 自带的是 BSD getopt，**行为与 GNU 不同**，跨平台脚本别用。\n\n**实践推荐**：日常运维脚本用**方案 2**（零依赖、可控、支持长选项）。需要 `--opt=value` 形式时，在 case 里加一个 `--file=*` 分支：\n```\n--file=*) FILE=\"${1#*=}\"; shift ;;\n```"
+  },
+  {
+    "id": 4203,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`,` 和 `||`、`;` 和 `&&` 有什么区别？`{ }` 与 `( )` 分组有什么不同？",
+    "answer": "**四个连接符的语义**：\n\n| 写法 | 含义 | 前一命令失败时 |\n|---|---|---|\n| `a ; b` | 无条件顺序执行 | **b 照常执行** |\n| `a && b` | 短路与，a 成功才执行 b | b 不执行 |\n| `a \\|\\| b` | 短路或，a 失败才执行 b | b 执行 |\n| `a & b` | a 放后台，继续执行 b | — |\n\n**最常见错误**：\n```\ncmd1 && cmd2; cmd3      # cmd3 无论如何都执行\n```\n\n**`{ }` 与 `( )` 的关键区别**：\n\n| | `{ cmd; }` | `( cmd )` |\n|---|---|---|\n| **子 shell** | **不创建**，在当前 shell 执行 | **创建子 shell** |\n| 变量影响 | **保留**改动 | **丢失**改动 |\n| `cd` 影响 | 改变当前目录 | 只影响子 shell |\n| 语法要求 | **末尾必须有分号**，两侧要有空格 | 不需要 |\n\n```\ncd /tmp && { echo ok; }     # 之后仍在 /tmp\ncd /tmp && ( echo ok )      # 之后回到原目录\n```\n\n**实用场景**：\n```\n# 1. 只重定向一组命令的输出去日志\n{ cmd1; cmd2; cmd3; } > /var/log/batch.log 2>&1\n\n# 2. 用子 shell 临时切目录，不影响外层\n(\n  cd /data/app || exit 1\n  ./deploy.sh\n)\n\n# 3. 子 shell 隔离环境变量（避免污染）\n( export PATH=/opt/bin:$PATH; myscript )\n```\n\n**注意 `{ }` 的两个语法陷阱**：\n- **必须是 `{ ` 和 `; }`**（前后都有空格，分号结尾）。写成 `{cmd;}` 直接语法错误\n- 组内最后一条命令的退出码就是整个组的退出码"
+  },
+  {
+    "id": 4204,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`jq` 和 `grep`/`awk` 相比，处理 JSON 有什么优势？常用写法有哪些？",
+    "answer": "**核心优势：JSON 是有结构的数据，`grep`/`awk` 只能按行和分隔符猜。**\n\n问题：JSON 可以是一行、可以缩进、字段顺序随机、值里含逗号和引号。用 `grep` 抓 `Name` 常常抓到错误的匹配。\n\n**`jq` 直接按路径访问，正则/空格/换行都不是问题。**\n\n**最常用的十条**：\n\n```\n# 1. 格式化输出（调试接口必备）\ncurl -s api/x | jq .\n# 2. 取一个字段\njq -r '.data.name'\n# 3. 取数组每个元素的字段\njq -r '.items[] | .id'\n# 4. 过滤（选 status 为 200 的）\njq '.items[] | select(.status == 200)'\n# 5. 构造新对象\njq '{id: .id, name: .data.name}'\n# 6. 统计数量\njq '.items | length'\n# 7. 求和/求最大\njq '[.items[].count] | add'\njq '[.items[].count] | max'\n# 8. 转成 tab 分隔，方便喂给 awk/while\njq -r '.items[] | [.id, .name] | @tsv'\n# 9. 合并多个文件\njq -s '.' a.json b.json\n# 10. 只输出原始值（不加引号）——**最常见**\njq -r '.token'\n```\n\n**三个必须知道的坑**：\n\n1. **`-r` 不加会带引号**：`echo $(curl ... | jq .name)` 会输出 `\"foo\"` 而不是 `foo`\n2. **字段不存在时返回 `null`（且退出码仍是 0）**，不会报错。要检测必须显式判断：\n```\njq -e '.name' f.json > /dev/null || echo '缺字段'\n```\n(`-e` 让 null/false 返回非 0 退出码，这是脚本化的关键)\n3. **大 JSON 逐行处理**：用 `jq -c`（compact）输出每行一个 JSON，再配 `while read` 流式处理，避免整体吃内存\n\n**和 `--slurp` / `--stream` 的配合**：超大文件（GB 级）用 `jq --stream` 流式解析，否则 `jq .` 会直接把内存吃光。"
+  },
+  {
+    "id": 4205,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`awk` 的 `NR` 和 `FNR`、`$0` 和 `$1` 分别是什么？如何统计日志里某个字段的 Top N？",
+    "answer": "**基础变量**：\n\n| 变量 | 含义 |\n|---|---|\n| `$0` | 整行 |\n| `$1`…`$NF` | 第 1 个到最后一个字段 |\n| `NF` | 当前行的字段数 |\n| **`NR`** | 已处理的**总行号**（跨文件累计） |\n| **`FNR`** | 当前**文件内**的行号（每个文件从 1 开始） |\n| `FS` | 输入分隔符（默认空格/Tab） |\n| `OFS` | 输出分隔符 |\n\n**`NR` vs `FNR` 的经典用途**：`awk 'FNR==NR {a[$1]; next} $1 in a' f1 f2` —— 用 `FNR==NR` 判断「正在处理第一个文件」，做 join/lookup。\n\n**统计 Top N 的三种写法**：\n\n**1. 纯 `awk`（一步到位，推荐）**\n```\n# 统计访问日志里 IP 的 Top 10\nawk '{print $1}' access.log | sort | uniq -c | sort -rn | head -10\n\n# 用 awk 直接聚合（不用 uniq）\nawk '{c[$1]++} END {for (k in c) print c[k], k}' access.log \\\n  | sort -rn | head -10\n```\n\n**2. 做更多计算（如按状态码分组算平均响应时间）**\n```\nawk '{sum[$9] += $NF; cnt[$9]++}\n     END {for (s in sum) printf \"%s %.2f ms (%d)\\n\", s, sum[s]/cnt[s], cnt[s]}' access.log\n```\n\n**3. 提取 URI 的 Top 10（带过滤）**\n```\nawk '$9 == 200 {print $7}' access.log | sort | uniq -c | sort -rn | head -10\n```\n\n**三个坑**：\n1. **`sort -rn` 的 `-n` 不能少**，否则按字符串排（10 < 9）\n2. **`uniq -c` 必须先 `sort`**，它只能合并**相邻**的重复行\n3. **`sort` 在 `LANG=C` 与 UTF-8 下结果不同**，脚本里建议 `LC_ALL=C sort`\n\n**性能提示**：几十 GB 的日志用 `awk` 一次扫完比 `grep | sort | uniq` 快得多（单遍扫描、无中间进程）。"
+  },
+  {
+    "id": 4206,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 里怎么安全读取文件（逐行、按字段）？`while read` 有哪些坑？",
+    "answer": "**标准写法（必须记住）**：\n```\nwhile IFS= read -r line; do\n  echo \"$line\"\ndone < file.txt\n```\n\n**三个参数缺一不可**：\n\n| 参数 | 作用 | 不写会怎样 |\n|---|---|---|\n| **`IFS=`** | 空赋值 = **不裁剪前后空白** | 行首尾空格被吃掉，配置文件对齐全乱 |\n| **`-r`** | 不处理反斜杠转义 | `\\t`、`\\` 被转义，Windows 路径全废 |\n| **`< file`（重定向）** | 从文件读，而不是管道 | 见下方坑 1 |\n\n**坑 1：管道会创建子 shell，变量丢失**\n```\n# 错：count 永远是 0\ncat file | while read -r line; do count=$((count+1)); done\necho $count\n\n# 对：用重定向\ncount=0\nwhile read -r line; do count=$((count+1)); done < file\necho $count\n```\n\n**坑 2：最后一行没有换行符会被漏掉**\n```\nwhile IFS= read -r line || [[ -n \"$line\" ]]; do\n  ...\ndone < file\n```\n`|| [[ -n $line ]]` 是为了处理「文件末尾无换行」的情况（**很多程序生成的文本没有末尾换行**）。\n\n**坑 3：在循环里执行读 stdin 的命令**\n```\n# ssh/gpg/ffmpeg 等会抢走 stdin，导致后续行被吞\nwhile read -r line; do\n  ssh host \"cmd\" < /dev/null      # 必须加 < /dev/null\n  cmd                                 # 或 cmd <&3 用 fd 3\n...\n```\n\n**按字段读（不要用 `read a b c` 硬编码）**：\n```\nwhile IFS=: read -r user _ uid gid _ home shell; do\n  echo \"$user $uid\"\ndone < /etc/passwd\n```\n`_` 占位是好习惯，跳过不关心的字段。\n\n**按分隔符读 CSV（含引号的情况别用 read）**：серь若字段里含逗号或引号，`read` 完全无能为力——用 `awk -F,` 或 Python/`csvkit`。"
+  },
+  {
+    "id": 4207,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何在 Shell 里做并发执行并控制并发数？",
+    "answer": "**三种方案，按控制力递进。**\n\n**1. `& + wait`（无并发限制，最简单）**\n```\nfor h in host1 host2 host3; do\n  ping -c1 \"$h\" &\ndone\nwait\necho '全部完成'\n```\n缺点：**一次性全放出去**，1000 台机器会直接打爆本机。\n\n**2. 分批（每次 N 个，最简单可靠）**\n```\nN=10\nfor i in $(seq 1 $N); do\n  ip=$(sed -n \"${i}p\" ips.txt)\n  [ -n \"$ip\" ] && ping -c1 \"$ip\" &\ndone\nwait\n```\n**经典坑**：`seq` 的范围写死会漏掉余数行——要用 `while read` 配计数器。\n\n**3. 用 fd 做信号量（真正可靠的并发控制，推荐）**\n```\nN=10\nexec 3> >(true)           # 占位\nexec 3>&-\n\nrun() {\n  while IFS= read -r host; do\n    while (( $(jobs -r | wc -l) >= N )); do sleep 0.1; done\n    ping -c1 \"$host\" > /dev/null && echo \"$host up\" &\n  done < hosts.txt\n  wait\ndone\nrun\n```\n\n**更简洁的信号量写法（用 `xargs -P`，运维脚本首选）**：\n```\ncat hosts.txt | xargs -P 10 -I{} sh -c 'ping -c1 {} > /dev/null && echo \"{} up\"'\n```\n**`xargs -P` 是最推荐的做法**：并发数明确、不用管 PID、天然支持管道。\n\n**关键坑**：\n1. **`&` 之后子进程的输出会交错**，要每条输出都完整就给每个任务重定向到独立文件，最后 `cat`\n2. **`wait` 只能等当前 shell 的子进程**，不能等 `nohup` 脱离的\n3. **收集结果不要用全局变量**（子进程改动不回传），改用临时文件或 `xargs` 的输出流\n4. **失败了怎么办**：`xargs --halt now,fail=1` 遇错立即停，或不加则继续跑完\n\n**实测经验**：并发数不是越大越好。网络类任务 10-20 通常最优，纯 CPU 类到核数就饱和。**盲目 `-P 200` 会让目标机和你自己的本机都雪崩。**"
+  },
+  {
+    "id": 4208,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 里怎么做严格的参数校验与错误处理？给出一个脚本骨架。",
+    "answer": "**一个可直接套用的生产级骨架**：\n\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\n\nreadonly SCRIPT_NAME=$(basename \"$0\")\n\nusage() {\n  cat <<EOF\n用法: $SCRIPT_NAME -f <文件> [-o <输出>] [-v]\n  -f FILE   必填，输入文件\n  -o DIR    可选，输出目录（默认 /tmp）\n  -v        详细输出\nEOF\n  exit \"${1:-1}\"\n}\n\nlog()  { printf '[%s] %s\\n' \"$(date '+%F %T')\" \"$*\" >&2; }\ndie()  { log \"错误: $*\"; exit 1; }\n\n# --- 参数解析 ---\nFILE=''; OUT=/tmp; VERBOSE=0\nwhile [[ $# -gt 0 ]]; do\n  case \"$1\" in\n    -f|--file)    [[ -n \"${2:-}\" ]] || die \"-f 需要参数\"; FILE=\"$2\"; shift 2 ;;\n    -o|--output)  OUT=\"${2:-}\"; shift 2 ;;\n    -v|--verbose) VERBOSE=1; shift ;;\n    -h|--help)    usage 0 ;;\n    *)            usage 1 ;;\n  esac\ndone\n\n# --- 前置校验 ---\n[[ -n \"$FILE\" ]]         || die \"缺少 -f 参数\"\n[[ -r \"$FILE\" ]]         || die \"文件不存在或不可读: $FILE\"\n[[ -d \"$OUT\" ]]          || die \"输出目录不存在: $OUT\"\ncommand -v jq >/dev/null  || die \"依赖缺失: jq\"\n\n# --- 清理陷阱 ---\ntmp=$(mktemp)\ntrap 'rm -f \"$tmp\"' EXIT\n\n# --- 主逻辑 ---\nlog \"处理 $FILE -> $OUT\"\n... || die \"处理失败\"\nlog '完成'\n```\n\n**骨架里每个部分的用意**：\n\n| 部分 | 为什么必须有 |\n|---|---|\n| `set -euo pipefail` | 早失败（但别迷信，关键步骤仍需显式判断） |\n| `usage` 里 `<<EOF` | 无需维护多行 echo |\n| `log` 输出到 `>&2` | **日志不能污染 stdout**（否则被 `| jq` 时格式损坏） |\n| `case \"$1\"` 前加 `[[ -n ${2:-} ]]` | 防止 `-f` 后面没值；`${2:-}` 是防 `set -u` 报错 |\n| `command -v` | 探测依赖，比「跑起来才发现」好得多 |\n| `mktemp` + `trap EXIT` | **保证异常退出也能清理临时文件** |\n| `readonly` | 防止后面误改变量 |\n\n**几个容易被忽略的点**：\n1. **`${2:-}` 而不是 `$2`**：`set -u` 下访问未定义变量会直接崩\n2. **`trap ... EXIT` 也能捕获 Ctrl+C**（EXIT 陷阱在 INT 后也会触发）\n3. **校验要在做任何写操作之前**，避免「改了一半才失败」\n4. **错误信息写到 stderr**：`>&2`，这样 `script > out` 时用户仍能看到错误"
+  },
+  {
+    "id": 4209,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "写一个「检查端口是否开放」的脚本，如何避免常见误判？",
+    "answer": "**最可靠的是 `bash` 的 `/dev/tcp`**（无需装 telnet/nc）：\n```\ntimeout 3 bash -c \"echo > /dev/tcp/$host/$port\" 2>/dev/null \\\n  && echo \"$host:$port 开放\" \\\n  || echo \"$host:$port 不可用\"\n```\n\n**为什么必须加 `timeout`**：目标被防火墙 **DROP**（不是 REJECT）时，TCP 会重传 SYN 到几十秒。没有 `timeout`，脚本看起来像卡死。**这是最常见的误判来源**。\n\n**`nc` 版本的问题**：\n```\nnc -z host 80            # 传统 netcat，工作中\nnc -vz host 80           # 带输出\n```\n但 **`-z` 在不同实现（openbsd-nc / ncat / 传统）行为不一致**，容器里往往没装。**脚本里优先用 `/dev/tcp`**。\n\n**避免误判的四条规矩**：\n\n**1. 区分「端口不通」和「被拒绝」**\n```\n# 明确要区分时用 nc 的退出码（0=通，1=拒绝，其他=超时）\n```\nDROP = 超时（等很久）；REJECT = RST（立刻返回）。**运维结论完全相反**：DROP 通常是防火墙，REJECT 通常是没监听或策略拒绝。\n\n**2. 只测 TCP 连通 ≠ 服务健康**\n端口开放只能说明**内核 accept 队列接受连接**，不代表应用真能工作（可能连上就没响应）。要真验证用：\n```\ncurl -sf --max-time 3 http://host:port/health\n```\n**健康检查必须打业务接口，不能只看端口。**\n\n**3. 不要用 `ping` 判断主机存活**\n很多机器禁 ICMP。`ping` 不通但端口通是**完全正常**的现象。判定主机死活用 TCP 探测而不是 ICMP。\n\n**4. 批量探测要控并发 + 控超时**\n```\nwhile read -r host port; do\n  ( timeout 2 bash -c \"echo > /dev/tcp/$host/$port\" 2>/dev/null \\\n      && echo \"OK $host:$port\" || echo \"FAIL $host:$port\" ) &\n  # 控制并发\n  while (( $(jobs -r | wc -l) >= 20 )); do sleep 0.1; done\ndone < targets.txt\nwait\n```\n\n**一个完整可用的函数**：\n```bash\ncheck_port() {\n  local host=$1 port=$2 t=${3:-2}\n  timeout \"$t\" bash -c \"exec 3<>/dev/tcp/$host/$port\" 2>/dev/null && return 0\n  return 1\n}\n```\n注意用 `exec 3<>` **双向打开**，比 `echo >` 更准确（能捕获只监听不接收的异常情况）。"
+  },
+  {
+    "id": 4210,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`${var:-default}` 与 `${var:=default}` 的区别是？",
+    "options": [
+      { "key": "A", "text": "前者只在展开时用默认值，不改变 var；后者会把默认值赋给 var" },
+      { "key": "B", "text": "两者完全等价" },
+      { "key": "C", "text": "前者会赋值，后者不会" },
+      { "key": "D", "text": "前者用于数组，后者用于标量" }
+    ],
+    "answer": ["A"],
+    "explanation": "四个扩展容易混：`${v:-d}` 未设置或为空则用 d，**不赋值**；`${v:=d}` 同上但**会赋值**；`${v:+d}` 设置了才用 d（反向）；`${v:?msg}` 未设置则报错退出（做必填校验最好用）。注意带 `:` 表示「空也算未设置」，不带 `:`（如 `${v-d}`）只在「未定义」时生效，空字符串不触发。"
+  },
+  {
+    "id": 4211,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "以下哪些写法能正确地在脚本里处理「命令失败就退出」？（多选）",
+    "options": [
+      { "key": "A", "text": "set -euo pipefail" },
+      { "key": "B", "text": "cmd || { echo '失败'; exit 1; }" },
+      { "key": "C", "text": "if ! cmd; then echo '失败'; exit 1; fi" },
+      { "key": "D", "text": "cmd; echo $?; exit 0" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 无论 cmd 成败都 exit 0，是最典型的「脚本永远返回成功」bug——CI 里这种脚本会让流水线全绿但实际什么都没做成。补充：A 还要注意 `local x=$(cmd)` 会吞掉退出码，要拆成两行；C 里 `!` 取反是判断的正确姿势，但注意 `! cmd` 之后 `$?` 反映的是取反结果，会误导后续判断。"
+  },
+  {
+    "id": 4212,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`grep` 的常用参数和常见坑有哪些？为什么 `grep -r` 有时特别慢？",
+    "answer": "**常用参数**：\n```\ngrep -i     忽略大小写\ngrep -v     反向匹配（排除）\ngrep -n     显示行号\ngrep -c     只输出匹配行数\ngrep -l     只输出文件名\ngrep -w     全词匹配（避免 foo 匹配到 foobar）\ngrep -E     扩展正则（= egrep），支持 ( | ) 无需转义\ngrep -F     固定字符串（= fgrep），**最快**\ngrep -A/-B/-C 3   显示后/前/上下 3 行\ngrep -o     只输出匹配部分\ngrep --include='*.log' --exclude-dir=.git\n```\n\n**性能：`-F` 比默认快 2-5 倍，`-E` 比 `-F` 慢**。查纯文本永远优先 `grep -F`。\n\n**为什么 `grep -r` 慢**：\n1. **它会走进无关目录**：`.git`、`node_modules`、`/proc`（无限流）、二进制文件、符号链接环\n2. **没指定 `--include`**：扫描了图片、压缩包等二进制\n\n**正确姿势**：\n```\ngrep -rn --include='*.log' --exclude-dir={.git,node_modules,dist} 'error' .\n```\n\n**六个常见坑**：\n\n1. **`grep -v` 是「排除匹配行」，不是「排除文件」**。排除文件用 `--exclude`\n2. **模式以 `-` 开头会被当参数**：`grep -- '--foo' file` 或 `grep -e '--foo'`\n3. **正则里 `.`、`*`、`[` 要转义**：查 `1.2.3` 要写 `grep -F '1.2.3'`\n4. **`grep -c` 统计的是「行数」不是「匹配次数」**：一行里有 5 个 error 只算 1。要次数用 `grep -o ... | wc -l`\n5. **`grep -r` 遇到符号链接环会告警但不停止**，加 `-r`（跟随）要小心，默认 `-r` 不跟符号链接、`-R` 才跟\n6. **编码问题**：GBK 文件用 UTF-8 匹配会完全失配。先用 `file` 确认编码\n\n**和 `ag`/`rg` 的差距**：`ripgrep` 默认忽略 `.gitignore`、并行扫描、对二进制跳过，比 `grep -r` 快 10 倍以上。**代码搜索用 `rg`，日志搜特定文件用 `grep -F`。**"
+  }
+]

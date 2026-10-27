@@ -1,0 +1,132 @@
+[
+  {
+    "id": 4017,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "用 `chmod 750 file` 后，文件的属主、属组、其他人分别拥有什么权限？",
+    "options": [
+      { "key": "A", "text": "属主 rwx，属组 r-x，其他人无权限" },
+      { "key": "B", "text": "属主 rwx，属组 rwx，其他人 r--" },
+      { "key": "C", "text": "属主 r-x，属组 r-x，其他人 ---" },
+      { "key": "D", "text": "属主 rw-，属组 r--，其他人 ---" }
+    ],
+    "answer": ["A"],
+    "explanation": "数字权限按「r=4、w=2、x=1」逐位相加，三位分别是属主/属组/其他人：7=rwx、5=r-x、0=---。速记：**逢 7 必是 rwx，5 是 r-x（能读能进不能改），4 是只读**。补充：`chmod -R` 递归时注意目录必须有 x 才能进入，只给 r 会导致无法 cd。"
+  },
+  {
+    "id": 4018,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "以下哪些现象能说明系统正在使用 swap？（多选）",
+    "options": [
+      { "key": "A", "text": "free -h 的 Swap used 持续非 0" },
+      { "key": "B", "text": "vmstat 1 中 si/so 两列持续非 0" },
+      { "key": "C", "text": "某进程 /proc/<pid>/status 的 VmSwap 大于 0" },
+      { "key": "D", "text": "load average 变高" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 不是 swap 的指标：load 高可能来自 CPU 排队、D 状态 IO 等待，与是否换页无关（虽然换页严重时也会拉高 load）。三项的组合判断：`Swap used` 非 0 说明**历史上发生过换出**（哪怕当前不活跃）；`si/so` 非 0 说明**正在进行换页**；`VmSwap` 能精确到是哪个进程被换出。生产上真正要警惕的是 B（正在不停换页），A 里少量残留页可以忽略。"
+  },
+  {
+    "id": 4019,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "`iostat -x` 输出里，判断磁盘是否真有瓶颈，最该看哪两个指标？",
+    "options": [
+      { "key": "A", "text": "%util 和 tps" },
+      { "key": "B", "text": "await 和 aqu-sz（平均等待与队列长度）" },
+      { "key": "C", "text": "kB_read/s 和 kB_wrtn/s" },
+      { "key": "D", "text": "rrqm/s 和 wrqm/s" }
+    ],
+    "answer": ["B"],
+    "explanation": "`%util` 在现代 NVMe/SSD 上很容易常年 100% 却完全健康（深度队列并发处理），单看它会误判。`await`（单次 IO 平均耗时）和 `aqu-sz`（平均排队数）才反映真实体验。经验阈值：机械盘 await > 20ms、SSD > 5ms、NVMe > 1ms 就该查。带宽类指标（C）只能说明流量大小，不能说明慢。"
+  },
+  {
+    "id": 4020,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "关于 systemd 的 unit 依赖关系，以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "After= 只控制启动顺序，对方失败不影响自己" },
+      { "key": "B", "text": "Requires= 是强依赖，对方启动失败自己也会被拉倒" },
+      { "key": "C", "text": "WantedBy= 决定 systemctl enable 后软链到哪个 target" },
+      { "key": "D", "text": "只要写了 After=network.target，网络就一定已就绪" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是经典误区：`network.target` 只表示「网络子系统已启动」，**不保证网卡拿到 IP**。要等网络真正可用必须用 `After=network-online.target` 并且 `Wants=network-online.target`（两者都要，缺一不可）。另一个高频坑：改了 unit 文件必须 `systemctl daemon-reload`，否则改动不生效。"
+  },
+  {
+    "id": 4021,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`df -h` 显示磁盘使用率 100%，但 `du -sh /*` 加起来只有 40%，最可能的原因是？",
+    "options": [
+      { "key": "A", "text": "df 统计有 bug" },
+      { "key": "B", "text": "有进程删除了文件但仍持有句柄，空间没有释放" },
+      { "key": "C", "text": "文件系统有坏块" },
+      { "key": "D", "text": "需要执行 fsck" }
+    ],
+    "answer": ["B"],
+    "explanation": "Linux 的文件只有在**最后一个句柄和最后一个硬链接都释放**后才真正删除。进程删了日志文件但没重启，空间就一直被占着。排查：`lsof | grep deleted` 或 `ls -l /proc/*/fd | grep deleted`。处理：重启或优雅 reload 那个进程（如 `systemctl reload nginx`）。另一种可能：空间被挂载点覆盖（比如 `/data` 下又挂了一块盘，原来的文件被挡住了）——用 `mount --bind` 或先 umount 检查。"
+  },
+  {
+    "id": 4022,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "排查「系统变慢但 CPU/内存/磁盘看起来都正常」，以下哪些方向值得查？（多选）",
+    "options": [
+      { "key": "A", "text": "大量 D 状态进程（可能卡在 NFS/iSCSI 等网络存储上）" },
+      { "key": "B", "text": "dmesg 里的硬件错误、网卡 down/up、OOM 记录" },
+      { "key": "C", "text": "DNS 解析超时（应用侧每请求多几百毫秒）" },
+      { "key": "D", "text": "把 CPU 频率调到最高即可解决" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是无依据的猜测。这类「指标正常但就是慢」的问题，真正的高频元凶是：①**D 状态**——NFS 服务器失联会让进程卡在内核态，`kill -9` 都杀不掉，load 飙升但 CPU 空闲；②**DNS**——`/etc/resolv.conf` 配了不可达的 nameserver，每次解析等 5 秒超时；③**内核/硬件事件**——`dmesg -T` 里的链路抖动、磁盘重传；④**上下文切换**——`vmstat` 的 `cs` 异常高说明锁竞争严重。排查顺序：`vmstat 1` → `dmesg -T | tail -50` → `cat /proc/sys/kernel/...`。"
+  },
+  {
+    "id": 4023,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "如何找出占用 CPU 最高的线程，并定位到具体代码？",
+    "answer": "**这是 JVM 应用「CPU 100%」排查的标准四步**，对任何多线程程序都适用。\n\n**Step 1：找进程**\n```\ntop -c              # 按 P 排序，记下 PID\n# 或用 ps 精准排序\nps -eo pid,comm,%cpu --sort=-%cpu | head\n```\n\n**Step 2：找线程**\n```\ntop -H -p <pid>                    # 交互式看线程\nps -mp <pid> -o THREAD,tid,time    # 全部线程\n```\n记下**最热的线程 TID**。\n\n**Step 3：转成十六进制**\n```\nprintf '%x\\n' <tid>\n```\n得到如 `1a2b`。\n\n**Step 4：抓栈**\n\n**Java 应用**（最常见的场景）：\n```\njstack <pid> > /tmp/jstack.txt\ngrep -A 30 'nid=0x1a2b' /tmp/jstack.txt\n```\n看那个线程在跑什么方法——通常是死循环、正则回溯、或大对象序列化。\n\n**C/其他应用**：\n```\ngdb -p <pid> -batch -ex 'thread apply all bt' < /dev/null\nstrace -p <pid> -c -f            # 看系统调用分布\nperf top -p <pid>                # 直接看热点函数（需要 perf）\n```\n\n**高频根因**：\n1. **死循环 / 忙等**（代码 bug，`while(true)` 里没有 sleep）\n2. **正则回溯爆炸**（`(a+)+b` 匹配长字符串，CPU 直接打满）\n3. **GC 线程狂转**（`jstack` 里看到 `GC task thread`，说明是**内存问题伪装成 CPU 问题**）\n4. **加密/压缩**（大量 TLS 握手、日志压缩）\n\n**关键提醒**：如果 `jstack` 里最热的是 **GC 线程**，那就别查代码了——去查内存（堆太小、对象创建太快、Full GC 频繁）。`jstat -gcutil <pid> 1000` 一看就明白。"
+  },
+  {
+    "id": 4024,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "如何查看和修改文件描述符、进程数等资源限制？各层的优先级是什么？",
+    "answer": "**三层限制，层层生效取最小**：\n\n| 层级 | 查看 | 修改 |\n|---|---|---|\n| **进程级（当前 shell）** | `ulimit -a` | `ulimit -n 65535`（**只对当前 shell 及其子进程**） |\n| **用户级（登录时）** | `ulimit -Hn`、`-Sn` | `/etc/security/limits.conf` + `/etc/security/limits.d/*.conf` |\n| **systemd 服务级** | `systemctl show <svc> -p LimitNOFILE` | unit 里写 `LimitNOFILE=65535` |\n| **系统级（全局）** | `cat /proc/sys/fs/file-max`、`file-nr` | `sysctl fs.file-max=...` |\n\n**优先级与坑**：\n\n1. **systemd 服务不读 `limits.conf`**！这是最大的坑。`limits.conf` 只对 PAM 登录会话（su/sudo/ssh）生效。systemd 起的服务要改 **unit 文件**的 `LimitNOFILE=`，或改 `/etc/systemd/system.conf` 的 `DefaultLimitNOFILE=`。\n2. `soft` 不能超过 `hard`；`hard` 只有 root 能改。\n3. **root 用户不受 limits.conf 限制**——root 的 pam_limits 默认被跳过（除了 `root` 用户名的显式条目）。\n\n**limits.conf 写法**：\n```\n*      soft  nofile  65535\n*      hard  nofile  65535\n*      soft  nproc   32768\nroot   soft  nofile  65535\n```\n**需要重新登录才生效**（新开 session）。\n\n**验证是否真的生效**：\n```\n# 不要在改成根 shell 里验证，要看目标进程的\ncat /proc/<pid>/limits | grep 'open files'\n```\n\n**「Too many open files」排查顺序**：\n1. `cat /proc/<pid>/limits` 看上限\n2. `ls /proc/<pid>/fd | wc -l` 看实际用了多少\n3. `lsof -p <pid> | grep -c 'REG\\|sock'` 看是不是有泄漏\n4. 是**泄漏**就修代码；是**正常量大**才调上限"
+  },
+  {
+    "id": 4025,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "logrotate 的工作原理是什么？配置写错会导致什么问题？",
+    "answer": "**工作原理**：由 cron / systemd timer（默认每日一次）触发 `logrotate`，它读 `/etc/logrotate.conf` 与 `/etc/logrotate.d/*`，按规则切割、压缩、删除旧日志。\n\n**最关键的一件事：它不会告诉你应用「重新打开日志文件」。**\n\n```\n/var/log/app/*.log {\n    daily\n    rotate 7\n    compress\n    delaycompress\n    missingok\n    notifempty\n    create 0640 www-data www-data\n    sharedscripts\n    postrotate\n        systemctl reload nginx > /dev/null 2>&1 || true\n    endscript\n}\n```\n\n**为什么必须 postrotate**：logrotate 把 `app.log` 重命名为 `app.log.1` 后，应用还拿着**旧的 fd** 往 `app.log.1` 里写。不 reload 的话，新 `app.log` 永远是 0 字节，磁盘空间也不会释放（因为旧文件的句柄还被占着）。\n\n**验证的两个经典症状**：\n- `ls -l /proc/<pid>/fd | grep deleted` 里出现 `app.log.1 (deleted)` → **典型的没 reload**\n- `df` 没降下来但日志目录已经切了\n\n**常用参数**：\n\n| 参数 | 作用 |\n|---|---|\n| `daily/weekly/monthly` | 切割周期 |\n| `size 100M` | 按大小切（可与周期并存，两者满足任一个就切） |\n| `rotate N` | 保留 N 个旧文件 |\n| `compress` | gzip 压缩 |\n| `copytruncate` | 先复制再清空（**不 reload 的替代方案**，但会有丢日志窗口） |\n| `maxage` | 超过 N 天强制删除 |\n| `missingok` / `notifempty` | 文件不存在不报错 / 空文件不切 |\n\n**注意 `copytruncate` 的代价**：copy 和 truncate 之间新写入的日志会丢，且大文件时会有一段时间占双倍空间。**优先用 postrotate + reload，实在不行才用 copytruncate**。\n\n**手动测试**（不等到 cron 时间）：\n```\nlogrotate -d /etc/logrotate.d/app     # -d 只演练不执行（强烈建议先跑这个）\nlogrotate -f /etc/logrotate.d/app     # -f 强制执行\n```"
+  },
+  {
+    "id": 4026,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "内核参数 `net.core.somaxconn`、`net.ipv4.tcp_max_syn_backlog`、`net.ipv4.tcp_abort_on_overflow` 分别控制什么？",
+    "answer": "**三个参数描述的是「TCP 建连的两个队列溢出」。**\n\n**两个队列**：\n```\nSYN 队列（半连接）   ← 收到 SYN，回 SYN+ACK，等第三次握手\ntcp_max_syn_backlog   控制它的大小\n        ↓ 握手完成\nACCEPT 队列（全连接）  ← 已完成握手，等应用 accept()\nsomaxconn + backlog   控制它的大小（取二者较小值）\n```\n\n| 参数 | 控制 | 溢出后果 |\n|---|---|---|\n| **`net.core.somaxconn`** | ACCEPT 队列上限 | 队列满 → 新连接被**丢弃**（客户端看到握手成功但应用没响应，或超时） |\n| **`net.ipv4.tcp_max_syn_backlog`** | SYN 队列上限 | 队列满 → SYN 被丢弃，客户端**重传 SYN**（表现为连接慢，但不是失败） |\n| **`net.ipv4.tcp_abort_on_overflow`** | ACCEPT 队列满时的行为 | `0`（默认）= **静默丢弃**；`1` = 直接回 RST，客户端立刻失败 |\n\n**为什么 `tcp_abort_on_overflow` 默认是 0**：\n- 回 RST 会让客户端立刻报错，看似「快失败」\n- 但很多客户端会重试，而**静默丢弃给了应用一点时间消化**——服务端往往只是瞬时忙，客户端重传后就能连上\n- 所以生产上通常保持 0；只有当「快速失败」比「大量重试」更可控时才设 1\n\n**调参建议**：\n```\nnet.core.somaxconn = 65535\nnet.ipv4.tcp_max_syn_backlog = 8192\n```\n注意 **`somaxconn` 只是上限**，应用自己的 `listen()` backlog 参数也要够大。**两者取较小值**——Nginx 的 `listen ... backlog=65535`、Redis 的 `tcp-backlog`、Tomcat 的 `acceptCount` 都要一起调，只调内核参数没用。\n\n**怎么看是否真溢出**：\n```\nnetstat -s | grep -i 'listen\\|overflow\\|SYNs to LISTEN'\nss -lnt                                   # Send-Q 列就是 backlog 上限，Recv-Q 是当前排队数\n```\n`ss -lnt` 的 **Recv-Q 接近 Send-Q** 就是正在溢出。"
+  },
+  {
+    "id": 4027,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "如何安全地重启一台生产服务器？需要提前确认什么？",
+    "answer": "**核心原则：重启前把「回来之后能不能自己活」确认清楚。**\n\n**一、确认现在能不能重启**\n\n| 检查项 | 命令 | 为什么 |\n|---|---|---|\n| 还有谁连着 | `w`、`ss -tn state established` | 避免打断别人的运维操作 |\n| 业务已切走 | 从 LB 摘流量、确认无请求 | 否则重启期间全部报错 |\n| 有无备份任务在跑 | `ps aux \\| grep -E 'tar\\|rsync\\|mysqldump'` | 中断会导致半途的备份不可用 |\n| 集群状态健康 | 副本集/集群有主、数据已同步 | 重启后能正常加入 |\n| 挂载点都正常 | `df -h`、`mount \\| grep -v proc` | 有 stale NFS 挂载会卡在 shutdown |\n\n**二、确认「重启后能自动起来」**\n\n这是最容易翻车的地方：\n```\nsystemctl list-unit-files --state=enabled    # 服务是否设了开机启动\nsystemctl is-enabled nginx mysql docker\ncat /etc/fstab                              # 有没有写错（错一条就进 emergency 模式）\nmount -a --fake --verbose                   # 演练 fstab，不实际挂载\n```\n\n**`/etc/fstab` 是重启事故的第一杀手**：写错一个 UUID 或加了一个不可达的 NFS，机器就卡在 emergency mode，只能去机房。**关键点：非根挂载一定加 `nofail`**：\n```\nUUID=xxx /data xfs defaults,nofail 0 0\n```\n\n**三、重启前留退路**\n```\n# 1. 备份关键配置\ncp /etc/fstab /etc/fstab.bak\ntar -czf /root/conf-$(date +%F).tar.gz /etc/nginx /etc/mysql\n# 2. 确认有无 IPMI/带外管理（否则起不来就瞎了）\n# 3. 确认有人能在机房/控制台操作\n```\n\n**四、重启与验证**\n```\nshutdown -r +5 \"维护重启，5 分钟后执行\"    # 给人留反应时间\n# 起来之后\nuptime; systemctl list-units --failed; df -h; ss -lntup\n```\n\n**五、最容易被忘的一条**：**先 `systemctl daemon-reload` 再重启**。改过 unit 文件但没 reload，重启后服务可能起不来（或起的是旧配置）。"
+  }
+]

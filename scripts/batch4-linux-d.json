@@ -1,0 +1,152 @@
+[
+  {
+    "id": 4038,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`free -h` 输出中的 `available` 与 `free` 差在哪？",
+    "options": [
+      { "key": "A", "text": "available = free + 可回收的 page cache 与 slab" },
+      { "key": "B", "text": "两者完全相同，只是显示单位不同" },
+      { "key": "C", "text": "available 是 swap 可用量" },
+      { "key": "D", "text": "free 包含了 buffer，available 不包含" }
+    ],
+    "answer": ["A"],
+    "explanation": "Linux 会把空闲内存用作 page cache 加速 IO，所以 `free` 越来越小是**正常且健康**的。`available` 估算「不触发 swap 的情况下还能给新进程多少内存」，即 free + 大部分可回收的 buffer/cache。判断该不该加内存要看 `available`，不是 `free`。补充：`available` 还会保留一部分 low watermark，所以它通常小于 `free + buff/cache`。"
+  },
+  {
+    "id": 4039,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "以下哪些操作会让 inode 使用量上升？（多选）",
+    "options": [
+      { "key": "A", "text": "在同一个目录下创建大量小文件" },
+      { "key": "B", "text": "往一个已有的大文件末尾追加内容" },
+      { "key": "C", "text": "创建大量软链接（符号链接）" },
+      { "key": "D", "text": "创建硬链接" }
+    ],
+    "answer": ["A", "C"],
+    "explanation": "A 和 C 会消耗新 inode：每个文件、每个软链接都是一条独立 inode。B 不会——追加内容只增加数据块，inode 数量不变。D 也不会：**硬链接共享同一个 inode**（只是目录项多一条，链接计数 +1），这正是硬链接和软链接的本质差异。这也是为什么大量硬链接**省 inode 空间**，而软链接反而更费。"
+  },
+  {
+    "id": 4040,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "进程处于 D 状态且 `kill -9` 无效，最可能的原因是？",
+    "options": [
+      { "key": "A", "text": "进程被 SIGSTOP 暂停了" },
+      { "key": "B", "text": "进程卡在内核态等待 IO，信号要等它返回用户态才处理" },
+      { "key": "C", "text": "进程是僵尸，已经被父进程回收" },
+      { "key": "D", "text": "权限不足无法发送信号" }
+    ],
+    "answer": ["B"],
+    "explanation": "D 状态是「不可中断睡眠」，通常卡在磁盘 IO、NFS 挂载、驱动等内核路径上。信号是**在返回用户态时才被处理**的，只要进程还在内核里等，`-9` 就只是挂起待处理。A 是 T 状态，`kill -CONT` 可恢复；C 是 Z 状态，本身已死不需要杀，要处理的是父进程。**D 状态的正确处置是解决 IO 本身**（umount -f、重启机器、修存储），而不是反复 kill。"
+  },
+  {
+    "id": 4041,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "关于 `systemd` 的 `Restart=` 参数，以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "`Restart=always` 无论正常退出还是异常退出都会重启" },
+      { "key": "B", "text": "`Restart=on-failure` 只在非 0 退出码或被信号杀死时重启" },
+      { "key": "C", "text": "`RestartSec=` 控制重启前的等待时间，可避免重启风暴" },
+      { "key": "D", "text": "配了 Restart 之后，`systemctl stop` 也会被自动重新拉起" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：**systemd 会区分「主动停止」和「意外退出」**，`systemctl stop` 触发的退出不会被 Restart 重启（这是设计上的必要行为，否则永远停不下来）。补充要点：⑤`StartLimitIntervalSec` / `StartLimitBurst` 限制「一段时间内最多重启几次」，超限后进入 failed 状态——**这是防止无限重启风暴的关键配置**；⑥`Restart=always` 与 `oneshot` 类型冲突；⑦若配了 `Restart`，建议同时配 `RestartSec`（如 5s）和 `StartLimitBurst`（如 5 次 / 10 分钟）。"
+  },
+  {
+    "id": 4042,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "`chmod 1777 /tmp` 中的 `1` 表示什么权限？",
+    "options": [
+      { "key": "A", "text": "SUID" },
+      { "key": "B", "text": "SGID" },
+      { "key": "C", "text": "Sticky Bit（只有属主能删除自己创建的文件）" },
+      { "key": "D", "text": "表示这是一个目录" }
+    ],
+    "answer": ["C"],
+    "explanation": "特殊权限位：**4=SUID、2=SGID、1=Sticky**。`/tmp` 是 `drwxrwxrwt`（t 就是 sticky），所有人都能写，但**只有文件属主（或 root）能删除自己的文件**——否则任何人都能删别人的临时文件。SUID 让程序以属主身份运行（如 `passwd`），SGID 在目录上让新建文件继承目录属组，这三者常被一起考。"
+  },
+  {
+    "id": 4043,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "困难",
+    "question": "排查「系统负载很高但 CPU 使用率很低」，以下哪些方向是对的？（多选）",
+    "options": [
+      { "key": "A", "text": "查 D 状态进程数量（load 把不可中断睡眠的进程也计入）" },
+      { "key": "B", "text": "检查是否有 NFS/iSCSI 挂载失联" },
+      { "key": "C", "text": "用 vmstat 看 si/so 判断是否在频繁换页" },
+      { "key": "D", "text": "直接增加 CPU 核数" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "**load average 统计的是「R + D」状态的进程数**，所以大量 IO 阻塞会把 load 拉高而 CPU 空闲——这是「load 高 CPU 低」的经典解释。D 完全无用：瓶颈不在 CPU，加核只会白花钱。补充排查项：⑤`vmstat 1` 的 `b` 列（阻塞进程数）持续非 0；⑥`iostat` 看是否是磁盘瓶颈；⑦**K8s 环境要注意 load 是宿主机全局的，不代表容器内压力**。"
+  },
+  {
+    "id": 4044,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "`tar -czf backup.tar.gz /data` 与 `tar -czf backup.tar.gz -C / data` 的区别是？",
+    "options": [
+      { "key": "A", "text": "前者包内路径是绝对路径 /data，后者是相对路径 data" },
+      { "key": "B", "text": "两者完全一样" },
+      { "key": "C", "text": "前者更快" },
+      { "key": "D", "text": "后者无法解压" }
+    ],
+    "answer": ["A"],
+    "explanation": "tar 默认会去掉开头的 `/`（现代 GNU tar 会提示 `Removing leading '/'`），但**包内路径就是 `data` 或 `data/xxx`**；用 `-C / data` 则从 `/` 进入再打包 `data`，效果其实一样。真正的区别在于**用 `-C` 能精确控制「包内顶层目录是什么」**，比如 `tar -czf b.tgz -C /data app` 会让包里是 `app/...` 而不是 `data/app/...`。恢复时 `-C /target` 决定解到哪。实践建议：**永远用 `-C` 显式指定起点**，避免包内路径不可控。"
+  },
+  {
+    "id": 4045,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "关于 `sudo` 配置，以下哪些是正确或必要的做法？（多选）",
+    "options": [
+      { "key": "A", "text": "用 visudo 编辑，保存前会做语法检查" },
+      { "key": "B", "text": "授权命令要写绝对路径，避免 PATH 劫持" },
+      { "key": "C", "text": "给用户可以执行的编辑器（如 vim）等于给了 root 权限" },
+      { "key": "D", "text": "sudoers 文件语法写错不影响使用" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 严重错误：**sudoers 语法损坏会让所有人无法 sudo**（包括 root 补救都很麻烦），所以必须用 `visudo`（或 `visudo -f /etc/sudoers.d/xxx`）。C 的原因是 vim 里 `:!sh` 就能逃到 shell。补充：⑤`NOPASSWD` 要谨慎（token 泄漏即提权），生产上宁可不免密但要记日志；⑥`/etc/sudoers.d/` 下的文件同样有语法检查，也要 visudo；⑦审计用 `sudo -l -U <user>` 和 `grep -r NOPASSWD`。"
+  },
+  {
+    "id": 4046,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "`vmstat 1` 输出中 `wa` 列很高，最应该优先排查什么？",
+    "options": [
+      { "key": "A", "text": "CPU 主频是否过低" },
+      { "key": "B", "text": "磁盘 IO 是否成为瓶颈（iostat 看 await/队列）" },
+      { "key": "C", "text": "内存是否不足" },
+      { "key": "D", "text": "网络带宽是否跑满" }
+    ],
+    "answer": ["B"],
+    "explanation": "`wa`（io wait）是「CPU 空闲但在等 IO」的时间占比，高说明**进程在等磁盘**，直接指向 IO 瓶颈，用 `iostat -x` 看 `await` 和 `aqu-sz` 确认。但要注意一个重要例外：**`wa` 高也可能是内存不足导致的换页**（`si/so` 同时非 0），此时是内存问题伪装成 IO 问题。所以正确顺序是：先看 `si/so` 排除 swap，再看磁盘。C 不完全错，但如果只是因为 swap 才 wa 高，那才是内存问题。"
+  },
+  {
+    "id": 4047,
+    "type": "multiple",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "关于 `logrotate`，以下哪些说法正确？（多选）",
+    "options": [
+      { "key": "A", "text": "切割后必须让应用重新打开日志文件（reload），否则磁盘空间不释放" },
+      { "key": "B", "text": "`copytruncate` 可以避免 reload，但会有丢日志窗口" },
+      { "key": "C", "text": "`rotate 7` 表示保留 7 个历史文件" },
+      { "key": "D", "text": "logrotate 会自动检测文件系统并清理磁盘" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：logrotate 只按配置切割/压缩/删除**它管理的那些日志文件**，不感知磁盘水位，也不会清理其他东西。A 是最关键的一条——应用仍持有旧 fd，会继续往重命名后的 `app.log.1` 写，导致新 `app.log` 是空的且空间不释放。判断特征：`ls -l /proc/<pid>/fd | grep deleted` 出现 `app.log.1 (deleted)`。D 类需求要用「磁盘水位监控 + 告警」解决。"
+  }
+]

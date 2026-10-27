@@ -1,0 +1,66 @@
+[
+  {
+    "id": 4411,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP 常见状态码怎么分类？401、403、429、502、503、504 分别怎么排查？",
+    "answer": "**五类**：`1xx` 信息、`2xx` 成功、`3xx` 重定向、**`4xx` 客户端错误**、**`5xx` 服务端错误**。\n\n**排障时要先分清「谁的问题」**：\n\n| 状态码 | 含义 | 排查方向 |\n|---|---|---|\n| **401** | 未认证 | 缺 token/cookie、token 过期、`Authorization` 头没带 |\n| **403** | 已认证但**无权限** | 账号权限、`iptables`/WAF 拦、目录权限、**SELinux** |\n| **404** | 资源不存在 | 路由配置、文件路径、Nginx `try_files`、发版后静态文件没上传 |\n| **429** | 限流触发 | 应用或网关限流阈值、客户端 QPS 突增 |\n| **500** | 服务端内部异常 | **应用日志**（这是唯一方向） |\n| **502** | **上游返回无效响应** | 后端挂了/端口不通/后端返回了非 HTTP 内容 |\n| **503** | 服务不可用 | 后端全挂、连接池满、维护中、过载 |\n| **504** | **上游超时** | 后端处理慢、`proxy_read_timeout` 太短、DB 慢查询 |\n\n**502 和 504 的关键区分**（面试极高频）：\n\n| | 502（Bad Gateway） | 504（Gateway Timeout） |\n|---|---|---|\n| 本质 | **连接层面失败**——连不上后端，或后端返回了无法解析的内容 | **时间层面失败**——连上了，但后端在超时时间内没响应完 |\n| Nginx 日志里 | `upstream prematurely closed connection`、`connect() failed`、`no live upstreams` | `upstream timed out (110: Connection timed out)` |\n| 排查 | 后端进程是否活着、端口是否监听、是否有 `HTTP 到 HTTPS` 端口配错 | 后端慢在哪（**要去看后端的日志和耗时**） |\n| 谁的问题 | 常常是**基础设施**（后端重启、发布、端口） | 常常是**业务代码**（慢查询、外部接口慢） |\n\n**最常见的 502 原因（按概率）**：\n1. **发版时后端重启**，Nginx 连不上——加 `proxy_next_upstream` + 优雅停机可缓解\n2. **后端端口配错**：比如 `proxy_pass http://127.0.0.1:8080` 但服务在 8000\n3. **协议不匹配**：后端是 HTTPS 而 Nginx 用 `http://` 去连\n4. **超长 header/请求体** 被后端拒绝，返回非法响应\n5. **keepalive 连接的竞态**：后端关闭了空闲连接，Nginx 复用导致失败（配 `proxy_http_version 1.1` + `Connection \"\"` 并调 `keepalive_timeout` 缓解）\n\n**403 的一个隐蔽原因**：**SELinux**。`ls` 权限都对、Nginx 配置也对，但就是 403 → `audit.log` 里会有 AVC 拒绝记录。"
+  },
+  {
+    "id": 4412,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`curl` 如何排查 HTTP 问题？`-v`、`--trace`、`-w` 分别看什么？",
+    "answer": "**`curl` 是最重要的 HTTP 排障工具**，比浏览器 DevTools 更适合服务器端排查。\n\n**四个层次的信息**：\n\n**1. `-v`（verbose）——看握手与请求头**\n```\ncurl -v https://api.example.com/health\n```\n输出分区解读：\n```\n*   Trying 10.0.0.1:443...              ← DNS 与连接\n* Connected to api.example.com          ← TCP 建连成功\n* TLS handshake, Server hello ...       ← TLS 握手\n> GET /health HTTP/1.1                  ← > 是发送的请求\n> Host: api.example.com\n< HTTP/1.1 200 OK                       ← < 是收到的响应\n< Content-Type: application/json\n```\n**卡在哪一步就知道是哪一层的问题**：\n- 卡在 `Trying` → DNS 或网络不通\n- 卡在 `Connected` 之后 → TLS 握手或等响应\n- 立刻 `< 502` → 网关问题\n\n**2. `-w`（write out）——看量化指标**\n```\ncurl -o /dev/null -s -w 'code=%{http_code} dns=%{time_namelookup} conn=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total}\\n' https://api/\n```\n**`ttfb`（Time To First Byte）是关键**：\n- `ttfb - time_appconnect` ≈ 后端处理时间\n- `ttfb` 大但 `conn` 小 → 后端慢\n- `conn` 大 → 网络/握手慢\n\n**3. `--trace` 或 `--trace-ascii`——看完整字节流**\n```\ncurl --trace-ascii /tmp/trace.txt https://api/\n```\n用于看实际发了什么（排查 header 被中间设备篡改、body 编码问题）。\n\n**4. 常用组合**\n```\n# 只看状态码\ncurl -s -o /dev/null -w '%{http_code}' URL\n# 跟随重定向并显示最终地址\ncurl -sIL -o /dev/null -w '%{url_effective} %{http_code}' URL\n# 指定方法/头/体\ncurl -X POST -H 'Content-Type: application/json' -d '{\"a\":1}' URL\n# 忽略证书（仅测试）\ncurl -k URL\n# 限定协议版本\ncurl --http2 URL\n# 带认证\ncurl -u user:pass URL\n# 上传文件\ncurl -F 'file=@/path/f.png' URL\n```\n\n**三个高频坑**：\n1. **`-L` 不加会停在 302**，看到的是重定向响应而不是最终页面\n2. **默认不会发 `Expect: 100-continue`**，但大文件 POST 时某些服务会拒，可 `-H 'Expect:'` 禁用\n3. **`--resolve` 可以绕过 DNS 直连指定 IP**（发版验证神器）：\n```\ncurl --resolve api.example.com:443:10.0.0.5 https://api.example.com/health\n```\n这样能在 DNS 还没切的时候验证新机器。"
+  },
+  {
+    "id": 4413,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "「访问某个域名很慢，但换个域名就快」——如何系统排查？",
+    "answer": "**这个描述指向「域名相关」的因素**，排查要覆盖 DNS、TLS、路由、CDN 四个方向。\n\n**Step 1：量化到具体环节**\n```\ncurl -o /dev/null -s -w 'dns=%{time_namelookup} conn=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total}\\n' https://slow.example.com\n```\n\n| 哪一项大 | 说明 | 排查 |\n|---|---|---|\n| **`time_namelookup`** | **DNS 慢** | 见 Step 2 |\n| `time_connect` | TCP 建连慢 | 路由、防火墙、跨地域 |\n| **`time_appconnect`** | **TLS 握手慢** | 证书链、OCSP、加密算法 |\n| `time_starttransfer` | 后端处理慢 | 与应用/其它域名对比 |\n| `time_total` | 传输慢 | 带宽、包大小 |\n\n**Step 2：DNS 方向**（最常见的元凶）\n```\ndig slow.example.com +trace        # 看完整解析链\nnslookup slow.example.com\n```\n**高频原因**：\n1. **解析到多个 IP，其中一个不通/慢**：客户端的策略是重试，超时才换——表现为「有时候快有时候慢」。**用 `dig` 确认是否返回了多 IP，逐个 `curl --resolve` 测**\n2. **权威 DNS 响应慢**：`+trace` 能看到每一跳的耗时\n3. **本地 `/etc/resolv.conf` 的超时太长**：`options timeout:2 attempts:2`\n4. **search 域不对导致多次无效查询**（K8s 里 `ndots:5` 的经典问题）\n\n**Step 3：TLS 方向**\n```\nopenssl s_client -connect slow.example.com:443 -servername slow.example.com </dev/null | head -20\n```\n**高频原因**：\n1. **证书链不完整**：客户端要额外去 AIA 下载中间证书 → 每个新连接多一次外部请求\n2. **OCSP 请求慢**（某些客户端会同步请求吊销检查）\n3. **证书里的 OCSP URL 不可达** → 客户端等超时\n4. **不支持会话复用/OCSP stapling**：每次都是完整握手\n\n**Step 4：网络路径方向**\n```\ntraceroute -T -p 443 slow.example.com\nmtr -T -P 443 slow.example.com      # 持续统计，比 traceroute 更好\ndig slow.example.com +short          # 拿到 IP 后逐个测\n```\n看是否有某个跳点丢包/延迟突变。\n\n**Step 5：对比验证**\n```\n# 直接连 IP（绕过 DNS 与 SNI 之外的所有因素）\ncurl -o /dev/null -s -w '%{time_total}\\n' --resolve slow.example.com:443:<IP> https://slow.example.com/\n# 换 IP 试（多 IP 场景）\ncurl --resolve fast.example.com:443:<另一IP> https://fast.example.com/\n```\n\n**真实案例的经验排序**：\n1. **多 IP 中有一个坏**（占一半以上）\n2. **证书链不完整**（TLS 慢几秒，典型）\n3. **DNS 解析绕了远路**（跨国权威服务器）\n4. **CDN 节点调度错误**（解析到远端节点）\n\n**一键判断工具**：`curl -w` 的五段耗时 + `openssl s_client` 的握手耗时，两者组合能在 5 分钟内定位到层。"
+  },
+  {
+    "id": 4414,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`traceroute` 和 `mtr` 有什么区别？为什么 traceroute 有时全是星号？",
+    "answer": "**`traceroute` 是一次性快照，`mtr` 是持续统计。**\n\n| | traceroute | mtr |\n|---|---|---|\n| 方式 | 一次性发几组 TTL | **持续发，实时统计** |\n| 输出 | 每跳 3 次探测 | 每跳的丢包率、各次延迟、平均/最差 |\n| 用途 | 看「路径长什么样」 | 看「哪一跳真的有问题」 |\n| 关键优势 | — | **能看到偶发丢包** |\n\n**为什么必须用 mtr**：traceroute 显示某一跳 100% 丢包，但**最终目标可达**——这往往是**中间路由器限制了 ICMP 响应**，而不是真故障。mtr 持续跑 100 个包，若丢包只在中间某跳而后面的跳都正常，**说明那一跳只是不响应探测**；若从某跳开始**丢包率持续到终点**，那才是真问题。\n\n**traceroute 全是星号的六个原因**：\n\n1. **防火墙/安全组屏蔽 ICMP**（最常见）——很多云环境默认不响应 ICMP，但 TCP 照常工作。**换成 `traceroute -T -p 443` 用 TCP 探测往往就通了**\n2. **中间设备对 ICMP TTL 超时消息限速**\n3. **目标主机禁止 ICMP**\n4. **用了 UDP 探测而目标不响应**（Linux traceroute 默认 UDP，Windows 默认 ICMP）\n5. **NAT 环境**：NAT 设备不转发 TTL 超时消息\n6. **非对称路由**：去程和回程不同路径，回程的 ICMP 到不了你\n\n**实用命令**：\n```\n# 强制用 TCP SYN 探测（穿透大多数防火墙）\ntraceroute -T -p 443 目标\nmtr -T -P 443 -c 100 目标\n\n# 用 ICMP（Windows tracert 的等价）\ntraceroute -I 目标\n\n# 只解析 IP 不查 DNS（快，也避免 DNS 干扰）\ntraceroute -n 目标\n\n# mtr 生成报告（便于贴给别人）\nmtr -r -c 100 目标              # report 模式\nmtr --json -c 100 目标 | jq .  # 结构化输出\n```\n\n**解读 mtr 输出的关键**：\n- `Loss%` 只在**某一跳高、后续跳正常** → 该跳限制 ICMP，**不是问题**\n- `Loss%` 从某跳开始**持续到终点** → **真丢包，问题在该跳或之前**\n- `StDev`（抖动）大 → 链路不稳定\n\n**一个反直觉结论**：`traceroute` 的路径信息**本身就可能不准**——因为每跳探测包可能走不同路径（负载均衡、ECMP）。要判断真实路径，多次跑取交集。"
+  },
+  {
+    "id": 4415,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "子网划分怎么算？`192.168.10.0/26` 有多少台主机？网段和广播地址分别是什么？",
+    "answer": "**核心公式**：\n```\n主机数 = 2^(32 - 前缀长度) - 2     减 2 是网段地址和广播地址\n```\n\n**`192.168.10.0/26` 计算过程**：\n\n| 项目 | 计算 | 结果 |\n|---|---|---|\n| 掩码位数 | /26 → 主机位 = 32-26 = **6** | |\n| 子网掩码 | 255.255.255.**192**（26 位 = 24 + 2，第 4 段前 2 位为 1 → 11000000 = 192） | `255.255.255.192` |\n| 地址块大小 | 256 - 192 = **64** | |\n| 主机数 | 2^6 - 2 = **62** | |\n| 网段地址 | 10 对 64 取整 → **192.168.10.0** | |\n| 可用范围 | **192.168.10.1 ~ 192.168.10.62** | |\n| 广播地址 | **192.168.10.63** | |\n| 下一个子网 | **192.168.10.64** | |\n\n**速算方法（第四段记忆表）**：\n\n| 前缀 | 掩码第 4 段 | 块大小 | 主机数 |\n|---|---|---|---|\n| /24 | 0 | 256 | 254 |\n| /25 | 128 | 128 | 126 |\n| **/26** | **192** | **64** | **62** |\n| /27 | 224 | 32 | 30 |\n| /28 | 240 | 16 | 14 |\n| /29 | 248 | 8 | 6 |\n| /30 | 252 | 4 | **2**（点对点链路专用） |\n| /31 | 254 | 2 | 2（RFC 3021，点对点） |\n| /32 | 255 | 1 | 1（单主机路由） |\n\n**块大小 = 256 - 掩码第 4 段**，这是最快的算法。\n\n**判断两个 IP 是否同网段**（实际工作中最常用）：\n```\n# Linux：ipcalc 或直接用 python\npython3 -c \"import ipaddress; print(ipaddress.ip_network('192.168.10.0/26'))\"\n\n# 手算：把 IP 和掩码都转二进制，做 AND\n192.168.10.70  AND  255.255.255.192 = 192.168.10.64  → 属于 64 网段，不在 0-63 里\n```\n\n**三个实际坑**：\n1. **`/30` 只剩 2 个可用地址**，但**云厂商的点对点链路常用 `/30`**（网关占一个）\n2. **云环境的 VPC 子网保留地址更多**：AWS/Aliyun 会额外保留前几个和最后一个（如 AWS 保留 5 个），实际可用比理论少\n3. **广播地址在部分云网络上不可用**，别用 `ping 广播地址` 来判断\n\n**快速判断工具**：`ipcalc 192.168.10.0/26` 直接给出全部信息，比手算可靠。"
+  },
+  {
+    "id": 4416,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "VLAN 是什么？同 VLAN 和跨 VLAN 通信分别怎么走？",
+    "answer": "**VLAN（虚拟局域网）**：把一个物理交换机划分成多个**逻辑隔离的广播域**，不通过路由器就无法互相通信。\n\n**为什么需要**：\n- 广播域太大 → 广播风暴、ARP 表爆炸\n- 安全隔离（生产/测试/管理网分开）\n- 灵活组网（同一 VLAN 可以跨交换机）\n\n**两种链路**：\n\n| | Access 口 | Trunk 口 |\n|---|---|---|\n| 用途 | 连接终端（PC、服务器） | 连接交换机/路由器 |\n| 帧格式 | **不带 VLAN 标签**（untagged） | **带 802.1Q 标签**（tagged） |\n| 可承载 | **1 个 VLAN** | **多个 VLAN** |\n\n**同 VLAN 通信**（同交换机）：\n```\n主机 A (VLAN 10) → 交换机查 MAC 表 → 主机 B (VLAN 10)\n直接二层转发，不经过网关\n```\n\n**跨 VLAN 通信**（必须经过三层）：\n```\n主机 A (VLAN 10) → 网关(交换机三层口/路由器) → 主机 B (VLAN 20)\n```\n两种实现：\n1. **单臂路由（Router-on-a-Stick）**：路由器一个物理口配多个子接口，每个子接口对应一个 VLAN\n```\ninterface g0/0.10\n  encapsulation dot1Q 10\n  ip address 192.168.10.1 255.255.255.0\n```\n2. **三层交换机 SVI**：交换机内部虚拟接口\n```\ninterface Vlan10\n  ip address 192.168.10.1 255.255.255.0\n```\n\n**Linux 上的 VLAN 配置**：\n```\n# 创建 VLAN 接口\nip link add link eth0 name eth0.100 type vlan id 100\nip addr add 192.168.100.1/24 dev eth0.100\nip link set eth0.100 up\n```\n对应配置文件在 `/etc/sysconfig/network-scripts/ifcfg-eth0.100`（RHEL）或 Netplan（Ubuntu）。\n\n**云环境的对应概念**：VPC 子网 ≈ VLAN，但**云上跨子网通信默认走 VPC 路由器**，安全组要放通。\n\n**高频故障**：\n1. **Trunk 口没放通该 VLAN** → 该 VLAN 的主机完全不通\n2. **PVID（Native VLAN）两端不一致** → 未打标签的帧被归到错误 VLAN\n3. **MTU**：VLAN 标签占 4 字节，大包要注意\n4. **虚拟机/容器场景**：宿主机网卡要开 promisc 或配置 bridge VLAN filtering\n\n**排查**：`ip -d link show eth0.100` 看 `vlan protocol 802.1Q id 100` 是否生效。"
+  },
+  {
+    "id": 4417,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "跨机房/跨云组网有哪些方案？各有什么优劣？",
+    "answer": "**五种主流方案，按「网络层 vs 应用层」分**。\n\n| 方案 | 层次 | 延迟 | 成本 | 适用 |\n|---|---|---|---|---|\n| **专线（MPLS/云专线）** | L2/L3 | **最低（稳定）** | 最高 | 核心业务、数据库主从 |\n| **VPN（IPsec/SSL）** | L3 | 中（走公网，抖动大） | 低 | 办公网、非核心 |\n| **SD-WAN** | L3+ | 中（智能选路） | 中 | 多分支、混合云 |\n| **云厂商对等连接/云联网** | L3 | 低 | 中 | 同云多 VPC、多云互联 |\n| **应用层打通（消息/API）** | L7 | 高 | 低 | 数据同步、最终一致 |\n\n**各方案的关键优劣**：\n\n**1. 专线**\n- 优：延迟稳定（可量化 SLA）、带宽保证、不过公网\n- 劣：**贵、开通周期长（数周）**、不灵活\n- 场景：数据库主从复制、异地容灾的热备链路\n\n**2. IPsec VPN**\n- 优：便宜、当天可开通\n- 劣：**公网抖动直接影响业务**、UDP 500/4500 常被封、MTU 要调小（见 MTU 一节）\n- 场景：办公网接入、测试环境互联\n- **关键坑**：IPsec 加密封装会增加 50-70 字节，**必须同步调小 MTU**，否则大包不通\n\n**3. SD-WAN**\n- 优：多链路智能选路（专线 + 宽带混合）、按应用分流\n- 劣：设备成本和运维复杂度\n- 场景：多分支企业、混合云\n\n**4. 云联网 / 对等连接**\n- 优：云内原生，无需自建，延迟低\n- 劣：**跨云仍需公网或专线**，且不同云的路由表配置不同\n- 典型：阿里云 CEN、AWS Transit Gateway\n\n**5. 应用层打通（最重要的补充）**\n- **很多「跨机房需求」其实不该在网络层解决**\n- 用 Kafka/RocketMQ 做异步数据同步、用 API 网关做服务互调\n- 优：不受网络质量直接影响（有重试和缓冲）、易于演进\n- 劣：**最终一致**，不适合强一致性场景\n\n**决策树**：\n```\n需要强一致 / 数据库主从？\n  ├─ 是 → 专线（或云厂商的专用链路）\n  └─ 否 → 能接受最终一致？\n       ├─ 是 → 应用层同步（MQ/CDC），最省事\n       └─ 否 → SD-WAN 或 VPN\n```\n\n**最容易被忽略的三件事**：\n1. **MTU**：所有隧道方案都要调小 MTU 或做 MSS clamp\n2. **DNS**：跨机房解析要走就近的 DNS，否则每次请求都绕远\n3. **时钟**：跨机房的时间同步（chrony 走本地源），否则分布式一致性算法会误判"
+  },
+  {
+    "id": 4418,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`ss` 和 `netstat` 有什么区别？为什么现在推荐 `ss`？",
+    "answer": "**`ss` 是 `netstat` 的现代替代品**（iproute2 包），直接读内核的 `/proc/net/*`，而 `netstat` 走 `/proc` 全量解析。\n\n| | netstat | ss |\n|---|---|---|\n| 性能 | **慢**（几万连接时卡死几秒） | **快**（直接 netlink 查询） |\n| 状态过滤 | 只能 `grep` | **内置 `state` 语法** |\n| 输出 | 固定列 | 可自定义 `-o` 各字段 |\n| 依赖 | net-tools（**已从多数发行版移除**） | iproute2（默认装） |\n| 定时器信息 | 无 | **`-o` 显示重传、keepalive 计时器** |\n\n**最实用的十条 `ss`**：\n```\nss -lntp                    # 监听端口（-l 监听 -n 数字 -t tcp -p 进程）\nss -lntup                   # 含 UDP\nss -ant                     # 所有 TCP 连接\nss -ant state established   # 只看向上的连接（**比 grep 快得多**）\nss -ant state time-wait | wc -l\nss -s                       # 汇总统计\nss -tnp                     # 显示进程（-p）\nss -tn dst :443             # 按目标端口过滤\nss -o state established '( dport = :443 )'\nss -ti                       # 含 TCP 内部信息（cwnd、rtt、重传）\n```\n\n**`ss -ti` 是隐藏利器**——能看到每条连接：\n```\nrtt:0.15/0.02   cwnd:10   retrans:0/2   lost:1\n```\n- `retrans`（重传数）非 0 → 链路有问题\n- `cwnd` 很小但 RTT 低 → 拥塞窗口被压\n- **这是判断「网络层抖不抖」的最直接证据**，不用抓包\n\n**`ss -s` 的输出解读**：\n```\nTCP:   120 (estab 45, closed 60, orphaned 0, timewait 58)\n```\n- `closed 60` 中是 `timewait 58` → 短连接多\n- `orphaned` 非 0 → 有 socket 被进程放弃了（可能是 bug）\n\n**三个坑**：\n1. **`-p` 需要 root**（或同用户），否则看不到进程名\n2. **`ss -l` 的 `Recv-Q` 是 accept 队列当前长度，`Send-Q` 是 backlog 上限**——`Recv-Q` 接近 `Send-Q` 说明在溢出\n3. **容器里看 `ss -p` 显示的是容器内 PID**，要配合 `crictl ps` 对照宿主机\n\n**没有 `ss` 的极端情况**：直接读 `/proc/net/tcp`（十六进制格式），能查但很难读。"
+  }
+]
