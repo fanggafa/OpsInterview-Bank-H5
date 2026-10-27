@@ -83,6 +83,47 @@ export const CATEGORY_ADVICE = {
 /** 难度枚举 + 颜色（CSS 变量在样式里，这里保留语义供 JS 判断） */
 export const DIFFICULTIES = ['简单', '中等', '困难']
 
+/**
+ * 分类 → 主题色键（对应 styles.css 里的 --hue-*）。
+ * 各分类有独立颜色，标签点、进度条、插图分支都用它，避免整站一片灰。
+ * 键名固定，新增分类时在此登记；未登记的会退化为主色。
+ */
+export const CATEGORY_HUE = {
+  Linux基础: 'blue',
+  Shell脚本: 'cyan',
+  '网络基础': 'sky',
+  DNS: 'indigo',
+  'iptables/firewalld': 'orange',
+  Nginx: 'emerald',
+  'LVS/HAProxy': 'teal',
+  'Tomcat/JVM': 'amber',
+  MySQL: 'sky',
+  Redis: 'rose',
+  MongoDB: 'lime',
+  消息队列: 'violet',
+  '容器与K8s': 'blue',
+  '存储与备份': 'fuchsia',
+  '虚拟化': 'indigo',
+  'CI/CD': 'violet',
+  'Git/GitLab': 'orange',
+  监控告警: 'emerald',
+  '日志与ELK': 'teal',
+  '自动化与配置管理': 'fuchsia',
+  '安全与跳板机': 'rose',
+  '云与高可用': 'sky',
+  综合场景题: 'amber',
+}
+
+/**
+ * 取分类对应的 CSS 颜色表达式。
+ * @param {string} category
+ * @returns {string} 如 var(--hue-blue)
+ */
+export function categoryColor(category) {
+  const hue = CATEGORY_HUE[category]
+  return hue ? `var(--hue-${hue})` : 'var(--c-primary)'
+}
+
 /** 题型枚举（v1.3） */
 export const QUESTION_TYPES = ['short', 'single', 'multiple']
 

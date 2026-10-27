@@ -23,8 +23,8 @@ const holeSize = computed(() => props.size - props.stroke * 2)
       width: size + 'px',
       height: size + 'px',
       background: valid
-        ? `conic-gradient(var(--c-primary) 0 ${clamped}%, var(--c-border) ${clamped}% 100%)`
-        : 'var(--c-border)',
+        ? `conic-gradient(var(--ring-color, var(--c-primary)) 0 ${clamped}%, var(--ring-track, var(--c-border)) ${clamped}% 100%)`
+        : 'var(--ring-track, var(--c-border))',
     }"
     role="img"
     :aria-label="label ? label + ' ' + text : text"
@@ -49,7 +49,8 @@ const holeSize = computed(() => props.size - props.stroke * 2)
 }
 .ring__hole {
   border-radius: 50%;
-  background: var(--c-card);
+  /* 用变量便于嵌套在渐变卡片上时覆盖（如首页 hero） */
+  background: var(--ring-hole-bg, var(--c-card));
   display: flex;
   flex-direction: column;
   align-items: center;

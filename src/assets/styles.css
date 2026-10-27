@@ -19,7 +19,41 @@
   --c-freq-weak: rgba(122, 139, 168, 0.12);
   --c-success-weak: rgba(82, 196, 26, 0.12);
   --c-danger-weak: rgba(245, 34, 45, 0.12);
+
+  /* 渐变与光效（首页/卡片背景用） */
+  --grad-hero: linear-gradient(135deg, #4f7cff 0%, #7b6cf6 55%, #a06af5 100%);
+  --grad-card: linear-gradient(180deg, rgba(79, 124, 255, 0.06), rgba(79, 124, 255, 0));
+  --grad-indigo: linear-gradient(135deg, #6366f1, #8b5cf6);
+  --grad-teal: linear-gradient(135deg, #14b8a6, #06b6d4);
+  --grad-amber: linear-gradient(135deg, #f59e0b, #f97316);
+  --grad-rose: linear-gradient(135deg, #f43f5e, #ec4899);
+
+  /* 分类色板：用于标签点、进度条、插图分支等 */
+  --hue-blue: #3b82f6;
+  --hue-indigo: #6366f1;
+  --hue-violet: #8b5cf6;
+  --hue-fuchsia: #d946ef;
+  --hue-rose: #f43f5e;
+  --hue-orange: #f97316;
+  --hue-amber: #eab308;
+  --hue-lime: #84cc16;
+  --hue-emerald: #10b981;
+  --hue-teal: #14b8a6;
+  --hue-cyan: #06b6d4;
+  --hue-sky: #0ea5e9;
+
+  /* 插图专用：比 UI 色更饱和一点，保证小尺寸可辨识 */
+  --fig-bg: linear-gradient(160deg, #f8faff 0%, #f2f6ff 100%);
+  --fig-stroke: #c7d2fe;
+  --fig-node-a: #3b82f6;
+  --fig-node-b: #8b5cf6;
+  --fig-node-c: #14b8a6;
+  --fig-node-d: #f59e0b;
+  --fig-text: #334155;
+  --fig-muted: #64748b;
+
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-lift: 0 4px 16px rgba(79, 124, 255, 0.12);
   --radius: 12px;
   --radius-sm: 8px;
   --maxw: 480px;
@@ -46,7 +80,41 @@
   --c-freq-weak: rgba(143, 161, 189, 0.16);
   --c-success-weak: rgba(115, 209, 61, 0.16);
   --c-danger-weak: rgba(255, 120, 117, 0.16);
+
+  /* 深色下渐变降饱和，避免刺眼 */
+  --grad-hero: linear-gradient(135deg, #3d5fc4 0%, #5a4fb8 55%, #6d47a3 100%);
+  --grad-card: linear-gradient(180deg, rgba(110, 147, 255, 0.08), rgba(110, 147, 255, 0));
+  --grad-indigo: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --grad-teal: linear-gradient(135deg, #0d9488, #0891b2);
+  --grad-amber: linear-gradient(135deg, #d97706, #ea580c);
+  --grad-rose: linear-gradient(135deg, #e11d48, #db2777);
+
+  /* 深色下分类色略提亮，保证在深背景上可辨 */
+  --hue-blue: #60a5fa;
+  --hue-indigo: #818cf8;
+  --hue-violet: #a78bfa;
+  --hue-fuchsia: #e879f9;
+  --hue-rose: #fb7185;
+  --hue-orange: #fb923c;
+  --hue-amber: #facc15;
+  --hue-lime: #a3e635;
+  --hue-emerald: #34d399;
+  --hue-teal: #2dd4bf;
+  --hue-cyan: #22d3ee;
+  --hue-sky: #38bdf8;
+
+  /* 插图：深色下用低亮背景 + 亮色描边 */
+  --fig-bg: linear-gradient(160deg, #1a1f2b 0%, #171b25 100%);
+  --fig-stroke: #3b4a63;
+  --fig-node-a: #60a5fa;
+  --fig-node-b: #a78bfa;
+  --fig-node-c: #2dd4bf;
+  --fig-node-d: #fbbf24;
+  --fig-text: #d6dee8;
+  --fig-muted: #94a3b8;
+
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-lift: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 * {

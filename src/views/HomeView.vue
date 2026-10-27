@@ -5,7 +5,7 @@ import Ring from '@/components/Ring.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
 import { formatPercent } from '@/utils/format'
-import { STORAGE_KEYS } from '@/utils/constants'
+import { STORAGE_KEYS, categoryColor } from '@/utils/constants'
 import { describeProgress } from '@/utils/practice'
 
 const bank = useBankStore()
@@ -26,7 +26,7 @@ function continueStudy() {
   router.push({ path: '/practice', query })
 }
 
-/** 分类入口：按题库实际分类动态生成，带各自进度 */
+/** 分类入口：按题库实际分类动态生成，带各自进度与专属颜色 */
 const categories = computed(() => {
   const statsMap = new Map(study.categoryStats.map((s) => [s.category, s]))
   const counts = {}
@@ -34,8 +34,7 @@ const categories = computed(() => {
     counts[q.category] = (counts[q.category] || 0) + 1
   })
 
-  const present = Object.keys(counts)
-  return present.map((name) => {
+  return Object.keys(counts).map((name) => {
     const stat = statsMap.get(name)
     const reviewed = stat ? stat.reviewed : 0
     return {
@@ -47,63 +46,64 @@ const categories = computed(() => {
   })
 })
 
-/** 今日是否有刷题记录，决定「今日」区块的口径文案 */
+/** 今日是否有刷题记录 */
 const todayDone = computed(() => study.todayReviewedCount > 0)
 
-/** 掌握率只统计简答题（PRD §五.4），首页展示时说明清楚 */
+/** 掌握率只统计简答题（PRD §五.4） */
 const masteryText = computed(() => formatPercent(study.masteryRate))
 const choiceText = computed(() => formatPercent(study.choiceRate))
-
-/** 无数据（null）时不染强调色，否则「—」会被误读成装饰线 */
-const masteryClass = computed(() => (study.masteryRate === null ? '' : 'ok'))
-const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
 </script>
 
 <template>
   <div class="page">
-    <header class="home-header">
-      <div>
-        <h1 class="home-title">运维面试题库</h1>
-        <p class="home-sub">
-          {{ todayDone ? `今天已经刷了 ${study.todayReviewedCount} 题，继续保持` : '碎片时间，背完这些题' }}
-        </p>
+    <!-- 头部：渐变主卡 -->
+    <header class="hero">
+      <div class="hero__glow" aria-hidden="true" />
+      <div class="hero__top">
+        <div>
+          <h1 class="hero__title">运维面试题库</h1>
+          <p class="hero__sub">
+            {{ todayDone ? `今天已经刷了 ${study.todayReviewedCount} 题，继续保持` : '碎片时间，背完这些题' }}
+          </p>
+        </div>
+        <button class="hero__btn" aria-label="打开设置" @click="router.push('/me')">
+          <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8" />
+            <path
+              d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
       </div>
-      <button class="home-theme" aria-label="打开设置" @click="router.push('/me')">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-          <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8" />
-          <path
-            d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-          />
-        </svg>
-      </button>
-    </header>
 
-    <!-- 总进度 + 双指标 -->
-    <section class="overview card">
-      <Ring :percent="study.progressRate" :size="86" label="总进度" />
-      <div class="overview__side">
-        <p class="overview__row">
-          <span>已刷</span>
-          <strong>{{ study.reviewedCount }} <em>/ {{ bank.total }} 题</em></strong>
-        </p>
-        <p class="overview__row">
-          <span>简答掌握率</span>
-          <strong :class="masteryClass">{{ masteryText }}</strong>
-        </p>
-        <p class="overview__row">
-          <span>选择正确率</span>
-          <strong :class="choiceClass">{{ choiceText }}</strong>
-        </p>
+      <div class="hero__stats">
+        <div class="hero__ring">
+          <Ring :percent="study.progressRate" :size="82" label="总进度" />
+        </div>
+        <div class="hero__side">
+          <div class="hero__stat">
+            <span>已刷</span>
+            <strong>{{ study.reviewedCount }}<em> / {{ bank.total }}</em></strong>
+          </div>
+          <div class="hero__stat">
+            <span>简答掌握</span>
+            <strong>{{ masteryText }}</strong>
+          </div>
+          <div class="hero__stat">
+            <span>选择正确</span>
+            <strong>{{ choiceText }}</strong>
+          </div>
+        </div>
       </div>
-    </section>
+    </header>
 
     <!-- 快捷入口 -->
     <div class="entries">
-      <button class="entry card" @click="router.push('/practice')">
-        <span class="entry__icon entry__icon--practice" aria-hidden="true">
+      <button class="entry entry--practice" @click="router.push('/practice')">
+        <span class="entry__icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20">
             <path d="M13 3 5 14h5l-1 7 8-11h-5l1-7z" fill="currentColor" />
           </svg>
@@ -114,8 +114,8 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
         </span>
       </button>
 
-      <button class="entry card" @click="router.push('/interview')">
-        <span class="entry__icon entry__icon--interview" aria-hidden="true">
+      <button class="entry entry--interview" @click="router.push('/interview')">
+        <span class="entry__icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20">
             <path
               d="M12 3l7 4v5c0 4.4-2.9 7.6-7 9-4.1-1.4-7-4.6-7-9V7l7-4z"
@@ -135,7 +135,8 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
     </div>
 
     <!-- 继续上次 -->
-    <section v-if="progressInfo" class="continue card" @click="continueStudy">
+    <section v-if="progressInfo" class="continue" @click="continueStudy">
+      <span class="continue__dot" aria-hidden="true" />
       <div class="continue__body">
         <p class="continue__title">继续上次刷题</p>
         <p class="continue__desc">
@@ -145,16 +146,18 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
       <span class="continue__arrow" aria-hidden="true">→</span>
     </section>
 
-    <!-- 分类入口（带各自进度） -->
+    <!-- 分类入口 -->
     <h2 class="section-title">按分类刷题</h2>
     <div class="cats">
       <router-link
         v-for="cat in categories"
         :key="cat.name"
         :to="{ path: '/practice', query: { category: cat.name } }"
-        class="cats__item card"
+        class="cats__item"
+        :style="{ '--cat-color': categoryColor(cat.name) }"
       >
         <div class="cats__head">
+          <span class="cats__dot" aria-hidden="true" />
           <span class="cats__name">{{ cat.name }}</span>
           <span class="cats__count">{{ cat.reviewed }}/{{ cat.total }}</span>
         </div>
@@ -164,86 +167,121 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
       </router-link>
     </div>
 
-    <p class="home-foot muted">
+    <p class="home-foot">
       共 {{ bank.total }} 题（简答 {{ study.shortTotal }} · 选择 {{ study.choiceTotal }}）
-      · 记录保存在本机（{{ STORAGE_KEYS.RECORDS }}）
+      · 记录保存在本机
     </p>
   </div>
 </template>
 
 <style scoped>
-.home-header {
+/* ---------- 渐变主卡 ---------- */
+.hero {
+  position: relative;
+  overflow: hidden;
+  margin-top: 10px;
+  padding: 16px 16px 14px;
+  border-radius: 16px;
+  background: var(--grad-hero);
+  box-shadow: var(--shadow-lift);
+  color: #fff;
+}
+/* 右上角光晕 */
+.hero__glow {
+  position: absolute;
+  top: -46px;
+  right: -30px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 68%);
+  pointer-events: none;
+}
+.hero__top {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 14px 0 4px;
+  gap: 10px;
 }
-.home-title {
+.hero__title {
   margin: 0;
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 700;
-  color: var(--c-text);
+  letter-spacing: 0.2px;
 }
-.home-sub {
-  margin: 4px 0 0;
+.hero__sub {
+  margin: 5px 0 0;
   font-size: 12.5px;
-  color: var(--c-text-2);
+  color: rgba(255, 255, 255, 0.82);
 }
-.home-theme {
-  width: 40px;
-  height: 40px;
+.hero__btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--c-text-2);
+  color: #fff;
   border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(4px);
 }
-.home-theme:active {
-  background: var(--c-primary-weak);
+.hero__btn:active {
+  background: rgba(255, 255, 255, 0.28);
 }
 
-/* 总进度 */
-.overview {
+.hero__stats {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 14px;
-  margin-top: 12px;
+  margin-top: 14px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
 }
-.overview__side {
+.hero__ring {
+  --ring-hole-bg: rgba(255, 255, 255, 0.95);
+  --ring-color: var(--c-primary);
+  --ring-track: rgba(255, 255, 255, 0.35);
+}
+.hero__ring :deep(.ring__text) {
+  color: var(--c-text);
+}
+.hero__ring :deep(.ring__label) {
+  color: var(--c-text-3);
+}
+.hero__side {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
 }
-.overview__row {
+.hero__stat {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin: 0;
+  gap: 8px;
   font-size: 12px;
-  color: var(--c-text-2);
+  color: rgba(255, 255, 255, 0.85);
 }
-.overview__row strong {
+.hero__stat strong {
   font-size: 14px;
-  color: var(--c-text);
-  font-weight: 600;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
 }
-.overview__row em {
+.hero__stat em {
   font-size: 11px;
   font-style: normal;
   font-weight: 400;
-  color: var(--c-text-3);
-}
-.overview__row .ok {
-  color: var(--c-success);
-}
-.overview__row .warn {
-  color: var(--c-warning);
+  color: rgba(255, 255, 255, 0.66);
 }
 
-/* 快捷入口 */
+/* ---------- 快捷入口 ---------- */
 .entries {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -253,30 +291,34 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
 .entry {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 11px 10px;
-  cursor: pointer;
+  gap: 9px;
+  padding: 12px 11px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  box-shadow: var(--shadow-card);
   text-align: left;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
 }
 .entry:active {
-  transform: scale(0.99);
+  transform: scale(0.985);
+  box-shadow: var(--shadow-lift);
 }
 .entry__icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  color: #fff;
 }
-.entry__icon--practice {
-  color: var(--c-primary);
-  background: var(--c-primary-weak);
+.entry--practice .entry__icon {
+  background: var(--grad-indigo);
 }
-.entry__icon--interview {
-  color: var(--c-success);
-  background: var(--c-success-weak);
+.entry--interview .entry__icon {
+  background: var(--grad-teal);
 }
 .entry__text {
   display: flex;
@@ -298,18 +340,33 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
   text-overflow: ellipsis;
 }
 
-/* 继续上次 */
+/* ---------- 继续上次 ---------- */
 .continue {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  padding: 12px 14px;
   margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  background-image: var(--grad-card);
+  box-shadow: var(--shadow-card);
   cursor: pointer;
-  border-left: 3px solid var(--c-primary);
+}
+.continue:active {
+  transform: scale(0.99);
+}
+.continue__dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-primary);
+  box-shadow: 0 0 0 3px var(--c-primary-weak);
 }
 .continue__body {
+  flex: 1;
   min-width: 0;
 }
 .continue__title {
@@ -332,7 +389,7 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
   color: var(--c-primary);
 }
 
-/* 分类入口 */
+/* ---------- 分类卡片 ---------- */
 .cats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -341,20 +398,33 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
 .cats__item {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
   padding: 11px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  box-shadow: var(--shadow-card);
   color: var(--c-text);
+  transition: transform 0.14s ease, border-color 0.14s ease;
 }
 .cats__item:active {
-  transform: scale(0.99);
+  transform: scale(0.985);
+  border-color: var(--cat-color);
 }
 .cats__head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 6px;
 }
+.cats__dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cat-color);
+}
 .cats__name {
+  flex: 1;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -365,18 +435,19 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
   flex-shrink: 0;
   font-size: 10.5px;
   color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
 }
 .cats__track {
-  height: 3px;
-  background: var(--c-bg);
+  height: 4px;
   border-radius: 2px;
+  background: var(--c-bg);
   overflow: hidden;
 }
 .cats__fill {
   height: 100%;
-  background: var(--c-primary);
   border-radius: 2px;
-  transition: width 0.3s ease;
+  background: var(--cat-color);
+  transition: width 0.35s ease;
 }
 
 .home-foot {
@@ -384,5 +455,6 @@ const choiceClass = computed(() => (study.choiceRate === null ? '' : 'warn'))
   text-align: center;
   font-size: 10.5px;
   line-height: 1.6;
+  color: var(--c-text-3);
 }
 </style>
