@@ -1,0 +1,477 @@
+[
+  {
+    "id": 3601,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "InnoDB 的 redo log 和 binlog 有什么区别？为什么需要两种日志？",
+    "answer": "分工完全不同，缺一不可：\n\n**redo log**（InnoDB 引擎层）：\n- 物理日志，记录「某页做了什么修改」\n- 循环写、固定大小，写满会覆盖\n- 保证**崩溃恢复**（crash-safe）\n\n**binlog**（Server 层）：\n- 逻辑日志，记录「原始 SQL 或行变更」\n- 追加写、不覆盖，可保留很久\n- 用于**主从复制**和**数据恢复**\n\n为什么要两种：redo 是循环写的，写满要覆盖，无法用于归档恢复；binlog 是追加的，但刷盘开销大、不能用于崩溃恢复。各司其职。\n\n还有一个关键点：**两阶段提交**。\n- 先写 redo（prepare）→ 再写 binlog → redo（commit）\n- 保证两份日志一致，否则主从数据会错乱\n\n排查相关：如果 `innodb_flush_log_at_trx_commit` 和 `sync_binlog` 都是 1，性能会下降但最安全（金融场景必配）。",
+    "tags": ["redo log", "binlog", "两阶段提交"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3602,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "什么是回表？为什么说覆盖索引能避免回表？",
+    "answer": "**回表**：用二级索引查到主键值后，还要回到主键索引（聚簇索引）再查一次整行数据。\n\n举例，表有索引 idx_name(name)，执行：\n```\nSELECT * FROM user WHERE name = 'tom'\n```\n路径：\n1. 在 idx_name 找到 name='tom' 的叶子节点，拿到主键 id=5\n2. 再用 id=5 去主键索引查完整行 ← **这一步就是回表**\n\n**覆盖索引**：查询需要的列全在索引里，不需要再查主键索引。\n```\nSELECT name FROM user WHERE name = 'tom'\n```\nname 就在 idx_name 里 → 无需回表。\n\n如何确认：EXPLAIN 的 Extra 显示 **Using index** 就是覆盖索引；显示 Using where 或没有 Using index 通常意味着要回表。\n\n优化实践：把频繁查询的列加入联合索引，让查询变成覆盖索引，能显著减少 IO。但索引列不宜过多（增加写放大）。",
+    "tags": ["回表", "覆盖索引", "Using index"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3603,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 的锁有哪些类型？什么是间隙锁、临键锁？",
+    "answer": "按粒度分：\n\n- **表锁**：锁整表，MyISAM 常用，并发差\n- **行锁**：InnoDB 支持，锁单行，并发好（但依赖索引，索引失效会退化成表锁）\n\n按模式分：\n- **共享锁 S**：读锁，多个事务可同时持有\n- **排他锁 X**：写锁，互斥\n\n按范围分（重点）：\n- **记录锁（Record Lock）**：锁索引上的单条记录\n- **间隙锁（Gap Lock）**：锁索引记录之间的「空隙」，防止插入\n- **临键锁（Next-Key Lock）**：记录锁 + 间隙锁，锁住记录和它前面的间隙（左开右闭）\n\n间隙锁的意义：**在可重复读级别下防止幻读**——其他事务无法在间隙插入新行。\n\n重要特性：\n- 间隙锁只在 REPEATABLE READ 及以上生效，RC 级别没有间隙锁（只锁记录）\n- 间隙锁之间不冲突（都是「锁住空隙」，可以共存），但会阻塞插入\n- 唯一索引等值查询命中时退化为记录锁，不命中则用间隙锁\n\n排查：`SHOW ENGINE INNODB STATUS` 看 LOCK WAIT，或查 `performance_schema.data_locks`。",
+    "tags": ["锁", "间隙锁", "临键锁", "幻读"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3604,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "InnoDB 的 redo log 主要用来保证什么？",
+    "options": [
+      { "key": "A", "text": "主从数据一致性" },
+      { "key": "B", "text": "崩溃恢复（crash-safe）" },
+      { "key": "C", "text": "事务隔离性" },
+      { "key": "D", "text": "索引结构维护" }
+    ],
+    "answer": ["B"],
+    "explanation": "redo log 是 InnoDB 引擎层的物理日志，用于崩溃后恢复未刷盘的数据页。主从一致性靠 binlog；隔离性靠锁和 MVCC。",
+    "tags": ["redo log", "崩溃恢复"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3605,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "以下哪些情况会导致行锁升级为表锁（或锁范围大幅扩大）？（多选）",
+    "options": [
+      { "key": "A", "text": "WHERE 条件没有使用索引，全表扫描" },
+      { "key": "B", "text": "对索引列使用函数，导致索引失效" },
+      { "key": "C", "text": "隐式类型转换，字符串列用数字比较" },
+      { "key": "D", "text": "使用了主键做等值查询" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "InnoDB 行锁是加在索引上的，索引失效就会扫描全表并锁住扫过的所有记录。D 是主键等值查询，只锁单行（最高效的情况）。",
+    "tags": ["行锁", "索引失效", "锁范围"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3606,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 主从复制的工作原理是什么？三个线程分别做什么？",
+    "answer": "主从复制分三个环节、三个线程：\n\n**1. 主库 binlog dump 线程**\n- 主库把变更写入 binlog\n- 当从库连上来时，dump 线程把 binlog 发给从库\n\n**2. 从库 IO 线程**\n- 连接主库，接收 binlog 并写入本地 **relay log**（中继日志）\n\n**3. 从库 SQL 线程**\n- 读取 relay log，重放（replay）到从库数据\n\n流程串起来：\n```\n主库写 binlog → dump 线程发送 → 从库 IO 线程写 relay log → SQL 线程重放\n```\n\n关键参数：\n- `server-id` 必须唯一，否则复制报错\n- `binlog_format` 建议 ROW（保证一致性）\n- `relay_log` 存在从库，是复制的中间缓冲\n\n延迟的定位：`SHOW SLAVE STATUS` 看 `Seconds_Behind_Master` 与 `Relay_Log_Pos` vs `Exec_Master_Log_Pos` 的差值——差值是 SQL 线程重放慢，说明从库执行跟不上。",
+    "tags": ["主从复制", "relay log", "线程"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3607,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "什么是 MySQL 的 ICP（索引下推）？它带来什么优化？",
+    "answer": "**索引下推（Index Condition Pushdown，ICP）**：把 WHERE 中能用索引判断的条件下推到存储引擎层过滤，而不必先回表再在 Server 层过滤。\n\n举例（联合索引 idx(name, age)）：\n```\nSELECT * FROM user WHERE name LIKE '张%' AND age = 20\n```\n\n**没有 ICP**：\n1. 用 name 前缀找到所有「张」开头的记录（可能几万条）\n2. 逐条回表取整行\n3. 在 Server 层过滤 age=20\n→ 大量无用回表\n\n**有 ICP**：\n1. 在索引里就判断 age=20（age 也在索引里）\n2. 只有满足的才回表\n→ 回表次数大幅减少\n\n如何识别：EXPLAIN 的 Extra 出现 **Using index condition**。\n\n生效条件：\n- 需要联合索引（条件列都在索引里）\n- 适用于 range/ref/eq_ref 访问类型\n- MySQL 5.6+ 默认开启，可用 `optimizer_switch` 关闭\n\n与覆盖索引的区别：ICP 仍需回表，只是减少了回表次数；覆盖索引完全不需要回表。",
+    "tags": ["ICP", "索引下推", "优化"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3608,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "MySQL 中查看当前所有连接与执行状态的命令是？",
+    "options": [
+      { "key": "A", "text": "SHOW PROCESSLIST" },
+      { "key": "B", "text": "SHOW TABLES" },
+      { "key": "C", "text": "SHOW INDEX" },
+      { "key": "D", "text": "SHOW VARIABLES" }
+    ],
+    "answer": ["A"],
+    "explanation": "SHOW PROCESSLIST（或 SHOW FULL PROCESSLIST 看完整 SQL）列出所有连接、状态、执行时长，是排查连接数暴涨、长事务、慢查询的第一条命令。",
+    "tags": ["PROCESSLIST", "连接", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3609,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 出现「Too many connections」怎么办？",
+    "answer": "分两步：先救火，再查根因。\n\n**救火（按代价从小到大）**\n\n1. 清掉空闲连接（Sleep 状态的长连接）\n```\nSELECT * FROM information_schema.processlist WHERE command='Sleep';\nKILL <id>;\n```\n\n2. 临时提高上限（需要留一个连接进去操作）\n```\nSET GLOBAL max_connections = 1000;\n```\n注意：MySQL 会为 root 保留一个连接（`max_connections + 1`），所以你能连进去。\n\n3. 调小空闲超时，让空闲连接自动释放\n```\nSET GLOBAL wait_timeout = 600;\nSET GLOBAL interactive_timeout = 600;\n```\n\n**查根因**\n- 连接池配置不当（最大值过大、无健康检查、泄漏）\n- 应用未正确关闭连接（缺 try-finally）\n- 慢查询占住连接\n- 突发流量或爬虫\n\n**配套注意**\n- `max_connections` 不能随便调超大：每连接都有内存开销，且受 `ulimit -n` 限制\n- 监控 `Threads_connected` / `Threads_running` / `Aborted_connects`",
+    "tags": ["连接数", "max_connections", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3610,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "关于 MySQL 的慢查询日志，以下说法正确的是？（多选）",
+    "options": [
+      { "key": "A", "text": "slow_query_log=ON 开启后，超过 long_query_time 的语句会被记录" },
+      { "key": "B", "text": "long_query_time 支持小数（如 0.5 秒），默认单位是秒" },
+      { "key": "C", "text": "log_queries_not_using_indexes 可记录未走索引的语句" },
+      { "key": "D", "text": "慢查询日志会拖慢所有查询性能，生产环境不能开" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是常见误解：慢查询日志只在满足条件的语句上写日志，开销很小，生产环境应当开启。真正要注意的是日志文件增长需配合轮转（可用 mysqldumpslow / pt-query-digest 分析）。",
+    "tags": ["慢查询", "long_query_time", "日志"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3611,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "什么是 MySQL 的 buffer pool？它的大小如何影响性能？",
+    "answer": "**buffer pool** 是 InnoDB 在内存里缓存数据页和索引页的区域，是 MySQL 性能的核心。\n\n工作方式：\n- 读：先查 buffer pool，命中就直接返回（内存读）；未命中才从磁盘读入并缓存\n- 写：先改内存页（脏页），再由后台线程异步刷盘\n\n关键参数：\n```\ninnodb_buffer_pool_size\n```\n- 生产建议设为**物理内存的 50%-70%**（专用数据库机器）\n- 太小 → 频繁磁盘 IO，性能急剧下降\n- 太大 → 挤占 OS 缓存，甚至 OOM\n\n判断命中率：\n```\nSHOW ENGINE INNODB STATUS\\G\n```\n看 `Buffer pool hit rate`，长期低于 95% 说明缓冲池不足。\n\n其他相关：\n- `innodb_buffer_pool_instances`：多实例减少争用（大内存时设 4-8）\n- `innodb_io_capacity`：控制脏页刷盘速度，SSD 可调高\n- 修改 buffer pool size 在 5.7+ 支持在线调整（需时间）",
+    "tags": ["buffer pool", "内存", "性能"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3612,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "大表加索引或改字段，如何避免锁表影响业务？",
+    "answer": "核心思路：用在线 DDL 工具，不要在业务高峰直接 ALTER。\n\n**1. 优先用 MySQL 原生 Online DDL（5.6+）**\n很多操作支持 `ALGORITHM=INPLACE, LOCK=NONE`，不阻塞读写：\n```\nALTER TABLE t ADD INDEX idx_a (a), ALGORITHM=INPLACE, LOCK=NONE;\n```\n注意：加索引通常支持，但**改字段类型、改列名**多数要重建表（阻塞）。执行前先用 `ALGORITHM=INPLACE` 试探，不支持会报错而不是冒险执行。\n\n**2. 不支持的操作用 gh-ost / pt-online-schema-change**\n原理：建影子表 → 同步增量（靠 binlog 或触发器）→ 原子 rename\n- 优点：全程不锁原表，可限速、可暂停\n- gh-ost 用 binlog 同步，对主库压力更小（不装触发器）\n- 注意：大表要先确认磁盘空间足够（影子表 = 表大小）\n\n**3. 其他注意事项**\n- 前置检查：`innodb_online_alter_log_max_size` 要够大，否则同步期间报错回滚\n- 低峰执行，并提前通知业务方\n- 主从环境下注意从库延迟（DDL 会重放）\n- 大表统计信息变更后可能引发执行计划突变，观察一段时间\n\n**验证方式**：执行期间观察 `SHOW PROCESSLIST` 无大量 Waiting for table metadata lock。",
+    "tags": ["Online DDL", "gh-ost", "锁表"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3613,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "InnoDB 存储引擎中，数据实际存放在哪个索引上？",
+    "options": [
+      { "key": "A", "text": "一级索引 / 主键索引（聚簇索引）" },
+      { "key": "B", "text": "二级索引" },
+      { "key": "C", "text": "独立的表空间文件，与索引无关" },
+      { "key": "D", "text": "只存在内存中" }
+    ],
+    "answer": ["A"],
+    "explanation": "InnoDB 是聚簇索引组织表：数据行直接存在主键索引（聚簇索引）的叶子节点上。所以主键查询最快；二级索引叶子存的是主键值，需要回表。",
+    "tags": ["聚簇索引", "主键", "存储结构"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3614,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 的 MVCC 是怎么实现的？ReadView 是什么？",
+    "answer": "**MVCC（多版本并发控制）**：让读不加锁也能看到一致的数据，实现「读写不阻塞」。\n\n三个要素：\n1. **隐藏字段**：每行有两个隐藏列\n   - `DB_TRX_ID`：最近修改该行的事务 ID\n   - `DB_ROLL_PTR`：指向 undo log 中的旧版本\n2. **undo log**：保存行的历史版本，形成版本链\n3. **ReadView**：读快照，决定「能看到哪些版本」\n\nReadView 的关键字段：\n- `m_ids`：生成快照时活跃（未提交）的事务 ID 列表\n- `min_trx_id` / `max_trx_id`：活跃事务的最小/最大 ID\n- `creator_trx_id`：创建该 ReadView 的事务\n\n可见性判断（简化版）：\n- 行的 `DB_TRX_ID` < `min_trx_id` → 已提交，**可见**\n- 行的 `DB_TRX_ID` ≥ `max_trx_id` → 快照之后开始的，**不可见**\n- 在 m_ids 里 → 未提交，**不可见**\n- 不可见就顺着 undo log 往前找上一个版本\n\n级别差异（这是常考点）：\n- **READ COMMITTED**：每次 SELECT 都新建 ReadView → 能看到别人刚提交的数据\n- **REPEATABLE READ**：第一次 SELECT 建 ReadView，事务内复用 → 全程一致\n\n注意：MVCC 只解决快照读（普通 SELECT）；`SELECT ... FOR UPDATE`、UPDATE、DELETE 是当前读，走锁。",
+    "tags": ["MVCC", "ReadView", "undo log"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3615,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "以下哪些是 MySQL 主从延迟的常见原因？（多选）",
+    "options": [
+      { "key": "A", "text": "大事务或大批量 DML" },
+      { "key": "B", "text": "从库配置低于主库（CPU/IO 不足）" },
+      { "key": "C", "text": "表没有主键，ROW 格式下需要全表扫描定位" },
+      { "key": "D", "text": "主从使用相同的 server-id" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 会导致复制直接失败（报 server-id 冲突），而不是延迟。A/B/C 都是典型的延迟原因；另外还有单线程回放瓶颈（可开并行复制解决）。",
+    "tags": ["主从延迟", "大事务", "无主键"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3616,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 分页查询越往后越慢（LIMIT 100000, 10），怎么优化？",
+    "answer": "**为什么慢**：`LIMIT 100000, 10` 必须先扫描并丢弃前 10 万行，然后取 10 行。偏移量越大越慢。\n\n**优化方案（按推荐度）**\n\n1. **游标分页 / 延迟关联**（最优）\n用上一页的最后一条记录做起点：\n```\nSELECT * FROM t WHERE id > 100000 ORDER BY id LIMIT 10;\n```\n要求 id 有序（通常主键），且不支持跳页。\n\n2. **延迟关联**：先只查主键，再回表\n```\nSELECT t.* FROM t\nJOIN (SELECT id FROM t ORDER BY id LIMIT 100000, 10) AS x\nON t.id = x.id;\n```\n子查询只扫索引（覆盖索引），减少回表量，比直接 SELECT * 快很多。\n\n3. **覆盖索引**：如果只需要索引里的列，直接让查询变成覆盖索引，完全避免回表。\n\n4. **业务层限制**：限制最大页数，或改成「加载更多」而非跳页。\n\n**不要做的事**：\n- 不要指望加索引能解决大偏移（问题是扫描行数，不是查找行数）\n- `ORDER BY` 字段必须有索引，否则还要 filesort",
+    "tags": ["分页", "LIMIT", "深分页"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3617,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 的 redo log 为什么要用 WAL（先写日志再写磁盘）？",
+    "answer": "**WAL（Write-Ahead Logging）**：先写日志，再异步刷数据页。\n\n如果反过来（每次改都直接刷数据页）会怎样：\n1. 每次修改都要随机 IO 找到一个数据页，写回磁盘——**随机写极慢**\n2. 一个事务可能改多行，落在磁盘不同页 → 多次随机写\n3. 崩溃时数据页可能只写了一部分 → 页损坏\n\n用 WAL 之后：\n1. 事务提交时只需**顺序追加**写 redo log（顺序 IO 快，且是固定小区域）\n2. 数据页由后台线程**合并后批量刷盘**（把随机写变成顺序/批量）\n3. 崩溃后可用 redo log 重放恢复，保证已提交不丢\n\n关键参数：\n```\ninnodb_flush_log_at_trx_commit\n```\n- `1`（默认）：每次提交都刷盘，最安全，性能最低\n- `0`：每秒刷一次，可能丢 1 秒数据，最快\n- `2`：写到 OS 缓存，由 OS 刷盘，介于两者之间\n\n一句话总结：**WAL 把随机写变成了顺序写，这是 InnoDB 高性能的根本原因之一。**",
+    "tags": ["WAL", "redo log", "顺序IO"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3618,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "EXPLAIN 输出中 type=ALL 表示什么？",
+    "options": [
+      { "key": "A", "text": "使用了覆盖索引，性能最好" },
+      { "key": "B", "text": "全表扫描，通常需要优化" },
+      { "key": "C", "text": "使用了主键等值查询" },
+      { "key": "D", "text": "只扫描索引树" }
+    ],
+    "answer": ["B"],
+    "explanation": "type=ALL 是全表扫描（最差）。type 从好到差：system > const > eq_ref > ref > range > index > ALL。index 是扫全索引树，也已偏慢。",
+    "tags": ["EXPLAIN", "全表扫描", "type"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3619,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "什么是索引选择性？为什么区分度低的列不适合单独建索引？",
+    "answer": "**索引选择性** = 不重复值数量 / 总行数。越接近 1 选择性越高。\n\n计算示例：\n```\nSELECT COUNT(DISTINCT col) / COUNT(*) FROM t;\n```\n- 主键：选择性 = 1（最好）\n- 性别（只有 2 个值）：选择性极低（最差）\n\n**区分度低的列为什么不适合单独建索引**：\n1. 优化器会算：走索引要先查索引再回表，扫 50% 的行不如直接全表扫描 → **优化器直接放弃索引**\n2. 即使走了索引，命中的行太多，回表成本高于全表扫\n3. 索引还要占空间、增加写放大（每次插入/更新都要维护）\n\n**更好的做法**：\n- 用复合索引把低区分度列和高区分度列组合（如 `(status, created_at)`）\n- 或用覆盖索引，避免回表\n\n经验阈值：选择性 > 0.1 一般值得建索引，< 0.01 基本没意义。但最终仍以 EXPLAIN 与实际数据分布为准。",
+    "tags": ["索引选择性", "区分度", "优化器"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3620,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 高可用方案中，以下哪些说法正确？（多选）",
+    "options": [
+      { "key": "A", "text": "MHA 可在主库故障时自动切换并补齐从库差异" },
+      { "key": "B", "text": "半同步复制能减少主库崩溃时的数据丢失风险" },
+      { "key": "C", "text": "组复制（MGR）基于 Paxos 类协议，支持多主模式" },
+      { "key": "D", "text": "主从复制默认就是同步的，主库提交即从库已有一份" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：MySQL 主从默认是**异步复制**，主库提交后不等待从库确认，所以主库崩溃可能丢数据。半同步可缓解，但仍有降级为异步的情况。",
+    "tags": ["高可用", "MHA", "半同步", "MGR"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3621,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "MySQL 有哪些常用的备份方式？各自优缺点？",
+    "answer": "三类：\n\n**1. 逻辑备份（mysqldump / mydumper）**\n- 导出 SQL 语句\n- 优点：通用、可跨版本/跨平台、单表可恢复、文件小（压缩后）\n- 缺点：**恢复慢**（要重放所有 SQL）、大库耗时长、可能不一致（需 --single-transaction）\n- 适用：小库、单表恢复、跨版本迁移\n\n**2. 物理备份（xtrabackup / Percona XtraBackup）**\n- 直接拷贝数据文件\n- 优点：**快**（热备，不锁表）、适合大库、支持增量\n- 缺点：版本/平台绑定、只能整实例恢复（单表恢复麻烦）\n- 适用：大库日常备份、线上热备\n\n**3. binlog 增量**\n- 记录所有变更，可做时间点恢复（PITR）\n- 通常配合全量备份使用：全量 + binlog → 恢复到任意时刻\n\n**生产建议**：\n- 全量（xtrabackup 周备）+ binlog 持续备份\n- 备份文件异地保存（三二一原则）\n- **必须定期做恢复演练**——没验证过的备份等于没有备份",
+    "tags": ["备份", "mysqldump", "xtrabackup"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3622,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 的参数 innodb_flush_log_at_trx_commit 和 sync_binlog 怎么配？",
+    "answer": "这两个参数共同决定**数据安全与性能的平衡**，是 MySQL 调优最关键的一对。\n\n**innodb_flush_log_at_trx_commit**（redo log 刷盘时机）\n- `1`：每次事务提交都刷盘 —— 最安全，**金融必须**\n- `0`：每秒刷一次 —— 最快，崩溃可能丢 1 秒\n- `2`：写入 OS 缓存 —— 折中，OS 崩溃才丢\n\n**sync_binlog**（binlog 刷盘时机）\n- `1`：每次提交都 fsync —— 最安全\n- `0`：交给 OS 决定 —— 最快\n- `N`：每 N 次提交刷一次\n\n**推荐组合**：\n| 场景 | innodb_flush_log_at_trx_commit | sync_binlog |\n|---|---|---|\n| 金融 / 订单（不能丢） | 1 | 1 |\n| 一般业务 | 1 | 1（或 100） |\n| 日志类、可容忍少量丢失 | 2 | 0 |\n\n**双 1 的性能代价**：每次提交两次 fsync，QPS 会明显下降。SSD + 合理配置（如组提交）能缓解。\n\n**关键提醒**：这两个参数是「数据能不能丢」的开关。改之前必须和业务方确认可容忍的丢失窗口（RPO），不要为了压测数字擅自调成 0。",
+    "tags": ["flush_log_at_trx_commit", "sync_binlog", "数据安全"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3623,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 8.0 相比 5.7 有哪些重要变化？（选最主要的一项）",
+    "options": [
+      { "key": "A", "text": "默认字符集改为 utf8mb4，默认排序规则 utf8mb4_0900_ai_ci" },
+      { "key": "B", "text": "不再支持 InnoDB" },
+      { "key": "C", "text": "移除了 binlog" },
+      { "key": "D", "text": "不再支持 SQL 标准" }
+    ],
+    "answer": ["A"],
+    "explanation": "8.0 默认字符集从 latin1 改为 utf8mb4，排序规则改为 utf8mb4_0900_ai_ci。其他重要变化还有：数据字典事务化、窗口函数与 CTE、不可见索引、降序索引真正生效、角色权限等。",
+    "tags": ["MySQL 8.0", "utf8mb4", "版本差异"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3624,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "线上 MySQL 磁盘 IO 突然飙高，如何快速定位？",
+    "answer": "按「先确认现象 → 再定位来源」的顺序：\n\n**1. 确认是 MySQL 引起的**\n```\niostat -x 1        # 看 %util、await、r/s w/s\niotop              # 找是哪个进程\npidstat -d 1       # 按进程看读写量\n```\n\n**2. 看 MySQL 内部在忙什么**\n```\nSHOW PROCESSLIST;                        -- 是否有大量长查询\nSHOW ENGINE INNODB STATUS\\G              -- 看 pending reads/writes\nSHOW GLOBAL STATUS LIKE 'Innodb%';       -- buffer pool 命中率\n```\n\n**3. 常见原因与判断**\n\n| 现象 | 原因 | 判断依据 |\n|---|---|---|\n| buffer pool 命中率骤降 | 热数据被挤出，大量磁盘读 | `Innodb_buffer_pool_reads` 暴涨 |\n| 脏页刷盘跟不上 | 写入太快，checkpoint 压力 | `Innodb_buffer_pool_wait_free > 0` |\n| 大批量 DML / DDL | 单条语句扫描大量页 | PROCESSLIST 里有大查询 |\n| 慢查询全表扫描 | 未走索引 | 慢日志 + EXPLAIN |\n| 备份任务 | xtrabackup 在拷贝文件 | ps 里能看到 |\n| 主从延迟补偿 | 从库重放大事务 | Slave 状态 |\n\n**4. 快速缓解**\n- KILL 明显的大查询\n- 检查是否被误配置（如 buffer pool 太小）\n- 必要时调 `innodb_io_capacity` / `innodb_max_dirty_pages_pct`\n- 长期看：优化慢查询、加索引、分库分表\n\n**注意**：IO 高但 CPU 低，往往是「查得少但要读的页多」——重点查 buffer pool 命中率与扫描行数。",
+    "tags": ["磁盘IO", "排障", "buffer pool"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3625,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "什么是 MySQL 的临时表？什么时候会产生？",
+    "answer": "**临时表**是 MySQL 为处理某些查询而临时创建的内部表，用完即删。\n\n**常见触发场景**：\n1. `GROUP BY` 的列没有索引 → 需要临时表分组\n2. `DISTINCT` 去重且无索引\n3. `UNION` 合并结果\n4. 子查询（部分类型）\n5. `ORDER BY` 与 `GROUP BY` 字段不一致\n\n**如何识别**：EXPLAIN 的 Extra 出现 **Using temporary**。\n\n**性能影响**：\n- 小结果集：用内存临时表（快）\n- 超过 `tmp_table_size` / `max_heap_table_size` → 转成**磁盘临时表**（慢）\n\n**关键参数**：\n```\ntmp_table_size = 64M\nmax_heap_table_size = 64M    -- 两者取较小值生效\n```\n调大能减少磁盘临时表，但别设太大（并发高时内存吃紧）。\n\n**优化方向**：\n- 给 GROUP BY / ORDER BY 的列加合适索引\n- 避免 SELECT 大量列导致无法用索引\n- 观察 `Created_tmp_disk_tables` 与 `Created_tmp_tables` 的比例，磁盘占比高就该优化了",
+    "tags": ["临时表", "Using temporary", "优化"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3626,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "关于 MySQL 的联合索引 (a, b, c)，以下哪些查询能有效利用它？（多选）",
+    "options": [
+      { "key": "A", "text": "WHERE a = 1" },
+      { "key": "B", "text": "WHERE a = 1 AND b = 2" },
+      { "key": "C", "text": "WHERE b = 2 AND c = 3" },
+      { "key": "D", "text": "WHERE a = 1 AND c = 3" }
+    ],
+    "answer": ["A", "B", "D"],
+    "explanation": "最左前缀：A 用 a，B 用 a+b，D 能用 a（c 用不上但 a 有效）。C 跳过了最左列 a，整个索引都用不上。注意 D 的情况虽然能用索引，但 c 条件仍需回表后过滤（或靠 ICP 在索引层过滤）。",
+    "tags": ["联合索引", "最左前缀"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3627,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 连接数突然暴涨，如何在不影响业务的前提下快速处置？",
+    "answer": "分场景，先判断是「真需要」还是「泄漏/异常」。\n\n**1. 先看清来源（1 分钟内）**\n```\nSHOW FULL PROCESSLIST;\nSELECT user, host, db, count(*) cnt FROM information_schema.processlist GROUP BY user, host, db ORDER BY cnt DESC;\n```\n- 大量 Sleep：连接池泄漏或空闲未回收\n- 大量相同 SQL：慢查询堆积或有代码 bug 重试\n- 大量来自同一 host：可能是某台应用连接池配置过大\n\n**2. 止血手段（按风险从低到高）**\n\n```\n-- 清 Sleep 连接（风险低）\nSELECT CONCAT('KILL ', id, ';') FROM information_schema.processlist WHERE command='Sleep' AND time > 600;\n\n-- 调小空闲超时\nSET GLOBAL wait_timeout = 600;\n\n-- 临时提高上限（需评估内存）\nSET GLOBAL max_connections = 2000;\n```\n\n**3. 不要贸然做的事**\n- 不要一次性 KILL 大量活跃连接（会造成应用雪崩式重连）\n- 不要只为救火把 max_connections 调到天文数字（每连接有内存开销，可能反而 OOM）\n\n**4. 根本解决**\n- 应用侧连接池上限 = 数据库可用连接数 / 实例数 × 0.8（留余量）\n- 加连接中间件（如 ProxySQL）做排队与限流\n- 修慢查询，缩短连接占用时长\n\n**监控项**：`Threads_connected`、`Threads_running`、`Aborted_connects`、`Max_used_connections`。\n\n关键区分：`Threads_running`（正在执行的）远小于 `Threads_connected`（总连接）时，说明是「连接多但都在等待」——重点查锁等待和慢查询。",
+    "tags": ["连接数暴涨", "应急处置", "连接池"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3628,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "给表加索引后，可能带来什么负面影响？",
+    "options": [
+      { "key": "A", "text": "插入/更新/删除变慢，因为要维护索引" },
+      { "key": "B", "text": "查询一定会变快" },
+      { "key": "C", "text": "不占用额外存储空间" },
+      { "key": "D", "text": "事务隔离级别会自动提升" }
+    ],
+    "answer": ["A"],
+    "explanation": "索引不是免费的：每次写操作都要维护 B+ 树（写放大），占额外空间，过多的索引还会让优化器选择困难、甚至选错索引。所以索引要按查询需要来建，不是越多越好。",
+    "tags": ["索引代价", "写放大"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3629,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 主库宕机，如何处理？如何做到最小数据丢失？",
+    "answer": "核心是「先恢复服务，再追数据」，并且提前有预案。\n\n**1. 判断故障程度**\n- 能否重启拉起？先看 error log 的崩溃原因\n- 磁盘满、OOM、硬件故障的处理方式完全不同\n\n**2. 切换（有从库时）**\n手动切换流程：\n```\n-- 确认从库已追平\nSHOW SLAVE STATUS\\G   -- Seconds_Behind_Master = 0，且 exec pos = relay 最后位置\n\n-- 停止复制并提升为新主\nSTOP SLAVE;\nRESET MASTER;\nSET GLOBAL read_only = OFF;\n\n-- 其他从库指向新主\nCHANGE MASTER TO MASTER_HOST='新主IP', MASTER_LOG_FILE='...', MASTER_LOG_POS=...;\nSTART SLAVE;\n\n-- 应用侧切换连接地址\n```\n\n**3. 数据丢失看复制模式**\n| 模式 | 主库崩溃的丢失风险 |\n|---|---|\n| 异步复制 | **可能丢**（binlog 未发送的部分） |\n| 半同步（after_commit） | 至少一个从库收到才返回，风险小 |\n| 半同步（after_sync，5.7+） | 风险最小，接近无损 |\n| MGR 多数派 | 需多数节点确认，强一致 |\n\n**减少丢失的关键**：`sync_binlog=1`（保证 binlog 落盘）+ 半同步复制 + 从库不落后。\n\n**4. 事后核对**\n- 对比新旧主的数据与 binlog 位点\n- 从旧主的 binlog（如果可抢救）补哪些事务\n- 通知业务方核对关键数据（订单/金额）\n\n**5. 自动化方案**：MHA、Orchestrator、云上 RDS 的高可用组。\n\n关键提醒：**没有做过切换演练的高可用等于没有高可用**。平时要定期演练，确认切换耗时与数据一致性可接受。",
+    "tags": ["主库宕机", "故障切换", "半同步"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3630,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "以下哪些是 MySQL 的存储引擎？（多选）",
+    "options": [
+      { "key": "A", "text": "InnoDB" },
+      { "key": "B", "text": "MyISAM" },
+      { "key": "C", "text": "Memory" },
+      { "key": "D", "text": "Kafka" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "MySQL 常见引擎有 InnoDB、MyISAM、Memory、Archive、CSV 等。Kafka 是消息队列，不是 MySQL 引擎。查看方式：SHOW ENGINES。",
+    "tags": ["存储引擎", "基础"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3631,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "为什么建议单表数据量控制在千万级别？超过后怎么办？",
+    "answer": "**建议的原因**（InnoDB）：\n\n1. **B+ 树层数增加**：页大小 16KB，三层树约能存 2000 万行。超过四层，每次查询多一次磁盘 IO\n2. **buffer pool 装不下**：热数据变少，命中率下降，磁盘 IO 上升\n3. **DDL 变慢**：加索引/改字段耗时与数据量正相关，锁表风险大\n4. **备份恢复变慢**：逻辑备份和物理备份都受影响\n5. **统计信息不准**：优化器估算偏差，可能选错执行计划\n\n**超过后怎么办**（按实施成本排序）：\n\n1. **先优化**：索引是否合理、能否覆盖索引、能否去掉 SELECT *\n2. **归档历史数据**：把冷数据迁移到历史表/归档库，主表变小（**收益最大、风险最低**）\n3. **分区表**：按时间分区，可快速 drop 老分区。注意：分区键必须在主键里\n4. **分库分表**：ShardingSphere / MyCat / 应用层分片\n   - 水平拆分：按 user_id 取模/范围\n   - 要注意跨分片查询、分布式事务、扩容迁移\n5. **读写分离 + 从库分担**：缓解读压力，但不解决单表过大\n\n**经验判断**：单表 2000 万行是常见阈值，但不是绝对。要看行大小、索引多少、查询模式。窄表 + 覆盖索引，5000 万也可能没问题；宽表 + 复杂查询，500 万就该拆了。",
+    "tags": ["单表数据量", "分库分表", "归档"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3632,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "执行 SHOW SLAVE STATUS 时，判断从库是否延迟最该看哪个字段？",
+    "options": [
+      { "key": "A", "text": "Seconds_Behind_Master" },
+      { "key": "B", "text": "Master_Host" },
+      { "key": "C", "text": "Slave_IO_Running" },
+      { "key": "D", "text": "Master_Port" }
+    ],
+    "answer": ["A"],
+    "explanation": "Seconds_Behind_Master 表示从库落后主库的秒数，是最直观的延迟指标。但它有局限：为 NULL 表示复制中断；且在大事务重放期间可能显示 0 却实际落后。更精确的是对比 Exec_Master_Log_Pos 与 Read_Master_Log_Pos。",
+    "tags": ["主从延迟", "SHOW SLAVE STATUS"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3633,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 的字符集 utf8 和 utf8mb4 有什么区别？为什么推荐 utf8mb4？",
+    "answer": "关键差异在**能存多少字节的字符**：\n\n| 项 | utf8（MySQL 的别名） | utf8mb4 |\n|---|---|---|\n| 最大字节 | 3 字节 | 4 字节 |\n| 能存 emoji | ❌ 不能 | ✅ 能 |\n| 能存生僻字 | ❌ 部分不能 | ✅ 能 |\n| 是否是标准 UTF-8 | ❌ 是残缺版 | ✅ 完整 UTF-8 |\n\n**为什么推荐 utf8mb4**：\n1. 用户输入 emoji（微信昵称、评论）→ utf8 直接报错或乱码\n2. 生僻字（如「𠮷」）需要 4 字节 → utf8 存不了\n3. MySQL 8.0 已默认 utf8mb4\n\n**迁移注意**：\n```\nALTER TABLE t CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n```\n- 索引长度会变：varchar(255) 在 utf8mb4 下索引占 255×4=1020 字节，可能超限\n- 需同时改连接字符集：`character_set_server`、`character_set_client`\n- 排序规则建议 `utf8mb4_unicode_ci`（5.7）或 `utf8mb4_0900_ai_ci`（8.0）\n\n**一句话记**：MySQL 的 `utf8` 是「假 UTF-8」（只有 3 字节），`utf8mb4` 才是真 UTF-8。",
+    "tags": ["字符集", "utf8mb4", "emoji"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3634,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "以下哪些做法能有效减少 MySQL 死锁？（多选）",
+    "options": [
+      { "key": "A", "text": "统一多个事务访问相同行/表的加锁顺序" },
+      { "key": "B", "text": "缩短事务，把 RPC、IO 等非数据库操作移出事务" },
+      { "key": "C", "text": "减少锁范围，用索引避免全表扫描与大量间隙锁" },
+      { "key": "D", "text": "把隔离级别从 RR 提到 SERIALIZABLE" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 会让所有读都加锁，死锁与阻塞只会更多。A/B/C 是公认有效的三个方向，另外还可以降级到 RC（减少间隙锁）、小批量更新、应用层重试。",
+    "tags": ["死锁", "预防", "事务"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3635,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "什么是 MySQL 的半同步复制？相比异步有什么代价？",
+    "answer": "**半同步复制**：主库提交事务后，**至少等待一个从库确认收到 binlog**，才向客户端返回成功。\n\n对比：\n| 模式 | 主库返回时机 | 数据风险 |\n|---|---|---|\n| 异步 | 写完 binlog 就返回 | 主库崩可能丢已提交数据 |\n| 半同步（after_commit） | 等从库 ACK 再返回 | 风险小；但主库已提交、可能从库未落盘 |\n| 半同步（after_sync，5.7+） | 先等 ACK 再提交 | 最安全，接近无损 |\n| 全同步（MGR） | 多数派确认 | 强一致，代价更高 |\n\n**代价**：\n1. **延迟增加**：每次提交都要等一次网络往返（同机房影响小，跨机房明显）\n2. **吞吐下降**：尤其在高并发写入时\n3. **超时降级**：`rpl_semi_sync_master_timeout`（默认 10 秒）超时后**自动降级为异步**，此时安全性又回到异步水平——这是常被忽略的一点\n\n**配置要点**：\n```\n-- 主库\nSET GLOBAL rpl_semi_sync_master_enabled = 1;\nSET GLOBAL rpl_semi_sync_master_timeout = 1000;   -- 1 秒\n-- 从库\nSET GLOBAL rpl_semi_sync_slave_enabled = 1;\n```\n\n**监控重点**：`Rpl_semi_sync_master_status` 是否为 ON（如为 OFF 说明已降级）；`Rpl_semi_sync_master_no_tx` 计数。\n\n**实践建议**：同城双中心用半同步（延迟可接受），跨地域用异步 + 业务层补偿。",
+    "tags": ["半同步", "复制模式", "RPO"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3636,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "如何查看 MySQL 当前的连接数、QPS、运行状态？",
+    "answer": "常用三个入口：\n\n**1. SHOW STATUS（实时计数）**\n```\nSHOW GLOBAL STATUS LIKE 'Threads_connected';   -- 当前连接数\nSHOW GLOBAL STATUS LIKE 'Threads_running';     -- 正在执行的语句数\nSHOW GLOBAL STATUS LIKE 'Uptime';              -- 运行秒数\nSHOW GLOBAL STATUS LIKE 'Questions';           -- 累计请求数\n```\n\n**QPS 计算**（需两次采样）：\n```\nQPS = (Questions2 - Questions1) / (Uptime2 - Uptime1)\n```\n或用现成工具：`mysqladmin extended-status -r -i 1` 直接看每秒增量。\n\n**2. Performance Schema（细粒度）**\n```\nSELECT * FROM performance_schema.events_statements_summary_by_digest\nORDER BY SUM_TIMER_WAIT DESC LIMIT 10;\n```\n找出最耗时的 SQL 模板，比慢日志更全面。\n\n**3. 监控系统**：Prometheus 的 mysqld_exporter + Grafana，或云上 RDS 自带面板。\n\n**最该监控的指标**：\n- `Threads_connected` / `Threads_running`\n- `Innodb_buffer_pool_read_requests` vs `Innodb_buffer_pool_reads`（命中率）\n- `Innodb_row_lock_waits`（锁等待）\n- `Created_tmp_disk_tables`（磁盘临时表）\n- 主从 `Seconds_Behind_Master`",
+    "tags": ["状态查看", "QPS", "监控"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3637,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "执行 DELETE 删除大量数据后，磁盘空间没有释放，原因是？",
+    "options": [
+      { "key": "A", "text": "DELETE 只是打删除标记，空间留在表内可复用，需要 OPTIMIZE 才回收" },
+      { "key": "B", "text": "MySQL 有 24 小时延迟才释放" },
+      { "key": "C", "text": "需要重启 MySQL" },
+      { "key": "D", "text": "必须用 DROP TABLE 才能释放" }
+    ],
+    "answer": ["A"],
+    "explanation": "InnoDB 的 DELETE 只标记删除，空间留在表空间内供后续复用（不会还给 OS）。要真正回收需 OPTIMIZE TABLE（会重建表、锁表，大表要用 gh-ost）或用 TRUNCATE 清空。",
+    "tags": ["DELETE", "空间回收", "OPTIMIZE"],
+    "frequency": "中频"
+  }
+]

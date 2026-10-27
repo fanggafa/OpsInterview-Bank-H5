@@ -8,9 +8,6 @@
  * 交付进度维护方式：完成一批就往 PENDING 里移除该项。
  */
 export const PENDING_CATEGORIES = [
-  'iptables/firewalld',
-  'LVS/HAProxy',
-  'Tomcat/JVM',
   'MongoDB',
   '消息队列',
   '存储与备份',

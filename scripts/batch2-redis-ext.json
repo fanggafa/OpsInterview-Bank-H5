@@ -1,0 +1,39 @@
+[
+  {
+    "id": 3836,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 支持事务吗？MULTI/EXEC 有什么局限？",
+    "answer": "**支持，但和关系型数据库的事务完全不同。**\n\n基本用法：\n```\nMULTI            -- 开始\nSET a 1\nINCR a\nEXEC             -- 提交执行\nDISCARD          -- 放弃\nWATCH key        -- 乐观锁监控\n```\n\n**能保证的**：\n- 命令**按顺序连续执行**，中间不会插入其他客户端的命令（隔离性）\n- 要么全部执行，要么全部不执行（用 DISCARD 时）\n\n**不能保证的**（关键局限）：\n\n1. **无回滚**：某条命令执行失败（如对 String 用 LPUSH），其余命令**照常执行**，不会撤销\n   - 这是与 SQL 事务最大的区别\n   - 原因：Redis 认为「命令写错是编程错误，应该在开发期发现」，不值得为回滚付出性能代价\n2. **不支持跨节点**：集群模式下只能在单节点内保证，涉及多 key 时需同槽\n3. **无法在事务中读取结果再决策**：命令是排队到 EXEC 才执行，中间拿不到返回值\n4. **WATCH 是乐观锁**：只在 key 被改动时让 EXEC 失败，高并发下需自己重试\n\n**为什么这么设计**：Redis 追求极致性能与简单性，放弃了回滚这种成本高、收益低的特性。需要真正的事务，用数据库；需要原子组合逻辑，用 **Lua 脚本**（能读取中间结果并据此分支）。",
+    "tags": ["事务", "MULTI", "原子性"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3837,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 WATCH 命令实现的是什么机制？",
+    "options": [
+      { "key": "A", "text": "悲观锁，直接阻塞其他写操作" },
+      { "key": "B", "text": "乐观锁，key 被修改则 EXEC 失败" },
+      { "key": "C", "text": "读锁，允许多个客户端同时写" },
+      { "key": "D", "text": "与事务无关的监控命令" }
+    ],
+    "answer": ["B"],
+    "explanation": "WATCH 是乐观锁：监控某些 key，如果 EXEC 之前这些 key 被任何客户端改动，则 EXEC 返回 nil（事务放弃）。需要客户端自己重试。它不会阻塞其他写操作，开销小。",
+    "tags": ["WATCH", "乐观锁", "CAS"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3838,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 List 底层是 quicklist，说说它为什么这么设计？",
+    "answer": "Redis 3.2+ 的 List 用 **quicklist = 双向链表 + 每个节点一个 ziplist/listpack**。\n\n**两种极端方案的缺点**：\n\n| 方案 | 问题 |\n|---|---|\n| 纯双向链表 | 每个元素都要 prev/next 指针与 malloc 头，内存开销巨大（一个 8 字节 int 可能要 40+ 字节） |\n| 纯 ziplist（连续内存） | 插入删除要整体移动内存，大 List 下 O(N) 甚至触发连锁更新（cascade update） |\n\n**quicklist 的折中**：\n- 外层用链表，保证**插入删除 O(1)**\n- 每个链表节点存一个小的连续内存块（listpack），保证**内存紧凑**\n- 块大小可配置：\n```\nlist-max-listpack-size -2    -- 默认每块约 8KB\n```\n负数表示按大小限制（-1 4KB、-2 8KB、-3 16KB…），正数表示元素个数上限。\n\n**优点**：\n1. 内存利用率高（无逐元素指针开销）\n2. 增删高效（只动一块，不整表移动）\n3. 支持 LZ4 压缩中间节点（`list-compress-depth`）\n\n**Redis 7.0 变化**：引入 listpack 替代 ziplist（解决 ziplist 连锁更新问题），但整体仍是 quicklist 结构。\n\n**顺带记住**：\n- Hash 小数据用 listpack，超过 `hash-max-listpack-entries` 转 dict\n- ZSet 小数据用 listpack，超过转跳表 + dict\n- 三种结构的转换阈值都在 `redis.conf` 里，可调",
+    "tags": ["quicklist", "List", "底层结构"],
+    "frequency": "中频"
+  }
+]

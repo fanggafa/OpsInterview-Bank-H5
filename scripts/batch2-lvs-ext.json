@@ -1,0 +1,177 @@
+[
+  {
+    "id": 1624,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的连接超时参数有哪些？配错了会有什么现象？",
+    "answer": "HAProxy 的超时参数分三个维度，**都设成 1s 或都过长都是常见的错误配置**。\n\n**核心三参数**：\n```\ndefaults\n    timeout connect 5s      # 连接后端服务器的超时\n    timeout client  30s     # 客户端连接空闲超时\n    timeout server  30s     # 后端连接空闲超时\n```\n\n**三个参数的含义与影响**：\n\n| 参数 | 长短不合适时的现象 |\n|---|---|\n| `timeout connect` 太短 | 后端稍慢就判定连接失败 → 502 增多 |\n| `timeout connect` 太长 | 后端挂掉时长时间占资源 |\n| `timeout client` 太短 | 慢客户端（大文件下载、移动网络）被无故断开 |\n| `timeout server` 太短 | 长耗时接口（导出、大查询）被断开，返回 504 |\n| `timeout server` 太长 | 后端卡死时连接长期不释放，并发被占满 |\n\n**其他常用超时**：\n```\n    timeout http-request 10s     # 接收完整请求头的超时（防慢速攻击）\n    timeout http-keep-alive 10s  # keepalive 空闲时长\n    timeout queue 30s            # 请求在队列等待的超时\n    timeout tunnel 1h            # WebSocket/隧道类长连接\n```\n\n**经验值参考**：\n- `connect`: 3-5s（内网），跨地域可到 10s\n- `client` / `server`: 与后端 P99 耗时相关，建议 **≥ 后端 P99 的 2-3 倍**\n- 有长任务的接口，单独用 `timeout tunnel` 或给该 backend 单独设更长超时\n\n**排查方法**：\n```bash\n# 看是否因超时被断\ncat /var/log/haproxy.log | grep -E 'timeout|504'\n# 统计页看 ctime/rtime 分布\necho \"show stat\" | socat stdio /var/run/haproxy.sock | grep -v '^#'\n```\n\n**关键提醒**：这三个超时只是「连接空闲」的判定，不等于「请求总耗时上限」。HAProxy 不能直接限制单请求总时长，那要靠后端应用或 nginx 的 `proxy_read_timeout` 配合。",
+    "tags": ["HAProxy", "超时", "配置"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1625,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的四层模式（mode tcp）下，能否按 URL 做分流？",
+    "options": [
+      { "key": "A", "text": "可以，配置 acl 就行" },
+      { "key": "B", "text": "不可以，四层看不到 URL，必须用 mode http" },
+      { "key": "C", "text": "可以，但要开启 ssl 卸载" },
+      { "key": "D", "text": "可以，通过端口区分即可" }
+    ],
+    "answer": ["B"],
+    "explanation": "mode tcp 只转发字节流，不解析 HTTP，因此无法看 URL/host。要按 URL 分流必须用 mode http。云上 SLB 的「七层监听」也是同理。",
+    "tags": ["HAProxy", "mode", "四层限制"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1626,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "HAProxy 如何做 SSL 卸载？证书更新需要重启吗？",
+    "answer": "**SSL 卸载**：证书终止在 HAProxy，后端用明文 HTTP 通信，减轻后端 CPU 负担。\n\n**配置**：\n```\nfrontend https_in\n    bind *:443 ssl crt /etc/haproxy/certs/example.pem\n    default_backend web_servers\n\nbackend web_servers\n    server s1 10.0.0.1:80 check\n```\n**关键点**：\n- `crt` 指向的是一个 **PEM 文件**（私钥 + 证书 + 中间证书链拼在一起），不是两个文件\n- HAProxy 支持在目录中放多个 PEM，自动按 SNI 匹配（`crt /path/certs/` 指向目录）\n\n**重要：多证书（SNI）**\n```\nbind *:443 ssl crt /etc/haproxy/certs/\n```\n目录下的每个 pem（文件名无关）都会被加载，按 SNI 自动选择。**这比 Nginx 配多个 server 块更简洁**。\n\n**证书更新是否需要重启？**\n\n**不需要重启，但需要 reload**：\n```bash\n# 1. 先合并证书（顺序很重要）\ncat private.key server.crt intermediate.crt > /etc/haproxy/certs/example.pem\n# 2. 校验配置\nhaproxy -c -f /etc/haproxy/haproxy.cfg\n# 3. 平滑重载（不断连接）\nsystemctl reload haproxy\n# 或\nkill -USR2 $(cat /var/run/haproxy.pid)\n```\n\n**能不能不 reload？** 有几种方式：\n1. **Runtime API**（HAProxy 2.x 起支持）\n```bash\necho \"set ssl cert /etc/haproxy/certs/example.pem <<EOF\n$(cat new.pem)\nEOF\" | socat stdio /var/run/haproxy.sock\necho \"commit ssl cert /etc/haproxy/certs/example.pem\" | socat stdio /var/run/haproxy.sock\n```\n这是真正的热更新，不用 reload。\n\n2. **文件监控自动 reload**：用 inotify 监听证书变化触发 reload（需谨慎，避免频繁 reload）\n\n**常见坑**：\n- PEM 内**证书顺序错了**（应先域名证书再中间证书），会导致部分客户端握手失败\n- 只放了域名证书没放中间证书 → 浏览器/App 报证书链不完整（安卓、Java 客户端尤其敏感）\n- reload 后**旧连接仍用旧证书**（graceful 期间不中断已有连接），要等一会儿才全切\n- 忘记 `-c` 校验直接 reload → 配置有错会导致 reload 失败并且旧进程还在跑（服务不中断但新配置不生效，容易误判）\n\n**验证命令**：\n```bash\nopenssl s_client -connect host:443 -servername example.com < /dev/null 2>&1 | openssl x509 -noout -dates -subject\n```",
+    "tags": ["HAProxy", "SSL", "证书热更"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1627,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 和 Keepalived 的「主备」与「主主」模式有什么区别？",
+    "answer": "**主备（Active-Backup）**：\n- 一个 VIP，Master 承载全部流量，Backup 空闲待命\n- 优点：简单、不易出错\n- 缺点：**资源利用率 50%**（备机闲置）\n- 切换：Master 挂了 Backup 接管\n\n**主主（Active-Active）**：\n- **两个 VIP**，两台 LVS 各持有一个，互为对方的备\n- 具体做法：\n```\n# 机器 A\nvrrp_instance VI_1 { state MASTER; priority 100; virtual_ipaddress { 192.168.1.100 } }\nvrrp_instance VI_2 { state BACKUP; priority 90;  virtual_ipaddress { 192.168.1.101 } }\n\n# 机器 B 反过来\nvrrp_instance VI_1 { state BACKUP; priority 90;  virtual_ipaddress { 192.168.1.100 } }\nvrrp_instance VI_2 { state MASTER; priority 100; virtual_ipaddress { 192.168.1.101 } }\n```\n- 优点：**资源利用率接近 100%**，两台都在干活\n- 缺点：配置复杂，脑裂风险更高（两组 VRRP 实例必须用不同的 `virtual_router_id`）\n\n**选型建议**：\n- 流量不大 → **主备**（简单可靠，运维成本低）\n- 流量大且资源紧张 → **主主**（但要做好监控）\n\n**主主的关键风险**：\n1. 两组实例的 `virtual_router_id` 必须不同（否则互相干扰）\n2. 脑裂时可能两台都持有两 VIP → 流量加倍打向后端\n3. DNS 需要把两个 VIP 都解析出来（或前置设备做双 VIP 负载）\n\n**常见误解**：主主不是「两台同时接管同一个 VIP」——那是不可能的（同一 IP 冲突）。主主的本质是**两个 VIP，互为备份**。\n\n**监控要点（无论主备主主）**：\n- 每台机器上 `ip addr` 检查 VIP 是否只在预期的那台\n- `vrrp` 状态：`ip addr show` + 日志 `grep VRRP /var/log/messages`\n- 配置告警：同一 VIP 在 >1 台机器上同时存在 → 立即告警",
+    "tags": ["Keepalived", "主备", "主主"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1628,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 ACL 可以用来做什么？（多选）",
+    "options": [
+      { "key": "A", "text": "按 URL 路径分流到不同 backend" },
+      { "key": "B", "text": "按 Host 头（域名）分流" },
+      { "key": "C", "text": "按源 IP 做访问控制或限流" },
+      { "key": "D", "text": "直接修改后端数据库中的数据" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "ACL 是 HAProxy 的七层匹配能力，可基于 path_beg/path_end、hdr(host)、src IP、HTTP 状态、请求方法等做匹配并执行不同动作。D 完全无关——HAProxy 只是代理，不碰业务数据。",
+    "tags": ["HAProxy", "ACL", "分流"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1629,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "线上出现「部分用户访问不了」但服务器都正常，如何排查负载均衡层？",
+    "answer": "「部分用户」是最难的故障类型，说明不是全站挂，而是**路径或节点维度**的问题。\n\n**先缩小范围（关键）**：\n1. **按客户端维度**：同地区？同运营商？同出口 IP段？\n2. **按后端维度**：是不是固定落到某台后端就失败？\n3. **按时间维度**：周期性（健康检查间隔）还是随机？\n4. **按协议**：HTTP 全部失败还是只在 POST/大请求时失败？\n\n**排查清单（按命中率排序）**：\n\n**A. 负载均衡层的健康检查误判**\n```\nipvsadm -L -n              # LVS：某台 RS 权重为 0 说明被摘了\n# HAProxy：stats 页面看哪些 server 是 DOWN\necho \"show stat\" | socat stdio /var/run/haproxy.sock | grep -v '^#'\n```\n- 某台后端被误判为失败 → 落到它的请求全部失败\n- 常见原因：健康检查路径配错、检查频率过高导致后端超时、检查端口不通\n\n**B. 会话保持导致的「粘到坏节点」**\n- 用了 `sh`（源 IP哈希）或 cookie 粘性 → 某些用户固定打到某台故障后端\n- 判断：故障用户是否总是访问失败（而非偶发）\n- 验证：让用户清 cookie 或换网络试试\n\n**C. LVS 的 ARP / VIP 配置不一致**\n- 某台 RS 的 ARP 抑制没做 → 抢走部分流量（表现为「有时正常有时超时」）\n```bash\narping -I eth0 <VIP> -c 3   # 是否有多个响应\n```\n\n**D. 部分后端连接数打满 / 挂了但不健康检查没发现**\n- 检查每台后端的 `ss -s`、`dmesg`（conntrack 满）、应用日志\n- 被动检查模式下（Nginx max_fails），后端半死不活时可能仍在池里\n\n**E. MTU / 大包问题**\n- 现象：小请求正常，大响应（POST 大 body、大文件）失败\n- 排查：`ping -M do -s 1472 <VIP>` 测 MTU，TUN/GRE 隧道下常见\n- 解决：调 MSS（`iptables ... TCPMSS --clamp-mss-to-pmtu`）\n\n**F. DNS 解析到旧 IP / 多 IP 轮询中有失效节点**\n```bash\ndig <域名> +short    # 是否解析出多个 IP，其中有个是旧的\ntelnet <每个IP> 80   # 逐个验证\n```\n本例「服务器都正常」但用户访问不了，很可能是**某个 VIP 或某台 LVS 有问题**而 DNS 仍在解析它。\n\n**G. 运营商/地域链路问题**\n- 用第三方拨测（多地 ping/traceroute）确认是否特定地区不通\n- 检查云上的「安全组/ACL」是否对特定网段有条目\n\n**排查工具沉淀**：\n- 抓包：`tcpdump -i any -nn host <用户IP>` 看请求到没到\n- 分节点验证：分别 `curl --resolve 域名:443:后端IP` 逐台测\n- 拨测平台：多地区多运营商同时测同一个 VIP\n\n**根因概率排序**（经验）：健康检查误判 > 会话粘性打到坏节点 > DNS 残留旧 IP > ARP 配置不一致 > MTU。",
+    "tags": ["部分用户不可用", "排障", "负载均衡"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1630,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "什么是「四层负载均衡的会话保持」？LVS 怎么做？",
+    "answer": "**四层无法用应用层 cookie**（看不到 HTTP 头），所以只能用 IP 维度做保持。\n\n**LVS 的方式（只有两类）**：\n\n**1. 源地址哈希（sh 算法）**\n```\nipvsadm -A -t VIP:80 -s sh\n```\n- 同一客户端 IP 永远落到同一台 RS\n- **缺点致命**：NAT 环境下大量用户共用出口 IP → 严重倾斜\n\n**2. 持久连接（persistence，-p）**\n```\nipvsadm -A -t VIP:80 -s wlc -p 300     # 300 秒内同一客户端固定到同一 RS\n```\n- 比 sh 更可控：有超时时间，到期可重新调度\n- 内部用连接跟踪表记录「客户端IP → RS」\n- `-p` 是**推荐做法**，比 sh 灵活\n\n**四层会话保持的固有局限**：\n| 问题 | 说明 |\n|---|---|\n| NAT 倾斜 | 多人共用出口 IP 时全集中到一台 |\n| 无业务维度 | 只能按 IP，不能按用户 ID/cookie |\n| IP 漂移 | 移动网络切换 IP 会导致会话丢失 |\n| 与高可用冲突 | RS 挂了，粘在上面的用户会失败（需等超时） |\n\n**更好的方案（按推荐度）**：\n1. **消除会话状态**（最优）：session 存 Redis，应用无状态 → 用纯轮询即可\n2. **七层解决**：用 HAProxy/Nginx 的 cookie 插入（按业务维度保持，不受 IP 影响）\n3. 四层 `-p` 持久连接（临时方案，可控）\n4. `sh`（最后选择，倾斜风险大）\n\n**实操提醒**：\n- 用 `-p` 时，`ipvsadm -L -n -c` 能看到持久表\n- 持久时间不宜过长（300-600s 常见），太长会导致负载不均\n- 改动持久时间后已有连接不受影响，新连接按新规则\n\n**面试加分**：能说出「四层保持是基于 IP 的无奈之举，根本解法是让应用无状态」，说明理解架构而不只是会配命令。",
+    "tags": ["会话保持", "LVS", "persistence"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1631,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 ipvsadm -L -n -c 命令用来查看什么？",
+    "options": [
+      { "key": "A", "text": "当前的连接跟踪表（每条活跃连接）" },
+      { "key": "B", "text": "后端服务器的健康状态" },
+      { "key": "C", "text": "调度算法配置" },
+      { "key": "D", "text": "VIP 的 ARP 表" }
+    ],
+    "answer": ["A"],
+    "explanation": "-c 显示当前所有连接（源→VIP→RS 的映射），用于排查连接卡住、确认请求是否真的转发到了后端。看统计用 --stats，看规则用 -L -n。",
+    "tags": ["ipvsadm", "连接表", "排查"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1632,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 maxconn 如何计算？打满了怎么办？",
+    "answer": "**maxconn 是 HAProxy 的整体并发连接上限**，超过后新连接进入队列（或拒绝）。\n\n**配置位置与优先级**：\n```\nglobal\n    maxconn 50000          # 全局上限（进程级）\n\nfrontend web\n    maxconn 10000          # 该前端的上限（不能超过全局）\n\nbackend app\n    maxconn 5000           # 该后端的上限\n```\n\n**估算方式**：\n```\nmaxconn ≈ 预期峰值并发连接数 × 1.3（余量）\n```\n瓶颈往往不在 maxconn 本身，而在：\n1. **文件描述符**：每个连接占 1 个 fd，需 `ulimit -n` ≥ maxconn × 2（前端 + 后端各占一个）\n2. **内存**：每连接有缓冲开销（几 KB 到几十 KB），maxconn 大时内存要够\n3. **后端承载能力**：maxconn 设得比后端能处理的大，只会把压力转嫁给后端\n\n**检查是否打满**：\n```bash\necho \"show info\" | socat stdio /var/run/haproxy.sock\n# 看 CurrConns / MaxConns / CumConns\n```\n或 stats 页面看 `Sessions` 与队列。\n\n**打满后的现象与处理**：\n| 现象 | 原因 | 处理 |\n|---|---|---|\n| 新连接超时/被拒 | maxconn 满 | 提高 maxconn（同时查 ulimit） |\n| 队列增长（qcur > 0） | 后端处理不过来 | 扩后端 / 优化慢接口 |\n| 内存暴涨 | 缓冲堆积 | 检查是否有慢客户端/大响应 |\n\n**关键提醒**：\n1. `maxconn` 与 `ulimit -n` 必须配套改，否则改了 maxconn 也没用（会报 `cannot get socket` 之类错误）\n2. 系统级还要看 `net.core.somaxconn`、`net.ipv4.tcp_max_syn_backlog`\n3. **别只看 maxconn 一个数字**——真正的容量由「LB maxconn、后端处理能力、DB 连接数」三者最小值决定\n\n**排查命令**：\n```bash\nulimit -n                     # 当前进程限制\ncat /proc/<haproxy-pid>/limits  # 进程实际限制\nss -s                         # 系统连接总览\n```",
+    "tags": ["HAProxy", "maxconn", "容量"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1633,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "以下哪些指标应该纳入 LVS/HAProxy 的监控？（多选）",
+    "options": [
+      { "key": "A", "text": "各后端的活跃连接数与流量分布是否均衡" },
+      { "key": "B", "text": "健康检查失败的节点数与变化" },
+      { "key": "C", "text": "VIP 是否只在预期的主机上（防脑裂）" },
+      { "key": "D", "text": "后端数据库的慢查询数量" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 属于数据库层监控，不是负载均衡层的职责。A/B/C 是 LB 层三个必监控项，尤其 C（VIP 唯一性）是防止脑裂的关键，很多人会漏掉。",
+    "tags": ["监控", "指标", "脑裂"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1634,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "LVS/HAProxy 层被 DDoS 或恶意刷流量时，如何应急与加固？",
+    "answer": "**先判断类型**（决定处置方式）：\n\n| 类型 | 特征 | 手段 |\n|---|---|---|\n| 带宽型（UDP flood、反射放大） | 出口带宽打满，LB 本身 CPU 不高 | 云清洗、黑洞、运营商 |\n| 连接型（SYN flood） | 半连接队列满，`ss -s` 看到大量 SYN-RECV | SYN cookie、限连接速率 |\n| 应用型（CC 攻击） | 大量看似合法的 HTTP 请求，CPU/后端被打满 | 七层限流、人机校验 |\n\n**应急步骤**：\n\n**1. 立即止血**\n```bash\n# 找攻击源特征\nss -s                                  # 连接总览\ntcpdump -i eth0 -nn -c 1000 'tcp[tcpflags] & tcp-syn != 0'   # 抓 SYN\nawk '{print $1}' /var/log/haproxy.log | sort | uniq -c | sort -rn | head   # TOP 源IP\n\n# LVS 层直接封（临时）\nipvsadm -L -n | grep <攻击IP>\niptables -I INPUT -s <攻击IP> -j DROP\n```\n\n**2. 开启防护**\n```bash\n# SYN cookie（防 SYN flood）\nsysctl -w net.ipv4.tcp_syncookies=1\nsysctl -w net.ipv4.tcp_max_syn_backlog=8192\nsysctl -w net.core.somaxconn=8192\n\n# 限制单 IP 连接数\niptables -I INPUT -p tcp --dport 443 -m connlimit --connlimit-above 50 -j DROP\n```\n\n**3. 七层限流（HAProxy）**\n```\nfrontend web\n    stick-table type ip size 1m expire 60s store http_req_rate(60s),conn_cur\n    http-request track-sc0 src\n    http-request deny if { sc_http_req_rate(0) gt 100 }     # 60秒超100次拒绝\n    http-request deny if { sc_conn_cur(0) gt 30 }\n```\n或用 `http-request rate-limit`（2.7+）。\n\n**4. 云上手段**（更有效）\n- 云 WAF + DDoS 高防（清洗层前置）\n- SLB 的「访问控制」黑名单\n- CDN 缓存静态资源，减少回源\n\n**加固（长期）**：\n1. **隐藏真实源 IP**：用 CDN/高防代理，源站只允许回源 IP 访问\n2. **分层限流**：边缘（CDN/WAF）→ LB（连接数/速率）→ 应用（业务维度）\n3. **人机校验**：登录/搜索等易被刷的接口加验证码\n4. **最小化暴露面**：只开必要端口，管理端口加 IP 白名单\n5. **容量冗余**：LB 与带宽留余量，避免小攻击就打死\n6. **演练**：定期做压测与攻击模拟，验证预案有效\n\n**关键提醒**：\n- 大规模流量攻击（> 带宽）在单机上**无法防住**，必须靠云清洗或运营商\n- 不要盲目封 IP 段（可能误伤正常用户），优先用速率限制\n- 处置全程留记录（攻击量、时间、处置动作），用于事后复盘与取证",
+    "tags": ["DDoS", "应急", "限流"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1635,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 配置里 `balance leastconn` 与 `balance roundrobin` 的核心区别是？",
+    "options": [
+      { "key": "A", "text": "leastconn 按当前连接数分配，适合长连接/耗时不均；roundrobin 按顺序轮询" },
+      { "key": "B", "text": "两者完全相同" },
+      { "key": "C", "text": "roundrobin 更适合长连接" },
+      { "key": "D", "text": "leastconn 只能用于四层" }
+    ],
+    "answer": ["A"],
+    "explanation": "leastconn 动态按当前连接数选最闲的，适合请求耗时差异大或有长连接（DB、WebSocket）的场景。roundrobin 简单轮询，适合请求耗时均匀的无状态服务。",
+    "tags": ["HAProxy", "调度算法", "leastconn"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1636,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "如何平滑升级/变更 LVS 或 HAProxy 而不中断服务？",
+    "answer": "**HAProxy 的平滑变更**：\n\n1. **配置校验**\n```bash\nhaproxy -c -f /etc/haproxy/haproxy.cfg\n```\n2. **平滑重载**\n```bash\nsystemctl reload haproxy\n# 或\nkill -USR2 $(cat /var/run/haproxy.pid)\n```\n- `USR2` 是 graceful reload：启动新进程 → 新进程接管新连接 → 老进程处理完已有连接后退出\n- **不会断开已有连接**，配置秒级生效\n\n3. **版本升级**（二进制变更）\n- 同样用 `USR2` + 老进程自退，实现**零停机升级**\n- 注意：新老版本若配置语法不兼容，会启动失败（老进程仍在跑，服务不中断）\n\n**LVS 的平滑变更**：\n\n1. **增删后端（不动 VIP）**\n```bash\n# 先加新后端并设为权重 0（不接流量）\nipvsadm -a -t VIP:80 -r 新IP:80 -g -w 0\n# 观察健康后逐步加权\nipvsadm -e -t VIP:80 -r 新IP:80 -g -w 5\n# 摘除旧后端：先把权重降到 0，等连接清空后再删\nipvsadm -e -t VIP:80 -r 旧IP:80 -g -w 0\nsleep 60\nipvsadm -d -t VIP:80 -r 旧IP:80\n```\n**关键：不要直接 -d 删除**，会让已有连接中断。\n\n2. **规则整体变更**\n- 用 `ipvsadm-save` / `ipvsadm-restore` 做原子替换\n```bash\nipvsadm-save > /tmp/current.rules\n# 编辑新规则到 /tmp/new.rules\nipvsadm-restore < /tmp/new.rules\n```\n\n2. **Keepalived 变更**\n```bash\n# 配置变更后\nsystemctl reload keepalived\n# 或\nkill -HUP $(cat /var/run/keepalived.pid)\n```\n- 注意：reload 不会重建 VRRP 实例，某些变更（如 virtual_router_id）必须 restart\n\n**变更前后的黄金习惯**：\n1. **备份当前配置与状态**\n```bash\ncp /etc/haproxy/haproxy.cfg{,.bak.$(date +%F)}\nipvsadm-save > /root/ipvs.$(date +%F).rules\n```\n2. **低峰执行**\n3. **变更后立即验证**\n```bash\ncurl -I http://VIP/           # 从外部验证\nipvsadm -L -n --stats         # 看流量是否正常分配\n```\n4. **准备好回滚命令**（一条命令能切回去）\n\n**最危险的操作**（务必避开）：\n- 直接 `ipvsadm -C`（清空所有规则）→ 服务立即全断\n- 直接 `systemctl restart haproxy`（非 reload）→ 断开所有连接\n- 改 keepalived 的 `virtual_router_id` 后只 reload → 可能双主脑裂",
+    "tags": ["平滑变更", "reload", "运维操作"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1637,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "Nginx、HAProxy、LVS 三者如何选型？给出决策依据。",
+    "answer": "三者定位不同，**不是替代关系而是分层关系**。\n\n**核心差异表**：\n\n| 维度 | LVS | HAProxy | Nginx |\n|---|---|---|---|\n| 工作层级 | 四层（内核） | 四/七层 | 七层为主（可四层） |\n| 性能上限 | **最高**（十万级+） | 高（万级） | 高（万级） |\n| 七层能力 | ❌ 无 | ✅ 强 | ✅ 强 |\n| 健康检查 | ❌ 需 Keepalived | ✅ **最强**（主动+多协议） | ⚠️ 开源版仅被动 |\n| SSL 卸载 | ❌ | ✅ | ✅ |\n| 静态资源 | ❌ | ⚠️ 弱 | ✅ **强**（sendfile/缓存） |\n| 配置复杂度 | 中（+Keepalived） | 中 | 低 |\n| 统计与观测 | 弱（ipvsadm） | ✅ **强**（stats+socket） | 中（stub_status） |\n\n**决策树**：\n\n```\n需要按 URL/域名/Host 分流？\n├─ 是 → 用 Nginx 或 HAProxy\n│   ├─ 需要强健康检查/丰富统计/会话保持 → HAProxy\n│   └─ 有静态资源/需要缓存/限流/作为 Web 服务器 → Nginx\n└─ 否（纯四层，如 TCP 转发）\n    ├─ 流量极大（十万连接+）或要求极低延迟 → LVS\n    └─ 流量中等，需要七层能力 → HAProxy / Nginx stream\n```\n\n**常见组合（实际生产）**：\n\n1. **小规模**（QPS < 数千）：`Nginx + Keepalived` 双机，两层搞定\n2. **中大规模**：`LVS + Keepalived`（四层入口）→ `Nginx 集群`（七层分流）→ 应用\n3. **云上**：直接用 **云 SLB**（四层 + 七层监听），自建只保留 Nginx 做业务路由\n4. **微服务**：K8s Ingress（Nginx/Traefik/Envoy）代替传统 LB\n\n**选型时容易忽略的点**：\n- **团队维护能力**：LVS + Keepalived 的内核态排障门槛高，没人会维护就是负债\n- **故障面**：层次越多故障点越多，能用两层别用三层\n- **云上别自建**：云 SLB 已解决四层高可用，自建 LVS 收益低\n- **健康检查**：如果依赖主动检查发现故障，HAProxy 明显优于 Nginx 开源版\n\n**一句话结论**：\n- 要**性能** → LVS\n- 要**七层 + 健康检查 + 观测** → HAProxy\n- 要**Web 服务器 + 静态资源 + 反向代理** → Nginx\n- **云上/小规模** → 先别自建 LVS，Nginx 双机足够",
+    "tags": ["选型", "Nginx", "HAProxy", "LVS"],
+    "frequency": "高频"
+  }
+]

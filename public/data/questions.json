@@ -4558,5 +4558,3323 @@
       "基础配置"
     ],
     "frequency": "中频"
+  },
+  {
+    "id": 1601,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 的四种工作模式（NAT/DR/TUN/FULLNAT）有什么区别？各自适用什么场景？",
+    "answer": "四种模式的本质区别在**如何把响应包送回客户端**。\n\n**1. NAT 模式**\n- 原理：请求到达时改目标 IP 为后端（DNAT），响应回来时改源 IP 为 VIP（SNAT）\n- 回程必须经过 LVS → **LVS 是瓶颈**\n- 后端网关要指向 LVS\n- 适合：小规模、后端能改网关的场景\n\n**2. DR 模式（最常用）**\n- 原理：只改**目标 MAC**（改成后端的），IP 层不变；后端直接把响应发给客户端，不经过 LVS\n- 关键前提：**后端要配 VIP 在 lo 上并抑制 ARP**\n- 回程不经过 LVS → 支持极高吞吐（LVS 只处理入向）\n- 限制：LVS 与后端必须在**同一物理网段**（二层可达）\n- 适合：大流量 Web 服务（生产首选）\n\n**3. TUN 模式（IP 隧道）**\n- 原理：把请求包封装成 IP-in-IP 隧道发给后端，后端解封装后处理，响应直接回客户端\n- 支持**跨机房/跨网段**（这是 DR 做不到的）\n- 要求后端支持隧道协议、能配 VIP\n- 适合：跨地域分发\n\n**4. FULLNAT 模式**\n- 原理：同时改源 IP 和目标 IP（类似「SNAT + DNAT」），LVS 与后端可以处于不同网段\n- 阿里等大厂在开源 LVS 上扩展的模式\n- 优点：部署最灵活，后端无需感知 VIP\n- 缺点：回程经过 LVS，且丢失了客户端真实 IP（需额外传 X-Forwarded-For）\n\n**选择口诀**：\n- 同网段 + 大流量 → **DR**\n- 跨网段 + 能配隧道 → TUN\n- 后端改不了配置/跨网段 → NAT 或 FULLNAT\n\n**对比 Nginx**：LVS 是四层（不看内容、性能高），Nginx 是七层（能按 URL 分流、能改 Header）。典型架构是 LVS 做四层入口，Nginx 做七层转发。",
+    "tags": [
+      "LVS",
+      "DR模式",
+      "NAT"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1602,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "LVS DR 模式为什么要求后端在 lo 上配 VIP 并抑制 ARP？",
+    "answer": "这是 DR 模式能成立的两个必要条件，缺一不可。\n\n**1. 为什么在 lo 上配 VIP**\nDR 模式的包到达后端时，**目标 IP 仍是 VIP**（LVS 只改了 MAC）。后端内核要认为「这个 IP 是我的」才会接收并处理，所以必须在本地配上 VIP。\n- 配在 `lo`（回环）而不是 `eth0`：因为 eth0 上的 VIP 会触发对外 ARP 响应（见下一点）\n- 命令：`ip addr add 192.168.1.100/32 dev lo`\n\n**2. 为什么要抑制 ARP**\n如果后端在 eth0 上配了 VIP 并正常响应 ARP，那么：\n- 客户端/网关发 ARP 问「谁是 192.168.1.100」时，**后端也会抢答**\n- 结果本该到 LVS 的流量直接被后端接走 → 绕过 LVS，负载均衡失效\n- 多台后端还会互相抢答 → ARP 冲突、流量乱窜\n\n抑制方法（两种常见写法）：\n```bash\n# 方式一：arp_ignore / arp_announce\nsysctl -w net.ipv4.conf.all.arp_ignore=1        # 只回答「目标IP在接收网卡上」的ARP\nsysctl -w net.ipv4.conf.all.arp_announce=2      # 发送ARP时用最合适的源地址\nsysctl -w net.ipv4.conf.lo.arp_ignore=1\nsysctl -w net.ipv4.conf.lo.arp_announce=2\n```\n\n```bash\n# 方式二：用 arptables 直接丢弃 VIP 的 ARP\narptables -A IN -d $VIP -j DROP\narptables -A OUT -s $VIP -j mangle --mangle-ip-s $RIP\n```\n\n**验证是否配好**：\n- 在客户端 `arping -I eth0 <VIP>`，应该**只有 LVS** 回应\n- 如果后端也回应，说明抑制没生效，DR 会不稳定\n\n**实操提醒**：`all` 和 `lo` 都要设，且要先设 sysctl 再加 VIP（顺序错了也可能抢答）。这些配置写进开机脚本，重启后别忘了恢复。",
+    "tags": [
+      "DR模式",
+      "ARP抑制",
+      "VIP"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1603,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 工作在 OSI 模型的哪一层？",
+    "options": [
+      {
+        "key": "A",
+        "text": "四层（传输层）"
+      },
+      {
+        "key": "B",
+        "text": "七层（应用层）"
+      },
+      {
+        "key": "C",
+        "text": "三层（网络层）"
+      },
+      {
+        "key": "D",
+        "text": "二层（数据链路层）"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "LVS 是四层负载均衡，基于 IP + 端口转发，不解析应用层内容。因此性能极高但不支持按 URL/域名分流。需要七层能力时用 Nginx/HAProxy。",
+    "tags": [
+      "LVS",
+      "四层",
+      "OSI"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1604,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 的八种调度算法有哪些？最常用哪几个？",
+    "answer": "八种算法，分静态与动态两类。\n\n**静态算法**（不考虑后端当前负载）：\n1. **rr**（轮询）：请求依次分发，最简单\n2. **wrr**（加权轮询）：按权重分配，性能好的机器权重高\n3. **dh**（目标地址哈希）：按目标 IP 哈希，用于缓存集群\n4. **sh**（源地址哈希）：按客户端 IP 哈希，实现会话保持\n\n**动态算法**（根据实时连接数判断）：\n5. **lc**（最少连接）：连接数最少的优先，适合长连接\n6. **wlc**（加权最少连接）：**最常用**，兼顾权重与实时负载\n7. **sed**（最短延迟）：wlc 的改进版，考虑权重与连接数的比值\n8. **nq**（永不排队）：新连接优先给空闲机器，避免空转\n\n**最常用的三个**：\n\n| 算法 | 场景 |\n|---|---|\n| **wlc** | 默认算法，后端性能不均时最合适（生产首选） |\n| **rr / wrr** | 后端性能一致、请求耗时均匀（如静态资源） |\n| **sh** | 需要会话保持的老应用（无共享 session） |\n\n**sh 的坑**：NAT 环境下大量用户共用出口 IP，会导致严重倾斜（全压到一台）。有共享 session 时优先解决会话共享，而不是靠 sh。\n\n**配置示例**：\n```\nipvsadm -A -t 192.168.1.100:80 -s wlc     # -s 指定算法\nipvsadm -a -t 192.168.1.100:80 -r 10.0.0.1:80 -g -w 10\nipvsadm -a -t 192.168.1.100:80 -r 10.0.0.2:80 -g -w 5\n```",
+    "tags": [
+      "调度算法",
+      "wlc",
+      "会话保持"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1605,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 相比 Nginx 做负载均衡，以下说法正确的是？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "LVS 是四层，性能更高，能承载更大并发"
+      },
+      {
+        "key": "B",
+        "text": "Nginx 是七层，能按 URL/域名/host 分流"
+      },
+      {
+        "key": "C",
+        "text": "LVS 无法做健康检查（需配合 Keepalived）"
+      },
+      {
+        "key": "D",
+        "text": "Nginx 无法做四层代理"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：Nginx 从 1.9.0 起支持 stream 模块做四层（TCP/UDP）代理，只是默认不编译需要加 --with-stream。C 准确：LVS 内核模块本身不做健康检查，通常用 Keepalived 配合。",
+    "tags": [
+      "LVS vs Nginx",
+      "四层七层"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1606,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "Keepalived 如何配合 LVS 实现高可用？VRRP 协议起什么作用？",
+    "answer": "**Keepalived = VRRP 协议 + LVS 管理**，解决「LVS 本身单点」的问题。\n\n**VRRP 的作用**：多台 LVS 组成一个虚拟路由器组，共享一个 VIP。同一时刻只有一台持有 VIP 并对外服务。\n\n**工作流程**：\n1. 每台 LVS 配置 VRRP 实例（`vrrp_instance`），设定 `priority`（优先级）\n2. Master 周期性（默认 1 秒）发 VRRP 通告（多播 224.0.0.18）\n3. Backup 收不到通告超过 `advert_int × 3` → 判定 Master 故障 → **抢占 VIP**\n4. 抢占时通过 `notify_master` 脚本执行 `ipvsadm` 恢复规则（或用 `lvs_sync_daemon_interface` 同步连接表）\n\n**关键配置项**：\n```\nvrrp_instance VI_1 {\n    state MASTER              # 初始状态（实际由优先级决定）\n    interface eth0             # 发 VRRP 的网卡\n    virtual_router_id 51       # 同一组必须相同\n    priority 100               # 越大越优先\n    advert_int 1\n    authentication { auth_type PASS; auth_pass xxxx }   # 同一组必须一致\n    virtual_ipaddress { 192.168.1.100 }\n    notify_master \"/etc/keepalived/master.sh\"\n    notify_backup \"/etc/keepalived/backup.sh\"\n}\n```\n\n**常见问题**：\n\n1. **同时两台都持有 VIP（脑裂）**\n   - 原因：VRRP 多播被防火墙拦、`advert_int` 过大、`virtual_router_id` 冲突\n   - **必须监控**：在每台机器上 `ip addr` 检查 VIP 是否只在预期的那台\n2. **`virtual_router_id` 冲突**：同网段有两组 Keepalived 用了相同 ID → 互相干扰\n3. **抢占问题**：`nopreempt` 可关闭抢占（原 Master 恢复后不夺回 VIP），适合避免频繁切换\n4. **规则不同步**：Master 上手工加的 ipvsadm 规则不会自动同步到 Backup，需脚本或用 `ipvsadm-save`",
+    "tags": [
+      "Keepalived",
+      "VRRP",
+      "高可用"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1607,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "Keepalived 中出现两台机器同时持有 VIP（脑裂），最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "VRRP 多播被防火墙拦截，或 virtual_router_id 配置冲突"
+      },
+      {
+        "key": "B",
+        "text": "优先级配置正确"
+      },
+      {
+        "key": "C",
+        "text": "后端服务器太多"
+      },
+      {
+        "key": "D",
+        "text": "VIP 配置了两个"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "脑裂的典型原因：VRRP 通告发不出去/收不到（防火墙拦多播、网卡问题）、或同网段有两组 Keepalived 用了相同 virtual_router_id 互相干扰。必须监控 ip addr 确认 VIP 唯一。",
+    "tags": [
+      "Keepalived",
+      "脑裂",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1608,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "如何用 ipvsadm 查看 LVS 的转发状态和连接数？",
+    "answer": "常用四条命令：\n\n**1. 查看虚拟服务与真实服务器**\n```\nipvsadm -L -n                 # 简表\nipvsadm -L -n --stats        # 带流量统计（字节、包数、速率）\nipvsadm -L -n --rate         # 带速率\n```\n输出重点看：\n- `ActiveConn`（活跃连接数）—— 判断后端是否均衡\n- `InActConn`（非活跃，如保持的连接）\n- 各 RS 的 `Conns` 累计值，差异大说明调度不均\n\n**2. 查看连接表**\n```\nipvsadm -L -n -c             # 当前所有连接\n```\n可用于排查「卡住的长连接」、确认请求是否真的到了后端。\n\n**3. 查看超时配置**\n```\nipvsadm -L -n --timeout\n```\nTCP 默认 900 秒，连接堆积时可能要调小。\n\n**4. 统计总量**\n```\nipvsadm -L -n --stats\ngrep -c '' /proc/net/ip_vs    # 连接表行数\n```\n\n**关键指标判读**：\n| 现象 | 可能原因 |\n|---|---|\n| 所有流量集中在一台 RS | 调度算法不合适、或会话保持过度、或其它 RS 健康检查失败 |\n| ActiveConn 很高但业务量低 | 连接未正常关闭（应用问题或超时设置过长） |\n| 某台 RS 的 Conns 增长很慢 | 该 RS 被判定不可用（配合 Keepalived 的健康检查） |\n\n**排查「请求不均衡」的快捷路径**：\n1. `ipvsadm -L -n --stats` 看各 RS 的 Conns 累计\n2. 差异明显 → 检查调度算法、权重、健康检查结果\n3. 检查是否有 sh/会话保持导致倾斜",
+    "tags": [
+      "ipvsadm",
+      "连接数",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1609,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 相比 LVS 和 Nginx，以下哪些是它的优势？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "同时支持四层和七层代理"
+      },
+      {
+        "key": "B",
+        "text": "内置强大的健康检查（主动探测、多种协议）"
+      },
+      {
+        "key": "C",
+        "text": "支持丰富的 ACL 规则与统计面板"
+      },
+      {
+        "key": "D",
+        "text": "单机并发性能高于 LVS"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：LVS 在内核态转发，单机并发通常优于 HAProxy（用户态）。HAProxy 的价值在于「比 Nginx 更专业的负载均衡能力」（更丰富的健康检查、ACL、统计、会话保持策略）。",
+    "tags": [
+      "HAProxy",
+      "优势",
+      "对比"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1610,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的健康检查是怎么做的？和 Nginx 有什么区别？",
+    "answer": "**HAProxy 同时支持主动与被动检查，且协议支持更丰富**，这是它的核心优势之一。\n\n**1. 主动健康检查（check）**\n```\nbackend web_servers\n    server s1 10.0.0.1:80 check inter 2s rise 2 fall 3\n    server s2 10.0.0.2:80 check inter 2s rise 2 fall 3\n```\n- `inter 2s`：每 2 秒探测一次\n- `rise 2`：连续 2 次成功才标记为可用\n- `fall 3`：连续 3 次失败才标记为不可用\n\n**支持多种检查方式**：\n- `option httpchk GET /health`：HTTP 检查（可校验状态码与内容）\n- `check port 8080`：独立端口探测\n- `check ssl` / `check send-proxy`：TLS 检查\n- MySQL/Redis 等可用 `option mysql-check` / `option redis-check`\n- 自定义脚本：`option external-check`\n\n**2. 被动健康检查**（也支持）\n`observe` 关键字：通过实际请求结果观察后端状态，类似 Nginx 的 max_fails。\n\n**与 Nginx 的关键差异**：\n\n| | Nginx 开源版 | HAProxy |\n|---|---|---|\n| 主动检查 | ❌ 不支持（需第三方模块） | ✅ 内置，协议丰富 |\n| 被动检查 | ✅ max_fails/fail_timeout | ✅ 支持，且可观测 |\n| 检查内容 | 仅连接层 | 可校验 HTTP 状态码、响应内容、自定义脚本 |\n| 状态同步 | 各 worker 独立 | 统一的运行时状态 |\n\n**实践建议**：\n- 后端有明确的健康接口 → HAProxy 主动检查更可靠（不用等真实流量打到坏节点）\n- 用 Nginx 但需要主动检查 → 部署 `nginx_upstream_check_module`（需重新编译），或把检查交给前置的 HAProxy/LVS\n\n**注意**：主动检查会产生额外流量，`inter` 不宜过小（1-2s 合理）；检查频率过高会加重后端负担。",
+    "tags": [
+      "HAProxy",
+      "健康检查",
+      "对比"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1611,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "HAProxy 配置中，backend 段里的 server 后面加 backup 表示什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "该服务器是主用"
+      },
+      {
+        "key": "B",
+        "text": "该服务器只在其他服务器都不可用时才启用"
+      },
+      {
+        "key": "C",
+        "text": "该服务器只做备份流量"
+      },
+      {
+        "key": "D",
+        "text": "禁用该服务器"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "backup 表示热备：正常情况下不接收流量，只有当所有非 backup 节点都不可用时才启用。常用于保证最低可用性。对应还有 disabled（默认不启用，可手动开启）。",
+    "tags": [
+      "HAProxy",
+      "backup",
+      "主备"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1612,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "LVS 出现「请求到后端但响应不回客户端」，如何排查？",
+    "answer": "这是 DR/TUN 模式下的经典问题，核心在**回程路径**。\n\n**先判断现象**：客户端只看到 SYN 重传超时（抓包可用 tcpdump），也就是「请求到了但没有响应」。\n\n**排查顺序**：\n\n**1. 确认后端是不是真的收到了请求**\n在 RS 上抓包：\n```bash\ntcpdump -i any -nn host <客户端IP> and port 80\n```\n- 收到 SYNs 但没有响应 → 问题在 RS 的 VIP 配置\n- 完全没收到 → 问题在 LVS 转发（检查 ipvsadm -L -n -c 有没有 ERR）\n\n**2. 检查后端 VIP 配置（DR 模式最常见原因）**\n```bash\nip addr show lo                 # VIP 是否在 lo 上\nsysctl net.ipv4.conf.all.arp_ignore\nsysctl net.ipv4.conf.lo.arp_announce\n```\nVIP 没配 → 内核不认这个目标 IP，直接丢包（RS 会拒绝或不做响应）。\n\n**3. 检查 ARP 抑制是否生效（导致流量被抢）**\n```bash\narping -I eth0 <VIP> -c 3       # 在客户端侧执行\n```\n如果除了 LVS 还有 RS 回应 → 流量可能直接到了 RS（绕过 LVS），表现为「部分请求成功部分超时」。\n\n**4. 检查 RS 的网关与路由（DR 模式不需要改网关，但容易误配）**\nDR 模式下 RS 的默认网关应该保持原样（指向真实网关），**不要**改成 LVS。改错了响应包会往 LVS 发，LVS 不处理回程 → 超时。\n\n**5. 检查 LVS 侧 ipvsadm 配置**\n```bash\nipvsadm -L -n\n```\n- 转发模式标记是否正确（DR 应该是 `g` 即 gateway）\n- RS 的端口是否正确\n\n**6. 检查 MTU / 大包问题**\n```bash\nss -lntp                        # 后端是否正常监听\n```\nTUN 模式下 MTU 变小会导致大包被丢，需要 `iptables -t mangle` 或调 MSS（`iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1400`）。\n\n**7. 检查防火墙**\nRS 上的 iptables/安全组是否放行来自 LVS 及客户端源 IP 的流量（DR 模式下客户端源 IP 未变）。\n\n**排查口诀**：DR 模式 90% 的问题在 **RS 的 VIP 与 ARP 配置**，其次是**网关被误改**。这两个地方优先查。",
+    "tags": [
+      "LVS",
+      "DR模式",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1613,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 如何实现会话保持？有哪些方式？",
+    "answer": "四种方式，按推荐度：\n\n**1. 应用层 Cookie 插入（最推荐）**\n```\nbackend web\n    balance roundrobin\n    cookie SERVERID insert indirect nocache\n    server s1 10.0.0.1:80 cookie s1 check\n    server s2 10.0.0.2:80 cookie s2 check\n```\n- HAProxy 在响应里插入 `Set-Cookie: SERVERID=s1`\n- 后续请求带这个 cookie 就固定到 s1\n- `indirect`：不在请求头里暴露这个 cookie（只从响应读）\n- `nocache`：不让缓存设备缓存带 cookie 的响应\n- **优点**：不依赖源 IP，NAT 环境下也准确\n\n**2. 源 IP 哈希（source）**\n```\nbalance source\n```\n- 按客户端 IP 哈希固定后端\n- 缺点：NAT 环境下大量用户共用出口 IP → 严重倾斜\n\n**3. 粘性表（stick-table）**\n```\nbackend web\n    stick-table type ip size 200k expire 30m\n    stick on src\n```\n- 用内存表记录「IP → 后端」的映射，可设置过期时间\n- 比单纯 source 更可控（可调整粒度、可观测）\n\n**4. uri 哈希**\n```\nbalance uri\n```\n- 按 URL 哈希，适合缓存集群（同一资源固定到一台，提高缓存命中）\n\n**选择建议**：\n| 场景 | 方式 |\n|---|---|\n| 能改应用/接受 Cookie | **cookie insert**（最可靠） |\n| 老应用、无 Cookie | source 或 stick-table |\n| 缓存集群 | uri 哈希 |\n\n**最优解其实是「消除会话状态」**：把 session 存到 Redis，应用变无状态，就可以用纯轮询。这是根本方案，而不是靠负载均衡器的粘性。",
+    "tags": [
+      "HAProxy",
+      "会话保持",
+      "cookie"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1614,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 部署后流量全压在一台后端上，可能的原因有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "调度算法用了 sh（源地址哈希），且客户端出口 IP 集中"
+      },
+      {
+        "key": "B",
+        "text": "其他后端的健康检查失败被摘除"
+      },
+      {
+        "key": "C",
+        "text": "权重配置差异过大"
+      },
+      {
+        "key": "D",
+        "text": "客户端使用了 HTTP/2"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "A 是 NAT 环境的经典坑；B/C 是配置层面原因。D 与 LVS 四层调度无关。排查路径：ipvsadm -L -n --stats 看各 RS 累计连接 → 再看算法与健康状态。",
+    "tags": [
+      "LVS",
+      "负载不均",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1615,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 frontend/backend/listen/global/defaults 五段分别是什么？",
+    "answer": "五个配置段的职责：\n\n**1. global**（全局）\n- 进程级配置：`maxconn`（总并发上限）、`daemon`、日志、`chroot`、user/group\n```\nglobal\n    maxconn 50000\n    log /dev/log local0\n```\n\n**2. defaults**（默认值）\n- 为后续 frontend/backend 提供默认参数，减少重复\n```\ndefaults\n    mode http           # 或 tcp\n    timeout connect 5s\n    timeout client 50s\n    timeout server 50s\n```\n**注意**：`mode http` 和 `mode tcp` 差别巨大（七层 vs 四层），继承时要小心。\n\n**3. frontend**（前端，接收请求）\n```\nfrontend web_in\n    bind *:80\n    acl is_api path_beg /api\n    use_backend api_servers if is_api\n    default_backend web_servers\n```\n- 定义监听端口、ACL 规则、如何路由到 backend\n\n**4. backend**（后端服务器组）\n```\nbackend web_servers\n    balance leastconn\n    server s1 10.0.0.1:80 check\n    server s2 10.0.0.2:80 check backup\n```\n- 定义服务器列表、调度算法、健康检查\n\n**5. listen**（frontend + backend 合并）\n```\nlisten stats\n    bind *:8404\n    stats enable\n    stats uri /stats\n```\n- 适合简单场景与统计页面，配置更短\n\n**典型组合关系**：\n```\nglobal → defaults → frontend(bind + acl) → backend(servers)\n```\n\n**排障提示**：配置改了用 `haproxy -c -f /etc/haproxy/haproxy.cfg` 校验语法（对应 Nginx 的 `nginx -t`）。运行时用 `socat` 连 admin socket 看状态。",
+    "tags": [
+      "HAProxy",
+      "配置结构"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1616,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 mode 参数中，http 与 tcp 的本质区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "http 是七层（能解析请求内容），tcp 是四层（只转发字节流）"
+      },
+      {
+        "key": "B",
+        "text": "http 只能处理静态资源"
+      },
+      {
+        "key": "C",
+        "text": "tcp 模式性能更差"
+      },
+      {
+        "key": "D",
+        "text": "两者完全相同"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "mode http 能解析 HTTP 头、支持 ACL 按 URL/host/header 路由、能插入 cookie；mode tcp 只做四层转发，可用于任意协议（MySQL/Redis/MQTT），性能更高但无法按内容分流。",
+    "tags": [
+      "HAProxy",
+      "mode",
+      "四层七层"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1617,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "四层负载均衡如何传递客户端真实 IP？各方案有什么代价？",
+    "answer": "四层转发时，后端看到的源 IP 会因模式而异，这是选型时必须考虑的点。\n\n**各模式的真实 IP 情况**：\n\n| 模式 | 后端看到的源 IP | 说明 |\n|---|---|---|\n| LVS DR | **客户端真实 IP** | IP 层未改，只改 MAC，最理想 |\n| LVS NAT | 客户端真实 IP | 但回程要经过 LVS |\n| LVS FULLNAT | **LVS 的 IP**（丢真实 IP） | 需额外手段传递 |\n| HAProxy tcp | 客户端真实 IP | 透明转发 |\n| Nginx stream | 客户端真实 IP | 同上 |\n\n**丢真实 IP 时怎么办**（主要针对 FULLNAT 与某些代理场景）：\n\n1. **PROXY Protocol（推荐）**\n- 代理在连接开头插入一行文本，携带真实 IP/端口\n- 后端需支持（Nginx `proxy_protocol`、HAProxy `send-proxy`、MySQL 支持 `proxy_protocol`）\n```\n# HAProxy 侧\nserver s1 10.0.0.1:80 send-proxy\n# Nginx 侧\nlisten 80 proxy_protocol;\n```\n- 优点：四层就能传真实 IP（不依赖 HTTP 头），适合 TCP 服务\n- 代价：后端必须配合，否则协议解析错乱\n\n2. **TOA 内核模块**（LVS FULLNAT 常用）\n- 在 TCP 选项里带真实 IP，后端装 toa 模块解析\n- 阿里开源（`toa`），需编译进后端内核\n- 代价：非标准，后端需定制内核\n\n3. **应用层头传递**（仅 HTTP）\n- `X-Forwarded-For`、`X-Real-IP`\n- 代价：只适用于 HTTP(S)，且可被伪造（需信任边界）\n\n4. **会话保持代替 IP**\n- 如果只是为了让同一用户打到同一后端，用 cookie 粘性即可，不一定非要真实 IP\n\n**选型建议**：\n- 能选 DR 就选 DR（天然有真实 IP，性能也最好）\n- 必须 FULLNAT 时，HTTP 场景用 XFF + `set_real_ip_from`，TCP 场景用 PROXY Protocol\n- 不要在生产用「猜测式」的 IP 还原逻辑（如直接信任任意 XFF）",
+    "tags": [
+      "真实IP",
+      "PROXY Protocol",
+      "FULLNAT"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1618,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 VIP 是什么？为什么需要它？",
+    "answer": "**VIP（Virtual IP，虚拟 IP）**：对外暴露的服务地址，客户端只知道这个 IP，不感知后端有几台服务器。\n\n**为什么需要**：\n1. **屏蔽后端变化**：增加/减少后端、替换故障机器，客户端无感知（IP 不变）\n2. **便于高可用**：VIP 在 LVS 主备之间漂移（由 Keepalived 通过 VRRP 控制），实现入口层高可用\n3. **统一入口**：DNS 只解析到 VIP，避免 DNS 变更的延迟与缓存问题\n\n**VIP 的来源**：\n- 自己申请的独立公网/内网 IP\n- 云上用弹性 IP（EIP）或负载均衡实例的 IP\n- 与域名绑定：`A 记录 → VIP`\n\n**VIP 在 DR 模式下的特殊性**：\n- LVS 和所有后端都要配这个 VIP（后端配在 lo 上，并抑制 ARP）\n- 所以「VIP 属于谁」由 ARP 响应决定，必须做 ARP 抑制，否则会被后端抢走\n\n**常见误解**：\n- ❌「VIP 就是后端的第一台机器」→ 不对，VIP 是独立地址，与物理机无关\n- ❌「VIP 配好了就自动高可用」→ 还需要 Keepalived 等机制管理漂移",
+    "tags": [
+      "VIP",
+      "LVS",
+      "基础概念"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1619,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "评估「要不要引入 LVS」时，以下哪些是合理的判断依据？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "当前 Nginx 已是瓶颈（CPU/连接数打满），需要更高吞吐"
+      },
+      {
+        "key": "B",
+        "text": "需要按 URL/域名做七层分流，且后端服务多"
+      },
+      {
+        "key": "C",
+        "text": "团队有能力维护内核态转发与 Keepalived"
+      },
+      {
+        "key": "D",
+        "text": "只要想提高可用性就必须上 LVS"
+      }
+    ],
+    "answer": [
+      "A",
+      "C"
+    ],
+    "explanation": "B 恰恰是 LVS 做不到的（需要七层，应该用 Nginx/HAProxy）。D 过于绝对：可用性可以靠 Nginx + Keepalived 实现，不必引入 LVS。LVS 的价值在「四层高吞吐」，只有在 Nginx 成为瓶颈时才值得引入。",
+    "tags": [
+      "选型",
+      "LVS",
+      "架构"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1620,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 如何查看运行状态和统计信息？",
+    "answer": "三种方式：\n\n**1. 内置统计页面（最直观）**\n```\nfrontend stats\n    bind *:8404\n    stats enable\n    stats uri /stats\n    stats refresh 10s\n    stats auth admin:yourpassword    # 务必加认证\n    stats admin if TRUE              # 允许在页面上摘除/启用节点\n```\n访问 `http://<haproxy-ip>:8404/stats` 能看到：\n- 每个 backend/server 的**当前连接数、状态（UP/DOWN）**\n- 每秒请求、响应时间、错误数、重试次数\n- 可以直接在页面上把某台 server 置为维护状态\n\n**2. Runtime API（socket）**\n```\n# 配置\nglobal\n    stats socket /var/run/haproxy.sock mode 660 level admin\n\n# 查询\n echo \"show stat\" | socat stdio /var/run/haproxy.sock\necho \"show info\" | socat stdio /var/run/haproxy.sock\n\n# 动态操作（无需 reload）\necho \"disable server web/s1\" | socat stdio /var/run/haproxy.sock\necho \"enable server web/s1\" | socat stdio /var/run/haproxy.sock\n```\n**这是运维最常用的方式**——可以在不停服务的情况下摘除故障节点。\n\n**3. Prometheus 采集**\n- `haproxy_exporter` 读取 socket 或统计页 → 暴露指标\n- 监控 `haproxy_backend_up`、`haproxy_server_up`、响应时间、连接数\n\n**关键指标判读**：\n| 指标 | 含义 |\n|---|---|\n| `qcur` / `qmax` | 当前/最大排队请求数（非 0 说明后端扛不住） |\n| `ctime` / `rtime` / `ttime` | 连接/响应/总时间 |\n| `ereq` | 请求错误数 |\n| `dses` | 会话数 |\n| `chkfail` | 健康检查失败次数 |\n\n**配置变更**：`haproxy -c -f <cfg>` 校验 → `systemctl reload haproxy`（平滑重载，不断连接）。",
+    "tags": [
+      "HAProxy",
+      "统计",
+      "Runtime API"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1621,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "LVS + Keepalived + Nginx 三层架构各承担什么职责？为什么需要三层？",
+    "answer": "典型的高可用入口架构，由下到上（或由外到内）三层：\n\n```\n客户端\n  ↓\n[LVS + Keepalived]     四层：VIP、高可用、高吞吐\n  ↓\n[Nginx 集群]            七层：按域名/URL 分流、SSL 卸载、缓存\n  ↓\n[应用服务器]            业务逻辑\n```\n\n**各层职责**：\n\n| 层 | 职责 | 为什么不省 |\n|---|---|---|\n| **LVS** | 四层转发、承载大并发 | Nginx 单机连接数/CPU 有上限，LVS 在内核态转发性能高一个量级 |\n| **Keepalived** | VIP 漂移、LVS 主备 | 否则 LVS 本身是单点 |\n| **Nginx** | 七层路由、SSL、缓存、限流 | LVS 是四层，看不到 URL，无法按路径分发 |\n\n**为什么需要三层（而不是两层）**：\n\n1. **性能分层**：LVS 扛住流量峰值（四层几乎无解析开销），Nginx 只处理经过筛选的七层逻辑\n2. **功能分层**：SSL 卸载、URL 路由、Header 改写都在 Nginx 做，LVS 不参与\n3. **故障隔离**：Nginx 挂了 LVS 能摘除；LVS 挂了 Keepalived 能切换\n4. **扩展性**：Nginx 层可水平扩容（加机器到 LVS 后端池），不影响入口\n\n**简化场景**：\n- 流量不大（QPS < 数千）→ **LVS + Keepalived 可省略**，直接 Nginx 双机 + Keepalived 就够\n- 云环境 → 直接用云 SLB（已包含四层能力），不需要自建 LVS\n- 需要更灵活的路由（灰度、A/B）→ Nginx/Ingress 层做，LVS 只做入口\n\n**一句话判断**：只有当 **Nginx 成为瓶颈、且流量确实很大** 时，才值得引入 LVS。否则两层（Nginx + Keepalived）更简单、故障面更小。",
+    "tags": [
+      "架构",
+      "三层",
+      "选型"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1622,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 VIP 在后端服务器上通常配置在哪块网卡上（DR 模式）？",
+    "options": [
+      {
+        "key": "A",
+        "text": "lo（回环网卡），并抑制 ARP"
+      },
+      {
+        "key": "B",
+        "text": "eth0，正常响应 ARP"
+      },
+      {
+        "key": "C",
+        "text": "任意网卡，无需额外配置"
+      },
+      {
+        "key": "D",
+        "text": "不需要在后端配置 VIP"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "DR 模式要求后端配 VIP 在 lo 上（接收目标为 VIP 的包），同时抑制 ARP 响应。若配在 eth0 并响应 ARP，流量会被后端抢走，绕过 LVS。",
+    "tags": [
+      "DR模式",
+      "VIP",
+      "lo"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1623,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "如何对 LVS/HAProxy 做压测并判断容量上限？",
+    "answer": "**压测目标**：找出「第一个瓶颈点」以及「安全容量上限」。\n\n**1. 压测工具**\n- 四层：`wrk`、`ab`（HTTP）；TCP 层可用 `iperf3` 或自建 TCP 压测\n- 更高并发：`locust`、`k6`（能模拟复杂场景）\n- 注意：压测机自身的端口数与 CPU 也可能成为瓶颈（用多台压测机）\n\n**2. 阶梯加压找拐点**\n```bash\nwrk -t8 -c200 -d30s http://VIP/\nwrk -t8 -c500 -d30s http://VIP/\nwrk -t8 -c1000 -d30s http://VIP/\n```\n每档记录：**QPS、P99 延迟、错误率**。\n拐点判断：QPS 不再上升而延迟陡增，或错误率抬头 → 已到瓶颈。\n\n**3. 监控各层指标，定位瓶颈**\n\n| 层 | 关注指标 | 命令/来源 |\n|---|---|---|\n| LVS | 并发连接、转发速率 | `ipvsadm -L -n --stats`、`/proc/net/ip_vs` |\n| 系统 | CPU 软中断、连接跟踪、端口耗尽 | `top`（si 高）、`dmesg | grep conntrack`、`ss -s` |\n| HAProxy | `qcur`（排队）、`ctime`、错误数 | stats 页面 / socket |\n| Nginx | `worker_connections`、`active` | `stub_status` |\n| 后端应用 | CPU、线程池、DB 连接 | 应用监控 |\n\n**4. 常见瓶颈与解决**\n- **TIME_WAIT 堆积 / 端口耗尽** → 开 `tcp_tw_reuse`，扩大本地端口范围，或让 LVS 而非压测机承担连接\n- **conntrack 表满** → `dmesg` 会报 `nf_conntrack: table full`，调大 `nf_conntrack_max`\n- **LVS 转发能力上限** → 加 LVS 机器做集群（ECMP 或 DNS 轮询多个 VIP）\n- **HAProxy `maxconn` 打满** → 提高 `maxconn`，同时检查 `ulimit -n`\n- **后端应用先撑不住** → 此时负载均衡还没到瓶颈，该优化应用\n\n**5. 安全容量**\n- 压测得到的极限值 × **0.5~0.7** 作为生产上限\n- 因为生产流量模型不同（更复杂）、且需要留出故障时的余量\n\n**重要提醒**：压测要**在隔离环境**做，或用生产压测 + 熔断预案。别为了压测把线上打挂。",
+    "tags": [
+      "压测",
+      "容量评估",
+      "瓶颈"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1624,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的连接超时参数有哪些？配错了会有什么现象？",
+    "answer": "HAProxy 的超时参数分三个维度，**都设成 1s 或都过长都是常见的错误配置**。\n\n**核心三参数**：\n```\ndefaults\n    timeout connect 5s      # 连接后端服务器的超时\n    timeout client  30s     # 客户端连接空闲超时\n    timeout server  30s     # 后端连接空闲超时\n```\n\n**三个参数的含义与影响**：\n\n| 参数 | 长短不合适时的现象 |\n|---|---|\n| `timeout connect` 太短 | 后端稍慢就判定连接失败 → 502 增多 |\n| `timeout connect` 太长 | 后端挂掉时长时间占资源 |\n| `timeout client` 太短 | 慢客户端（大文件下载、移动网络）被无故断开 |\n| `timeout server` 太短 | 长耗时接口（导出、大查询）被断开，返回 504 |\n| `timeout server` 太长 | 后端卡死时连接长期不释放，并发被占满 |\n\n**其他常用超时**：\n```\n    timeout http-request 10s     # 接收完整请求头的超时（防慢速攻击）\n    timeout http-keep-alive 10s  # keepalive 空闲时长\n    timeout queue 30s            # 请求在队列等待的超时\n    timeout tunnel 1h            # WebSocket/隧道类长连接\n```\n\n**经验值参考**：\n- `connect`: 3-5s（内网），跨地域可到 10s\n- `client` / `server`: 与后端 P99 耗时相关，建议 **≥ 后端 P99 的 2-3 倍**\n- 有长任务的接口，单独用 `timeout tunnel` 或给该 backend 单独设更长超时\n\n**排查方法**：\n```bash\n# 看是否因超时被断\ncat /var/log/haproxy.log | grep -E 'timeout|504'\n# 统计页看 ctime/rtime 分布\necho \"show stat\" | socat stdio /var/run/haproxy.sock | grep -v '^#'\n```\n\n**关键提醒**：这三个超时只是「连接空闲」的判定，不等于「请求总耗时上限」。HAProxy 不能直接限制单请求总时长，那要靠后端应用或 nginx 的 `proxy_read_timeout` 配合。",
+    "tags": [
+      "HAProxy",
+      "超时",
+      "配置"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1625,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的四层模式（mode tcp）下，能否按 URL 做分流？",
+    "options": [
+      {
+        "key": "A",
+        "text": "可以，配置 acl 就行"
+      },
+      {
+        "key": "B",
+        "text": "不可以，四层看不到 URL，必须用 mode http"
+      },
+      {
+        "key": "C",
+        "text": "可以，但要开启 ssl 卸载"
+      },
+      {
+        "key": "D",
+        "text": "可以，通过端口区分即可"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "mode tcp 只转发字节流，不解析 HTTP，因此无法看 URL/host。要按 URL 分流必须用 mode http。云上 SLB 的「七层监听」也是同理。",
+    "tags": [
+      "HAProxy",
+      "mode",
+      "四层限制"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1626,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "HAProxy 如何做 SSL 卸载？证书更新需要重启吗？",
+    "answer": "**SSL 卸载**：证书终止在 HAProxy，后端用明文 HTTP 通信，减轻后端 CPU 负担。\n\n**配置**：\n```\nfrontend https_in\n    bind *:443 ssl crt /etc/haproxy/certs/example.pem\n    default_backend web_servers\n\nbackend web_servers\n    server s1 10.0.0.1:80 check\n```\n**关键点**：\n- `crt` 指向的是一个 **PEM 文件**（私钥 + 证书 + 中间证书链拼在一起），不是两个文件\n- HAProxy 支持在目录中放多个 PEM，自动按 SNI 匹配（`crt /path/certs/` 指向目录）\n\n**重要：多证书（SNI）**\n```\nbind *:443 ssl crt /etc/haproxy/certs/\n```\n目录下的每个 pem（文件名无关）都会被加载，按 SNI 自动选择。**这比 Nginx 配多个 server 块更简洁**。\n\n**证书更新是否需要重启？**\n\n**不需要重启，但需要 reload**：\n```bash\n# 1. 先合并证书（顺序很重要）\ncat private.key server.crt intermediate.crt > /etc/haproxy/certs/example.pem\n# 2. 校验配置\nhaproxy -c -f /etc/haproxy/haproxy.cfg\n# 3. 平滑重载（不断连接）\nsystemctl reload haproxy\n# 或\nkill -USR2 $(cat /var/run/haproxy.pid)\n```\n\n**能不能不 reload？** 有几种方式：\n1. **Runtime API**（HAProxy 2.x 起支持）\n```bash\necho \"set ssl cert /etc/haproxy/certs/example.pem <<EOF\n$(cat new.pem)\nEOF\" | socat stdio /var/run/haproxy.sock\necho \"commit ssl cert /etc/haproxy/certs/example.pem\" | socat stdio /var/run/haproxy.sock\n```\n这是真正的热更新，不用 reload。\n\n2. **文件监控自动 reload**：用 inotify 监听证书变化触发 reload（需谨慎，避免频繁 reload）\n\n**常见坑**：\n- PEM 内**证书顺序错了**（应先域名证书再中间证书），会导致部分客户端握手失败\n- 只放了域名证书没放中间证书 → 浏览器/App 报证书链不完整（安卓、Java 客户端尤其敏感）\n- reload 后**旧连接仍用旧证书**（graceful 期间不中断已有连接），要等一会儿才全切\n- 忘记 `-c` 校验直接 reload → 配置有错会导致 reload 失败并且旧进程还在跑（服务不中断但新配置不生效，容易误判）\n\n**验证命令**：\n```bash\nopenssl s_client -connect host:443 -servername example.com < /dev/null 2>&1 | openssl x509 -noout -dates -subject\n```",
+    "tags": [
+      "HAProxy",
+      "SSL",
+      "证书热更"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1627,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 和 Keepalived 的「主备」与「主主」模式有什么区别？",
+    "answer": "**主备（Active-Backup）**：\n- 一个 VIP，Master 承载全部流量，Backup 空闲待命\n- 优点：简单、不易出错\n- 缺点：**资源利用率 50%**（备机闲置）\n- 切换：Master 挂了 Backup 接管\n\n**主主（Active-Active）**：\n- **两个 VIP**，两台 LVS 各持有一个，互为对方的备\n- 具体做法：\n```\n# 机器 A\nvrrp_instance VI_1 { state MASTER; priority 100; virtual_ipaddress { 192.168.1.100 } }\nvrrp_instance VI_2 { state BACKUP; priority 90;  virtual_ipaddress { 192.168.1.101 } }\n\n# 机器 B 反过来\nvrrp_instance VI_1 { state BACKUP; priority 90;  virtual_ipaddress { 192.168.1.100 } }\nvrrp_instance VI_2 { state MASTER; priority 100; virtual_ipaddress { 192.168.1.101 } }\n```\n- 优点：**资源利用率接近 100%**，两台都在干活\n- 缺点：配置复杂，脑裂风险更高（两组 VRRP 实例必须用不同的 `virtual_router_id`）\n\n**选型建议**：\n- 流量不大 → **主备**（简单可靠，运维成本低）\n- 流量大且资源紧张 → **主主**（但要做好监控）\n\n**主主的关键风险**：\n1. 两组实例的 `virtual_router_id` 必须不同（否则互相干扰）\n2. 脑裂时可能两台都持有两 VIP → 流量加倍打向后端\n3. DNS 需要把两个 VIP 都解析出来（或前置设备做双 VIP 负载）\n\n**常见误解**：主主不是「两台同时接管同一个 VIP」——那是不可能的（同一 IP 冲突）。主主的本质是**两个 VIP，互为备份**。\n\n**监控要点（无论主备主主）**：\n- 每台机器上 `ip addr` 检查 VIP 是否只在预期的那台\n- `vrrp` 状态：`ip addr show` + 日志 `grep VRRP /var/log/messages`\n- 配置告警：同一 VIP 在 >1 台机器上同时存在 → 立即告警",
+    "tags": [
+      "Keepalived",
+      "主备",
+      "主主"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1628,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 ACL 可以用来做什么？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "按 URL 路径分流到不同 backend"
+      },
+      {
+        "key": "B",
+        "text": "按 Host 头（域名）分流"
+      },
+      {
+        "key": "C",
+        "text": "按源 IP 做访问控制或限流"
+      },
+      {
+        "key": "D",
+        "text": "直接修改后端数据库中的数据"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "ACL 是 HAProxy 的七层匹配能力，可基于 path_beg/path_end、hdr(host)、src IP、HTTP 状态、请求方法等做匹配并执行不同动作。D 完全无关——HAProxy 只是代理，不碰业务数据。",
+    "tags": [
+      "HAProxy",
+      "ACL",
+      "分流"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1629,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "线上出现「部分用户访问不了」但服务器都正常，如何排查负载均衡层？",
+    "answer": "「部分用户」是最难的故障类型，说明不是全站挂，而是**路径或节点维度**的问题。\n\n**先缩小范围（关键）**：\n1. **按客户端维度**：同地区？同运营商？同出口 IP段？\n2. **按后端维度**：是不是固定落到某台后端就失败？\n3. **按时间维度**：周期性（健康检查间隔）还是随机？\n4. **按协议**：HTTP 全部失败还是只在 POST/大请求时失败？\n\n**排查清单（按命中率排序）**：\n\n**A. 负载均衡层的健康检查误判**\n```\nipvsadm -L -n              # LVS：某台 RS 权重为 0 说明被摘了\n# HAProxy：stats 页面看哪些 server 是 DOWN\necho \"show stat\" | socat stdio /var/run/haproxy.sock | grep -v '^#'\n```\n- 某台后端被误判为失败 → 落到它的请求全部失败\n- 常见原因：健康检查路径配错、检查频率过高导致后端超时、检查端口不通\n\n**B. 会话保持导致的「粘到坏节点」**\n- 用了 `sh`（源 IP哈希）或 cookie 粘性 → 某些用户固定打到某台故障后端\n- 判断：故障用户是否总是访问失败（而非偶发）\n- 验证：让用户清 cookie 或换网络试试\n\n**C. LVS 的 ARP / VIP 配置不一致**\n- 某台 RS 的 ARP 抑制没做 → 抢走部分流量（表现为「有时正常有时超时」）\n```bash\narping -I eth0 <VIP> -c 3   # 是否有多个响应\n```\n\n**D. 部分后端连接数打满 / 挂了但不健康检查没发现**\n- 检查每台后端的 `ss -s`、`dmesg`（conntrack 满）、应用日志\n- 被动检查模式下（Nginx max_fails），后端半死不活时可能仍在池里\n\n**E. MTU / 大包问题**\n- 现象：小请求正常，大响应（POST 大 body、大文件）失败\n- 排查：`ping -M do -s 1472 <VIP>` 测 MTU，TUN/GRE 隧道下常见\n- 解决：调 MSS（`iptables ... TCPMSS --clamp-mss-to-pmtu`）\n\n**F. DNS 解析到旧 IP / 多 IP 轮询中有失效节点**\n```bash\ndig <域名> +short    # 是否解析出多个 IP，其中有个是旧的\ntelnet <每个IP> 80   # 逐个验证\n```\n本例「服务器都正常」但用户访问不了，很可能是**某个 VIP 或某台 LVS 有问题**而 DNS 仍在解析它。\n\n**G. 运营商/地域链路问题**\n- 用第三方拨测（多地 ping/traceroute）确认是否特定地区不通\n- 检查云上的「安全组/ACL」是否对特定网段有条目\n\n**排查工具沉淀**：\n- 抓包：`tcpdump -i any -nn host <用户IP>` 看请求到没到\n- 分节点验证：分别 `curl --resolve 域名:443:后端IP` 逐台测\n- 拨测平台：多地区多运营商同时测同一个 VIP\n\n**根因概率排序**（经验）：健康检查误判 > 会话粘性打到坏节点 > DNS 残留旧 IP > ARP 配置不一致 > MTU。",
+    "tags": [
+      "部分用户不可用",
+      "排障",
+      "负载均衡"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1630,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "什么是「四层负载均衡的会话保持」？LVS 怎么做？",
+    "answer": "**四层无法用应用层 cookie**（看不到 HTTP 头），所以只能用 IP 维度做保持。\n\n**LVS 的方式（只有两类）**：\n\n**1. 源地址哈希（sh 算法）**\n```\nipvsadm -A -t VIP:80 -s sh\n```\n- 同一客户端 IP 永远落到同一台 RS\n- **缺点致命**：NAT 环境下大量用户共用出口 IP → 严重倾斜\n\n**2. 持久连接（persistence，-p）**\n```\nipvsadm -A -t VIP:80 -s wlc -p 300     # 300 秒内同一客户端固定到同一 RS\n```\n- 比 sh 更可控：有超时时间，到期可重新调度\n- 内部用连接跟踪表记录「客户端IP → RS」\n- `-p` 是**推荐做法**，比 sh 灵活\n\n**四层会话保持的固有局限**：\n| 问题 | 说明 |\n|---|---|\n| NAT 倾斜 | 多人共用出口 IP 时全集中到一台 |\n| 无业务维度 | 只能按 IP，不能按用户 ID/cookie |\n| IP 漂移 | 移动网络切换 IP 会导致会话丢失 |\n| 与高可用冲突 | RS 挂了，粘在上面的用户会失败（需等超时） |\n\n**更好的方案（按推荐度）**：\n1. **消除会话状态**（最优）：session 存 Redis，应用无状态 → 用纯轮询即可\n2. **七层解决**：用 HAProxy/Nginx 的 cookie 插入（按业务维度保持，不受 IP 影响）\n3. 四层 `-p` 持久连接（临时方案，可控）\n4. `sh`（最后选择，倾斜风险大）\n\n**实操提醒**：\n- 用 `-p` 时，`ipvsadm -L -n -c` 能看到持久表\n- 持久时间不宜过长（300-600s 常见），太长会导致负载不均\n- 改动持久时间后已有连接不受影响，新连接按新规则\n\n**面试加分**：能说出「四层保持是基于 IP 的无奈之举，根本解法是让应用无状态」，说明理解架构而不只是会配命令。",
+    "tags": [
+      "会话保持",
+      "LVS",
+      "persistence"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1631,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 ipvsadm -L -n -c 命令用来查看什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "当前的连接跟踪表（每条活跃连接）"
+      },
+      {
+        "key": "B",
+        "text": "后端服务器的健康状态"
+      },
+      {
+        "key": "C",
+        "text": "调度算法配置"
+      },
+      {
+        "key": "D",
+        "text": "VIP 的 ARP 表"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "-c 显示当前所有连接（源→VIP→RS 的映射），用于排查连接卡住、确认请求是否真的转发到了后端。看统计用 --stats，看规则用 -L -n。",
+    "tags": [
+      "ipvsadm",
+      "连接表",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1632,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 maxconn 如何计算？打满了怎么办？",
+    "answer": "**maxconn 是 HAProxy 的整体并发连接上限**，超过后新连接进入队列（或拒绝）。\n\n**配置位置与优先级**：\n```\nglobal\n    maxconn 50000          # 全局上限（进程级）\n\nfrontend web\n    maxconn 10000          # 该前端的上限（不能超过全局）\n\nbackend app\n    maxconn 5000           # 该后端的上限\n```\n\n**估算方式**：\n```\nmaxconn ≈ 预期峰值并发连接数 × 1.3（余量）\n```\n瓶颈往往不在 maxconn 本身，而在：\n1. **文件描述符**：每个连接占 1 个 fd，需 `ulimit -n` ≥ maxconn × 2（前端 + 后端各占一个）\n2. **内存**：每连接有缓冲开销（几 KB 到几十 KB），maxconn 大时内存要够\n3. **后端承载能力**：maxconn 设得比后端能处理的大，只会把压力转嫁给后端\n\n**检查是否打满**：\n```bash\necho \"show info\" | socat stdio /var/run/haproxy.sock\n# 看 CurrConns / MaxConns / CumConns\n```\n或 stats 页面看 `Sessions` 与队列。\n\n**打满后的现象与处理**：\n| 现象 | 原因 | 处理 |\n|---|---|---|\n| 新连接超时/被拒 | maxconn 满 | 提高 maxconn（同时查 ulimit） |\n| 队列增长（qcur > 0） | 后端处理不过来 | 扩后端 / 优化慢接口 |\n| 内存暴涨 | 缓冲堆积 | 检查是否有慢客户端/大响应 |\n\n**关键提醒**：\n1. `maxconn` 与 `ulimit -n` 必须配套改，否则改了 maxconn 也没用（会报 `cannot get socket` 之类错误）\n2. 系统级还要看 `net.core.somaxconn`、`net.ipv4.tcp_max_syn_backlog`\n3. **别只看 maxconn 一个数字**——真正的容量由「LB maxconn、后端处理能力、DB 连接数」三者最小值决定\n\n**排查命令**：\n```bash\nulimit -n                     # 当前进程限制\ncat /proc/<haproxy-pid>/limits  # 进程实际限制\nss -s                         # 系统连接总览\n```",
+    "tags": [
+      "HAProxy",
+      "maxconn",
+      "容量"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1633,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "以下哪些指标应该纳入 LVS/HAProxy 的监控？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "各后端的活跃连接数与流量分布是否均衡"
+      },
+      {
+        "key": "B",
+        "text": "健康检查失败的节点数与变化"
+      },
+      {
+        "key": "C",
+        "text": "VIP 是否只在预期的主机上（防脑裂）"
+      },
+      {
+        "key": "D",
+        "text": "后端数据库的慢查询数量"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 属于数据库层监控，不是负载均衡层的职责。A/B/C 是 LB 层三个必监控项，尤其 C（VIP 唯一性）是防止脑裂的关键，很多人会漏掉。",
+    "tags": [
+      "监控",
+      "指标",
+      "脑裂"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1634,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "LVS/HAProxy 层被 DDoS 或恶意刷流量时，如何应急与加固？",
+    "answer": "**先判断类型**（决定处置方式）：\n\n| 类型 | 特征 | 手段 |\n|---|---|---|\n| 带宽型（UDP flood、反射放大） | 出口带宽打满，LB 本身 CPU 不高 | 云清洗、黑洞、运营商 |\n| 连接型（SYN flood） | 半连接队列满，`ss -s` 看到大量 SYN-RECV | SYN cookie、限连接速率 |\n| 应用型（CC 攻击） | 大量看似合法的 HTTP 请求，CPU/后端被打满 | 七层限流、人机校验 |\n\n**应急步骤**：\n\n**1. 立即止血**\n```bash\n# 找攻击源特征\nss -s                                  # 连接总览\ntcpdump -i eth0 -nn -c 1000 'tcp[tcpflags] & tcp-syn != 0'   # 抓 SYN\nawk '{print $1}' /var/log/haproxy.log | sort | uniq -c | sort -rn | head   # TOP 源IP\n\n# LVS 层直接封（临时）\nipvsadm -L -n | grep <攻击IP>\niptables -I INPUT -s <攻击IP> -j DROP\n```\n\n**2. 开启防护**\n```bash\n# SYN cookie（防 SYN flood）\nsysctl -w net.ipv4.tcp_syncookies=1\nsysctl -w net.ipv4.tcp_max_syn_backlog=8192\nsysctl -w net.core.somaxconn=8192\n\n# 限制单 IP 连接数\niptables -I INPUT -p tcp --dport 443 -m connlimit --connlimit-above 50 -j DROP\n```\n\n**3. 七层限流（HAProxy）**\n```\nfrontend web\n    stick-table type ip size 1m expire 60s store http_req_rate(60s),conn_cur\n    http-request track-sc0 src\n    http-request deny if { sc_http_req_rate(0) gt 100 }     # 60秒超100次拒绝\n    http-request deny if { sc_conn_cur(0) gt 30 }\n```\n或用 `http-request rate-limit`（2.7+）。\n\n**4. 云上手段**（更有效）\n- 云 WAF + DDoS 高防（清洗层前置）\n- SLB 的「访问控制」黑名单\n- CDN 缓存静态资源，减少回源\n\n**加固（长期）**：\n1. **隐藏真实源 IP**：用 CDN/高防代理，源站只允许回源 IP 访问\n2. **分层限流**：边缘（CDN/WAF）→ LB（连接数/速率）→ 应用（业务维度）\n3. **人机校验**：登录/搜索等易被刷的接口加验证码\n4. **最小化暴露面**：只开必要端口，管理端口加 IP 白名单\n5. **容量冗余**：LB 与带宽留余量，避免小攻击就打死\n6. **演练**：定期做压测与攻击模拟，验证预案有效\n\n**关键提醒**：\n- 大规模流量攻击（> 带宽）在单机上**无法防住**，必须靠云清洗或运营商\n- 不要盲目封 IP 段（可能误伤正常用户），优先用速率限制\n- 处置全程留记录（攻击量、时间、处置动作），用于事后复盘与取证",
+    "tags": [
+      "DDoS",
+      "应急",
+      "限流"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1635,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 配置里 `balance leastconn` 与 `balance roundrobin` 的核心区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "leastconn 按当前连接数分配，适合长连接/耗时不均；roundrobin 按顺序轮询"
+      },
+      {
+        "key": "B",
+        "text": "两者完全相同"
+      },
+      {
+        "key": "C",
+        "text": "roundrobin 更适合长连接"
+      },
+      {
+        "key": "D",
+        "text": "leastconn 只能用于四层"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "leastconn 动态按当前连接数选最闲的，适合请求耗时差异大或有长连接（DB、WebSocket）的场景。roundrobin 简单轮询，适合请求耗时均匀的无状态服务。",
+    "tags": [
+      "HAProxy",
+      "调度算法",
+      "leastconn"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1636,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "如何平滑升级/变更 LVS 或 HAProxy 而不中断服务？",
+    "answer": "**HAProxy 的平滑变更**：\n\n1. **配置校验**\n```bash\nhaproxy -c -f /etc/haproxy/haproxy.cfg\n```\n2. **平滑重载**\n```bash\nsystemctl reload haproxy\n# 或\nkill -USR2 $(cat /var/run/haproxy.pid)\n```\n- `USR2` 是 graceful reload：启动新进程 → 新进程接管新连接 → 老进程处理完已有连接后退出\n- **不会断开已有连接**，配置秒级生效\n\n3. **版本升级**（二进制变更）\n- 同样用 `USR2` + 老进程自退，实现**零停机升级**\n- 注意：新老版本若配置语法不兼容，会启动失败（老进程仍在跑，服务不中断）\n\n**LVS 的平滑变更**：\n\n1. **增删后端（不动 VIP）**\n```bash\n# 先加新后端并设为权重 0（不接流量）\nipvsadm -a -t VIP:80 -r 新IP:80 -g -w 0\n# 观察健康后逐步加权\nipvsadm -e -t VIP:80 -r 新IP:80 -g -w 5\n# 摘除旧后端：先把权重降到 0，等连接清空后再删\nipvsadm -e -t VIP:80 -r 旧IP:80 -g -w 0\nsleep 60\nipvsadm -d -t VIP:80 -r 旧IP:80\n```\n**关键：不要直接 -d 删除**，会让已有连接中断。\n\n2. **规则整体变更**\n- 用 `ipvsadm-save` / `ipvsadm-restore` 做原子替换\n```bash\nipvsadm-save > /tmp/current.rules\n# 编辑新规则到 /tmp/new.rules\nipvsadm-restore < /tmp/new.rules\n```\n\n2. **Keepalived 变更**\n```bash\n# 配置变更后\nsystemctl reload keepalived\n# 或\nkill -HUP $(cat /var/run/keepalived.pid)\n```\n- 注意：reload 不会重建 VRRP 实例，某些变更（如 virtual_router_id）必须 restart\n\n**变更前后的黄金习惯**：\n1. **备份当前配置与状态**\n```bash\ncp /etc/haproxy/haproxy.cfg{,.bak.$(date +%F)}\nipvsadm-save > /root/ipvs.$(date +%F).rules\n```\n2. **低峰执行**\n3. **变更后立即验证**\n```bash\ncurl -I http://VIP/           # 从外部验证\nipvsadm -L -n --stats         # 看流量是否正常分配\n```\n4. **准备好回滚命令**（一条命令能切回去）\n\n**最危险的操作**（务必避开）：\n- 直接 `ipvsadm -C`（清空所有规则）→ 服务立即全断\n- 直接 `systemctl restart haproxy`（非 reload）→ 断开所有连接\n- 改 keepalived 的 `virtual_router_id` 后只 reload → 可能双主脑裂",
+    "tags": [
+      "平滑变更",
+      "reload",
+      "运维操作"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1637,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "Nginx、HAProxy、LVS 三者如何选型？给出决策依据。",
+    "answer": "三者定位不同，**不是替代关系而是分层关系**。\n\n**核心差异表**：\n\n| 维度 | LVS | HAProxy | Nginx |\n|---|---|---|---|\n| 工作层级 | 四层（内核） | 四/七层 | 七层为主（可四层） |\n| 性能上限 | **最高**（十万级+） | 高（万级） | 高（万级） |\n| 七层能力 | ❌ 无 | ✅ 强 | ✅ 强 |\n| 健康检查 | ❌ 需 Keepalived | ✅ **最强**（主动+多协议） | ⚠️ 开源版仅被动 |\n| SSL 卸载 | ❌ | ✅ | ✅ |\n| 静态资源 | ❌ | ⚠️ 弱 | ✅ **强**（sendfile/缓存） |\n| 配置复杂度 | 中（+Keepalived） | 中 | 低 |\n| 统计与观测 | 弱（ipvsadm） | ✅ **强**（stats+socket） | 中（stub_status） |\n\n**决策树**：\n\n```\n需要按 URL/域名/Host 分流？\n├─ 是 → 用 Nginx 或 HAProxy\n│   ├─ 需要强健康检查/丰富统计/会话保持 → HAProxy\n│   └─ 有静态资源/需要缓存/限流/作为 Web 服务器 → Nginx\n└─ 否（纯四层，如 TCP 转发）\n    ├─ 流量极大（十万连接+）或要求极低延迟 → LVS\n    └─ 流量中等，需要七层能力 → HAProxy / Nginx stream\n```\n\n**常见组合（实际生产）**：\n\n1. **小规模**（QPS < 数千）：`Nginx + Keepalived` 双机，两层搞定\n2. **中大规模**：`LVS + Keepalived`（四层入口）→ `Nginx 集群`（七层分流）→ 应用\n3. **云上**：直接用 **云 SLB**（四层 + 七层监听），自建只保留 Nginx 做业务路由\n4. **微服务**：K8s Ingress（Nginx/Traefik/Envoy）代替传统 LB\n\n**选型时容易忽略的点**：\n- **团队维护能力**：LVS + Keepalived 的内核态排障门槛高，没人会维护就是负债\n- **故障面**：层次越多故障点越多，能用两层别用三层\n- **云上别自建**：云 SLB 已解决四层高可用，自建 LVS 收益低\n- **健康检查**：如果依赖主动检查发现故障，HAProxy 明显优于 Nginx 开源版\n\n**一句话结论**：\n- 要**性能** → LVS\n- 要**七层 + 健康检查 + 观测** → HAProxy\n- 要**Web 服务器 + 静态资源 + 反向代理** → Nginx\n- **云上/小规模** → 先别自建 LVS，Nginx 双机足够",
+    "tags": [
+      "选型",
+      "Nginx",
+      "HAProxy",
+      "LVS"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1801,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 的内存结构是怎样的？哪些区域会 OOM，哪些不会？",
+    "answer": "按线程共享与否分两块：\n\n**线程共享（堆内）**\n1. **堆（Heap）**：对象实例。分新生代（Eden + 2 个 Survivor）和老年代。**会 OOM**（最常见）\n2. **方法区 / 元空间（Metaspace）**：类元数据、常量、静态变量。JDK 8+ 用本地内存。**会 OOM**（Metaspace OOM）\n\n**线程私有**\n3. **虚拟机栈**：方法调用的栈帧（局部变量、操作数栈）。栈太深 → **StackOverflowError**，不是 OOM\n4. **本地方法栈**：Native 方法\n5. **程序计数器**：当前字节码行号，唯一不会 OOM 的区域\n\n**直接内存（堆外）**：NIO 的 DirectByteBuffer，受 `-XX:MaxDirectMemorySize` 限制，**会 OOM**\n\n**关键区分**：\n| 区域 | 溢出类型 |\n|---|---|\n| 堆 | `OutOfMemoryError: Java heap space` |\n| 元空间 | `OutOfMemoryError: Metaspace` |\n| 虚拟机栈 | `StackOverflowError` |\n| 直接内存 | `OutOfMemoryError: Direct buffer memory` |\n\n**排查命令**：\n```\njmap -heap <pid>         -- 查看堆配置与使用\njstat -gcutil <pid> 1000 -- 各代使用率与 GC 次数\njcmd <pid> VM.native_memory -- 看 Native 内存分布\n```\n\n**常见误解**：容器里看到进程内存远超 `-Xmx`，那是堆外内存（元空间、直接内存、线程栈、JVM 自身）—— 这是 K8s 里 Pod 被 OOMKilled 的常见原因。",
+    "tags": [
+      "JVM",
+      "内存结构",
+      "OOM"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1802,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 有哪些核心组件？一个 HTTP 请求是怎么被处理的？",
+    "answer": "**核心组件（从外到内）**：\n\n1. **Server**：最外层容器，代表整个 Tomcat 实例\n2. **Service**：把 Connector 和 Engine 绑定在一起\n3. **Connector**：负责网络连接与协议解析（HTTP/1.1、HTTP/2、AJP）\n4. **Engine**：请求处理引擎，内部有 Host\n5. **Host**：虚拟主机（对应一个域名），内部有 Context\n6. **Context**：一个 Web 应用的上下文（对应一个 WAR 或目录）\n7. **Wrapper**：一个 Servlet，最内层\n\n**请求处理流程**：\n```\n客户端\n → Connector（监听端口，解析 HTTP，封装成 Request/Response）\n → Engine → Host（按域名匹配）→ Context（按 path 匹配应用）\n → Wrapper（按 URL 匹配 Servlet）\n → Servlet 处理\n → 响应原路返回\n```\n\n**Connector 的关键参数**：\n```xml\n<Connector port=\"8080\" protocol=\"Http11NioProtocol\"\n    maxThreads=\"500\"          <!-- 工作线程上限，不够会排队 -->\n    acceptCount=\"200\"         <!-- 队列长度，线程满了排队到这里 -->\n    maxConnections=\"10000\"    <!-- 最大连接数 -->\n    connectionTimeout=\"20000\" <!-- 连接超时 -->\n    minSpareThreads=\"50\"\n/>\n```\n\n**关键概念：「最多能接多少并发」由三个参数共同决定**\n- `maxThreads`：同时处理的请求数\n- `acceptCount`：排队的请求数\n- 超出两者之和 → 直接拒绝（表现为连接超时或 RST）\n\n**排障要点**：Tomcat 卡住时先看线程栈（`jstack`），确认是「线程都在等 DB/下游」还是「线程都在执行 CPU 密集任务」——前者要扩线程或优化下游，后者扩线程无效。",
+    "tags": [
+      "Tomcat",
+      "架构",
+      "请求流程"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1803,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "JDK 8 之后，方法区的实现是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "永久代（PermGen）"
+      },
+      {
+        "key": "B",
+        "text": "元空间（Metaspace），使用本地内存"
+      },
+      {
+        "key": "C",
+        "text": "堆内存中的对象区"
+      },
+      {
+        "key": "D",
+        "text": "栈内存"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "JDK 8 移除了永久代，改为元空间（Metaspace），使用本地内存而非堆，受 -XX:MaxMetaspaceSize 限制。这样避免了 PermGen 固定大小导致的 OOM，也更灵活。",
+    "tags": [
+      "元空间",
+      "Metaspace",
+      "JDK8"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1804,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 的垃圾回收算法有哪几种？分代回收为什么这样设计？",
+    "answer": "**四种基础算法**：\n\n1. **标记-清除（Mark-Sweep）**\n   - 标记存活对象 → 清除未标记的\n   - 缺点：**内存碎片**，大对象可能分配失败\n2. **标记-复制（Mark-Copy）**\n   - 把存活对象复制到另一半空间\n   - 优点：无碎片、分配简单\n   - 缺点：浪费一半空间（适合存活率低的场景）\n3. **标记-整理（Mark-Compact）**\n   - 标记 → 把存活对象向一端移动 → 清理边界外\n   - 优点：无碎片\n   - 缺点：移动对象成本高（STW 更长）\n4. **分代收集**：按对象生命周期分区域用不同算法（不是独立算法，是组合策略）\n\n**分代设计的原因**（弱分代假说）：\n- 绝大多数对象「朝生夕灭」→ 新生代用**复制算法**（存活少，复制成本低）\n- 少数对象活得久 → 老年代用**标记-清除 / 标记-整理**\n\n**内存分配与晋升**：\n- 新对象进 Eden\n- Minor GC：Eden + 一个 Survivor 存活对象复制到另一个 Survivor，年龄 +1\n- 年龄达阈值（默认 15，`-XX:MaxTenuringThreshold`）→ 晋升老年代\n- 大对象直接进老年代（`-XX:PretenureSizeThreshold`）\n- 动态年龄判断：Survivor 中同年龄对象总和 > 一半 → 该年龄及以上直接晋升\n\n**关键参数**：\n```\n-Xmn / -XX:NewRatio       -- 新生代大小\n-XX:SurvivorRatio         -- Eden : Survivor 比例（默认 8:1）\n-XX:MaxTenuringThreshold  -- 晋升阈值\n```\n\n**面试常问**：为什么新生代不用标记-整理？因为存活对象少，复制成本远低于整理大量存活对象；且复制没有碎片问题。",
+    "tags": [
+      "GC算法",
+      "分代",
+      "复制算法"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1805,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "以下哪些是 JVM 常见的垃圾收集器？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "Serial / ParNew"
+      },
+      {
+        "key": "B",
+        "text": "CMS（Concurrent Mark Sweep）"
+      },
+      {
+        "key": "C",
+        "text": "G1（Garbage First）"
+      },
+      {
+        "key": "D",
+        "text": "Epoll"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "Serial/ParNew/Parallel Scavenge/CMS/G1/ZGC/Shenandoah 都是垃圾收集器。Epoll 是 Linux 的 IO 多路复用机制，与 GC 无关。",
+    "tags": [
+      "GC收集器",
+      "G1",
+      "CMS"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1806,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "CMS 和 G1 有什么区别？为什么 JDK 9 之后推荐 G1？",
+    "answer": "**CMS（Concurrent Mark Sweep，JDK 8 及以前的老年代收集器）**\n- 基于**标记-清除**，追求低停顿（并发标记/并发清理）\n- 缺点：\n  1. **内存碎片**（清除不整理）→ 大对象分配失败触发 Full GC\n  2. **Concurrent Mode Failure**：并发清理期间老年代又被填满 → 退化为 Serial Old 全停顿\n  3. 无法控制停顿时间（不知道会停多久）\n- 已在 JDK 14 被移除\n\n**G1（Garbage First，JDK 9+ 默认）**\n- 把堆划分成多个大小相等的 **Region**，按「垃圾最多」优先回收（名字来源）\n- 逻辑上仍有分代（Eden/Survivor/Old/Humongous），但物理上不连续\n- 优点：\n  1. **可预测停顿**：`-XX:MaxGCPauseMillis` 设定目标，G1 自己挑 Region 组合来满足\n  2. **无碎片问题**：年轻代用复制，老年代用「标记-整理」（Region 间复制）\n  3. 支持大堆（几十 GB 也 OK）\n  4. 有 Mixed GC，避免全堆 Full GC\n- 缺点：单次回收仍可能较长；小堆（< 4GB）优势不明显；写屏障有额外开销\n\n**关键对比表**：\n| | CMS | G1 |\n|---|---|---|\n| 内存布局 | 连续分代 | Region 分块 |\n| 算法 | 标记-清除 | 标记-整理（Region 复制） |\n| 碎片 | ❌ 有 | ✅ 无 |\n| 停顿可控 | ❌ 不可控 | ✅ MaxGCPauseMillis |\n| 大堆支持 | 一般 | 好 |\n\n**为什么推荐 G1**：可预测停顿 + 无碎片，且是大堆场景的稳妥选择。但**如果堆小（< 4G）且追求极致吞吐**，Parallel Scavenge 反而更合适；**追求超低延迟（< 10ms）** 则用 ZGC。\n\n**切换命令**：`-XX:+UseG1GC`（JDK 9+ 默认已是 G1）。\n\n**常见误解**：G1 不等于「零停顿」，只是「停顿可控」。STW 仍然存在，只是时间短且可预测。",
+    "tags": [
+      "CMS",
+      "G1",
+      "GC选型"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1807,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "如何排查 JVM 内存泄漏？常用的命令和步骤是什么？",
+    "answer": "**核心思路：先确认「涨」，再定位「谁占的」，最后找「为什么没释放」。**\n\n**1. 确认是泄漏还是正常占用**\n```\njstat -gcutil <pid> 1000 10      -- 每秒一次看 10 次\n```\n判断依据：\n- **泄漏**：老年代（O）持续上涨，Full GC 后也不回落\n- **正常**：Full GC 后能明显回落，只是基线较高\n\n**2. 抓取内存快照**\n```\njmap -dump:live,format=b,file=/tmp/heap.hprof <pid>\n# 或\njcmd <pid> GC.heap_dump /tmp/heap.hprof\n```\n注意：dump 会 STW，大堆可能停顿数秒，要低峰做或从从节点做。\n\n**3. 分析快照（MAT / VisualVM / jprofiler）**\n关键看两个视图：\n- **Dominator Tree**：谁占了最多内存（哪个对象「支配」了整棵引用树）\n- **Leak Suspects**：MAT 自动分析的可疑泄漏点\n- **Path to GC Roots**：为什么这个对象没被回收（找到强引用链）\n\n**4. 对比两次快照**\n```\n间隔 10-30 分钟各 dump 一次，用 MAT 的 Compare 功能\n```\n持续增长的对象类型就是嫌疑对象——这是最有效的方法。\n\n**5. 常见泄漏原因**\n| 原因 | 特征 |\n|---|---|\n| 静态集合只增不减 | Map/List 持续增长 |\n| 缓存无上限/无过期 | 缓存对象占比高 |\n| 监听器未注销 | Listener 引用链指向业务对象 |\n| ThreadLocal 未清理 | 线程池复用导致持有 |\n| 连接/流未关闭 | 持有 buffer 与 socket |\n| 内部类持有外部类 | 匿名类/Runnable 引用 |\n\n**6. 实时观察（不用 dump）**\n```\njmap -histo:live <pid> | head -30     -- 各类实例数与占用\njcmd <pid> GC.class_histogram          -- 同上，新写法\n```\n连续观察几次，看哪类对象数量在涨。\n\n**7. 应急手段**\n- 临时加 `-Xmx` 并重启，争取排查时间\n- 如果是缓存问题，先加容量上限\n\n**关键提醒**：**没有 dump 就没有真相**。线上 OOM 一定要配置 `-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/path`，否则 OOM 后无从查起。",
+    "tags": [
+      "内存泄漏",
+      "heapdump",
+      "MAT"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1808,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "查看 JVM 各代内存使用率与 GC 次数的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "jstat -gcutil <pid> [间隔] [次数]"
+      },
+      {
+        "key": "B",
+        "text": "jps -l"
+      },
+      {
+        "key": "C",
+        "text": "javac -version"
+      },
+      {
+        "key": "D",
+        "text": "jmap -heap"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "jstat -gcutil 输出各区使用率（E/S/O/M）、YGC/FGC 次数与耗时，是观察 GC 行为最轻量的工具。jps 只列进程，jmap -heap 看配置与一次快照。",
+    "tags": [
+      "jstat",
+      "GC监控"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1809,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 线程池满了会怎样？如何判断是线程池问题？",
+    "answer": "**现象**：请求变慢或直接超时/被拒，但 CPU 可能不高。\n\n**Tomcat 的三层缓冲机制**：\n1. `maxThreads`：并发处理线程数（默认 200）\n2. `acceptCount`：等待队列（默认 100）\n3. 超出两者 → 连接被拒绝（客户端看到连接超时或 RST）\n\n**判断依据（关键）**：\n\n1. **看线程状态**\n```\njstack <pid> | grep \"http-nio-8080-exec\" | wc -l     -- 当前线程数\njstack <pid> > /tmp/thread.txt                       -- 完整栈\n```\n统计线程都在干什么：\n- 大量线程 BLOCKED 在某锁上 → 锁竞争\n- 大量线程 WAITING 在 DB 连接/HTTP 客户端 → 下游慢\n- 大量线程 RUNNABLE 且 CPU 高 → 计算密集\n\n2. **看 Tomcat 的 connector 状态**（Tomcat 7+ 有 JMX 或 status 页面）\n- `currentThreadsBusy` 接近 `maxThreads` → 线程池满\n\n3. **看队列**\n- 如果 `acceptCount` 也满了，客户端开始被拒\n\n**不同原因的对策完全不同**：\n\n| 根因 | 加线程有用吗 | 正确做法 |\n|---|---|---|\n| 下游慢（DB/HTTP） | ❌ 无用，反而加剧 | 优化下游、加超时、加熔断 |\n| 锁竞争 | ❌ 无用 | 缩小锁粒度、减少临界区 |\n| CPU 密集 | ❌ 无用 | 扩机器（横向）或优化算法 |\n| 慢请求占线程（大文件、长轮询） | ✅ 有用 | 加线程 / 改异步 Servlet / 换 WebFlux |\n\n**关键认知**：**盲目调大 maxThreads 是反模式**。线程多了只会让下游压力更大，且上下文切换开销上升。先定位「线程在等什么」。\n\n**常用排查命令**：\n```\ncurl http://localhost:8080/manager/status   -- 需配 manager 用户\njstack <pid> | grep -c \"http-nio\"\njcmd <pid> Thread.print                      -- 等同 jstack\n```",
+    "tags": [
+      "Tomcat",
+      "线程池",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1810,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "以下哪些是 JVM 启动时应该配置的、与「容器化」相关的参数？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "-XX:MaxRAMPercentage（按容器内存百分比设堆）"
+      },
+      {
+        "key": "B",
+        "text": "-XX:+UseContainerSupport（让 JVM 感知 cgroup 限制）"
+      },
+      {
+        "key": "C",
+        "text": "-XX:+HeapDumpOnOutOfMemoryError（OOM 时自动 dump）"
+      },
+      {
+        "key": "D",
+        "text": "-Xmx 设为宿主机总内存的 80%"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 在容器里很危险：宿主机内存往往远大于容器 limit，设成宿主机 80% 会导致容器超 limit 被 OOMKilled。应该用 MaxRAMPercentage 按容器 limit 计算（如 75%），并留出堆外内存空间。",
+    "tags": [
+      "容器化",
+      "JVM参数",
+      "OOMKilled"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1811,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "线上 Java 应用 CPU 100%，如何定位到具体代码行？",
+    "answer": "**五步定位法**（这是运维/面试必会的硬技能）：\n\n**1. 确认是 Java 进程**\n```\ntop\n```\n找到 CPU 高的进程 PID，确认是 java。\n\n**2. 找占用最高的线程**\n```\ntop -Hp <pid>                      -- 看线程级\n# 或用\nps -Lp <pid> -o tid,pcpu,stat,comm --sort=-pcpu | head\n\n# 或一步到位\nprintf '%x\\n' <tid>                -- 把 TID 转成十六进制\n```\n\n**3. 抓线程栈**\n```\njstack <pid> > /tmp/jstack.txt\n```\n**4. 在栈里搜索那个十六进制 TID**\n```\ngrep -A 30 'nid=0x<十六进制TID>' /tmp/jstack.txt\n```\n找到的栈顶就指向具体方法：\n- 栈顶是业务方法 → 业务代码死循环/正则回溯/大计算\n- 栈顶是 GC 线程 → 内存问题，不是 CPU 问题\n- 栈顶是 `Object.wait` / `park` → 不是真占 CPU，可能看错了线程\n\n**5. 确认根因**\n- **死循环/正则回溯**：栈固定在某个方法，多次采样都相同\n- **频繁 GC**：`jstat -gcutil 1` 看 FGC 频率与耗时 → 是 GC 吃 CPU，要查内存\n- **锁竞争**：大量线程 BLOCKED（但这类通常是 CPU 不高、吞吐低）\n- **大量短连接/加解密**：栈在 socket/加解密相关方法\n\n**多次采样法（关键技巧）**：\n```\nfor i in 1 2 3 4 5; do jstack <pid> | grep -A 5 'nid=0x<tid>'; sleep 1; done\n```\n如果每次栈顶都在同一个方法 → **确定是它**。若每次都不同 → 是 GC 或系统调用。\n\n**进阶工具**：\n- `arthas`：`thread -n 3`（找最忙的 3 个线程）、`profiler start` 生成火焰图\n- `async-profiler`：采样生成火焰图，能看到方法级耗时分布\n- `perf` + FlameGraph（Linux 层）\n\n**注意**：jstack 会 STW（安全点），大堆时可能停顿；生产上优先用 arthas 或异步采样工具。",
+    "tags": [
+      "CPU100%",
+      "jstack",
+      "火焰图"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1812,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 的 JVM 参数应该如何设置？-Xms、-Xmx、-Xmn 各是什么？",
+    "answer": "**三个基础参数**：\n\n```\n-Xms4g            -- 堆初始大小\n-Xmx4g            -- 堆最大大小\n-Xmn1g            -- 新生代大小（等价 -XX:NewSize=X -XX:MaxNewSize=X）\n```\n\n**关键原则**：\n\n1. **`-Xms` 与 `-Xmx` 设成一样**\n   - 避免堆动态扩缩带来的性能抖动\n   - 但也意味着进程启动就占这么多内存（容器 limit 要够）\n\n2. **新生代不要太大也不要太小**\n   - 太大 → Minor GC 一次回收太多，停顿长，且老年代空间被挤压\n   - 太小 → Minor GC 频繁，且短命对象容易提前晋升\n   - 参考：老年代 : 新生代 ≈ 2:1 到 3:1（用 `-XX:NewRatio` 控制）\n   - 也可用 `-XX:SurvivorRatio=8`（Eden:Survivor = 8:1）\n\n3. **留出堆外空间**（容器场景最关键）\n   ```\n   -XX:MaxMetaspaceSize=256m      -- 元空间上限（防止无限涨）\n   -XX:MaxDirectMemorySize=256m   -- 直接内存上限\n   ```\n   容器 limit = 堆 + 元空间 + 直接内存 + 线程栈（约 1MB × 线程数）+ JVM 自身，**堆放 60-75%** 是常见安全值。\n\n**推荐模板（容器 4G limit）**：\n```\n-XX:MaxRAMPercentage=70\n-XX:InitialRAMPercentage=70\n-XX:MaxMetaspaceSize=256m\n-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200\n-XX:+HeapDumpOnOutOfMemoryError\n-XX:HeapDumpPath=/logs/heap.hprof\n-Xlog:gc*:file=/logs/gc.log:time,uptime:filecount=5,filesize=50m\n```\n\n**为什么用 MaxRAMPercentage 而不是 -Xmx**：容器 limit 变化时（改资源配置）无需改启动参数，JVM 自动按比例算。\n\n**注意**：JDK 8u191+ 才支持容器感知；更早版本会读宿主机内存，导致堆开过大被 OOMKilled。",
+    "tags": [
+      "JVM参数",
+      "Tomcat",
+      "容器"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1813,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 出现 OutOfMemoryError: Metaspace，最常见的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "类加载过多（动态生成类、热部署泄漏）"
+      },
+      {
+        "key": "B",
+        "text": "对象实例太多"
+      },
+      {
+        "key": "C",
+        "text": "线程数过多"
+      },
+      {
+        "key": "D",
+        "text": "GC 参数配置错误"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "Metaspace 存类元数据，溢出说明类加载太多且没能卸载。常见于：动态代理/CGLIB 生成类过多、JSP/热部署反复加载导致 ClassLoader 泄漏、大量反射生成类。对象太多是 heap OOM，线程太多是栈/本地内存问题。",
+    "tags": [
+      "Metaspace",
+      "OOM",
+      "类加载"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1814,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "什么是 STW？哪些 GC 阶段会 STW？如何减少 STW 的影响？",
+    "answer": "**STW（Stop The World）**：GC 期间暂停所有应用线程，此时请求不被处理。\n\n**为什么会 STW**：\n- 标记阶段需要「一致的对象图快照」，如果应用还在改引用，标记结果就不准\n- 复制/整理阶段要移动对象，应用线程访问对象会出错\n\n**各收集器的 STW 阶段**：\n| 收集器 | STW 阶段 |\n|---|---|\n| Serial | 整个 GC 全程 |\n| Parallel | 整个 GC 全程（但多线程并行缩短时间） |\n| **CMS** | 初始标记、重新标记（较短）；并发标记/清理不 STW |\n| **G1** | 初始标记、最终标记、筛选回收（可控） |\n| ZGC | 极短（亚毫秒级） |\n\n**影响与判断**：\n- Minor GC 的 STW 通常几十毫秒，可接受\n- Full GC 的 STW 可能数秒 → 大量请求超时\n- 判断：`jstat -gcutil` 看 FGC 次数与 `FGCT`（累计耗时）\n\n**减少 STW 的手段**：\n\n1. **选对收集器**\n   - 大堆 + 低延迟 → G1（设 `-XX:MaxGCPauseMillis`）\n   - 超大堆 + 极低延迟 → ZGC\n2. **控制堆大小**：堆太大，单次 GC 扫描时间长。堆不是越大越好\n3. **减少对象产生速率**：优化代码、避免大对象、对象复用\n4. **避免 Full GC**\n   - 不要设 `-XX:+DisableExplicitGC` 后又调用 `System.gc()`\n   - 防止元空间/Metaspace 涨满触发 Full GC\n   - 避免晋升过快（Survivor 太小）\n5. **GC 日志分析**：`-Xlog:gc*` 记录每次 STW 时长，找出最长的几次并分析原因\n\n**关键认知**：**STW 无法消除，只能缩短和控制**。对延迟敏感的服务，要把「最坏情况 STW」纳入容量与超时设计（如 RPC 超时要大于 STW 时间）。",
+    "tags": [
+      "STW",
+      "GC停顿",
+      "调优"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1815,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 应用响应慢，可能的原因有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "线程池已满，请求在排队"
+      },
+      {
+        "key": "B",
+        "text": "下游依赖（DB/Redis/HTTP）慢"
+      },
+      {
+        "key": "C",
+        "text": "频繁 Full GC 导致 STW"
+      },
+      {
+        "key": "D",
+        "text": "Tomcat 的 Connector 端口没有开放"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 会导致完全连不上（连接拒绝/超时），不是「响应慢」。A/B/C 是响应慢的三大类原因，排查顺序建议：先看 GC（jstat）→ 再看线程栈（jstack，判断在等什么）→ 最后查下游。",
+    "tags": [
+      "Tomcat",
+      "响应慢",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1816,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "如何从 GC 日志判断应用是否存在内存问题？",
+    "answer": "**先开启 GC 日志**（JDK 9+ 统一日志）：\n```\n-Xlog:gc*:file=/logs/gc.log:time,uptime,level,tags:filecount=5,filesize=50m\n```\nJDK 8 写法：\n```\n-XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:/logs/gc.log\n-XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=5 -XX:GCLogFileSize=50M\n```\n\n**关键看四个指标**：\n\n**1. Full GC 频率**\n- 正常：几天一次或更少\n- 异常：每小时多次、甚至每分钟 → 内存不足或泄漏\n- 危险：连续 Full GC（每次回收后用量不降）→ 即将 OOM\n\n**2. GC 后老年代占用（最关键的判断）**\n```\n[GC 后] 老年代: 2G -> 1.9G(4G)\n```\n- 回收后仍占 90%+ 且持续上升 → **内存泄漏**\n- 回收后能降到 50% 以下 → 正常\n\n**3. GC 停顿时间**\n- Minor GC 通常 < 50ms（G1 可更低）\n- Full GC 可能数秒 → 影响接口超时\n- 关注 `Pause Young` / `Pause Full` 后的耗时\n\n**4. 晋升速率**\n- 新生代 GC 后存活对象多、快速晋升 → Survivor 太小或对象生命周期偏长\n- 调整 `-Xmn` 或 `-XX:SurvivorRatio`\n\n**典型日志模式识别**：\n\n| 模式 | 含义 |\n|---|---|\n| 老年代缓慢上涨，Full GC 后微降 | 内存泄漏 |\n| 老年代突然占满 → Full GC | 大对象突增或缓存未设上限 |\n| Minor GC 频繁但老年代稳定 | 新生代太小，可调 -Xmn |\n| Full GC 耗时极长（>5s） | 堆太大或对象太多，考虑换 G1/ZGC |\n| `to-space exhausted` / `Evacuation Failure` | 晋升失败，Survivor/老年代不足 |\n\n**分析工具**：\n- `GCViewer` / `gceasy.io`：可视化日志，自动给出调优建议\n- 直接 grep：`grep -c \"Full GC\" gc.log` 数次数\n\n**实践建议**：\n1. GC 日志必须常开（开销极小）并轮转\n2. 配置 `-XX:+HeapDumpOnOutOfMemoryError`，OOM 时留下现场\n3. 把 GC 指标接入监控（Prometheus 的 jvm_gc_* 指标），不要靠人看日志\n\n**注意**：GC 日志本身不能告诉你「哪个对象泄漏」，只能告诉你「有泄漏」。定位具体对象还需要 heap dump。",
+    "tags": [
+      "GC日志",
+      "内存问题",
+      "分析"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1817,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 如何部署多个应用？context path 是什么？",
+    "answer": "**部署方式**（三种）：\n\n1. **目录/WAR 放入 webapps**\n```\nwebapps/\n  ├── ROOT/          -- 根路径 /\n  ├── api.war        -- 路径 /api\n  └── admin/         -- 路径 /admin\n```\n2. **server.xml 配置 Context**\n```xml\n<Context docBase=\"/opt/apps/myapp\" path=\"/myapp\" reloadable=\"false\" />\n```\n3. **独立 context 文件**（推荐，避免改 server.xml）\n```\nconf/Catalina/localhost/myapp.xml\n内容：<Context docBase=\"/opt/apps/myapp\" reloadable=\"false\" />\n```\n\n**context path 是什么**：应用在 Tomcat 中的访问前缀。\n- `path=\"/\"` → 访问 `http://host:8080/`\n- `path=\"/api\"` → 访问 `http://host:8080/api/...`\n- 应用内部代码不应硬编码 context path（用 `request.getContextPath()`）\n\n**关键注意**：\n\n1. **`reloadable=\"true\"` 千万别在生产用**\n   - 它会监控 class 文件变化并自动重载 → 频繁重载会导致 **Metaspace 泄漏**（ClassLoader 无法回收）\n   - 这是 Metaspace OOM 的经典原因之一\n2. **`autoDeploy` 关掉**（生产）：避免自动部署意外覆盖应用\n3. **多应用共享与隔离**：\n   - 各 Context 有独立 ClassLoader（互相隔离）\n   - 但共享 Tomcat 的 JVM 堆，一个应用泄漏会影响全部 → 关键应用建议独立实例\n4. **context path 冲突**：两个应用配了相同 path → 启动失败，日志会有明确报错\n\n**排查相关命令**：\n```\nls webapps/                 -- 看部署了哪些\ncurl http://localhost:8080/manager/html   -- 管理界面（需配权限）\ntail -f logs/catalina.out   -- 部署日志\n```",
+    "tags": [
+      "Tomcat",
+      "部署",
+      "context path"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1818,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "Tomcat 默认的 HTTP 连接器端口是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "80"
+      },
+      {
+        "key": "B",
+        "text": "8080"
+      },
+      {
+        "key": "C",
+        "text": "8005"
+      },
+      {
+        "key": "D",
+        "text": "8443"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "8080 是默认 HTTP 端口；8005 是 shutdown 端口（用于接收关闭指令，安全上建议改为 -1 禁用）；8443 是默认 HTTPS 端口；80 需要 root 权限或端口转发。",
+    "tags": [
+      "Tomcat",
+      "端口",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1819,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 有哪些常用排查工具？各自看什么？",
+    "answer": "按场景分四类：\n\n**1. 进程与基础信息**\n```\njps -l                    -- 列出 Java 进程与主类\njinfo <pid>               -- 查看/动态修改 JVM 参数\njcmd <pid> VM.flags       -- 查看启动参数（推荐，取代 jinfo）\n```\n\n**2. GC 与内存**\n```\njstat -gcutil <pid> 1000   -- 各区使用率、GC 次数与耗时（轻量，首选）\njstat -gc <pid> 1000       -- 各区容量（KB）\njmap -heap <pid>           -- 堆配置与使用情况\njmap -histo:live <pid>     -- 各类对象数量与占用（会触发 Full GC，慎用）\njmap -dump:live,format=b,file=x.hprof <pid>   -- 堆快照\njcmd <pid> GC.heap_dump x.hprof                -- 同上，新写法\n```\n\n**3. 线程与 CPU**\n```\njstack <pid>                       -- 线程栈（会 STW，注意时机）\njstack -l <pid>                    -- 含锁信息\njcmd <pid> Thread.print            -- 等同\njstack <pid> | grep BLOCKED        -- 找锁竞争\n```\n\n**4. 高级诊断**\n```\n# Arthas（阿里开源，生产最实用）\nthread -n 3              -- 最忙的 3 个线程\ndashboard                -- 整体概览\nwatch / trace / tt       -- 方法级观测（不重启）\nprofiler start           -- 生成火焰图\n\n# async-profiler\n./profiler.sh -d 30 -f out.html <pid>   -- CPU/内存/锁火焰图\n```\n\n**按症状选工具（速查表）**：\n\n| 症状 | 首选工具 |\n|---|---|\n| CPU 高 | top -Hp → jstack / arthas thread -n |\n| 内存涨 / OOM | jstat → jmap -histo → heap dump |\n| 接口慢 | arthas trace（看方法耗时） |\n| 线程卡死 | jstack 看 BLOCKED / DEADLOCK |\n| GC 频繁 | jstat -gcutil + GC 日志 |\n| 内存泄漏 | 两次 heap dump 对比 |\n\n**生产注意事项**：\n- `jmap -dump` 会 STW，大堆可能停顿数秒 → 低峰做或从从节点做\n- `jstack` 也需要安全点，但通常很快\n- **优先用 arthas/async-profiler**，它们对线上影响更小\n- 所有操作前先确认在哪个实例上做（多实例时别搞错机器）",
+    "tags": [
+      "JVM工具",
+      "jstack",
+      "arthas"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1820,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "关于 JVM 的 G1 收集器，以下说法正确的是？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "把堆划分为多个 Region，按垃圾多少优先回收"
+      },
+      {
+        "key": "B",
+        "text": "可通过 -XX:MaxGCPauseMillis 设定停顿目标"
+      },
+      {
+        "key": "C",
+        "text": "JDK 9 起成为默认垃圾收集器"
+      },
+      {
+        "key": "D",
+        "text": "完全消除了 STW 停顿"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：G1 的停顿是「可控」而非「消除」，仍有 STW（初始标记、最终标记、筛选回收）。要亚毫秒级停顿需要用 ZGC/Shenandoah。",
+    "tags": [
+      "G1",
+      "Region",
+      "停顿"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1821,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "Java 应用在 K8s 中频繁被 OOMKilled，但 heap 看起来没超，为什么？",
+    "answer": "**根因：容器内存 ≠ 堆内存**。进程实际占用 = 堆 + 堆外，而 `-Xmx` 只管堆。\n\n**容器内存的组成部分**：\n```\n容器 RSS = 堆(Xmx) + 元空间 + 直接内存 + 线程栈 + JIT 代码缓存 + GC 结构 + 本地库 + JVM 自身\n```\n粗算：每线程栈 1MB，200 线程就是 200MB；元空间可能 100-300MB；直接内存（Netty/NIO）可能上百 MB。\n\n**典型场景**：\n1. **`-Xmx` 设成了容器 limit 的比例过大**（如 limit 4G，Xmx 设 3.8G）\n   → 堆还没满，但堆外一涨就超 limit\n2. **用 `-Xmx` 按宿主机内存算**（老版本 JDK 不感知 cgroup）\n   → 宿主机 64G，Xmx 设 32G，容器 limit 4G → 立刻被杀\n3. **JDK 8 早期版本（< 8u191）不感知容器**\n   → `Runtime.maxMemory()` 返回宿主机内存\n4. **Netty DirectBuffer 泄漏**\n   → `-XX:MaxDirectMemorySize` 没设或设得大，实际超 limit\n5. **线程数过多**\n   → 每个线程 1MB 栈，几百线程吃掉几百 MB\n\n**排查方法**：\n```bash\n# 1. 确认被杀原因\nkubectl describe pod <pod> | grep -A5 \"Last State\"\n# 看到 Reason: OOMKilled, Exit Code: 137 就是容器级 OOM\n\n# 2. 对比容器内存与堆\nkubectl top pod <pod>                      -- 容器实际内存\njcmd <pid> VM.native_memory summary        -- 需要 -XX:NativeMemoryTracking=summary\njcmd <pid> GC.heap_info                    -- 堆使用\n\n# 3. 算差值\n容器内存 - 堆使用 = 堆外占用\n```\n\n**正确配置**：\n```\n# 容器 limit 4G，堆占 70%\n-XX:MaxRAMPercentage=70\n-XX:MaxMetaspaceSize=256m\n-XX:MaxDirectMemorySize=256m\n-XX:ActiveProcessorCount=4          # 避免 JVM 开过多 GC 线程\n-XX:+UseG1GC\n```\n留 30% 给堆外是常见安全值。\n\n**如果是 Netty 应用**，还要注意 `-Dio.netty.maxDirectMemory` 与池化配置。\n\n**关键认知**：K8s 的 OOMKilled 是 **cgroup 层面**杀进程（看 RSS），与 JVM 的 `OutOfMemoryError`（看堆/元空间）是两件事，日志里**不会**有 Java 异常堆栈——这是排查时最容易困惑的点。",
+    "tags": [
+      "OOMKilled",
+      "堆外内存",
+      "容器"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1822,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "容器中限制内存为 2G，JVM 堆最合理的设置方式是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "-Xmx2g，用满容器内存"
+      },
+      {
+        "key": "B",
+        "text": "-XX:MaxRAMPercentage=70，约 1.4G"
+      },
+      {
+        "key": "C",
+        "text": "-Xmx 设为宿主机内存的 80%"
+      },
+      {
+        "key": "D",
+        "text": "不设置，让 JVM 自动决定"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "必须给堆外内存（元空间、直接内存、线程栈）留空间，通常堆放 60-75%。A 会因堆外占用超 limit 被 OOMKilled；C 完全错误（宿主机内存远大于容器 limit）；D 在旧 JDK 上会按宿主机算，同样危险。",
+    "tags": [
+      "容器",
+      "JVM参数",
+      "MaxRAMPercentage"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1823,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 的 AJP 协议是什么？为什么建议关闭？",
+    "answer": "**AJP（Apache JServ Protocol）**是 Tomcat 与前置 Apache httpd 之间的二进制协议，用于把请求转发给 Tomcat，比 HTTP 更省带宽（头部用整数编码而非文本）。\n\n**配置**（server.xml）：\n```xml\n<Connector port=\"8009\" protocol=\"AJP/1.3\" secretRequired=\"false\" />\n```\n\n**为什么建议关闭**：\n\n1. **默认配置不安全（历史漏洞）**\n   - 旧版本默认 `secretRequired=\"false\"`，且 AJP 监听所有网卡\n   - **Ghostcat 漏洞（CVE-2020-1938）**：攻击者通过 AJP 可读取应用目录下任意文件（包括 WEB-INF 下的配置与源码），甚至远程执行\n   - 影响 Tomcat 6/7/8/9 多个版本\n\n2. **现代架构不需要 AJP**\n   - 现在多用 Nginx 反向代理 HTTP/HTTPS 到 Tomcat，性能足够\n   - 前置 Apache 的场景也可以改用 HTTP 代理\n   - 容器化/K8s 场景更不会用 AJP\n\n3. **关闭方法**\n   - 直接注释掉 server.xml 里的 AJP Connector\n   - 或设置 `secretRequired=\"true\"` + 强 secret（仅当确实需要 AJP）\n   - 确认 8009 端口不再监听：`ss -lntp | grep 8009`\n\n**排查是否暴露**：\n```bash\nss -lntp | grep -E '8009|AJP'\n# 或从外部扫描\nnmap -p 8009 <host>\n```\n\n**同类加固项**：\n- 关闭 shutdown 端口（8005）或改为 -1\n- 禁用 manager/host-manager 应用或加 IP 白名单\n- 关闭 autoDeploy、reloadable\n- 版本及时升级（尤其有 CVE 时）\n\n**面试加分点**：能说出 Ghostcat 这个具体漏洞与 AJP 的关系，说明真的做过安全加固，而不是只知道「AJP 是协议」。",
+    "tags": [
+      "AJP",
+      "Ghostcat",
+      "安全加固"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1824,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 的堆外内存有哪些来源？为什么容器里容易超限？",
+    "answer": "**堆外内存**指不受 `-Xmx` 限制、但计入进程 RSS 的内存。\n\n**主要来源（6 类）**：\n\n1. **元空间（Metaspace）**\n   - 类元数据、方法字节码、常量池\n   - 受 `-XX:MaxMetaspaceSize` 限制（默认无上限！）\n   - 动态生成类多时会持续增长\n\n2. **直接内存（Direct Memory）**\n   - `ByteBuffer.allocateDirect()`、Netty 的池化 buffer、NIO\n   - 受 `-XX:MaxDirectMemorySize` 限制（默认≈Xmx）\n   - **Netty 应用的重灾区**\n\n3. **线程栈**\n   - 每线程默认 1MB（`-Xss` 可调）\n   - 200 线程 = 200MB\n\n4. **JIT 代码缓存（Code Cache）**\n   - 编译后的机器码，默认 240MB\n   - `-XX:ReservedCodeCacheSize` 可调\n\n5. **GC 自身结构**\n   - G1 的 Card Table、Remembered Set，可占堆的 1-10%\n\n6. **JVM 内部与本地库**\n   - JNI 调用、本地库（如 snappy/zstd 压缩）、malloc 的 arena\n\n**为什么容器里容易超**：\n\n容器 limit 是**整个进程的 RSS 上限**（cgroup 层），而 `-Xmx` 只管堆。常见错误：\n```\n# 错误：limit 2G，Xmx 2G\n-XX:MaxMetaspaceSize 未设 → 可能涨到 300M\n-XX:MaxDirectMemorySize 未设 → 默认≈Xmx = 2G 的额度\n→ 堆 2G + 堆外 → 必然超 2G → OOMKilled\n```\n\n**正确配置**：\n```\n-XX:MaxRAMPercentage=70           # 堆占容器 70%\n-XX:MaxMetaspaceSize=256m         # 必须显式设上限\n-XX:MaxDirectMemorySize=256m      # Netty 应用尤其重要\n-XX:ActiveProcessorCount=4        # 限制 GC/JIT 线程数\n```\n\n**排查方法**：\n```bash\n# 看 Native 内存明细（需启动时加 -XX:NativeMemoryTracking=summary）\njcmd <pid> VM.native_memory summary\n\n# 看堆外估算\njcmd <pid> VM.native_memory summary | grep -E 'Metaspace|Direct|Thread|Code'\n\n# 看进程实际 RSS\ngrep VmRSS /proc/<pid>/status\n```\n\n**关键认知**：`Runtime.maxMemory()` 返回的是**堆**上限，不是容器 limit。用它能看到的只是 Xmx，不能用来判断会不会被 OOMKilled。",
+    "tags": [
+      "堆外内存",
+      "容器",
+      "OOMKilled"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1825,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 参数 -Xss 控制的是什么？设太小的后果是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "每个线程的栈大小；太小会导致 StackOverflowError"
+      },
+      {
+        "key": "B",
+        "text": "堆的总大小"
+      },
+      {
+        "key": "C",
+        "text": "新生代大小"
+      },
+      {
+        "key": "D",
+        "text": "元空间上限"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "-Xss 是单线程栈容量（默认约 512KB-1MB）。设太小，递归稍深就 StackOverflowError；设太大，线程数多时内存开销大（每线程都占这么多）。这与堆大小无关。",
+    "tags": [
+      "-Xss",
+      "线程栈",
+      "StackOverflow"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1826,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "Tomcat 启动很慢，如何排查？",
+    "answer": "**先量化「慢」**：正常 Tomcat 启动 3-10 秒（取决于应用），超过 30 秒就该查。\n\n**常见原因（按命中率）**：\n\n**1. 应用初始化慢（最常见）**\n- 大量 bean 初始化、依赖注入扫描\n- 数据库连接池预建连接（`initialSize` 大）\n- 缓存预热（加载大量数据）\n- 定时任务在启动时执行\n\n**定位方法**：\n```bash\n# 看 catalina.out 各阶段时间戳\ntail -f logs/catalina.out\n# 关键标记：\"Server startup in XXX ms\"\n\n# 用 jstack 在启动过程中采样，看卡在哪个方法\njstack <pid> > /tmp/startup.txt   # 启动中多采几次\n```\n*（注：上句的取样方法为示意，实战中最好在启动过程中循环 `jstack <pid> > /tmp/startup_$i.txt`，然后看每次栈顶。）*\n\n在 jstack 里找 `main` 线程的栈，就能看到卡在哪个初始化方法。\n\n**2. 类加载慢**\n- 应用 jar 多、类数量大（几万个类）\n- 磁盘 IO 慢或 jar 在远端存储（如 NFS）\n- `-Xshare:on` 或 CDS 未启用（可加速）\n\n**3. 随机数熵不足（经典坑，容易误判）**\n- Linux 早期 `/dev/random` 熵池不足 → SecureRandom 阻塞\n- 症状：启动卡在 `SecureRandom` 相关调用，几分钟不动\n- 解决：\n```bash\n# 临时：提高熵\ncat /proc/sys/kernel/random/entropy_avail\n# 用 urandom 或开启 haveged/rng-tools\n# 或 JVM 加：-Djava.security.egd=file:/dev/./urandom\n```\n\n**4. DNS 解析慢**\n- 启动时解析域名（DB/Redis 地址）超时\n- 检查 `/etc/resolv.conf` 是否有不可达的 nameserver\n\n**5. 磁盘 / 文件系统**\n- 容器内文件系统慢（overlayfs 上大量小文件）\n- jar 解压（`unpackWARs`）耗时\n\n**6. JIT 与 GC 初始化**\n- 堆很大时（如 32G），JVM 初始化数据结构需要时间\n- G1 的 Region 初始化（`-XX:G1HeapRegionSize` 可调）\n\n**7. 安全审计/字节码增强**\n- 使用 APM agent（SkyWalking/Jaeger）做字节码转换\n- Spring 的 `@Configuration` 大量扫描\n\n**排查工具箱**：\n```bash\n# 启动时间分解（JDK 9+）\n-Xlog:class+load=info           # 类加载耗时\n-Xlog:gc*=info\n\n# 启动过程采样\nfor i in {1..20}; do jstack <pid> > /tmp/s$i.txt; sleep 1; done\ngrep -A10 '\"main\"' /tmp/s*.txt   # 看 main 线程在做什么\n```\n\n**优化方向**：\n1. **惰性初始化**：非必需组件延迟加载（Spring 可用 `@Lazy`）\n2. **减少扫描**：精确配置 `@ComponentScan` 范围，避免扫描无用包\n3. **配置 CDS / AppCDS**：预加载类，显著加速（可省 30-50%）\n4. **预热缓存异步化**：启动后再异步加载\n5. **排查阻塞点**：优先解决「等 DNS/等熵/等 IO」这类外部依赖\n\n**关键提醒**：启动慢通常不影响运行性能，但会**拖长发布与回滚时间**、影响弹性扩缩容速度。在 K8s 里还会导致 readinessProbe 失败被反复重启 —— 这时应调大 `initialDelaySeconds` 或加 `startupProbe`。",
+    "tags": [
+      "启动慢",
+      "Tomcat",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1827,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "以下哪些 Tomcat 配置在生产环境应当关闭或加固？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "reloadable=true（自动重载）"
+      },
+      {
+        "key": "B",
+        "text": "autoDeploy=true（自动部署）"
+      },
+      {
+        "key": "C",
+        "text": "AJP Connector 监听所有网卡且无 secret"
+      },
+      {
+        "key": "D",
+        "text": "配置 MaxMetaspaceSize 上限"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "A 会导致 Metaspace 泄漏（频繁重载 ClassLoader 无法回收）；B 可能被意外文件触发部署；C 就是 Ghostcat 漏洞的成因。D 是**应当开启**的加固项，不是关闭对象。",
+    "tags": [
+      "Tomcat",
+      "安全加固",
+      "生产配置"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1828,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 的逃逸分析与标量替换是什么？对性能有什么影响？",
+    "answer": "**逃逸分析（Escape Analysis）**：JIT 编译时分析对象的作用域，判断它是否会「逃逸」出当前方法/线程。\n\n**三种逃逸状态**：\n1. **不逃逸**：对象只在方法内使用 → 可做最激进优化\n2. **方法逃逸**：作为返回值或参数传出方法 → 不能栈上分配\n3. **线程逃逸**：被其他线程访问 → 需要同步\n\n**两个关键优化**：\n\n1. **栈上分配（Stack Allocation）**\n- 不逃逸的对象直接在栈上分配，随方法结束自动回收\n- **不进入堆** → 减少 GC 压力\n\n2. **标量替换（Scalar Replacement）**\n- 把对象拆成基本类型字段，直接用局部变量\n- 例：`Point p = new Point(1,2)` 被优化成 `int x=1, int y=2`\n- 实际效果：**完全不创建对象**\n\n3. 还有**锁消除（Lock Elision）**：不逃逸的对象上的 synchronized 可被去掉\n\n**对性能的影响**：\n- 减少对象分配 → 减少 Minor GC 频率\n- 减少内存占用 → 堆压力小\n- 对短命小对象效果明显（如循环里 new 的临时对象）\n\n**开启方式**：\n```\n-XX:+DoEscapeAnalysis       # JDK 6u23+ 默认开启\n-XX:+EliminateAllocations   # 标量替换，默认开启\n```\n**注意**：只有 **C2 编译器**（Server 模式，方法被 JIT 编译后）才做逃逸分析。解释执行阶段不生效，所以要用**预热后**的性能数据评估。\n\n**为什么不能依赖它**：\n1. 分析有成本，复杂方法可能放弃优化\n2. 不保证一定做（是 hint 不是承诺）\n3. 不要写出「靠逃逸分析才能不 OOM」的代码 —— 那是脆弱的\n\n**面试常见追问**：「对象一定分配在堆上吗？」\n标准答案：**不一定**。逃逸分析后可在栈上分配或标量替换。但这是 JIT 优化，不能当作语言保证。",
+    "tags": [
+      "逃逸分析",
+      "标量替换",
+      "JIT"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1829,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "JDK 中用于生成线程快照（排查死锁/卡顿）的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "jstack"
+      },
+      {
+        "key": "B",
+        "text": "jstat"
+      },
+      {
+        "key": "C",
+        "text": "jmap"
+      },
+      {
+        "key": "D",
+        "text": "javap"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "jstack 打印所有线程的调用栈，能看出线程卡在哪、是否有死锁（会直接输出 Found one Java-level deadlock）。jstat 看 GC，jmap 看内存，javap 反编译字节码。",
+    "tags": [
+      "jstack",
+      "线程快照",
+      "死锁"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1830,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "Java 应用出现线程死锁，如何快速发现并定位？",
+    "answer": "**检测手段（按速度排序）**：\n\n**1. jstack 直接报告（最快）**\n```bash\njstack <pid> | grep -A 30 \"Found one Java-level deadlock\"\n```\nJVM 会自动检测并输出：\n```\nFound one Java-level deadlock:\n=============================\n\"Thread-1\":\n  waiting to lock monitor 0x... (object 0x..., a java.lang.Object),\n  which is held by \"Thread-2\"\n\"Thread-2\":\n  waiting to lock monitor 0x... (object 0x..., a java.lang.Object),\n  which is held by \"Thread-1\"\n```\n**直接告诉你：谁持有、谁在等、哪个对象**。\n\n**2. arthas thread -b（最方便）**\n```bash\nthread -b        # 直接找出阻塞其他线程的线程\n```\n\n**3. jcmd（JDK 8+）**\n```bash\njcmd <pid> Thread.print -l\n```\n\n**4. JMX / 监控**：`ThreadMXBean.findDeadlockedThreads()` 可编程检测，适合接入监控自动告警。\n\n**死锁的类型与识别**：\n\n| 类型 | 表现 | 识别方式 |\n|---|---|---|\n| **Java 级死锁** | 两线程互相等对方的锁 | jstack 直接报告 |\n| **等待外部资源** | 都在等 DB/HTTP 响应 | 栈在 socketRead/wait，不是真死锁 |\n| **线程池耗尽** | 线程都在等任务队列 | 栈在 pool 的 take/getTask |\n| **GC 停顿假象** | 应用无响应但线程栈正常 | 看 jstat 的 Full GC 耗时 |\n\n**关键区分**：jstack 没报死锁但应用卡住，通常不是锁问题，而是：\n- 下游依赖超时（DB、HTTP、Redis）\n- GC 长时间 STW\n- 线程池/连接池耗尽\n- 磁盘 IO 阻塞\n\n**死锁的根因与预防**：\n1. **加锁顺序不一致**（最常见）→ 统一多把锁的获取顺序\n2. **嵌套锁范围过大** → 缩小临界区\n3. **业务逻辑中同步调用外部并持锁** → 把外部调用移出锁\n4. **使用 `tryLock` 带超时**（`ReentrantLock.tryLock(timeout)`）\n```java\nif (lock.tryLock(1, TimeUnit.SECONDS)) {\n    try { ... } finally { lock.unlock(); }\n}\n```\n- **超时后放弃**，避免无限等待 → 死锁变成可观测的失败\n\n**排查顺序建议**：\n1. `jstack` 抓快照（抓 2-3 次，间隔几秒）\n2. 搜 `deadlock` 关键字\n3. 没有死锁 → 统计各状态线程数（BLOCKED / WAITING / RUNNABLE）\n4. BLOCKED 多 → 锁竞争\n5. WAITING 在 socket → 下游慢\n6. RUNNABLE 但 CPU 不高 → 磁盘 IO 或 GC\n\n**线上应急**：\n- 无法立即修复时，先保留 thread dump → 重启止血 → 事后分析 dump\n- 重启前**一定要 dump**，否则现场丢失、无法定位根因",
+    "tags": [
+      "死锁",
+      "jstack",
+      "线程"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1831,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "什么是 Tomcat 的 maxThreads？如何合理设置？",
+    "answer": "**maxThreads** 是 Tomcat 处理请求的最大工作线程数（默认 200）。\n\n**不是越大越好**——这是核心认知：\n\n**为什么不能盲目调大**：\n1. **内存**：每线程 1MB 栈，1000 线程 = 1GB\n2. **上下文切换**：线程数远超 CPU 核数时，切换开销吃掉 CPU\n3. **下游压力**：线程越多，同时打向 DB/下游的请求越多 → 更容易压垮下游\n4. **阻塞无收益**：如果瓶颈在 DB，加线程只会让更多线程一起等 DB\n\n**合理估算方法**：\n\n**1. 基于「每个请求的耗时构成」**\n```\n需要的线程数 ≈ QPS × 平均响应时间（秒）\n```\n例如 QPS 500，平均耗时 200ms → 500 × 0.2 = **100 线程**\n再留 30-50% 余量 → 150 左右。\n\n**2. 基于 CPU 密集 vs IO 密集**\n```\n线程数 ≈ CPU 核数 × (1 + 等待时间 / 计算时间)\n```\n- CPU 密集（计算为主）：线程数 ≈ 核数 + 1\n- IO 密集（等 DB/HTTP 为主）：等待/计算比大，线程数可显著大于核数\n\n**3. 基于压测（最可靠）**\n- 阶梯加压，观察「吞吐拐点」\n- 线程数增加但 QPS 不再上升、延迟陡增 → 已过最佳值\n\n**配套参数**：\n```xml\n<Connector port=\"8080\"\n    maxThreads=\"300\"       <!-- 工作线程 -->\n    minSpareThreads=\"50\"    <!-- 保底线程 -->\n    acceptCount=\"200\"       <!-- 排队队列长度 -->\n    maxConnections=\"8000\"   <!-- 最大连接数 -->\n/>\n```\n- `maxThreads + acceptCount` = 系统能「接收」的总请求\n- 超出 → 拒绝（客户端超时/RST）\n\n**监控判读**：\n- `currentThreadsBusy` 长期接近 maxThreads → 线程不够或下游慢\n- 线程数不高但请求慢 → **瓶颈不在线程，别加**\n\n**一句话**：先搞清「线程在等什么」，再决定加不加。加线程是最后手段，不是首选。",
+    "tags": [
+      "maxThreads",
+      "Tomcat",
+      "容量"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1832,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "以下哪些是 JVM 可以进行的热更新/不重启变更？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "用 jinfo/jcmd 动态修改部分 VM 参数（如某些 -XX 开关）"
+      },
+      {
+        "key": "B",
+        "text": "用 arthas 的 redefine 重新加载类（有限制）"
+      },
+      {
+        "key": "C",
+        "text": "修改 -Xmx 堆大小上限"
+      },
+      {
+        "key": "D",
+        "text": "开启/关闭 GC 日志输出"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "D"
+    ],
+    "explanation": "C 不能热改：-Xms/-Xmx 只在启动时生效，运行中无法调整（部分参数如 MaxMetaspaceSize 也不可热改）。可用 `jinfo -flags` 查看哪些是 manageable（可动态修改）。",
+    "tags": [
+      "热更新",
+      "JVM参数",
+      "arthas"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1833,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 的 session 如何持久化？集群环境下应注意什么？",
+    "answer": "**Session 持久化的四种方案**：\n\n**1. 内存（默认，单机）**\n- 存 `StandardManager` 内存，重启丢失\n- 集群下各节点独立 → **登录状态不共享**\n\n**2. 文件持久化（单机容错）**\n```xml\n<Manager className=\"org.apache.catalina.session.StandardManager\"\n         pathname=\"SESSIONS.ser\" maxActiveSessions=\"-1\" />\n```\n- 关闭时序列化到磁盘，启动时恢复\n- 只解决「重启不丢」，不解决「集群共享」\n\n**3. Tomcat 集群复制（DeltaManager / BackupManager）**\n- 通过组播/数据库同步 session 到其他节点\n- `DeltaManager`：每次变更都广播给所有节点（开销大，建议 ≤4 节点）\n- `BackupManager`：只同步给一个备份节点（适合大集群）\n- **缺点**：网络开销大，节点多时性能下降\n\n**4. 外部存储（生产推荐）**\n- Redis / Memcached 存 session\n- 用 `Tomcat Redis Session Manager` 或 Spring Session\n- 优点：**应用无状态**、可任意扩缩容、重启不丢\n- 缺点：每次请求多一次 Redis 访问（可优化为只读 session id）\n\n**集群环境的注意事项**：\n\n1. **session id 不能重复**：多节点独立生成可能冲突 → 需配置 `jvmRoute` 让 session id 带上节点标识\n```xml\n<Engine name=\"Catalina\" defaultHost=\"localhost\" jvmRoute=\"node1\">\n```\n\n2. **session 对象必须可序列化**：否则复制/存储失败（`NotSerializableException`）\n- 放入 session 的对象都要实现 `Serializable`\n- 注意内部引用的对象也要可序列化\n\n3. **session 过期与清理**：外部存储要有 TTL，否则 Redis 里堆积无效 session\n\n4. **负载均衡的会话保持**：如果 session 在节点内存，必须配粘性（cookie/源IP）；如果 session 在 Redis，则**不需要粘性**（这是外部存储的最大好处）\n\n5. **安全**：session id 要防劫持（HttpOnly、Secure、定期轮换），Redis 里的 session 数据要设合理 TTL\n\n**选型建议**：\n- 单机 → 内存足够（配合 keepalive 的 session 时间）\n- 集群 → **一律用 Redis 存 session**，不要用 Tomcat 自带的集群复制（除非节点极少且流量很小）\n\n**验证方式**：\n- 登录后看响应头是否带 `Set-Cookie: JSESSIONID=...`\n- 用不同节点访问，确认 session 一致（外部存储时应天然一致）",
+    "tags": [
+      "session",
+      "集群",
+      "Redis"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1834,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "JVM 出现 OutOfMemoryError: Java heap space，最直接的短期缓解手段是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "调大 -Xmx 并重启（同时抓取 heap dump 保留现场）"
+      },
+      {
+        "key": "B",
+        "text": "调大 -Xss"
+      },
+      {
+        "key": "C",
+        "text": "增加线程数"
+      },
+      {
+        "key": "D",
+        "text": "关闭 GC"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "堆溢出最直接的是加堆内存。但**必须同时 dump 保留现场**，否则重启后无法定位根因；且加堆只是延缓，根因（泄漏或数据量增长）仍需解决。B/C/D 完全不对应堆溢出。",
+    "tags": [
+      "heap OOM",
+      "应急处置"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1835,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "如何为 Tomcat 配置优雅停机（graceful shutdown）？",
+    "answer": "**优雅停机 = 不再接新请求 + 处理完进行中的请求再退出**，避免用户看到 502。\n\n**不优雅的表现**：直接用 `kill -9` 或 `systemctl stop` 会立即终止进程，正在处理的请求全部失败。\n\n**实现方式**：\n\n**1. 用 SIGTERM 而非 SIGKILL**\n```bash\n# 优雅\nkill <pid>              # 默认发 SIGTERM(15)\nsystemctl stop tomcat   # systemd 默认也发 SIGTERM\n\n# 粗暴（禁止在生产用）\nkill -9 <pid>\n```\nTomcat 收到 SIGTERM 会执行 shutdown hook：停止接收新请求、等待线程池任务完成（受 `unloadDelay` 控制）、关闭连接池。\n\n**2. 在 K8s 中配合 preStop 与宽限期**\n```yaml\nlifecycle:\n  preStop:\n    exec:\n      command: [\"/bin/sh\", \"-c\", \"sleep 15\"]   # 等 LB 摘除完成\nterminationGracePeriodSeconds: 60               # 给足处理时间\n```\n**关键**：\n- K8s 先发 SIGTERM，同时从 Endpoints 摘除（**摘除需要时间**，所以 preStop 要 sleep）\n- 若应用收到 SIGTERM 立刻停止监听，但 LB 还在往里转流量 → 502\n- 所以 **preStop sleep 10-30 秒**是标准做法\n\n**3. 配置 Tomcat 的宽限期**\n```xml\n<Server port=\"-1\" shutdown=\"SHUTDOWN\">\n  <Service name=\"Catalina\">\n    <!-- 等待进行中请求完成的时间 -->\n  </Service>\n</Server>\n```\n或用 Spring Boot 的优雅停机：\n```yaml\nserver:\n  shutdown: graceful\nspring:\n  lifecycle:\n    timeout-per-shutdown-phase: 30s\n```\n这是最省事的方案（Spring Boot 2.3+）。\n\n**4. 主动探活配合**\n- 停机开始时，先让 readinessProbe 返回失败 → LB 摘除 → 等一会再停进程\n- 需要应用暴露「正在关闭」状态（如 Spring 的 `AvailabilityChangeEvent`）\n\n**验证方式**：\n- 用 `ab`/`wrk` 持续打压，同时执行停机命令\n- 观察错误率：**优雅停机应为 0 错误**，非优雅会有大量 502/连接重置\n\n**常见错误**：\n1. 用了 `kill -9`（无处理机会）\n2. K8s 里 `terminationGracePeriodSeconds` 太短（< 请求耗时）\n3. 没有 preStop sleep → LB 摘除延迟期间仍在收流量\n4. 停机时主动关闭了连接池，导致进行中的请求失败\n\n**一句话**：**SIGTERM + 足够宽限期 + 先摘流量再停进程**，三者缺一不可。",
+    "tags": [
+      "优雅停机",
+      "graceful",
+      "K8s"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3601,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "InnoDB 的 redo log 和 binlog 有什么区别？为什么需要两种日志？",
+    "answer": "分工完全不同，缺一不可：\n\n**redo log**（InnoDB 引擎层）：\n- 物理日志，记录「某页做了什么修改」\n- 循环写、固定大小，写满会覆盖\n- 保证**崩溃恢复**（crash-safe）\n\n**binlog**（Server 层）：\n- 逻辑日志，记录「原始 SQL 或行变更」\n- 追加写、不覆盖，可保留很久\n- 用于**主从复制**和**数据恢复**\n\n为什么要两种：redo 是循环写的，写满要覆盖，无法用于归档恢复；binlog 是追加的，但刷盘开销大、不能用于崩溃恢复。各司其职。\n\n还有一个关键点：**两阶段提交**。\n- 先写 redo（prepare）→ 再写 binlog → redo（commit）\n- 保证两份日志一致，否则主从数据会错乱\n\n排查相关：如果 `innodb_flush_log_at_trx_commit` 和 `sync_binlog` 都是 1，性能会下降但最安全（金融场景必配）。",
+    "tags": [
+      "redo log",
+      "binlog",
+      "两阶段提交"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3602,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "什么是回表？为什么说覆盖索引能避免回表？",
+    "answer": "**回表**：用二级索引查到主键值后，还要回到主键索引（聚簇索引）再查一次整行数据。\n\n举例，表有索引 idx_name(name)，执行：\n```\nSELECT * FROM user WHERE name = 'tom'\n```\n路径：\n1. 在 idx_name 找到 name='tom' 的叶子节点，拿到主键 id=5\n2. 再用 id=5 去主键索引查完整行 ← **这一步就是回表**\n\n**覆盖索引**：查询需要的列全在索引里，不需要再查主键索引。\n```\nSELECT name FROM user WHERE name = 'tom'\n```\nname 就在 idx_name 里 → 无需回表。\n\n如何确认：EXPLAIN 的 Extra 显示 **Using index** 就是覆盖索引；显示 Using where 或没有 Using index 通常意味着要回表。\n\n优化实践：把频繁查询的列加入联合索引，让查询变成覆盖索引，能显著减少 IO。但索引列不宜过多（增加写放大）。",
+    "tags": [
+      "回表",
+      "覆盖索引",
+      "Using index"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3603,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 的锁有哪些类型？什么是间隙锁、临键锁？",
+    "answer": "按粒度分：\n\n- **表锁**：锁整表，MyISAM 常用，并发差\n- **行锁**：InnoDB 支持，锁单行，并发好（但依赖索引，索引失效会退化成表锁）\n\n按模式分：\n- **共享锁 S**：读锁，多个事务可同时持有\n- **排他锁 X**：写锁，互斥\n\n按范围分（重点）：\n- **记录锁（Record Lock）**：锁索引上的单条记录\n- **间隙锁（Gap Lock）**：锁索引记录之间的「空隙」，防止插入\n- **临键锁（Next-Key Lock）**：记录锁 + 间隙锁，锁住记录和它前面的间隙（左开右闭）\n\n间隙锁的意义：**在可重复读级别下防止幻读**——其他事务无法在间隙插入新行。\n\n重要特性：\n- 间隙锁只在 REPEATABLE READ 及以上生效，RC 级别没有间隙锁（只锁记录）\n- 间隙锁之间不冲突（都是「锁住空隙」，可以共存），但会阻塞插入\n- 唯一索引等值查询命中时退化为记录锁，不命中则用间隙锁\n\n排查：`SHOW ENGINE INNODB STATUS` 看 LOCK WAIT，或查 `performance_schema.data_locks`。",
+    "tags": [
+      "锁",
+      "间隙锁",
+      "临键锁",
+      "幻读"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3604,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "InnoDB 的 redo log 主要用来保证什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "主从数据一致性"
+      },
+      {
+        "key": "B",
+        "text": "崩溃恢复（crash-safe）"
+      },
+      {
+        "key": "C",
+        "text": "事务隔离性"
+      },
+      {
+        "key": "D",
+        "text": "索引结构维护"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "redo log 是 InnoDB 引擎层的物理日志，用于崩溃后恢复未刷盘的数据页。主从一致性靠 binlog；隔离性靠锁和 MVCC。",
+    "tags": [
+      "redo log",
+      "崩溃恢复"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3605,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "以下哪些情况会导致行锁升级为表锁（或锁范围大幅扩大）？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "WHERE 条件没有使用索引，全表扫描"
+      },
+      {
+        "key": "B",
+        "text": "对索引列使用函数，导致索引失效"
+      },
+      {
+        "key": "C",
+        "text": "隐式类型转换，字符串列用数字比较"
+      },
+      {
+        "key": "D",
+        "text": "使用了主键做等值查询"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "InnoDB 行锁是加在索引上的，索引失效就会扫描全表并锁住扫过的所有记录。D 是主键等值查询，只锁单行（最高效的情况）。",
+    "tags": [
+      "行锁",
+      "索引失效",
+      "锁范围"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3606,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 主从复制的工作原理是什么？三个线程分别做什么？",
+    "answer": "主从复制分三个环节、三个线程：\n\n**1. 主库 binlog dump 线程**\n- 主库把变更写入 binlog\n- 当从库连上来时，dump 线程把 binlog 发给从库\n\n**2. 从库 IO 线程**\n- 连接主库，接收 binlog 并写入本地 **relay log**（中继日志）\n\n**3. 从库 SQL 线程**\n- 读取 relay log，重放（replay）到从库数据\n\n流程串起来：\n```\n主库写 binlog → dump 线程发送 → 从库 IO 线程写 relay log → SQL 线程重放\n```\n\n关键参数：\n- `server-id` 必须唯一，否则复制报错\n- `binlog_format` 建议 ROW（保证一致性）\n- `relay_log` 存在从库，是复制的中间缓冲\n\n延迟的定位：`SHOW SLAVE STATUS` 看 `Seconds_Behind_Master` 与 `Relay_Log_Pos` vs `Exec_Master_Log_Pos` 的差值——差值是 SQL 线程重放慢，说明从库执行跟不上。",
+    "tags": [
+      "主从复制",
+      "relay log",
+      "线程"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3607,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "什么是 MySQL 的 ICP（索引下推）？它带来什么优化？",
+    "answer": "**索引下推（Index Condition Pushdown，ICP）**：把 WHERE 中能用索引判断的条件下推到存储引擎层过滤，而不必先回表再在 Server 层过滤。\n\n举例（联合索引 idx(name, age)）：\n```\nSELECT * FROM user WHERE name LIKE '张%' AND age = 20\n```\n\n**没有 ICP**：\n1. 用 name 前缀找到所有「张」开头的记录（可能几万条）\n2. 逐条回表取整行\n3. 在 Server 层过滤 age=20\n→ 大量无用回表\n\n**有 ICP**：\n1. 在索引里就判断 age=20（age 也在索引里）\n2. 只有满足的才回表\n→ 回表次数大幅减少\n\n如何识别：EXPLAIN 的 Extra 出现 **Using index condition**。\n\n生效条件：\n- 需要联合索引（条件列都在索引里）\n- 适用于 range/ref/eq_ref 访问类型\n- MySQL 5.6+ 默认开启，可用 `optimizer_switch` 关闭\n\n与覆盖索引的区别：ICP 仍需回表，只是减少了回表次数；覆盖索引完全不需要回表。",
+    "tags": [
+      "ICP",
+      "索引下推",
+      "优化"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3608,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "MySQL 中查看当前所有连接与执行状态的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "SHOW PROCESSLIST"
+      },
+      {
+        "key": "B",
+        "text": "SHOW TABLES"
+      },
+      {
+        "key": "C",
+        "text": "SHOW INDEX"
+      },
+      {
+        "key": "D",
+        "text": "SHOW VARIABLES"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "SHOW PROCESSLIST（或 SHOW FULL PROCESSLIST 看完整 SQL）列出所有连接、状态、执行时长，是排查连接数暴涨、长事务、慢查询的第一条命令。",
+    "tags": [
+      "PROCESSLIST",
+      "连接",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3609,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 出现「Too many connections」怎么办？",
+    "answer": "分两步：先救火，再查根因。\n\n**救火（按代价从小到大）**\n\n1. 清掉空闲连接（Sleep 状态的长连接）\n```\nSELECT * FROM information_schema.processlist WHERE command='Sleep';\nKILL <id>;\n```\n\n2. 临时提高上限（需要留一个连接进去操作）\n```\nSET GLOBAL max_connections = 1000;\n```\n注意：MySQL 会为 root 保留一个连接（`max_connections + 1`），所以你能连进去。\n\n3. 调小空闲超时，让空闲连接自动释放\n```\nSET GLOBAL wait_timeout = 600;\nSET GLOBAL interactive_timeout = 600;\n```\n\n**查根因**\n- 连接池配置不当（最大值过大、无健康检查、泄漏）\n- 应用未正确关闭连接（缺 try-finally）\n- 慢查询占住连接\n- 突发流量或爬虫\n\n**配套注意**\n- `max_connections` 不能随便调超大：每连接都有内存开销，且受 `ulimit -n` 限制\n- 监控 `Threads_connected` / `Threads_running` / `Aborted_connects`",
+    "tags": [
+      "连接数",
+      "max_connections",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3610,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "关于 MySQL 的慢查询日志，以下说法正确的是？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "slow_query_log=ON 开启后，超过 long_query_time 的语句会被记录"
+      },
+      {
+        "key": "B",
+        "text": "long_query_time 支持小数（如 0.5 秒），默认单位是秒"
+      },
+      {
+        "key": "C",
+        "text": "log_queries_not_using_indexes 可记录未走索引的语句"
+      },
+      {
+        "key": "D",
+        "text": "慢查询日志会拖慢所有查询性能，生产环境不能开"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是常见误解：慢查询日志只在满足条件的语句上写日志，开销很小，生产环境应当开启。真正要注意的是日志文件增长需配合轮转（可用 mysqldumpslow / pt-query-digest 分析）。",
+    "tags": [
+      "慢查询",
+      "long_query_time",
+      "日志"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3611,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "什么是 MySQL 的 buffer pool？它的大小如何影响性能？",
+    "answer": "**buffer pool** 是 InnoDB 在内存里缓存数据页和索引页的区域，是 MySQL 性能的核心。\n\n工作方式：\n- 读：先查 buffer pool，命中就直接返回（内存读）；未命中才从磁盘读入并缓存\n- 写：先改内存页（脏页），再由后台线程异步刷盘\n\n关键参数：\n```\ninnodb_buffer_pool_size\n```\n- 生产建议设为**物理内存的 50%-70%**（专用数据库机器）\n- 太小 → 频繁磁盘 IO，性能急剧下降\n- 太大 → 挤占 OS 缓存，甚至 OOM\n\n判断命中率：\n```\nSHOW ENGINE INNODB STATUS\\G\n```\n看 `Buffer pool hit rate`，长期低于 95% 说明缓冲池不足。\n\n其他相关：\n- `innodb_buffer_pool_instances`：多实例减少争用（大内存时设 4-8）\n- `innodb_io_capacity`：控制脏页刷盘速度，SSD 可调高\n- 修改 buffer pool size 在 5.7+ 支持在线调整（需时间）",
+    "tags": [
+      "buffer pool",
+      "内存",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3612,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "大表加索引或改字段，如何避免锁表影响业务？",
+    "answer": "核心思路：用在线 DDL 工具，不要在业务高峰直接 ALTER。\n\n**1. 优先用 MySQL 原生 Online DDL（5.6+）**\n很多操作支持 `ALGORITHM=INPLACE, LOCK=NONE`，不阻塞读写：\n```\nALTER TABLE t ADD INDEX idx_a (a), ALGORITHM=INPLACE, LOCK=NONE;\n```\n注意：加索引通常支持，但**改字段类型、改列名**多数要重建表（阻塞）。执行前先用 `ALGORITHM=INPLACE` 试探，不支持会报错而不是冒险执行。\n\n**2. 不支持的操作用 gh-ost / pt-online-schema-change**\n原理：建影子表 → 同步增量（靠 binlog 或触发器）→ 原子 rename\n- 优点：全程不锁原表，可限速、可暂停\n- gh-ost 用 binlog 同步，对主库压力更小（不装触发器）\n- 注意：大表要先确认磁盘空间足够（影子表 = 表大小）\n\n**3. 其他注意事项**\n- 前置检查：`innodb_online_alter_log_max_size` 要够大，否则同步期间报错回滚\n- 低峰执行，并提前通知业务方\n- 主从环境下注意从库延迟（DDL 会重放）\n- 大表统计信息变更后可能引发执行计划突变，观察一段时间\n\n**验证方式**：执行期间观察 `SHOW PROCESSLIST` 无大量 Waiting for table metadata lock。",
+    "tags": [
+      "Online DDL",
+      "gh-ost",
+      "锁表"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3613,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "InnoDB 存储引擎中，数据实际存放在哪个索引上？",
+    "options": [
+      {
+        "key": "A",
+        "text": "一级索引 / 主键索引（聚簇索引）"
+      },
+      {
+        "key": "B",
+        "text": "二级索引"
+      },
+      {
+        "key": "C",
+        "text": "独立的表空间文件，与索引无关"
+      },
+      {
+        "key": "D",
+        "text": "只存在内存中"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "InnoDB 是聚簇索引组织表：数据行直接存在主键索引（聚簇索引）的叶子节点上。所以主键查询最快；二级索引叶子存的是主键值，需要回表。",
+    "tags": [
+      "聚簇索引",
+      "主键",
+      "存储结构"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3614,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 的 MVCC 是怎么实现的？ReadView 是什么？",
+    "answer": "**MVCC（多版本并发控制）**：让读不加锁也能看到一致的数据，实现「读写不阻塞」。\n\n三个要素：\n1. **隐藏字段**：每行有两个隐藏列\n   - `DB_TRX_ID`：最近修改该行的事务 ID\n   - `DB_ROLL_PTR`：指向 undo log 中的旧版本\n2. **undo log**：保存行的历史版本，形成版本链\n3. **ReadView**：读快照，决定「能看到哪些版本」\n\nReadView 的关键字段：\n- `m_ids`：生成快照时活跃（未提交）的事务 ID 列表\n- `min_trx_id` / `max_trx_id`：活跃事务的最小/最大 ID\n- `creator_trx_id`：创建该 ReadView 的事务\n\n可见性判断（简化版）：\n- 行的 `DB_TRX_ID` < `min_trx_id` → 已提交，**可见**\n- 行的 `DB_TRX_ID` ≥ `max_trx_id` → 快照之后开始的，**不可见**\n- 在 m_ids 里 → 未提交，**不可见**\n- 不可见就顺着 undo log 往前找上一个版本\n\n级别差异（这是常考点）：\n- **READ COMMITTED**：每次 SELECT 都新建 ReadView → 能看到别人刚提交的数据\n- **REPEATABLE READ**：第一次 SELECT 建 ReadView，事务内复用 → 全程一致\n\n注意：MVCC 只解决快照读（普通 SELECT）；`SELECT ... FOR UPDATE`、UPDATE、DELETE 是当前读，走锁。",
+    "tags": [
+      "MVCC",
+      "ReadView",
+      "undo log"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3615,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "以下哪些是 MySQL 主从延迟的常见原因？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "大事务或大批量 DML"
+      },
+      {
+        "key": "B",
+        "text": "从库配置低于主库（CPU/IO 不足）"
+      },
+      {
+        "key": "C",
+        "text": "表没有主键，ROW 格式下需要全表扫描定位"
+      },
+      {
+        "key": "D",
+        "text": "主从使用相同的 server-id"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 会导致复制直接失败（报 server-id 冲突），而不是延迟。A/B/C 都是典型的延迟原因；另外还有单线程回放瓶颈（可开并行复制解决）。",
+    "tags": [
+      "主从延迟",
+      "大事务",
+      "无主键"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3616,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 分页查询越往后越慢（LIMIT 100000, 10），怎么优化？",
+    "answer": "**为什么慢**：`LIMIT 100000, 10` 必须先扫描并丢弃前 10 万行，然后取 10 行。偏移量越大越慢。\n\n**优化方案（按推荐度）**\n\n1. **游标分页 / 延迟关联**（最优）\n用上一页的最后一条记录做起点：\n```\nSELECT * FROM t WHERE id > 100000 ORDER BY id LIMIT 10;\n```\n要求 id 有序（通常主键），且不支持跳页。\n\n2. **延迟关联**：先只查主键，再回表\n```\nSELECT t.* FROM t\nJOIN (SELECT id FROM t ORDER BY id LIMIT 100000, 10) AS x\nON t.id = x.id;\n```\n子查询只扫索引（覆盖索引），减少回表量，比直接 SELECT * 快很多。\n\n3. **覆盖索引**：如果只需要索引里的列，直接让查询变成覆盖索引，完全避免回表。\n\n4. **业务层限制**：限制最大页数，或改成「加载更多」而非跳页。\n\n**不要做的事**：\n- 不要指望加索引能解决大偏移（问题是扫描行数，不是查找行数）\n- `ORDER BY` 字段必须有索引，否则还要 filesort",
+    "tags": [
+      "分页",
+      "LIMIT",
+      "深分页"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3617,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 的 redo log 为什么要用 WAL（先写日志再写磁盘）？",
+    "answer": "**WAL（Write-Ahead Logging）**：先写日志，再异步刷数据页。\n\n如果反过来（每次改都直接刷数据页）会怎样：\n1. 每次修改都要随机 IO 找到一个数据页，写回磁盘——**随机写极慢**\n2. 一个事务可能改多行，落在磁盘不同页 → 多次随机写\n3. 崩溃时数据页可能只写了一部分 → 页损坏\n\n用 WAL 之后：\n1. 事务提交时只需**顺序追加**写 redo log（顺序 IO 快，且是固定小区域）\n2. 数据页由后台线程**合并后批量刷盘**（把随机写变成顺序/批量）\n3. 崩溃后可用 redo log 重放恢复，保证已提交不丢\n\n关键参数：\n```\ninnodb_flush_log_at_trx_commit\n```\n- `1`（默认）：每次提交都刷盘，最安全，性能最低\n- `0`：每秒刷一次，可能丢 1 秒数据，最快\n- `2`：写到 OS 缓存，由 OS 刷盘，介于两者之间\n\n一句话总结：**WAL 把随机写变成了顺序写，这是 InnoDB 高性能的根本原因之一。**",
+    "tags": [
+      "WAL",
+      "redo log",
+      "顺序IO"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3618,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "EXPLAIN 输出中 type=ALL 表示什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "使用了覆盖索引，性能最好"
+      },
+      {
+        "key": "B",
+        "text": "全表扫描，通常需要优化"
+      },
+      {
+        "key": "C",
+        "text": "使用了主键等值查询"
+      },
+      {
+        "key": "D",
+        "text": "只扫描索引树"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "type=ALL 是全表扫描（最差）。type 从好到差：system > const > eq_ref > ref > range > index > ALL。index 是扫全索引树，也已偏慢。",
+    "tags": [
+      "EXPLAIN",
+      "全表扫描",
+      "type"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3619,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "什么是索引选择性？为什么区分度低的列不适合单独建索引？",
+    "answer": "**索引选择性** = 不重复值数量 / 总行数。越接近 1 选择性越高。\n\n计算示例：\n```\nSELECT COUNT(DISTINCT col) / COUNT(*) FROM t;\n```\n- 主键：选择性 = 1（最好）\n- 性别（只有 2 个值）：选择性极低（最差）\n\n**区分度低的列为什么不适合单独建索引**：\n1. 优化器会算：走索引要先查索引再回表，扫 50% 的行不如直接全表扫描 → **优化器直接放弃索引**\n2. 即使走了索引，命中的行太多，回表成本高于全表扫\n3. 索引还要占空间、增加写放大（每次插入/更新都要维护）\n\n**更好的做法**：\n- 用复合索引把低区分度列和高区分度列组合（如 `(status, created_at)`）\n- 或用覆盖索引，避免回表\n\n经验阈值：选择性 > 0.1 一般值得建索引，< 0.01 基本没意义。但最终仍以 EXPLAIN 与实际数据分布为准。",
+    "tags": [
+      "索引选择性",
+      "区分度",
+      "优化器"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3620,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 高可用方案中，以下哪些说法正确？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "MHA 可在主库故障时自动切换并补齐从库差异"
+      },
+      {
+        "key": "B",
+        "text": "半同步复制能减少主库崩溃时的数据丢失风险"
+      },
+      {
+        "key": "C",
+        "text": "组复制（MGR）基于 Paxos 类协议，支持多主模式"
+      },
+      {
+        "key": "D",
+        "text": "主从复制默认就是同步的，主库提交即从库已有一份"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：MySQL 主从默认是**异步复制**，主库提交后不等待从库确认，所以主库崩溃可能丢数据。半同步可缓解，但仍有降级为异步的情况。",
+    "tags": [
+      "高可用",
+      "MHA",
+      "半同步",
+      "MGR"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3621,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "MySQL 有哪些常用的备份方式？各自优缺点？",
+    "answer": "三类：\n\n**1. 逻辑备份（mysqldump / mydumper）**\n- 导出 SQL 语句\n- 优点：通用、可跨版本/跨平台、单表可恢复、文件小（压缩后）\n- 缺点：**恢复慢**（要重放所有 SQL）、大库耗时长、可能不一致（需 --single-transaction）\n- 适用：小库、单表恢复、跨版本迁移\n\n**2. 物理备份（xtrabackup / Percona XtraBackup）**\n- 直接拷贝数据文件\n- 优点：**快**（热备，不锁表）、适合大库、支持增量\n- 缺点：版本/平台绑定、只能整实例恢复（单表恢复麻烦）\n- 适用：大库日常备份、线上热备\n\n**3. binlog 增量**\n- 记录所有变更，可做时间点恢复（PITR）\n- 通常配合全量备份使用：全量 + binlog → 恢复到任意时刻\n\n**生产建议**：\n- 全量（xtrabackup 周备）+ binlog 持续备份\n- 备份文件异地保存（三二一原则）\n- **必须定期做恢复演练**——没验证过的备份等于没有备份",
+    "tags": [
+      "备份",
+      "mysqldump",
+      "xtrabackup"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3622,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 的参数 innodb_flush_log_at_trx_commit 和 sync_binlog 怎么配？",
+    "answer": "这两个参数共同决定**数据安全与性能的平衡**，是 MySQL 调优最关键的一对。\n\n**innodb_flush_log_at_trx_commit**（redo log 刷盘时机）\n- `1`：每次事务提交都刷盘 —— 最安全，**金融必须**\n- `0`：每秒刷一次 —— 最快，崩溃可能丢 1 秒\n- `2`：写入 OS 缓存 —— 折中，OS 崩溃才丢\n\n**sync_binlog**（binlog 刷盘时机）\n- `1`：每次提交都 fsync —— 最安全\n- `0`：交给 OS 决定 —— 最快\n- `N`：每 N 次提交刷一次\n\n**推荐组合**：\n| 场景 | innodb_flush_log_at_trx_commit | sync_binlog |\n|---|---|---|\n| 金融 / 订单（不能丢） | 1 | 1 |\n| 一般业务 | 1 | 1（或 100） |\n| 日志类、可容忍少量丢失 | 2 | 0 |\n\n**双 1 的性能代价**：每次提交两次 fsync，QPS 会明显下降。SSD + 合理配置（如组提交）能缓解。\n\n**关键提醒**：这两个参数是「数据能不能丢」的开关。改之前必须和业务方确认可容忍的丢失窗口（RPO），不要为了压测数字擅自调成 0。",
+    "tags": [
+      "flush_log_at_trx_commit",
+      "sync_binlog",
+      "数据安全"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3623,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 8.0 相比 5.7 有哪些重要变化？（选最主要的一项）",
+    "options": [
+      {
+        "key": "A",
+        "text": "默认字符集改为 utf8mb4，默认排序规则 utf8mb4_0900_ai_ci"
+      },
+      {
+        "key": "B",
+        "text": "不再支持 InnoDB"
+      },
+      {
+        "key": "C",
+        "text": "移除了 binlog"
+      },
+      {
+        "key": "D",
+        "text": "不再支持 SQL 标准"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "8.0 默认字符集从 latin1 改为 utf8mb4，排序规则改为 utf8mb4_0900_ai_ci。其他重要变化还有：数据字典事务化、窗口函数与 CTE、不可见索引、降序索引真正生效、角色权限等。",
+    "tags": [
+      "MySQL 8.0",
+      "utf8mb4",
+      "版本差异"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3624,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "线上 MySQL 磁盘 IO 突然飙高，如何快速定位？",
+    "answer": "按「先确认现象 → 再定位来源」的顺序：\n\n**1. 确认是 MySQL 引起的**\n```\niostat -x 1        # 看 %util、await、r/s w/s\niotop              # 找是哪个进程\npidstat -d 1       # 按进程看读写量\n```\n\n**2. 看 MySQL 内部在忙什么**\n```\nSHOW PROCESSLIST;                        -- 是否有大量长查询\nSHOW ENGINE INNODB STATUS\\G              -- 看 pending reads/writes\nSHOW GLOBAL STATUS LIKE 'Innodb%';       -- buffer pool 命中率\n```\n\n**3. 常见原因与判断**\n\n| 现象 | 原因 | 判断依据 |\n|---|---|---|\n| buffer pool 命中率骤降 | 热数据被挤出，大量磁盘读 | `Innodb_buffer_pool_reads` 暴涨 |\n| 脏页刷盘跟不上 | 写入太快，checkpoint 压力 | `Innodb_buffer_pool_wait_free > 0` |\n| 大批量 DML / DDL | 单条语句扫描大量页 | PROCESSLIST 里有大查询 |\n| 慢查询全表扫描 | 未走索引 | 慢日志 + EXPLAIN |\n| 备份任务 | xtrabackup 在拷贝文件 | ps 里能看到 |\n| 主从延迟补偿 | 从库重放大事务 | Slave 状态 |\n\n**4. 快速缓解**\n- KILL 明显的大查询\n- 检查是否被误配置（如 buffer pool 太小）\n- 必要时调 `innodb_io_capacity` / `innodb_max_dirty_pages_pct`\n- 长期看：优化慢查询、加索引、分库分表\n\n**注意**：IO 高但 CPU 低，往往是「查得少但要读的页多」——重点查 buffer pool 命中率与扫描行数。",
+    "tags": [
+      "磁盘IO",
+      "排障",
+      "buffer pool"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3625,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "什么是 MySQL 的临时表？什么时候会产生？",
+    "answer": "**临时表**是 MySQL 为处理某些查询而临时创建的内部表，用完即删。\n\n**常见触发场景**：\n1. `GROUP BY` 的列没有索引 → 需要临时表分组\n2. `DISTINCT` 去重且无索引\n3. `UNION` 合并结果\n4. 子查询（部分类型）\n5. `ORDER BY` 与 `GROUP BY` 字段不一致\n\n**如何识别**：EXPLAIN 的 Extra 出现 **Using temporary**。\n\n**性能影响**：\n- 小结果集：用内存临时表（快）\n- 超过 `tmp_table_size` / `max_heap_table_size` → 转成**磁盘临时表**（慢）\n\n**关键参数**：\n```\ntmp_table_size = 64M\nmax_heap_table_size = 64M    -- 两者取较小值生效\n```\n调大能减少磁盘临时表，但别设太大（并发高时内存吃紧）。\n\n**优化方向**：\n- 给 GROUP BY / ORDER BY 的列加合适索引\n- 避免 SELECT 大量列导致无法用索引\n- 观察 `Created_tmp_disk_tables` 与 `Created_tmp_tables` 的比例，磁盘占比高就该优化了",
+    "tags": [
+      "临时表",
+      "Using temporary",
+      "优化"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3626,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "关于 MySQL 的联合索引 (a, b, c)，以下哪些查询能有效利用它？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "WHERE a = 1"
+      },
+      {
+        "key": "B",
+        "text": "WHERE a = 1 AND b = 2"
+      },
+      {
+        "key": "C",
+        "text": "WHERE b = 2 AND c = 3"
+      },
+      {
+        "key": "D",
+        "text": "WHERE a = 1 AND c = 3"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "D"
+    ],
+    "explanation": "最左前缀：A 用 a，B 用 a+b，D 能用 a（c 用不上但 a 有效）。C 跳过了最左列 a，整个索引都用不上。注意 D 的情况虽然能用索引，但 c 条件仍需回表后过滤（或靠 ICP 在索引层过滤）。",
+    "tags": [
+      "联合索引",
+      "最左前缀"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3627,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 连接数突然暴涨，如何在不影响业务的前提下快速处置？",
+    "answer": "分场景，先判断是「真需要」还是「泄漏/异常」。\n\n**1. 先看清来源（1 分钟内）**\n```\nSHOW FULL PROCESSLIST;\nSELECT user, host, db, count(*) cnt FROM information_schema.processlist GROUP BY user, host, db ORDER BY cnt DESC;\n```\n- 大量 Sleep：连接池泄漏或空闲未回收\n- 大量相同 SQL：慢查询堆积或有代码 bug 重试\n- 大量来自同一 host：可能是某台应用连接池配置过大\n\n**2. 止血手段（按风险从低到高）**\n\n```\n-- 清 Sleep 连接（风险低）\nSELECT CONCAT('KILL ', id, ';') FROM information_schema.processlist WHERE command='Sleep' AND time > 600;\n\n-- 调小空闲超时\nSET GLOBAL wait_timeout = 600;\n\n-- 临时提高上限（需评估内存）\nSET GLOBAL max_connections = 2000;\n```\n\n**3. 不要贸然做的事**\n- 不要一次性 KILL 大量活跃连接（会造成应用雪崩式重连）\n- 不要只为救火把 max_connections 调到天文数字（每连接有内存开销，可能反而 OOM）\n\n**4. 根本解决**\n- 应用侧连接池上限 = 数据库可用连接数 / 实例数 × 0.8（留余量）\n- 加连接中间件（如 ProxySQL）做排队与限流\n- 修慢查询，缩短连接占用时长\n\n**监控项**：`Threads_connected`、`Threads_running`、`Aborted_connects`、`Max_used_connections`。\n\n关键区分：`Threads_running`（正在执行的）远小于 `Threads_connected`（总连接）时，说明是「连接多但都在等待」——重点查锁等待和慢查询。",
+    "tags": [
+      "连接数暴涨",
+      "应急处置",
+      "连接池"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3628,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "给表加索引后，可能带来什么负面影响？",
+    "options": [
+      {
+        "key": "A",
+        "text": "插入/更新/删除变慢，因为要维护索引"
+      },
+      {
+        "key": "B",
+        "text": "查询一定会变快"
+      },
+      {
+        "key": "C",
+        "text": "不占用额外存储空间"
+      },
+      {
+        "key": "D",
+        "text": "事务隔离级别会自动提升"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "索引不是免费的：每次写操作都要维护 B+ 树（写放大），占额外空间，过多的索引还会让优化器选择困难、甚至选错索引。所以索引要按查询需要来建，不是越多越好。",
+    "tags": [
+      "索引代价",
+      "写放大"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3629,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "MySQL 主库宕机，如何处理？如何做到最小数据丢失？",
+    "answer": "核心是「先恢复服务，再追数据」，并且提前有预案。\n\n**1. 判断故障程度**\n- 能否重启拉起？先看 error log 的崩溃原因\n- 磁盘满、OOM、硬件故障的处理方式完全不同\n\n**2. 切换（有从库时）**\n手动切换流程：\n```\n-- 确认从库已追平\nSHOW SLAVE STATUS\\G   -- Seconds_Behind_Master = 0，且 exec pos = relay 最后位置\n\n-- 停止复制并提升为新主\nSTOP SLAVE;\nRESET MASTER;\nSET GLOBAL read_only = OFF;\n\n-- 其他从库指向新主\nCHANGE MASTER TO MASTER_HOST='新主IP', MASTER_LOG_FILE='...', MASTER_LOG_POS=...;\nSTART SLAVE;\n\n-- 应用侧切换连接地址\n```\n\n**3. 数据丢失看复制模式**\n| 模式 | 主库崩溃的丢失风险 |\n|---|---|\n| 异步复制 | **可能丢**（binlog 未发送的部分） |\n| 半同步（after_commit） | 至少一个从库收到才返回，风险小 |\n| 半同步（after_sync，5.7+） | 风险最小，接近无损 |\n| MGR 多数派 | 需多数节点确认，强一致 |\n\n**减少丢失的关键**：`sync_binlog=1`（保证 binlog 落盘）+ 半同步复制 + 从库不落后。\n\n**4. 事后核对**\n- 对比新旧主的数据与 binlog 位点\n- 从旧主的 binlog（如果可抢救）补哪些事务\n- 通知业务方核对关键数据（订单/金额）\n\n**5. 自动化方案**：MHA、Orchestrator、云上 RDS 的高可用组。\n\n关键提醒：**没有做过切换演练的高可用等于没有高可用**。平时要定期演练，确认切换耗时与数据一致性可接受。",
+    "tags": [
+      "主库宕机",
+      "故障切换",
+      "半同步"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3630,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "以下哪些是 MySQL 的存储引擎？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "InnoDB"
+      },
+      {
+        "key": "B",
+        "text": "MyISAM"
+      },
+      {
+        "key": "C",
+        "text": "Memory"
+      },
+      {
+        "key": "D",
+        "text": "Kafka"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "MySQL 常见引擎有 InnoDB、MyISAM、Memory、Archive、CSV 等。Kafka 是消息队列，不是 MySQL 引擎。查看方式：SHOW ENGINES。",
+    "tags": [
+      "存储引擎",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3631,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "为什么建议单表数据量控制在千万级别？超过后怎么办？",
+    "answer": "**建议的原因**（InnoDB）：\n\n1. **B+ 树层数增加**：页大小 16KB，三层树约能存 2000 万行。超过四层，每次查询多一次磁盘 IO\n2. **buffer pool 装不下**：热数据变少，命中率下降，磁盘 IO 上升\n3. **DDL 变慢**：加索引/改字段耗时与数据量正相关，锁表风险大\n4. **备份恢复变慢**：逻辑备份和物理备份都受影响\n5. **统计信息不准**：优化器估算偏差，可能选错执行计划\n\n**超过后怎么办**（按实施成本排序）：\n\n1. **先优化**：索引是否合理、能否覆盖索引、能否去掉 SELECT *\n2. **归档历史数据**：把冷数据迁移到历史表/归档库，主表变小（**收益最大、风险最低**）\n3. **分区表**：按时间分区，可快速 drop 老分区。注意：分区键必须在主键里\n4. **分库分表**：ShardingSphere / MyCat / 应用层分片\n   - 水平拆分：按 user_id 取模/范围\n   - 要注意跨分片查询、分布式事务、扩容迁移\n5. **读写分离 + 从库分担**：缓解读压力，但不解决单表过大\n\n**经验判断**：单表 2000 万行是常见阈值，但不是绝对。要看行大小、索引多少、查询模式。窄表 + 覆盖索引，5000 万也可能没问题；宽表 + 复杂查询，500 万就该拆了。",
+    "tags": [
+      "单表数据量",
+      "分库分表",
+      "归档"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3632,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "执行 SHOW SLAVE STATUS 时，判断从库是否延迟最该看哪个字段？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Seconds_Behind_Master"
+      },
+      {
+        "key": "B",
+        "text": "Master_Host"
+      },
+      {
+        "key": "C",
+        "text": "Slave_IO_Running"
+      },
+      {
+        "key": "D",
+        "text": "Master_Port"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "Seconds_Behind_Master 表示从库落后主库的秒数，是最直观的延迟指标。但它有局限：为 NULL 表示复制中断；且在大事务重放期间可能显示 0 却实际落后。更精确的是对比 Exec_Master_Log_Pos 与 Read_Master_Log_Pos。",
+    "tags": [
+      "主从延迟",
+      "SHOW SLAVE STATUS"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3633,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 的字符集 utf8 和 utf8mb4 有什么区别？为什么推荐 utf8mb4？",
+    "answer": "关键差异在**能存多少字节的字符**：\n\n| 项 | utf8（MySQL 的别名） | utf8mb4 |\n|---|---|---|\n| 最大字节 | 3 字节 | 4 字节 |\n| 能存 emoji | ❌ 不能 | ✅ 能 |\n| 能存生僻字 | ❌ 部分不能 | ✅ 能 |\n| 是否是标准 UTF-8 | ❌ 是残缺版 | ✅ 完整 UTF-8 |\n\n**为什么推荐 utf8mb4**：\n1. 用户输入 emoji（微信昵称、评论）→ utf8 直接报错或乱码\n2. 生僻字（如「𠮷」）需要 4 字节 → utf8 存不了\n3. MySQL 8.0 已默认 utf8mb4\n\n**迁移注意**：\n```\nALTER TABLE t CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n```\n- 索引长度会变：varchar(255) 在 utf8mb4 下索引占 255×4=1020 字节，可能超限\n- 需同时改连接字符集：`character_set_server`、`character_set_client`\n- 排序规则建议 `utf8mb4_unicode_ci`（5.7）或 `utf8mb4_0900_ai_ci`（8.0）\n\n**一句话记**：MySQL 的 `utf8` 是「假 UTF-8」（只有 3 字节），`utf8mb4` 才是真 UTF-8。",
+    "tags": [
+      "字符集",
+      "utf8mb4",
+      "emoji"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3634,
+    "type": "multiple",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "以下哪些做法能有效减少 MySQL 死锁？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "统一多个事务访问相同行/表的加锁顺序"
+      },
+      {
+        "key": "B",
+        "text": "缩短事务，把 RPC、IO 等非数据库操作移出事务"
+      },
+      {
+        "key": "C",
+        "text": "减少锁范围，用索引避免全表扫描与大量间隙锁"
+      },
+      {
+        "key": "D",
+        "text": "把隔离级别从 RR 提到 SERIALIZABLE"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 会让所有读都加锁，死锁与阻塞只会更多。A/B/C 是公认有效的三个方向，另外还可以降级到 RC（减少间隙锁）、小批量更新、应用层重试。",
+    "tags": [
+      "死锁",
+      "预防",
+      "事务"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3635,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "困难",
+    "question": "什么是 MySQL 的半同步复制？相比异步有什么代价？",
+    "answer": "**半同步复制**：主库提交事务后，**至少等待一个从库确认收到 binlog**，才向客户端返回成功。\n\n对比：\n| 模式 | 主库返回时机 | 数据风险 |\n|---|---|---|\n| 异步 | 写完 binlog 就返回 | 主库崩可能丢已提交数据 |\n| 半同步（after_commit） | 等从库 ACK 再返回 | 风险小；但主库已提交、可能从库未落盘 |\n| 半同步（after_sync，5.7+） | 先等 ACK 再提交 | 最安全，接近无损 |\n| 全同步（MGR） | 多数派确认 | 强一致，代价更高 |\n\n**代价**：\n1. **延迟增加**：每次提交都要等一次网络往返（同机房影响小，跨机房明显）\n2. **吞吐下降**：尤其在高并发写入时\n3. **超时降级**：`rpl_semi_sync_master_timeout`（默认 10 秒）超时后**自动降级为异步**，此时安全性又回到异步水平——这是常被忽略的一点\n\n**配置要点**：\n```\n-- 主库\nSET GLOBAL rpl_semi_sync_master_enabled = 1;\nSET GLOBAL rpl_semi_sync_master_timeout = 1000;   -- 1 秒\n-- 从库\nSET GLOBAL rpl_semi_sync_slave_enabled = 1;\n```\n\n**监控重点**：`Rpl_semi_sync_master_status` 是否为 ON（如为 OFF 说明已降级）；`Rpl_semi_sync_master_no_tx` 计数。\n\n**实践建议**：同城双中心用半同步（延迟可接受），跨地域用异步 + 业务层补偿。",
+    "tags": [
+      "半同步",
+      "复制模式",
+      "RPO"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3636,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "如何查看 MySQL 当前的连接数、QPS、运行状态？",
+    "answer": "常用三个入口：\n\n**1. SHOW STATUS（实时计数）**\n```\nSHOW GLOBAL STATUS LIKE 'Threads_connected';   -- 当前连接数\nSHOW GLOBAL STATUS LIKE 'Threads_running';     -- 正在执行的语句数\nSHOW GLOBAL STATUS LIKE 'Uptime';              -- 运行秒数\nSHOW GLOBAL STATUS LIKE 'Questions';           -- 累计请求数\n```\n\n**QPS 计算**（需两次采样）：\n```\nQPS = (Questions2 - Questions1) / (Uptime2 - Uptime1)\n```\n或用现成工具：`mysqladmin extended-status -r -i 1` 直接看每秒增量。\n\n**2. Performance Schema（细粒度）**\n```\nSELECT * FROM performance_schema.events_statements_summary_by_digest\nORDER BY SUM_TIMER_WAIT DESC LIMIT 10;\n```\n找出最耗时的 SQL 模板，比慢日志更全面。\n\n**3. 监控系统**：Prometheus 的 mysqld_exporter + Grafana，或云上 RDS 自带面板。\n\n**最该监控的指标**：\n- `Threads_connected` / `Threads_running`\n- `Innodb_buffer_pool_read_requests` vs `Innodb_buffer_pool_reads`（命中率）\n- `Innodb_row_lock_waits`（锁等待）\n- `Created_tmp_disk_tables`（磁盘临时表）\n- 主从 `Seconds_Behind_Master`",
+    "tags": [
+      "状态查看",
+      "QPS",
+      "监控"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3637,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "执行 DELETE 删除大量数据后，磁盘空间没有释放，原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "DELETE 只是打删除标记，空间留在表内可复用，需要 OPTIMIZE 才回收"
+      },
+      {
+        "key": "B",
+        "text": "MySQL 有 24 小时延迟才释放"
+      },
+      {
+        "key": "C",
+        "text": "需要重启 MySQL"
+      },
+      {
+        "key": "D",
+        "text": "必须用 DROP TABLE 才能释放"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "InnoDB 的 DELETE 只标记删除，空间留在表空间内供后续复用（不会还给 OS）。要真正回收需 OPTIMIZE TABLE（会重建表、锁表，大表要用 gh-ost）或用 TRUNCATE 清空。",
+    "tags": [
+      "DELETE",
+      "空间回收",
+      "OPTIMIZE"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3801,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 ZSet 底层用的是什么结构？为什么不用普通链表？",
+    "answer": "ZSet 底层是**跳表（skiplist）+ 哈希表**的组合，而不是红黑树或链表。\n\n为什么需要两个结构：\n- **哈希表**（dict）：存 member → score 的映射，让 `ZSCORE` 这样的查询是 O(1)\n- **跳表**（zskiplist）：按 score 有序排列，让范围查询（ZRANGE、ZRANGEBYSCORE）高效\n\n**为什么用跳表不用红黑树**：\n1. **范围查询更简单**：跳表底层是有序链表，找到起点后顺序遍历即可；红黑树要先中序遍历，实现复杂\n2. **实现简单、易调试**：跳表代码量远小于平衡树的旋转逻辑\n3. **并发友好**（虽 Redis 单线程用不上，但设计上更好）\n4. 插入/删除平均 O(log N)，与红黑树同阶\n\n**为什么不用普通链表**：\n- 链表查找是 O(N)，范围查询定位起点太慢\n- 跳表通过多级索引把查找降到 O(log N)\n\n小数据量时：元素少且值小时用 **listpack**（7.0 前是 ziplist）压缩存储，超过阈值（默认 128 个元素 / 64 字节）才转为跳表。\n\n相关配置：`zset-max-listpack-entries`、`zset-max-listpack-value`。",
+    "tags": [
+      "ZSet",
+      "跳表",
+      "底层结构"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3802,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 String 类型底层是怎么存的？为什么有 SDS 而不是 C 字符串？",
+    "answer": "Redis 自己实现了 **SDS（Simple Dynamic String）**，而不是直接用 C 的 `char*`。\n\nSDS 结构：\n```\nstruct sdshdr {\n    int len;      // 已用长度\n    int alloc;    // 分配的总容量\n    char buf[];   // 实际数据（以 \\0 结尾，兼容 C 函数）\n}\n```\n\n**为什么不用 C 字符串**：\n\n| 问题 | C 字符串 | SDS |\n|---|---|---|\n| 获取长度 | O(N) 遍历 | **O(1)** 直接读 len |\n| 二进制安全 | ❌ 遇 \\0 截断 | ✅ 按 len 判断，可存图片/协议数据 |\n| 缓冲区溢出 | 易发生（strcat） | ✅ 自动扩容 |\n| 频繁修改 | 每次 realloc | ✅ 预分配（free 空间）+ 惰性释放 |\n\n**扩容策略**（减少 realloc 次数）：\n- len < 1MB：翻倍分配（alloc = 2 × len）\n- len ≥ 1MB：每次多分配 1MB\n\n**惰性释放**：缩短字符串时不立即回收内存（`sdsfree` 才回收），留给后续 append 复用。\n\n**编码选择**（`OBJECT ENCODING` 可看）：\n- int：能用 long 表示的整数，直接存\n- embstr：短字符串（≤44 字节），header 与数据连续分配，只分配一次\n- raw：长字符串，分开分配\n\n**一条命令记住**：`SET key 123` 得到 int 编码，`SET key abc` 得到 embstr，`SET key <超长>` 得到 raw。",
+    "tags": [
+      "String",
+      "SDS",
+      "底层结构"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3803,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 ZSet 底层使用什么数据结构实现有序范围查询？",
+    "options": [
+      {
+        "key": "A",
+        "text": "红黑树"
+      },
+      {
+        "key": "B",
+        "text": "跳表（skiplist）+ 哈希表"
+      },
+      {
+        "key": "C",
+        "text": "普通双向链表"
+      },
+      {
+        "key": "D",
+        "text": "B+ 树"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "跳表保证按 score 有序、范围查询高效；哈希表保证 member→score 查询 O(1)。用跳表而非红黑树，是因为范围查询更简单、实现更易调试。",
+    "tags": [
+      "ZSet",
+      "跳表"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3804,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 集群的 16384 个槽是怎么来的？为什么不是 65536？",
+    "answer": "16384 是 Redis 作者 antirez 在权衡后的选择，主要有四个理由：\n\n**1. 心跳包大小**\n集群节点间要互相发心跳（PING/PONG），心跳里带一个 bitmap 表示「我负责哪些槽」。\n- 16384 个槽 → bitmap 是 16384/8 = **2KB**\n- 65536 个槽 → **8KB**\n节点数多时（如 100 节点），心跳包会占用大量带宽。2KB 是能接受的平衡点。\n\n**2. 节点数量上限**\n- 16384 槽意味着理论上最多 16384 个主节点（实测受限于心跳带宽，实际远小于此）\n- Redis 作者认为超过 1000 个主节点时，集群本身已经不是好方案了\n\n**3. 槽位分配的粒度**\n- 16384 个槽分摊给 N 个节点，粒度足够细（如 20 节点 ≈ 819 槽/节点），扩容迁移成本可控\n\n**4. 位运算效率**\n- 槽号用 14 位表示（2^14 = 16384），对 key 做 CRC16 后取模或位运算都很高效\n\n**关键点**：这个数字是**硬编码在配置里的**（`cluster-node-timeout` 无关，是协议层面的），不可修改。改变它意味着集群协议不兼容。\n\n面试加分：能说出「心跳包大小与节点数上限的权衡」，说明理解集群设计而不是死记数字。",
+    "tags": [
+      "集群",
+      "hash slot",
+      "16384"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3805,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "什么是 Redis 的 Pipeline？它解决了什么问题？有什么限制？",
+    "answer": "**Pipeline（管道）**：一次发送多条命令、不等待逐条响应，最后统一读取所有结果。\n\n**解决的问题**：减少网络往返（RTT）。\n- 不用 Pipeline：N 条命令 = N 次 RTT\n- 用 Pipeline：N 条命令 = **1 次 RTT**\n在跨机房场景（RTT 可能 20-50ms）效果巨大。\n\n**与事务的区别**：\n| | Pipeline | MULTI/EXEC 事务 |\n|---|---|---|\n| 原子性 | ❌ 不保证 | ✅ 保证一起执行 |\n| 目的 | 减少 RTT | 保证原子 |\n| 中间失败 | 后续命令照常执行 | 整体执行，不中断 |\n\n**限制与注意**：\n1. **不能太大**：一次塞 10 万条命令会占用大量内存（客户端与服务端都在排队），建议每批 100-1000 条\n2. **不是原子操作**：中间某条失败，其余仍会执行，错误要自己处理\n3. **阻塞风险**：超大 Pipeline 会让服务端在短时间内集中处理，影响其他客户端\n4. **不减少服务端执行时间**：只是省了网络往返，命令本身还是串行执行\n\n**实践建议**：\n- 批量操作优先用原生批量命令（如 `MGET`、`MSET`、`HMSET`）而非 Pipeline\n- Pipeline 适合「逻辑上无关但想一起发」的场景\n- 配合 `redis-cli --pipe` 做批量导入",
+    "tags": [
+      "Pipeline",
+      "RTT",
+      "批量"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3806,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "以下哪些情况会导致 Redis 变慢或阻塞？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "执行 KEYS * 遍历所有 key"
+      },
+      {
+        "key": "B",
+        "text": "对超大 key 执行 DEL"
+      },
+      {
+        "key": "C",
+        "text": "AOF 使用 always 策略，每次写都 fsync"
+      },
+      {
+        "key": "D",
+        "text": "读取一个 10 字节的 String"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "A 是 O(N) 全遍历；B 的 DEL 是同步释放内存，大 key 会卡住主线程（应改用 UNLINK）；C 的 always 每次写都刷盘，吞吐骤降。D 是最普通的操作，不会阻塞。",
+    "tags": [
+      "阻塞",
+      "慢查询",
+      "大key"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3807,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 used_memory 和 used_memory_rss 有什么区别？为什么两者差很多？",
+    "answer": "两个指标视角不同：\n\n- **used_memory**：Redis 自己统计的「逻辑内存」，即数据 + 内部结构占用的字节数\n- **used_memory_rss**：操作系统看到的「物理内存」（Resident Set Size），即 Redis 进程实际占用的物理页\n\n**正常情况**：rss 略大于 used_memory（有内存分配器的碎片与开销）\n\n**两者差很多的情况**：\n\n1. **rss 远大于 used_memory**\n   - 内存碎片：频繁增删导致分配器（jemalloc）留下空洞\n   - 大 key 删除后内存未归还 OS\n   - 解决：开 `activedefrag yes` 做主动碎片整理；或重启\n\n2. **used_memory 远大于 rss**\n   - 部分内存被 swap 换出到磁盘（**危险信号**）\n   - 性能会急剧下降\n   - 解决：关掉 swap（`vm.swappiness=0`）或加大内存\n\n**查看方式**：\n```\nINFO memory\n```\n关注 `used_memory_human`、`used_memory_rss_human`、`mem_fragmentation_ratio`（= rss/used）。\n\n**mem_fragmentation_ratio 判断**：\n- 1.0 - 1.5：正常\n- \\> 1.5：碎片较多，考虑碎片整理\n- **< 1**：正在使用 swap，必须立即处理\n\n**易混淆点**：`maxmemory` 限制的是 used_memory，不是 rss。所以即使 rss 很高（碎片），也不会触发淘汰。",
+    "tags": [
+      "内存",
+      "碎片",
+      "rss"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3808,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 中查看当前所有 key 数量的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "KEYS *"
+      },
+      {
+        "key": "B",
+        "text": "DBSIZE"
+      },
+      {
+        "key": "C",
+        "text": "SCAN 0"
+      },
+      {
+        "key": "D",
+        "text": "INFO keyspace"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "DBSIZE 直接返回 key 总数，O(1)，安全。KEYS * 是 O(N) 会阻塞，生产禁用。INFO keyspace 也能看（含过期数），但不只是总数。",
+    "tags": [
+      "DBSIZE",
+      "key 数量"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3809,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 的哨兵（Sentinel）如何判断主库故障并完成切换？",
+    "answer": "分四步，涉及「主观下线 → 客观下线 → 选举 → 切换」：\n\n**1. 主观下线（SDOWN）**\n单个哨兵按 `down-after-milliseconds` 判断主库无响应 → 标记为「主观下线」，仅代表自己的看法。\n\n**2. 客观下线（ODOWN）**\n该哨兵向其他哨兵询问「你也认为主库挂了吗？」\n- 当认为下线的哨兵数 ≥ `quorum`（法定票数）→ 判定「客观下线」\n- **注意**：先只对主库做客观下线判断（从库故障只做主观，不切换）\n\n**3. 选举 Leader 哨兵**\n- 发现 ODOWN 的哨兵向其他哨兵请求投票（`SENTINEL is-master-down-by-addr`）\n- 每个哨兵在一个纪元（epoch）内只投一票，先到先得\n- 获得**多数票**（超过哨兵总数的一半）且票数 ≥ quorum 的成为 Leader\n\n**4. 执行故障转移**\nLeader 从从库中选新主，选择依据（依次）：\n1. 排除已下线、响应慢的从库\n2. 选 `slave-priority` 最高的\n3. 优先级相同，选**复制偏移量最大**的（数据最新）\n4. 再相同，选 `runid` 最小的\n\n然后：新主执行 `SLAVE NO ONE` → 其他从库指向新主 → 旧主恢复后作为从库加入\n\n**关键配置**：\n```\nsentinel monitor mymaster 127.0.0.1 6379 2   -- 最后的 2 就是 quorum\nsentinel down-after-milliseconds mymaster 30000\ndown-after-milliseconds\n```\n\n**常见坑**：哨兵数量应为**奇数且 ≥3**，否则容易出现脑裂（两个分区各自选出主库）。",
+    "tags": [
+      "哨兵",
+      "故障转移",
+      "quorum"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3810,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "关于 Redis 的持久化，以下说法正确的是？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "RDB 恢复速度快，但可能丢失最后一次快照后的数据"
+      },
+      {
+        "key": "B",
+        "text": "AOF everysec 最多丢约 1 秒数据"
+      },
+      {
+        "key": "C",
+        "text": "混合持久化把 RDB 与 AOF 的优点结合，是 4.0+ 推荐做法"
+      },
+      {
+        "key": "D",
+        "text": "开启 AOF 后就不再需要 RDB，可以完全关闭 RDB"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 不完全正确：实践中仍建议保留 RDB 用于冷备与快速恢复。混合持久化（aof-use-rdb-preamble）正是把 RDB 格式写入 AOF 头部，兼顾两者。",
+    "tags": [
+      "持久化",
+      "RDB",
+      "AOF"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3811,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 如何实现分布式限流？",
+    "answer": "常用三种算法，都可以用 Redis 的原子命令实现：\n\n**1. 固定窗口计数（简单但有临界问题）**\n```\n-- 对 key 自增，设置过期\nINCR limit:user:1001\nEXPIRE limit:user:1001 60   -- 第一次设置\n-- 判断返回值 > 阈值 则拒绝\n```\n推荐用 Lua 保证「自增 + 设过期」原子。\n问题：临界突刺（59 秒和 01 秒各 100 次 = 2 秒内 200 次）。\n\n**2. 滑动窗口（用 ZSet，精确但内存高）**\n```\nZREMRANGEBYSCORE key 0 (now - window)   -- 清掉窗口外的\nZCARD key                                -- 当前窗口内数量\nZADD key now now                         -- 记录本次\nEXPIRE key window\n```\n用 Lua 打包成原子操作。优点精确，缺点每个请求一条记录，内存占用大。\n\n**3. 令牌桶 / 漏桶（允许突发，最实用）**\nRedis 官方有基于 Lua 的令牌桶实现思路：\n- 用 Hash 存 `tokens`（当前令牌数）和 `last_refill`（上次补充时间）\n- 每次请求计算「距上次过了多久 × 速率」补充令牌\n- 令牌够则扣减放行，不够则拒绝\n\n**生产建议**：\n- 优先用 **令牌桶**（支持突发、平滑）\n- 一定要用 **Lua 脚本**保证原子性，不要用多条命令拼\n- key 加业务前缀，避免冲突\n- 降级策略：Redis 不可用时不能把请求全放过去，要有本地兜底限流",
+    "tags": [
+      "限流",
+      "令牌桶",
+      "Lua"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3812,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis Cluster 的故障转移是怎么工作的？什么情况下会发生脑裂？",
+    "answer": "**故障检测与转移**：\n\n1. **主观下线（PFAIL）**：节点 A 向 B 发 PING 超时 → A 标记 B 为 PFAIL（仅自己的看法）\n2. **客观下线（FAIL）**：A 通过 Gossip 收集其他节点对 B 的判断，当**超过半数主节点**都标记 B 为 PFAIL → 升级为 FAIL，广播全网\n3. **从节点发起选举**：B 的从节点延迟一段时间（`cluster-node-timeout × 随机因子`）后，向所有主节点请求投票\n4. **投票与晋升**：主节点检查「该从节点数据是否足够新（offset）」，投出赞成票。获得**多数主节点**投票的从节点晋升为新主，接管 B 的槽位\n5. **其他节点更新路由**：通过 Gossip 扩散新拓扑\n\n**脑裂（split-brain）**：\n\n发生条件：网络分区，两边各自认为对方挂了。\n\nRedis Cluster 的防护机制：\n- **需要多数派投票**：分区少数派那侧的从节点拿不到多数票，无法晋升 → 不会双主\n- **`cluster-node-timeout`**：节点间失联超过该时间才判定故障\n- **`cluster-require-full-coverage`**：默认 yes，任一槽位不可用则整个集群拒绝服务（**这是保护数据一致性的关键，但也意味着可用性下降**）\n\n真正容易脑裂的场景：\n- 主库所在分区与多数节点隔离（少数派），但主库仍在对外服务 → 客户端可能还在往它写数据，同时多数派已选出新主 → **两边都接受写入**\n\n缓解手段：\n1. 客户端要能感知拓扑变化，及时切换\n2. 设置 `min-replicas-to-write`（如 1），让主库在没有足够从库确认时**拒绝写入**，这是最有效的防止脑裂丢数据的配置\n3. 网络层面避免长时间分区\n\n**对比哨兵**：哨兵同样需要多数投票，脑裂风险类似，也需要 `min-replicas-to-write` 这类配置兜底。",
+    "tags": [
+      "集群",
+      "故障转移",
+      "脑裂"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3813,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 默认有多少个数据库（database）？集群模式呢？",
+    "options": [
+      {
+        "key": "A",
+        "text": "默认 16 个；集群模式只有 1 个（db 0）"
+      },
+      {
+        "key": "B",
+        "text": "默认 1 个；集群有 16 个"
+      },
+      {
+        "key": "C",
+        "text": "都是 16 个"
+      },
+      {
+        "key": "D",
+        "text": "都是 1 个"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "单机默认 databases 16（0-15），可用 SELECT 切换。但集群模式不支持多数据库，只有 db 0。实践上也不推荐用多库（运维复杂、集群不兼容、容易误操作）。",
+    "tags": [
+      "database",
+      "集群",
+      "常见坑"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3814,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 Lua 脚本有什么优势？使用时要注意什么？",
+    "answer": "**优势**：\n1. **原子性**：Lua 脚本在执行期间不会被其他命令打断，天然原子（但不是事务回滚语义——出错后前面已执行的不会撤销）\n2. **减少 RTT**：多条命令合并成一次调用\n3. **服务端计算**：避免把大量数据拉到客户端再算\n\n**典型场景**：分布式锁释放（比较+删除）、限流、库存扣减、复杂条件更新。\n\n**坑与注意**：\n\n1. **不能在脚本里做耗时操作**：脚本执行期间会阻塞整个 Redis（单线程），死循环会导致服务不可用\n   - 用 `SCRIPT KILL` 可杀（前提是脚本还没写操作）\n   - 或用 `lua-time-limit` 限制\n2. **脚本中的 key 必须在同一个节点**：\n   - 集群模式下，脚本操作的所有 key 必须落在同一个 slot，否则报 CROSSSLOT\n   - 解决：用 hash tag（如 `{user:1001}:cart`、`{user:1001}:order` 强制同槽）\n3. **必须用 KEYS 声明 key**：\n   - 脚本要用 `KEYS[1]` 而非把 key 拼进字符串，否则集群无法路由\n4. **不要用随机数/时间**做决策依据：\n   - Redis 5.0 前用 `redis.replicate_commands()` 才能用基于时间/随机的脚本\n   - 否则主从数据会不一致\n\n**实践建议**：优先用 redis.call 的原子命令组合，脚本越短越好；把脚本用 `SCRIPT LOAD` 预热，用 `EVALSHA` 调用省带宽。",
+    "tags": [
+      "Lua",
+      "原子性",
+      "集群限制"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3815,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "关于 Redis 的 SCAN 命令，以下说法正确的是？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "SCAN 是渐进式遍历，不会像 KEYS 那样阻塞"
+      },
+      {
+        "key": "B",
+        "text": "SCAN 可能返回重复元素，需要调用方自行去重"
+      },
+      {
+        "key": "C",
+        "text": "SCAN 保证在一次完整遍历中返回所有 key，不会遗漏"
+      },
+      {
+        "key": "D",
+        "text": "SCAN 的 COUNT 参数决定每次返回多少，但实际数量不保证"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "D"
+    ],
+    "explanation": "C 是错的：SCAN 是弱一致遍历，遍历期间如果有增删，某些 key 可能被遗漏或重复返回。这对「统计总数」不安全，但对「批量处理」是可接受的。",
+    "tags": [
+      "SCAN",
+      "遍历",
+      "KEYS 替代"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3816,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 主从切换后，客户端连接报错或数据丢失，如何排查？",
+    "answer": "分「为什么连不上/报错」和「为什么丢数据」两条线。\n\n**A. 客户端报错**\n\n常见错误与原因：\n| 报错 | 原因 |\n|---|---|\n| `READONLY` | 连到了从库（从库默认 read_only） |\n| `MOVED xxx` | 集群模式下 key 不在该节点 |\n| `CLUSTERDOWN` | 集群不可用（槽位未全覆盖） |\n| 连接超时/被拒 | 客户端仍指向旧主地址 |\n\n排查：\n1. `INFO replication` 看当前节点是主还是从\n2. 用 `redis-cli -h 新IP -p 端口 PING` 确认新主可达\n3. 检查客户端配置（是否支持哨兵/集群自动发现，还是写死了 IP）\n4. 若写死 IP → **这是最常见的根因**，应改用哨兵或集群模式 + 域名或 VIP\n\n**B. 数据丢失**\n\n丢失环节判断：\n1. **异步复制导致**：主库写入内存并返回客户端，尚未同步到从库就挂了 → 这部分必然丢\n   - 确认复制模式：`INFO replication` 看是否半同步，`Rpl_semi_sync` 是否生效\n2. **脑裂导致**：旧主仍在对外服务并接受写入，与新的主并存 → 双方数据分叉\n   - 检查是否配置了 `min-replicas-to-write`\n   - 从日志里找旧主的写入记录\n3. **故障转移选错了从库**：哨兵选优先级/offset 时选到了较旧的从库\n   - 看 `slave-priority` 与 `slave_repl_offset`\n\n**C. 事后弥补**\n- 从旧主的 AOF/RDB 里抢救数据\n- 对比新旧主的数据（按业务字段核对）\n- 通知业务方核对关键数据（订单、金额）\n\n**D. 长期改进**\n- 用 VIP / 域名而非写死 IP\n- 开半同步 + `min-replicas-to-write 1`\n- 定期做切换演练，量化 RTO/RPO\n- 监控 `master_link_status`、`master_last_io_seconds_ago`",
+    "tags": [
+      "主从切换",
+      "数据丢失",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3817,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 中使用 LPUSH + BRPOP 实现消息队列，最大的问题是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "无法实现消息确认（ACK），消息可能丢失"
+      },
+      {
+        "key": "B",
+        "text": "速度太慢"
+      },
+      {
+        "key": "C",
+        "text": "不支持持久化"
+      },
+      {
+        "key": "D",
+        "text": "只能单机使用"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "BRPOP 弹出后消息就从 Redis 消失了，如果消费者处理时崩溃，消息就永久丢失（无 ACK 与重投）。Redis 5.0 的 Stream 提供了消费组+ACK+PENDING 列表，才真正解决了这个问题。",
+    "tags": [
+      "消息队列",
+      "BRPOP",
+      "Stream"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3818,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis Stream 相比 List 做消息队列，有什么优势？",
+    "answer": "Redis 5.0 引入的 Stream 是专门为消息队列设计的，解决了 List 的三个硬伤。\n\n**List 做队列的问题**：\n1. 无 ACK 机制：BRPOP 弹出即消费，消费者崩溃 → 消息永久丢失\n2. 无消费组：多个消费者无法协同（List 是一条消息只被一个消费）\n3. 无消息回溯：消费过的消息无法重新读取\n\n**Stream 的能力**：\n| 能力 | 说明 |\n|---|---|\n| **消费组** | XGROUP CREATE，多消费者协同消费（每条消息组内只投一次） |\n| **ACK 机制** | XACK 确认；未确认的留在 PENDING 列表，可 XCLAIM 转移给其他消费者 |\n| **消息 ID** | 按时间戳递增，可精确回溯（XRANGE 指定范围） |\n| **阻塞读** | XREAD BLOCK |\n| **消息持久** | 可保留（配合 MAXLEN 裁剪），不因消费而删除 |\n\n**常用命令**：\n```\nXADD mystream * field value      -- 生产\nXGROUP CREATE mystream g1 $      -- 建消费组\nXREADGROUP GROUP g1 c1 COUNT 10 BLOCK 5000 STREAMS mystream >\nXACK mystream g1 <id>            -- 确认\nXPENDING mystream g1             -- 查看未确认\nXCLAIM mystream g1 c2 0 <id>     -- 转移给另一个消费者\n```\n\n**注意**：Stream 仍不是完整 MQ——无跨节点强一致、无复杂路由、运维工具少。要求高可靠时用 Kafka/RocketMQ。Stream 适合「轻量、容忍少量丢失、不想引入外部组件」的场景。",
+    "tags": [
+      "Stream",
+      "消息队列",
+      "消费组"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3819,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "以下哪些是 Redis 的典型应用场景？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "缓存热点数据"
+      },
+      {
+        "key": "B",
+        "text": "分布式锁"
+      },
+      {
+        "key": "C",
+        "text": "计数器与排行榜"
+      },
+      {
+        "key": "D",
+        "text": "存储大量历史归档日志（胜于文件系统）"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 不合适：Redis 是内存数据库，存大量归档日志成本极高，且不适合大对象持久存储。归档应用对象存储或文件系统。",
+    "tags": [
+      "应用场景",
+      "选型"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3820,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 内存持续增长但 used_memory 稳定，可能是什么原因？",
+    "answer": "这是典型的「逻辑内存正常但物理内存涨」问题，核心在 `used_memory_rss`。\n\n**先确认**：\n```\nINFO memory\n```\n对比 `used_memory` 与 `used_memory_rss`，算 `mem_fragmentation_ratio = rss / used`。\n\n**常见原因**：\n\n1. **内存碎片（最常见）**\n   - 频繁增删 key，尤其大小不一的 key，jemalloc 会留下无法复用的小空洞\n   - ratio > 1.5 且持续上升可判定\n   - 解决：开 `activedefrag yes`（在线碎片整理），或低峰重启\n\n2. **大 key 删除未归还内存**\n   - DEL 大 key 后，内存可能留在分配器里不还给 OS\n   - 用 `MEMORY PURGE`（4.0+）主动归还未用内存\n\n3. **RDB fork 的 copy-on-write 未释放**\n   - fork 期间写入导致内存翻倍，快照完成后应回落\n   - 若长期不回落，检查是否有子进程残留（`ps aux | grep redis-rdb`）\n\n4. **client buffer 持续增长**\n   - 慢客户端堆积（输出缓冲）或 Pipeline 过大\n   - 查 `CLIENT LIST` 的 `omem` 字段，或 `client-output-buffer-limit`\n   - 这类内存计入 used_memory 但常被忽略\n\n5. **AOF rewrite 缓冲区**\n   - rewrite 期间新写入进 AOF 缓冲，大写入量时占用可观\n\n6. **内存被 swap 换出（反向问题）**\n   - 若 ratio < 1，说明部分内存在 swap 里，是更危险的信号\n\n**排查命令序列**：\n```\nINFO memory              -- 看两个指标与比例\nMEMORY DOCTOR            -- Redis 自己的诊断\nMEMORY STATS             -- 细分内存分布\nCLIENT LIST              -- 看 omem/qbuf\n```\n\n**处置建议**：\n- ratio 1.5 以内可接受，先观察\n- 开 activedefrag（注意会消耗 CPU）\n- 长期方案：规范 key 大小、避免频繁大 key增删、设置合理的 maxmemory 与淘汰策略",
+    "tags": [
+      "内存增长",
+      "碎片",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3821,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 key 命名有哪些最佳实践？为什么要避免过长或过多的 key？",
+    "answer": "**命名规范**：\n1. **用业务前缀**：`user:1001:profile`、`order:20250101:count`（用冒号分层，可读且便于 SCAN 匹配）\n2. **语义清晰**：能一眼看出存什么，如 `cache:product:123` 优于 `p123`\n3. **控制长度**：建议 ≤ 64 字节。key 本身也占内存，几百万个长 key 浪费可观\n4. **不用中文/特殊字符**（可用但不利于跨语言与命令行操作）\n5. **统一大小写风格**（通常全小写）\n\n**为什么要避免过长或过多**：\n\n过长（如把整个 JSON 拼进 key）：\n- 每 key 都占内存，百万级 key 时浪费明显\n- 集群模式下 key 是哈希计算的输入，过长影响路由效率\n- 日志和慢查询里打印出来极难阅读\n\n过多（如每个用户每篇文章一个 key）：\n- **哈希冲突与 O(N) 遍历成本上升**\n- 集群模式下容易数据倾斜\n- 大量小 key 的过期检查与内存碎片负担重\n- 运维上 SCAN 遍历慢\n\n**推荐做法**：\n- 用 Hash 聚合小字段：`HMSET user:1001 name x age 20` 而不是 `SET user:1001:name x` + `SET user:1001:age 20`\n- 但注意 Hash 也会变成大 key，通常建议单 Hash ≤ 1000 字段\n- 设计时按「访问模式」决定粒度：总是一起读写的放一起\n\n**反例**：把 session 存成 `<userid><timestamp><random>` 这种超长 key，且每请求一个——内存和遍历成本双高。",
+    "tags": [
+      "key 设计",
+      "命名规范",
+      "大key"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3822,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 WAIT 命令与半同步复制的关系是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "WAIT 是客户端层面的「等待 N 个从库确认」，弥补 Redis 默认异步复制的不足"
+      },
+      {
+        "key": "B",
+        "text": "WAIT 与复制无关"
+      },
+      {
+        "key": "C",
+        "text": "WAIT 会自动开启半同步复制"
+      },
+      {
+        "key": "D",
+        "text": "WAIT 只用于集群模式"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "Redis 的主从复制默认是异步的，没有像 MySQL 那样的半同步配置。WAIT 让客户端主动等待「至少 N 个从库已同步到某个 offset」，是一种客户端侧的补偿手段。但它无法保证强一致（超时后仍返回当前同步数）。",
+    "tags": [
+      "WAIT",
+      "复制",
+      "一致性"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 3823,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 扩容时如何迁移数据？集群模式下有什么注意事项？",
+    "answer": "**单机/主从扩容**：数据量增加只能纵向扩容（加内存）或分片改造（迁移到集群）。\n\n**集群扩容标准流程**：\n\n1. **加入新节点**\n```\nCLUSTER MEET <新节点IP> <端口>\nCLUSTER NODES    -- 确认节点已加入\n```\n\n2. **分配槽位（resharding）**\n```\n-- 把一部分槽从旧节点迁移到新节点\nredis-cli --cluster reshard <现有节点IP>:<端口>\n```\n或原生命令：\n```\nCLUSTER SETSLOT <slot> IMPORTING <源节点ID>   -- 在目标节点执行\nCLUSTER SETSLOT <slot> MIGRATING <目标节点ID> -- 在源节点执行\nCLUSTER GETKEYSINSLOT <slot> <count>          -- 拿到要迁的 key\nMIGRATE <目标IP> <端口> \"\" 0 5000 KEYS <key...>\nCLUSTER SETSLOT <slot> NODE <目标节点ID>      -- 完成后通知所有节点\n```\n\n3. **验证**\n```\nredis-cli --cluster check <任意节点>\nCLUSTER INFO    -- 看 cluster_state:ok\n```\n\n**关键注意事项**：\n\n1. **迁移期间的访问**：源节点找不到 key 会返回 `ASK` 重定向，客户端要支持 ASK 语义（不是 MOVED）\n2. **大 key 迁移会阻塞**：单个大 key 可能阻塞数秒，应选低峰或分批\n3. **必须迁移整槽**：不能只迁半个槽\n4. **MIGRATE 的 KEYS 参数宜少**：建议每批 10-100 个 key\n5. **扩容后是否需要 rebalance**：`--cluster rebalance` 可均衡槽数，但要注意各节点容量差异（可加权）\n6. **监控**：迁移期间关注 `cluster_slots_migrating`、网络带宽、内存\n\n**替代方案**：用 `redis-cli --cluster add-node --cluster-slave` 加从节点分担读；或用 Proxy 层（Codis/Twemproxy）做更多自定义控制。",
+    "tags": [
+      "扩容",
+      "reshard",
+      "槽迁移"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3824,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "关于 Redis 的分布式锁实现，以下哪些说法正确？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "加锁必须用 SET key value NX PX timeout，保证原子性"
+      },
+      {
+        "key": "B",
+        "text": "解锁要校验 value 是自己的，并用 Lua 保证原子"
+      },
+      {
+        "key": "C",
+        "text": "业务执行时间可能超过 TTL 时，需要看门狗续期"
+      },
+      {
+        "key": "D",
+        "text": "Redis 分布式锁可以做到与 ZooKeeper 同级的强一致"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是常见误解：Redis 主从是异步复制，主库写入锁后未同步就宕机，新主没有这把锁 → 两个客户端同时持锁。所以 Redis 锁是 AP 倾向的，强一致场景应用 ZooKeeper/etcd 或数据库行锁。",
+    "tags": [
+      "分布式锁",
+      "SETNX",
+      "一致性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3825,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 6.0 的多线程 IO 具体是怎么回事？命令执行是否变成了多线程？",
+    "answer": "**结论先说：命令执行仍然是单线程**，多线程只用于网络 IO。\n\n**为什么引入多线程 IO**：\n单线程瓶颈不再是命令执行，而是**网络读写与协议解析**。高 QPS 下，主线程把大量时间花在 read()/write() 和 RESP 协议解析上。\n\n**多线程 IO 的工作方式**：\n1. 主线程 accept 连接\n2. 把就绪的 socket **分发给多个 IO 线程**去读、解析命令\n3. 主线程**串行执行**所有命令（保证原子性）\n4. 再由 IO 线程把响应写回 socket\n\n**关键点**：\n- 命令执行阶段没有任何并行，所以不存在多线程的数据竞争问题\n- 并发安全语义与之前完全一致\n- 默认关闭，需配置开启：\n```\nio-threads 4              -- IO 线程数，建议 ≤ CPU 核数，通常 4-8\nio-threads-do-reads yes   -- 开启读多线程\n```\n\n**什么时候有效**：\n- 高 QPS 小命令（如 GET/SET）场景提升明显\n- 如果业务本身是慢命令堆积（如 KEYS、大 key），多线程 IO 帮助有限\n- CPU 已打满且瓶颈在命令执行时，多线程 IO 无效\n\n**常见误解**：\n- ❌ 「Redis 6.0 变多线程了」→ 只是 IO 多线程\n- ❌ 「设 io-threads 越多越好」→ 超过 CPU 核数会因上下文切换反而下降\n\n**后续版本**：7.0 引入了多线程（sharded）的某些特性优化，但核心执行模型仍是单线程。",
+    "tags": [
+      "多线程IO",
+      "6.0",
+      "单线程"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3826,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "如何安全地遍历 Redis 中的大 key 并删除？",
+    "answer": "**核心原则：绝不用 DEL，改用 UNLINK + SCAN 渐进处理。**\n\n**为什么不能 DEL**：\n- DEL 是**同步**释放内存，几百万个元素的 Hash/List 可能阻塞主线程数秒\n- 期间所有请求排队，表现为服务超时\n\n**正确做法**：\n\n1. 用 UNLINK 异步删除（4.0+）\n```\nUNLINK bigkey   -- 只从 keyspace 移除，内存在后台线程释放\n```\n\n2. 超大集合要**分批删除元素**，而不是整体删除\n```\n-- Hash 分批删\nHSCAN bigkey 0 COUNT 100      -- 拿到一批 field\nHDEL bigkey field1 field2 ...  -- 逐批删除\n\n-- List 从尾部弹\nRPOP bigkey 100               -- 每次弹 100 个\n\n-- Set\nSSCAN bigkey 0 COUNT 100 → SREM\n\n-- ZSet\nZSCAN bigkey 0 COUNT 100 → ZREM\n```\n循环直到删空，每批之间加短暂 sleep 让其他请求有机会执行。\n\n3. 迁移大 key 用 MIGRATE 也要分批（一次迁整 key 会阻塞）。\n\n**先找到大 key**：\n```\nredis-cli --bigkeys              -- 各类型最大的 key（采样，会扫全库但渐进）\nredis-cli --memkeys              -- 按内存排序（4.0+）\nMEMORY USAGE <key>               -- 单 key 精确内存\n```\n注意 `--bigkeys` 本身也是全库 SCAN，生产低峰执行。\n\n**常见事故**：业务方直接 `DEL cart:biguser`，结果 Redis 卡住 10 秒，全站超时。所以应当把「删除大 key 必须用 UNLINK」写进团队规范。",
+    "tags": [
+      "大key",
+      "UNLINK",
+      "删除"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3827,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 中设置 key 10 秒后过期的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "SET key value EX 10"
+      },
+      {
+        "key": "B",
+        "text": "SET key value TTL 10"
+      },
+      {
+        "key": "C",
+        "text": "EXPIRE key 10"
+      },
+      {
+        "key": "D",
+        "text": "SETEX 10 key value"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "SET key value EX 10（秒）或 PX（毫秒）是推荐写法，原子且清晰。EXPIRE 也能设但需要先 SET 再单独设置（非原子）；D 的参数顺序是 SETEX key 10 value。",
+    "tags": [
+      "过期",
+      "SET EX",
+      "命令"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3828,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 INFO 命令里，你最关注哪些指标？为什么？",
+    "answer": "按「是否影响可用性」排序，最该盯的几组：\n\n**1. 内存（memory 段）**\n```\nused_memory_human         -- 逻辑内存\nused_memory_rss_human     -- 物理内存\nmem_fragmentation_ratio   -- >1.5 碎片多；<1 在用 swap（危险）\nmaxmemory                 -- 上限是否合理\n```\n\n**2. 连接（clients 段）**\n```\nconnected_clients         -- 当前连接数\nblocked_clients           -- 被阻塞的（BRPOP 等）\nmaxclients                -- 上限是否接近\n```\n连接数接近上限会直接拒绝新连接。\n\n**3. 复制（replication 段）**\n```\nrole                      -- master/slave\nmaster_link_status        -- 从库是否连上主库（down 就是出事了）\nmaster_last_io_seconds_ago -- 多久没收到主库数据\nslave_repl_offset         -- 复制偏移量\n```\n从库的 `master_link_status` 是必看项。\n\n**4. 持久化（persistence 段）**\n```\nrdb_last_bgsave_status    -- 上次 RDB 是否成功（err 说明备份失败）\naof_last_bgrewrite_status -- AOF 重写状态\naof_last_write_status     -- AOF 写入状态（err 很危险）\nrdb_changes_since_last_save\n```\n\n**5. 统计（stats 段）**\n```\nkeyspace_hits / keyspace_misses  -- 算命中率\nrejected_connections             -- 被拒绝的连接数（>0 就有问题）\nexpired_keys / evicted_keys      -- 过期与淘汰数量（evicted 持续增长说明内存不足）\n```\n\n**6. CPU（cpu 段）**\n```\nused_cpu_sys / used_cpu_user\n```\n单核打满即瓶颈。\n\n**7. 集群（cluster 段）**\n```\ncluster_state             -- ok / fail\ncluster_slots_ok          -- 可用槽数\n```\n\n**一句话**：内存、连接、复制、持久化这四组只要有异常，服务就一定出问题；其余用于性能调优。",
+    "tags": [
+      "INFO",
+      "监控指标",
+      "运维"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3829,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 要做异地容灾，以下哪些考虑是必要的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "跨地域复制必然带来延迟，需评估对业务的影响"
+      },
+      {
+        "key": "B",
+        "text": "明确 RTO/RPO 目标，决定是热备还是冷备"
+      },
+      {
+        "key": "C",
+        "text": "异地节点通常设为只读，避免双写冲突"
+      },
+      {
+        "key": "D",
+        "text": "只要开了异地复制就不需要本地高可用了"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是错的：异地容灾不能替代本地高可用。跨地域切换耗时较长（分钟级），本地机房内的主从切换才是分钟内的第一道防线。两者是分层关系。",
+    "tags": [
+      "异地容灾",
+      "RTO",
+      "RPO"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3830,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 的 maxmemory 和 maxmemory-policy 怎么配合使用？",
+    "answer": "两者是「上限」与「超限后怎么办」的配套关系。\n\n**maxmemory**：内存使用的硬上限，达到后触发淘汰策略。\n```\nmaxmemory 4gb\n```\n- 不设或设 0：不限制，可能吃光内存导致 OOM\n- 建议设为物理内存的 60%-70%（留空间给 fork 的 COW 与系统）\n\n**maxmemory-policy**：超限时的淘汰行为，8 种可选：\n\n| 策略 | 说明 |\n|---|---|\n| noeviction（默认） | 不淘汰，写入直接报错 |\n| allkeys-lru | 所有 key 中淘汰最久未用 |\n| allkeys-lfu | 所有 key 中淘汰使用频率最低 |\n| allkeys-random | 所有 key 随机淘汰 |\n| volatile-lru | **只**从设了 TTL 的 key 中淘汰最久未用 |\n| volatile-lfu | 只从有 TTL 的 key 中淘汰频率最低 |\n| volatile-random | 只从有 TTL 的 key 中随机淘汰 |\n| volatile-ttl | 只从有 TTL 的 key 中淘汰剩余时间最短的 |\n\n**怎么选**：\n- **纯缓存**（数据可重建）→ `allkeys-lru` 或 `allkeys-lfu`（推荐 LFU，更保护热点）\n- **缓存 + 持久数据混存**（如 Redis 里既有缓存也有队列）→ `volatile-*`，但前提是缓存 key 都设了 TTL，否则淘汰不动\n- **不能丢数据**（当数据库用）→ `noeviction`，宁可报错也不要丢\n\n**常见事故**：设了 `volatile-lru` 但大量 key 没设 TTL → 内存满了却淘汰不掉 → 写入报错。这是很典型的配置踩坑。\n\n**监控**：`evicted_keys` 持续增长说明一直在淘汰，需要评估内存是否够；`keyspace_misses` 上升可能是淘汰导致的。",
+    "tags": [
+      "maxmemory",
+      "淘汰策略",
+      "配置"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3831,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "缓存和数据库双写时，为什么推荐「先更新库再删缓存」？删缓存失败怎么办？",
+    "answer": "**为什么是删缓存而不是更新缓存**：\n1. 更新缓存在并发下顺序难保证（两个线程更新库的先后与更新缓存的先后不一致 → 脏数据）\n2. 写多读少时白白浪费缓存计算\n3. 删缓存更简单，下次读自然会重建\n\n**为什么先更新库再删缓存**：\n- 反过来的「先删缓存再更新库」有个致命窗口：\n  - T1 删缓存 → T2 读未命中 → T2 从库读旧值 → T2 回填旧值到缓存 → T1 更新库\n  - 结果缓存里长期是旧值\n- 「先更新库再删缓存」的窗口小得多（只在「读完旧库值但还没来得及回填」的瞬间）\n\n**删缓存失败怎么办**（这是必须有的兜底）：\n\n1. **重试**：删失败进重试队列，指数退避重试 N 次\n2. **消息队列补偿**：把「要删的 key」投递到 MQ，由消费者保证最终删除\n3. **订阅 binlog**：用 Canal/Debezium 监听库变更，异步删缓存（解耦且可靠，推荐）\n4. **延迟双删**：更新库后删一次，延迟几百毫秒再删一次（覆盖「别人读到旧值回填」的窗口）\n5. **TTL 兜底**：所有缓存必须有 TTL，让最终一致有上限\n\n**实践优先级**：TTL 兜底（必须有）+ binlog 订阅（最可靠）+ 重试（简单场景够用）。\n\n**注意**：这些手段都是**最终一致**，不是强一致。要求强一致的场景（如库存扣减）应当直接读写数据库或用分布式锁，别指望缓存一致性方案。",
+    "tags": [
+      "缓存一致性",
+      "延迟双删",
+      "binlog"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3832,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 中什么命令可以查看某个 key 的内存占用？",
+    "options": [
+      {
+        "key": "A",
+        "text": "MEMORY USAGE key"
+      },
+      {
+        "key": "B",
+        "text": "STRLEN key"
+      },
+      {
+        "key": "C",
+        "text": "TTL key"
+      },
+      {
+        "key": "D",
+        "text": "TYPE key"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "MEMORY USAGE key 返回该 key 及其值占用的字节数（可加 SAMPLES 参数控制采样精度）。STRLEN 只对 String 有效，TTL 看过期时间，TYPE 看类型。",
+    "tags": [
+      "MEMORY USAGE",
+      "大key",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3833,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 的性能突然下降，有哪些排查方向？按优先级说。",
+    "answer": "按「影响面从大到小」排查，避免一上来就看慢日志。\n\n**0. 先确认是 Redis 本身还是网络/客户端**\n```\nredis-cli --latency -h host -p port        -- 测客户端到 Redis 的延迟\nredis-cli --intrinsic-latency 100          -- 测 Redis 自身固有延迟（不含网络）\n```\n两者差异大 → 问题在网络或客户端；都高 → 问题在 Redis。\n\n**1. 慢命令与阻塞（最高优先级）**\n```\nSLOWLOG GET 10          -- 看最近的慢命令（超过 slowlog-log-slower-than）\nLATENCY DOCTOR          -- Redis 自诊断\nLATENCY HISTORY <事件>  -- 看具体事件的时间线\n```\n常见元凶：KEYS、HGETALL 大 hash、大 key 的 DEL、SORT、复杂 Lua 脚本。\n\n**2. 大 key / 热 key**\n```\nredis-cli --bigkeys\nredis-cli --hotkeys     -- 需开启 LFU\n```\n\n**3. 持久化阻塞**\n```\nINFO persistence\nrdb_last_bgsave_status / aof_last_bgrewrite_status\nlatest_fork_usec        -- fork 耗时（毫秒），超过几十毫秒就有影响\n```\nfork 慢 + COW 内存翻倍，是常见的周期性抖动原因。\n\n**4. 内存与淘汰**\n```\nINFO memory    -- 碎片率、是否用 swap\nINFO stats     -- evicted_keys 是否在增长\n```\n达到 maxmemory 后持续淘汰也会拖慢。\n\n**5. 连接与网络**\n```\nINFO clients   -- connected_clients 是否接近 maxclients\nCLIENT LIST    -- 看 omem/qbuf 大的客户端（输出缓冲堆积）\n```\n\n**6. CPU 与系统**\n```\ntop -H -p <pid>      -- Redis 是否单核打满\nvmstat 1             -- 看上下文切换、swap\n```\n\n**7. 复制影响**\n- 从库重连时全量同步（PSYNC 失败退化为全量）会占大量带宽与 CPU\n- 查日志里的 `Full resync` 频率\n\n**排查口诀**：先量延迟（/网络还是/本体）→ 再看慢命令 → 再查大 key → 最后看持久化与系统。\n\n**最容易被忽略的**：客户端连接池配置不当（如每次请求新建连接），会让瓶颈在 TCP 握手而非 Redis。",
+    "tags": [
+      "性能下降",
+      "排查",
+      "延迟"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3834,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "以下哪些做法能有效降低 Redis 的内存占用？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "给缓存 key 设置合理的 TTL"
+      },
+      {
+        "key": "B",
+        "text": "用 Hash 把多个小字段聚合，减少 key 数量"
+      },
+      {
+        "key": "C",
+        "text": "选择合适的淘汰策略并设置 maxmemory"
+      },
+      {
+        "key": "D",
+        "text": "把所有值都用 JSON 序列化后存 String，保持统一格式"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 反而增加内存与 CPU：JSON 有大量冗余字符与转义，且每次读写都要序列化/反序列化。能用原地命令操作的结构（Hash/List/ZSet）优先用原生类型。",
+    "tags": [
+      "内存优化",
+      "TTL",
+      "数据结构"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3835,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "为什么 Redis 集群不支持多 key 操作？有什么绕过办法？",
+    "answer": "**原因**：集群把数据按 hash slot 分散到多个节点。`MGET k1 k2 k3` 若 k1/k2/k3 落在不同节点，单个节点无法完成操作，直接报错：\n```\nCROSSSLOT Keys in request don't hash to the same slot\n```\n这本质是分布式系统的 CAP 权衡：为了水平扩展，放弃了跨分片的原子多 key 操作。\n\n**绕过办法**：\n\n1. **hash tag（最常用）**\n用 `{}` 包住相同部分，Redis 只对 {} 内的内容算哈希：\n```\n{user:1001}:profile\n{user:1001}:order\n{user:1001}:cart\n```\n这三个 key 一定会落在同一个 slot，于是 `MGET`、Pipeline、Lua 都可以用。\n注意：hash tag 用得过度会导致数据倾斜（都聚集到一个节点）。\n\n2. **在 key 名前加业务前缀**\n如 `user:1001:profile` 这种方式在集群下**不保证**同槽（计算的是整个 key 名），所以要用 {} 而非单纯冒号。\n\n3. **客户端侧拆分**\n应用按 key 分组，分别向对应节点请求，再合并结果。代价是多一次逻辑。\n\n4. **用单机/主从而非集群**\n数据量不大时，主从 + 哨兵反而更省心，避免这些限制。\n\n**连带影响**（面试常问）：\n- Lua 脚本里用到的所有 key 也必须同槽\n- 事务 `MULTI/EXEC` 只能在单节点内保证原子\n- `SCAN`、`KEYS` 只作用于当前节点，全库遍历需要遍历所有 master",
+    "tags": [
+      "集群",
+      "多key",
+      "hash tag"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3836,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 支持事务吗？MULTI/EXEC 有什么局限？",
+    "answer": "**支持，但和关系型数据库的事务完全不同。**\n\n基本用法：\n```\nMULTI            -- 开始\nSET a 1\nINCR a\nEXEC             -- 提交执行\nDISCARD          -- 放弃\nWATCH key        -- 乐观锁监控\n```\n\n**能保证的**：\n- 命令**按顺序连续执行**，中间不会插入其他客户端的命令（隔离性）\n- 要么全部执行，要么全部不执行（用 DISCARD 时）\n\n**不能保证的**（关键局限）：\n\n1. **无回滚**：某条命令执行失败（如对 String 用 LPUSH），其余命令**照常执行**，不会撤销\n   - 这是与 SQL 事务最大的区别\n   - 原因：Redis 认为「命令写错是编程错误，应该在开发期发现」，不值得为回滚付出性能代价\n2. **不支持跨节点**：集群模式下只能在单节点内保证，涉及多 key 时需同槽\n3. **无法在事务中读取结果再决策**：命令是排队到 EXEC 才执行，中间拿不到返回值\n4. **WATCH 是乐观锁**：只在 key 被改动时让 EXEC 失败，高并发下需自己重试\n\n**为什么这么设计**：Redis 追求极致性能与简单性，放弃了回滚这种成本高、收益低的特性。需要真正的事务，用数据库；需要原子组合逻辑，用 **Lua 脚本**（能读取中间结果并据此分支）。",
+    "tags": [
+      "事务",
+      "MULTI",
+      "原子性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3837,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 WATCH 命令实现的是什么机制？",
+    "options": [
+      {
+        "key": "A",
+        "text": "悲观锁，直接阻塞其他写操作"
+      },
+      {
+        "key": "B",
+        "text": "乐观锁，key 被修改则 EXEC 失败"
+      },
+      {
+        "key": "C",
+        "text": "读锁，允许多个客户端同时写"
+      },
+      {
+        "key": "D",
+        "text": "与事务无关的监控命令"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "WATCH 是乐观锁：监控某些 key，如果 EXEC 之前这些 key 被任何客户端改动，则 EXEC 返回 nil（事务放弃）。需要客户端自己重试。它不会阻塞其他写操作，开销小。",
+    "tags": [
+      "WATCH",
+      "乐观锁",
+      "CAS"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3838,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 List 底层是 quicklist，说说它为什么这么设计？",
+    "answer": "Redis 3.2+ 的 List 用 **quicklist = 双向链表 + 每个节点一个 ziplist/listpack**。\n\n**两种极端方案的缺点**：\n\n| 方案 | 问题 |\n|---|---|\n| 纯双向链表 | 每个元素都要 prev/next 指针与 malloc 头，内存开销巨大（一个 8 字节 int 可能要 40+ 字节） |\n| 纯 ziplist（连续内存） | 插入删除要整体移动内存，大 List 下 O(N) 甚至触发连锁更新（cascade update） |\n\n**quicklist 的折中**：\n- 外层用链表，保证**插入删除 O(1)**\n- 每个链表节点存一个小的连续内存块（listpack），保证**内存紧凑**\n- 块大小可配置：\n```\nlist-max-listpack-size -2    -- 默认每块约 8KB\n```\n负数表示按大小限制（-1 4KB、-2 8KB、-3 16KB…），正数表示元素个数上限。\n\n**优点**：\n1. 内存利用率高（无逐元素指针开销）\n2. 增删高效（只动一块，不整表移动）\n3. 支持 LZ4 压缩中间节点（`list-compress-depth`）\n\n**Redis 7.0 变化**：引入 listpack 替代 ziplist（解决 ziplist 连锁更新问题），但整体仍是 quicklist 结构。\n\n**顺带记住**：\n- Hash 小数据用 listpack，超过 `hash-max-listpack-entries` 转 dict\n- ZSet 小数据用 listpack，超过转跳表 + dict\n- 三种结构的转换阈值都在 `redis.conf` 里，可调",
+    "tags": [
+      "quicklist",
+      "List",
+      "底层结构"
+    ],
+    "frequency": "中频"
   }
 ]
