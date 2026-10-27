@@ -3,8 +3,24 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
-import { STATUS, CATEGORIES, PRACTICE_MODES, TYPE_LABEL } from '@/utils/constants'
-import { buildQueue, resolveStartIndex, normalizeMode, summarizeRound } from '@/utils/practice'
+import {
+  STATUS,
+  CATEGORIES,
+  PRACTICE_MODES,
+  STUDY_MODES,
+  STUDY_MODE_LABEL,
+  STUDY_MODE_DESC,
+  DEFAULT_STUDY_MODE,
+  TYPE_LABEL,
+} from '@/utils/constants'
+import {
+  buildQueue,
+  resolveStartIndex,
+  normalizeMode,
+  normalizeStudyMode,
+  describeProgress,
+  summarizeRound,
+} from '@/utils/practice'
 import {
   isShort,
   isMultiple,
@@ -29,9 +45,16 @@ const bank = useBankStore()
 const study = useStudyStore()
 
 const mode = computed(() => normalizeMode(route.query.mode))
+const studyMode = computed(() => normalizeStudyMode(route.query.studyMode || DEFAULT_STUDY_MODE))
 const category = computed(() =>
   CATEGORIES.includes(route.query.category) ? route.query.category : ''
 )
+
+/**
+ * 模式选择面板：仅在「还没开始刷」时显示（cursor=0 且未答过题），
+ * 开始刷之后收起，把整屏让给题卡。
+ */
+const setupOpen = ref(false)
 
 const queue = ref([])
 const cursor = ref(0)
@@ -78,12 +101,23 @@ function build() {
   slideDir.value = ''
 
   const wrongIds = new Set(study.wrongList.map((q) => q.id))
-  const q = buildQueue(bank.questions, { mode: mode.value, category: category.value, wrongIds })
+  const q = buildQueue(bank.questions, {
+    mode: mode.value,
+    studyMode: studyMode.value,
+    category: category.value,
+    wrongIds,
+  })
   queue.value = q
 
-  const start = resolveStartIndex(study.progress, { mode: mode.value, category: category.value }, q.length)
+  const start = resolveStartIndex(
+    study.progress,
+    { mode: mode.value, studyMode: studyMode.value, category: category.value },
+    q.length
+  )
   cursor.value = start.index
   resumed.value = start.resumed
+  // 没有可续刷的进度 → 打开模式面板，让用户先选「刷题 / 背题」
+  setupOpen.value = !start.resumed
   expanded.value = false
   finished.value = false
   roundAnswers.value = {}
@@ -106,7 +140,7 @@ onMounted(() => {
     })
 })
 
-watch([mode, category], () => {
+watch([mode, studyMode, category], () => {
   if (bank.questions.length) build()
 })
 
@@ -131,7 +165,12 @@ function clearTimers() {
 // ---------- 导航 ----------
 
 function persistProgress() {
-  study.saveProgress({ mode: mode.value, category: category.value || null, index: cursor.value })
+  study.saveProgress({
+    mode: mode.value,
+    studyMode: studyMode.value,
+    category: category.value || null,
+    index: cursor.value,
+  })
 }
 
 function goTo(index) {
@@ -255,6 +294,35 @@ function switchMode(nextMode) {
   router.replace({ path: '/practice', query: { ...route.query, mode: nextMode } })
 }
 
+/** 切换练习模式（刷题 / 背题）：清掉旧进度并按新模式重建队列 */
+function switchStudyMode(nextStudyMode) {
+  if (studyMode.value === nextStudyMode) return
+  study.clearProgress()
+  router.replace({ path: '/practice', query: { ...route.query, studyMode: nextStudyMode } })
+}
+
+/** 「继续上次」：从保存的位置接着刷 */
+function resumeLast() {
+  const info = progressInfo.value
+  if (!info) return
+  setupOpen.value = false
+  study.clearProgress()
+  router.replace({
+    path: '/practice',
+    query: {
+      mode: info.mode,
+      studyMode: info.studyMode,
+      ...(info.category !== '全部题目' ? { category: info.category } : {}),
+    },
+  })
+}
+
+/** 收起模式面板，直接开刷 */
+function startNow() {
+  setupOpen.value = false
+  persistProgress()
+}
+
 // ---------- 键盘 ----------
 
 function onKeydown(e) {
@@ -352,6 +420,24 @@ const modeOptions = computed(() =>
   }))
 )
 
+/** 练习模式选项（刷题 / 背题），带说明文案 */
+const studyModeOptions = computed(() =>
+  STUDY_MODES.map((m) => ({
+    value: m,
+    label: STUDY_MODE_LABEL[m],
+    desc: STUDY_MODE_DESC[m],
+  }))
+)
+
+/** 当前练习模式的简答题总数（面板上显示「本次 N 题」） */
+const queueHint = computed(() => {
+  if (!total.value) return '没有符合条件的题目'
+  return `本次 ${total.value} 题`
+})
+
+/** 上次进度（用于面板上的「继续上次」） */
+const progressInfo = computed(() => describeProgress(study.progress))
+
 const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 </script>
 
@@ -377,6 +463,58 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
         </button>
       </template>
     </AppHeader>
+
+    <!-- 模式选择面板：未开始刷时显示，选完收起 -->
+    <section v-if="setupOpen && !finished" class="setup card">
+      <div class="setup__head">
+        <h2 class="setup__title">选择练习方式</h2>
+        <button class="setup__skip" @click="startNow">直接开始 →</button>
+      </div>
+
+      <!-- 练习模式：刷题 / 背题 -->
+      <div class="setup__modes">
+        <button
+          v-for="opt in studyModeOptions"
+          :key="opt.value"
+          class="setup__mode"
+          :class="{ 'setup__mode--on': studyMode === opt.value }"
+          @click="switchStudyMode(opt.value)"
+        >
+          <span class="setup__mode-name">{{ opt.label }}</span>
+          <span class="setup__mode-desc">{{ opt.desc }}</span>
+        </button>
+      </div>
+
+      <!-- 队列顺序 -->
+      <div class="setup__row">
+        <span class="setup__label">题目顺序</span>
+        <div class="setup__seg">
+          <button
+            v-for="opt in modeOptions"
+            :key="opt.value"
+            class="setup__seg-item"
+            :class="{ 'setup__seg-item--on': mode === opt.value }"
+            @click="switchMode(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+      </div>
+
+      <p class="setup__hint muted">{{ queueHint }}</p>
+
+      <!-- 继续上次 -->
+      <button v-if="progressInfo" class="setup__resume" @click="resumeLast">
+        <span class="setup__resume-dot" aria-hidden="true" />
+        <span class="setup__resume-body">
+          <span class="setup__resume-title">继续上次刷题</span>
+          <span class="setup__resume-desc">
+            {{ progressInfo.studyModeLabel }} · {{ progressInfo.category }} · {{ progressInfo.positionText }}
+          </span>
+        </span>
+        <span class="setup__resume-arrow" aria-hidden="true">→</span>
+      </button>
+    </section>
 
     <!-- 模式切换 + 进度 -->
     <div class="modes">
@@ -574,6 +712,144 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   justify-content: center;
   color: var(--c-text-3);
   border-radius: 50%;
+}
+
+/* ---------- 模式选择面板 ---------- */
+.setup {
+  margin-top: 8px;
+  padding: 13px 14px 14px;
+}
+.setup__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.setup__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+.setup__skip {
+  font-size: 12px;
+  color: var(--c-primary);
+}
+
+/* 刷题 / 背题：两个大块，说明文案一起给出 */
+.setup__modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.setup__mode {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 11px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--c-border);
+  background: var(--c-card);
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.setup__mode--on {
+  border-color: var(--c-primary);
+  background: var(--c-primary-weak);
+}
+.setup__mode-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.setup__mode--on .setup__mode-name {
+  color: var(--c-primary);
+}
+.setup__mode-desc {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--c-text-3);
+}
+
+/* 题目顺序 */
+.setup__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+.setup__label {
+  font-size: 12.5px;
+  color: var(--c-text-2);
+}
+.setup__seg {
+  display: flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 10px;
+  background: var(--c-bg);
+}
+.setup__seg-item {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--c-text-2);
+}
+.setup__seg-item--on {
+  color: #fff;
+  background: var(--c-primary);
+}
+
+.setup__hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+}
+
+/* 继续上次 */
+.setup__resume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 11px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+  text-align: left;
+}
+.setup__resume-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c-primary);
+  box-shadow: 0 0 0 3px var(--c-primary-weak);
+}
+.setup__resume-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.setup__resume-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.setup__resume-desc {
+  font-size: 11px;
+  color: var(--c-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.setup__resume-arrow {
+  flex-shrink: 0;
+  font-size: 15px;
+  color: var(--c-primary);
 }
 
 .modes {

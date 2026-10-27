@@ -101,11 +101,25 @@ function submitMultiple() {
   }, 600)
 }
 
+/**
+ * 退出面试：用页内确认，不用 window.confirm。
+ *
+ * window.confirm 在微信内置浏览器 / 部分 WebView 下会静默失效，
+ * 表现为「点了退出没反应」。与其他页面的二次确认保持一致。
+ */
+const confirmingQuit = ref(false)
+
 function quit() {
-  if (window.confirm('确定退出面试？本次作答不会计入学习记录。')) {
-    interview.reset()
-    router.replace('/interview')
-  }
+  confirmingQuit.value = true
+}
+
+function cancelQuit() {
+  confirmingQuit.value = false
+}
+
+function confirmQuit() {
+  interview.reset()
+  router.replace('/interview')
 }
 </script>
 
@@ -116,6 +130,18 @@ function quit() {
         <button class="quit" aria-label="退出面试" @click="quit">退出</button>
       </template>
     </AppHeader>
+
+    <!-- 页内退出确认 -->
+    <div v-if="confirmingQuit" class="confirm card" role="alertdialog">
+      <p class="confirm__text">
+        确定退出面试？<br />
+        <span class="muted">本次作答不会计入学习记录。</span>
+      </p>
+      <div class="confirm__actions">
+        <button class="btn btn--plain btn--sm" @click="cancelQuit">继续答题</button>
+        <button class="btn btn--danger btn--sm" @click="confirmQuit">确定退出</button>
+      </div>
+    </div>
 
     <div
       class="bar"
@@ -224,6 +250,34 @@ function quit() {
   padding: 0 8px;
   font-size: 13px;
   color: var(--c-text-3);
+}
+
+/* 页内退出确认 */
+.confirm {
+  margin-top: 8px;
+  padding: 12px 13px;
+  flex-shrink: 0;
+}
+.confirm__text {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--c-text);
+}
+.confirm__actions {
+  display: flex;
+  gap: 8px;
+}
+.btn--sm {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.btn--danger {
+  background: var(--c-danger);
+  color: #fff;
+  font-weight: 500;
 }
 
 .bar {

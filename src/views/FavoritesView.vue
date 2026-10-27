@@ -36,12 +36,28 @@ watch(meta, (m) => {
   if (m.page !== page.value) page.value = m.page
 })
 
-function clearAll() {
+/**
+ * 「全部取消」用页内确认，不用 window.confirm。
+ *
+ * window.confirm 在微信内置浏览器 / 部分 WebView / 禁止弹窗的设置下
+ * 会静默返回 false 或干脆不弹，表现为「点了没反应」。
+ * 「我的」页曾因同样的写法出现过这个 bug，这里保持一致。
+ */
+const confirming = ref(false)
+
+function askClear() {
   if (!list.value.length) return
-  if (window.confirm('确定取消全部收藏？')) {
-    study.clearFavorites()
-    page.value = 1
-  }
+  confirming.value = true
+}
+
+function cancelClear() {
+  confirming.value = false
+}
+
+function clearAll() {
+  study.clearFavorites()
+  page.value = 1
+  confirming.value = false
 }
 </script>
 
@@ -63,7 +79,16 @@ function clearAll() {
     <template v-else>
       <div v-if="list.length" class="head">
         <p class="head__count">共 <strong>{{ list.length }}</strong> 道收藏</p>
-        <button class="head__clear" @click="clearAll">全部取消</button>
+        <button class="head__clear" @click="askClear">全部取消</button>
+      </div>
+
+      <!-- 页内确认条：不依赖 window.confirm -->
+      <div v-if="confirming" class="confirm" role="alertdialog">
+        <p class="confirm__text">确定取消全部收藏？（{{ list.length }} 题）</p>
+        <div class="confirm__actions">
+          <button class="btn btn--plain btn--sm" @click="cancelClear">取消</button>
+          <button class="btn btn--danger btn--sm" @click="clearAll">确定取消</button>
+        </div>
       </div>
 
       <EmptyState
@@ -112,6 +137,35 @@ function clearAll() {
 }
 .head__clear:active {
   background: var(--c-bg);
+}
+
+/* 页内确认条 */
+.confirm {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+}
+.confirm__text {
+  margin: 0 0 9px;
+  font-size: 12.5px;
+  color: var(--c-text);
+}
+.confirm__actions {
+  display: flex;
+  gap: 8px;
+}
+.btn--sm {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.btn--danger {
+  background: var(--c-danger);
+  color: #fff;
+  font-weight: 500;
 }
 
 .list {

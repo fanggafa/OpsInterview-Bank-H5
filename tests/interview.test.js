@@ -349,17 +349,34 @@ describe('答题页', () => {
     expect(btn.attributes('disabled')).toBeDefined()
   })
 
-  it('退出需确认，确认后清空会话', async () => {
+  it('退出用页内确认，确认后清空会话', async () => {
     interview.start({ size: 3 })
     interview.ids = [1, 2, 3]
     interview.cursor = 0
     const { wrapper, router } = await mountView(InterviewRunView, '/interview/run')
-    const spy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    // 不依赖 window.confirm（微信/WebView 里可能静默失效）
+    const spy = vi.spyOn(window, 'confirm')
     await wrapper.find('.quit').trigger('click')
+    await flushPromises()
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+
+    // 弹页内确认条，会话还在
+    expect(wrapper.find('.confirm').exists()).toBe(true)
+    expect(interview.active).toBe(true)
+
+    // 取消 → 继续答题
+    await wrapper.find('.confirm .btn--plain').trigger('click')
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+    expect(interview.active).toBe(true)
+
+    // 再来一次并确认 → 清空并回到设置页
+    await wrapper.find('.quit').trigger('click')
+    await wrapper.find('.confirm .btn--danger').trigger('click')
     await flushPromises()
     expect(interview.active).toBe(false)
     expect(router.currentRoute.value.path).toBe('/interview')
-    spy.mockRestore()
   })
 })
 

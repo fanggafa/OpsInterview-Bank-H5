@@ -137,7 +137,9 @@ describe('MeView 主题切换', () => {
     await router.isReady()
 
     const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
-    const buttons = wrapper.findAll('.seg__item')
+    // 页面里有「外观」和「默认练习方式」两组分段控件，取外观那组（第一组）
+    const themeSeg = wrapper.findAll('.seg')[0]
+    const buttons = themeSeg.findAll('.seg__item')
     expect(buttons).toHaveLength(3)
 
     await buttons[1].trigger('click')
@@ -146,22 +148,52 @@ describe('MeView 主题切换', () => {
     expect(document.documentElement.dataset.theme).toBe('dark')
   })
 
-  it('清空记录需二次确认，取消则不执行', async () => {
+  it('清空记录用页内确认（不依赖 window.confirm），取消则不执行', async () => {
     const router = makeRouter()
     router.push('/me')
     await router.isReady()
     const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
     const study = useStudyStore()
+    study.markKnow(1)
     const before = Object.keys(study.records).length
+    expect(before).toBeGreaterThan(0)
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    // window.confirm 在微信/WebView 里可能静默失效，页面不应依赖它
+    const confirmSpy = vi.spyOn(window, 'confirm')
     await wrapper.findAll('.list__row--action')[0].trigger('click')
+    expect(confirmSpy).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+
+    // 点「清空学习记录」→ 出现页内确认条，此时还没删
+    expect(wrapper.find('.confirm').exists()).toBe(true)
     expect(Object.keys(study.records).length).toBe(before)
 
-    confirmSpy.mockReturnValue(true)
+    // 点「取消」→ 确认条消失，数据仍在
+    await wrapper.find('.confirm .btn--plain').trigger('click')
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+    expect(Object.keys(study.records).length).toBe(before)
+
+    // 再点一次并确认 → 数据清空
     await wrapper.findAll('.list__row--action')[0].trigger('click')
+    await wrapper.find('.confirm .btn--danger').trigger('click')
     expect(Object.keys(study.records).length).toBe(0)
-    confirmSpy.mockRestore()
+  })
+
+  it('两个清空按钮各自独立弹确认条（不会同时展开）', async () => {
+    const router = makeRouter()
+    router.push('/me')
+    await router.isReady()
+    const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
+    const study = useStudyStore()
+    study.toggleFavorite(1)
+
+    const actions = wrapper.findAll('.list__row--action')
+    await actions[0].trigger('click') // 清空学习记录
+    expect(wrapper.findAll('.confirm')).toHaveLength(1)
+
+    await actions[1].trigger('click') // 清空收藏
+    expect(wrapper.findAll('.confirm')).toHaveLength(1)
+    expect(wrapper.find('.confirm').text()).toContain('收藏')
   })
 })
 

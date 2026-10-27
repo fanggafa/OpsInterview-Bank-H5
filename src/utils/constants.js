@@ -146,8 +146,15 @@ export const DIFFICULTY_COLOR = {
   困难: '#F5222D',
 }
 
-/** 频率枚举 */
-export const FREQUENCIES = ['高频', '中频', '低频']
+/**
+ * 频率枚举。
+ *
+ * 顺序按「考察频率由低到高」排列：低频 → 中频 → 高频。
+ * 原先是从高到低（高频在前），筛选条上看起来像「默认就该选高频」，
+ * 与「全部频率」的先后关系也反直觉；改成低→高后，
+ * 视觉上从左到右是「越来越常考」，和难度（简单→中等→困难）一致。
+ */
+export const FREQUENCIES = ['低频', '中频', '高频']
 
 /** 自评状态 */
 export const STATUS = {
@@ -155,8 +162,32 @@ export const STATUS = {
   UNKNOWN: 'unknown',
 }
 
-/** 刷题模式 */
+/** 刷题队列模式（题从哪来） */
 export const PRACTICE_MODES = ['sequential', 'random', 'wrong']
+
+/**
+ * 练习模式（怎么练）——与上面的「队列模式」是两个正交维度：
+ *
+ * - practice（刷题模式）：全部题，简答自评 + 选择题作答判定
+ * - memorize（背题模式）：只有简答题，以「看题背答案」为主
+ *
+ * 区分原因：选择题考的是「记住细节」，简答题考的是「能自己讲出来」，
+ * 很多人在考前只需要反复背简答题的答案。
+ */
+export const STUDY_MODES = ['practice', 'memorize']
+
+export const DEFAULT_STUDY_MODE = 'practice'
+
+/** 练习模式展示文案 */
+export const STUDY_MODE_LABEL = {
+  practice: '刷题模式',
+  memorize: '背题模式',
+}
+
+export const STUDY_MODE_DESC = {
+  practice: '全部题 · 简答自评 / 选择作答',
+  memorize: '只有简答题 · 看题背答案',
+}
 
 /** 主题枚举 */
 export const THEMES = ['light', 'dark', 'system']
