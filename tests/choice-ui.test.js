@@ -154,7 +154,7 @@ describe('详情页 · 单选题', () => {
     const { wrapper } = await mountDetail(1)
     await wrapper.findAll('.option')[1].trigger('click')
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.explain__text').text()).toContain('lsof')
+    expect(wrapper.find('.explain .ans-block').text()).toContain('lsof')
   })
 
   it('判定后选项不可再点击', async () => {

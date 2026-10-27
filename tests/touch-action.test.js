@@ -36,6 +36,12 @@ describe('滑动手势的 touch-action 约束', () => {
   it('卡片内滚动容器保留纵向滚动能力', () => {
     expect(/\.qcard-p__scroll\s*\{[^}]*overflow-y:\s*auto/s.test(css)).toBe(true)
   })
+
+  it('答案里的表格与代码块放开横向滚动（否则宽表格被截断）', () => {
+    // touch-action: pan-y 会阻止元素自身的横向滚动，宽表格/长命令需要例外
+    expect(/\.ans-table-wrap[\s\S]{0,400}?touch-action:\s*pan-x\s+pan-y/.test(css)).toBe(true)
+    expect(/\.ans-pre__body[\s\S]{0,200}?touch-action:\s*pan-x\s+pan-y/.test(css)).toBe(true)
+  })
 })
 
 describe('手势工具不受影响', () => {

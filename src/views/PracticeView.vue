@@ -480,7 +480,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 
               <div v-if="submitted && current.explanation" class="explain">
                 <p class="explain__label">解析</p>
-                <pre class="pre-text explain__text">{{ current.explanation }}</pre>
+                <AnswerText :answer="current.explanation" />
               </div>
             </template>
 
@@ -662,6 +662,16 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 .stage * {
   touch-action: pan-y;
 }
+
+/**
+ * 例外：答案里的表格与代码块自身要能横向滚动。
+ * 继续用 pan-y 会让它们横滑不动（内容被截断看起来像是排版崩了），
+ * 这里放开为 pan-x pan-y——纵向仍可翻卡，横向可看完整表格。
+ */
+.stage :deep(.ans-table-wrap),
+.stage :deep(.ans-pre__body) {
+  touch-action: pan-x pan-y;
+}
 .stage:active {
   cursor: grabbing;
 }
@@ -784,8 +794,9 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 }
 .answer__body {
   margin-top: 10px;
-  padding: 10px;
-  background: var(--c-bg);
+  padding: 11px 12px;
+  background: var(--c-answer-bg);
+  border: 1px solid var(--c-answer-border);
   border-radius: var(--radius-sm);
 }
 
@@ -822,10 +833,6 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   margin: 0 0 5px;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--c-text-2);
-}
-.explain__text {
-  font-size: 12.5px;
   color: var(--c-text-2);
 }
 
