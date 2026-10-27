@@ -6,6 +6,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import DifficultyBadge from '@/components/DifficultyBadge.vue'
 import FrequencyBadge from '@/components/FrequencyBadge.vue'
 import ChoiceOptions from '@/components/ChoiceOptions.vue'
+import AnswerText from '@/components/AnswerText.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
 import { STATUS, TYPE_LABEL } from '@/utils/constants'
@@ -246,7 +247,7 @@ const statusText = computed(() => {
           <div id="answer-panel" class="answer" :class="{ 'answer--open': expanded }">
             <div class="answer__inner">
               <div class="answer__body">
-                <pre class="pre-text">{{ question.answer }}</pre>
+                <AnswerText :answer="question.answer" />
               </div>
             </div>
           </div>

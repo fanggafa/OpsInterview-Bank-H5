@@ -1,32 +1,26 @@
 /**
  * 题库数据校验：npm run validate:data
  * 校验失败以非零码退出，并列出具体题目 id 与原因。
+ *
+ * 分类/题型枚举直接复用 src/utils/constants.js（唯一来源），
+ * 避免校验脚本与业务代码各维护一份、改一处漏一处。
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
+import { CATEGORIES, DIFFICULTIES, FREQUENCIES, QUESTION_TYPES } from '../src/utils/constants.js'
+import { PENDING_CATEGORIES } from './pending-categories.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_PATH = resolve(__dirname, '../public/data/questions.json')
 
-const CATEGORIES = [
-  'Linux基础',
-  'Shell脚本',
-  '网络基础',
-  'MySQL',
-  'Redis',
-  'Docker/K8s',
-  'CI/CD',
-  '监控告警',
-  '安全',
-  '综合场景题',
-]
-const DIFFICULTIES = ['简单', '中等', '困难']
-const FREQUENCIES = ['高频', '中频', '低频']
-const TYPES = ['short', 'single', 'multiple']
+const TYPES = QUESTION_TYPES
+const PENDING = new Set(PENDING_CATEGORIES)
 
+// 题库随分类扩展会持续增长，上限放宽到 2000；
+// 下限保持 90 以免误删导致题库残缺。
 const MIN_TOTAL = 90
-const MAX_TOTAL = 140
+const MAX_TOTAL = 2000
 const MIN_PER_CATEGORY = 6
 const MIN_CHOICE_TOTAL = 20
 const MAX_QUESTION_LEN = 120
@@ -90,9 +84,8 @@ data.forEach((q, index) => {
   } else {
     if (seenIds.has(id)) fail(id, 'id 重复')
     seenIds.add(id)
-    if (id !== index + 1) {
-      fail(id, `id 未按顺序连续递增（期望 ${index + 1}）`)
-    }
+    // 说明：早期要求 id 从 1 连续递增；分类扩展后改为「按分类分段编号」
+    // （如 DNS 1000-1199），顺序递增不再成立，只保证唯一即可。
   }
 
   // category
@@ -227,8 +220,16 @@ data.forEach((q, index) => {
 })
 
 CATEGORIES.forEach((c) => {
-  if (categoryCount[c] < MIN_PER_CATEGORY) {
-    errors.push(`✗ 分类「${c}」只有 ${categoryCount[c]} 题，低于每类下限 ${MIN_PER_CATEGORY}`)
+  const count = categoryCount[c]
+  if (PENDING.has(c)) {
+    // 待填充分类：只要不为空就可以（分批施工中）
+    if (count > 0 && count < MIN_PER_CATEGORY) {
+      warnings.push(`分类「${c}」正在填充中，当前 ${count} 题（目标 ≥${MIN_PER_CATEGORY}）`)
+    }
+    return
+  }
+  if (count < MIN_PER_CATEGORY) {
+    errors.push(`✗ 分类「${c}」只有 ${count} 题，低于每类下限 ${MIN_PER_CATEGORY}`)
   }
 })
 

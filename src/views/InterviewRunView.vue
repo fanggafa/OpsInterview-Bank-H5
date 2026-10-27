@@ -5,6 +5,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import DifficultyBadge from '@/components/DifficultyBadge.vue'
 import FrequencyBadge from '@/components/FrequencyBadge.vue'
 import ChoiceOptions from '@/components/ChoiceOptions.vue'
+import AnswerText from '@/components/AnswerText.vue'
 import { TYPE_LABEL } from '@/utils/constants'
 import { isShort, isMultiple, optionState, answerSingle, toggleOption, judgeChoice } from '@/utils/question'
 import { useInterviewStore } from '@/stores/interviewStore'
@@ -173,7 +174,7 @@ function quit() {
             <div class="answer" :class="{ 'answer--open': expanded }">
               <div class="answer__inner">
                 <div class="answer__body">
-                  <pre class="pre-text">{{ q.answer }}</pre>
+                  <AnswerText :answer="q.answer" />
                 </div>
               </div>
             </div>
