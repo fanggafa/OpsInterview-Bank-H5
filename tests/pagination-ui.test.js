@@ -144,7 +144,8 @@ describe('题库页 · 分页边界', () => {
   })
 
   it('筛选后结果不足一页时不显示分页控件', async () => {
-    const { wrapper } = await mountView(BankView, '/bank', { q: '题目 1' })
+    // 「题目 3」只命中 题目 3、30..35 共 7 条，稳定小于一页
+    const { wrapper } = await mountView(BankView, '/bank', { q: '题目 3' })
     expect(wrapper.findAll('.qcard').length).toBeLessThanOrEqual(PAGE_SIZE)
     expect(wrapper.find('.pager').exists()).toBe(false)
   })

@@ -5,7 +5,7 @@ import QuestionCard from '@/components/QuestionCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Pagination from '@/components/Pagination.vue'
 import { useBankStore } from '@/stores/bankStore'
-import { CATEGORIES, FREQUENCIES, PAGE_SIZE, SEARCH_DEBOUNCE_MS } from '@/utils/constants'
+import { CATEGORIES, DIFFICULTIES, FREQUENCIES, PAGE_SIZE, SEARCH_DEBOUNCE_MS } from '@/utils/constants'
 import { applyFilters, parseQueryState, toQueryState } from '@/utils/filter'
 import { pageMeta, paginate } from '@/utils/paginate'
 import { scrollToTop } from '@/utils/scroll'
@@ -15,7 +15,9 @@ const router = useRouter()
 const bank = useBankStore()
 
 /** URL 是筛选态的唯一来源：刷新 / 返回都能恢复 */
-const state = computed(() => parseQueryState(route.query, CATEGORIES, FREQUENCIES))
+const state = computed(() =>
+  parseQueryState(route.query, CATEGORIES, FREQUENCIES, DIFFICULTIES)
+)
 
 /** 搜索框本地值（输入时即时响应，防抖后才写 URL） */
 const keywordInput = ref(state.value.keyword)
@@ -62,6 +64,37 @@ function selectCategory(cat) {
 function selectFrequency(freq) {
   pushState({ frequency: state.value.frequency === freq ? '' : freq })
 }
+
+function selectDifficulty(diff) {
+  pushState({ difficulty: state.value.difficulty === diff ? '' : diff })
+}
+
+/**
+ * 分类筛选默认折叠，只显示前几个 + 「展开全部」。
+ *
+ * 23 个分类平铺要占 5-6 行，把搜索框和列表挤到很下面；
+ * 折叠后首屏直接看到题目，需要选分类时再展开。
+ *
+ * 用「限制数量」而不是「CSS 限高」：胶囊宽度随屏幕变化（375px 与 480px
+ * 一行能放的个数不同），限高在不同机型下折叠效果不一致；限制数量则确定。
+ */
+const catsExpanded = ref(false)
+
+/** 折叠时显示的分类数（不含「全部」）。7 个约 1-2 行，覆盖最常用的前几类 */
+const COLLAPSED_CAT_COUNT = 7
+const visibleCategories = computed(() => {
+  if (catsExpanded.value) return availableCategories.value
+  const shown = availableCategories.value.slice(0, COLLAPSED_CAT_COUNT)
+  // 选中的分类若被折叠掉，补到最前面，避免「选中了却看不见」
+  const selected = state.value.category
+  if (selected && !shown.includes(selected)) {
+    return [selected, ...shown.slice(0, COLLAPSED_CAT_COUNT - 1)]
+  }
+  return shown
+})
+
+/** 是否真的需要「展开」按钮（分类很少时不必出现） */
+const catsCollapsible = computed(() => availableCategories.value.length > COLLAPSED_CAT_COUNT)
 
 function resetAll() {
   keywordInput.value = ''
@@ -148,7 +181,13 @@ watch(
  * 否则会带着上一页的位置跳到新页的中间，看起来像「滚不到头」。
  */
 watch(
-  () => [state.value.category, state.value.frequency, state.value.keyword, currentPage.value],
+  () => [
+    state.value.category,
+    state.value.frequency,
+    state.value.difficulty,
+    state.value.keyword,
+    currentPage.value,
+  ],
   () => {
     try {
       sessionStorage.removeItem(SCROLL_KEY)
@@ -159,8 +198,22 @@ watch(
 )
 
 const hasFilter = computed(
-  () => Boolean(state.value.category || state.value.frequency || state.value.keyword)
+  () =>
+    Boolean(state.value.category) ||
+    Boolean(state.value.frequency) ||
+    Boolean(state.value.difficulty) ||
+    Boolean(state.value.keyword)
 )
+
+/** 已生效的筛选数量，用于折叠状态下提示「还有筛选没展开」 */
+const activeFilterCount = computed(() => {
+  let n = 0
+  if (state.value.category) n++
+  if (state.value.frequency) n++
+  if (state.value.difficulty) n++
+  if (state.value.keyword) n++
+  return n
+})
 
 /** 各分类题量，用于 Tab 上的角标 */
 const categoryCounts = computed(() => {
@@ -220,8 +273,8 @@ const resultText = computed(() => {
       </button>
     </div>
 
-    <!-- 分类 Tab：按题库实际分类动态渲染，新增分类无需改代码 -->
-    <nav class="chip-grid bank-tabs" aria-label="分类筛选">
+    <!-- 分类 Tab：默认折叠，只显示前几个；点箭头展开全部 -->
+    <nav id="bank-cats" class="chip-grid bank-tabs" aria-label="分类筛选">
       <button
         class="chip"
         :class="{ 'chip--active': !state.category }"
@@ -230,7 +283,7 @@ const resultText = computed(() => {
         <span class="chip__label">全部</span><span class="chip__count">{{ bank.total }}</span>
       </button>
       <button
-        v-for="cat in availableCategories"
+        v-for="cat in visibleCategories"
         :key="cat"
         class="chip"
         :class="{ 'chip--active': state.category === cat }"
@@ -240,6 +293,30 @@ const resultText = computed(() => {
         <span class="chip__label">{{ cat }}</span><span class="chip__count">{{ categoryCounts[cat] }}</span>
       </button>
     </nav>
+
+    <!-- 折叠开关：分类多时才出现 -->
+    <button
+      v-if="catsCollapsible"
+      class="tabs-toggle"
+      :aria-expanded="catsExpanded"
+      aria-controls="bank-cats"
+      @click="catsExpanded = !catsExpanded"
+    >
+      <span>
+        {{ catsExpanded ? '收起分类' : `展开全部 ${availableCategories.length} 个分类` }}
+        <em v-if="!catsExpanded && activeFilterCount">· 已筛选 {{ activeFilterCount }} 项</em>
+      </span>
+      <svg
+        class="tabs-toggle__chev"
+        :class="{ 'tabs-toggle__chev--up': catsExpanded }"
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        aria-hidden="true"
+      >
+        <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </button>
 
     <!-- 频率筛选 -->
     <nav class="chip-wrap bank-tabs" aria-label="频率筛选">
@@ -258,6 +335,26 @@ const resultText = computed(() => {
         @click="selectFrequency(freq)"
       >
         {{ freq }}
+      </button>
+    </nav>
+
+    <!-- 难度筛选（与频率同构） -->
+    <nav class="chip-wrap bank-tabs" aria-label="难度筛选">
+      <button
+        class="chip chip--sm"
+        :class="{ 'chip--active': !state.difficulty }"
+        @click="selectDifficulty('')"
+      >
+        全部难度
+      </button>
+      <button
+        v-for="diff in DIFFICULTIES"
+        :key="diff"
+        class="chip chip--sm"
+        :class="{ 'chip--active': state.difficulty === diff }"
+        @click="selectDifficulty(diff)"
+      >
+        {{ diff }}
       </button>
       <button v-if="hasFilter" class="chip chip--sm chip--reset" @click="resetAll">重置</button>
     </nav>
@@ -287,7 +384,7 @@ const resultText = computed(() => {
       v-else-if="!list.length"
       variant="search"
       title="没有匹配的题目"
-      desc="换个关键词，或清空分类 / 频率筛选试试。"
+      desc="换个关键词，或清空分类 / 频率 / 难度筛选试试。"
       action="重置筛选"
       @action="resetAll"
     />
@@ -371,6 +468,32 @@ const resultText = computed(() => {
 .bank-tabs {
   margin-bottom: 6px;
 }
+
+/* 折叠开关 */
+.tabs-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 30px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--c-primary);
+  background: none;
+}
+.tabs-toggle em {
+  font-style: normal;
+  color: var(--c-text-3);
+}
+.tabs-toggle__chev {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.tabs-toggle__chev--up {
+  transform: rotate(180deg);
+}
+
 /* 分类名较长，网格内字号略小，保证 8 字分类名能完整显示 */
 .bank-tabs .chip {
   font-size: 12.5px;
