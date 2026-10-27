@@ -1,0 +1,295 @@
+[
+  {
+    "id": 1601,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 的四种工作模式（NAT/DR/TUN/FULLNAT）有什么区别？各自适用什么场景？",
+    "answer": "四种模式的本质区别在**如何把响应包送回客户端**。\n\n**1. NAT 模式**\n- 原理：请求到达时改目标 IP 为后端（DNAT），响应回来时改源 IP 为 VIP（SNAT）\n- 回程必须经过 LVS → **LVS 是瓶颈**\n- 后端网关要指向 LVS\n- 适合：小规模、后端能改网关的场景\n\n**2. DR 模式（最常用）**\n- 原理：只改**目标 MAC**（改成后端的），IP 层不变；后端直接把响应发给客户端，不经过 LVS\n- 关键前提：**后端要配 VIP 在 lo 上并抑制 ARP**\n- 回程不经过 LVS → 支持极高吞吐（LVS 只处理入向）\n- 限制：LVS 与后端必须在**同一物理网段**（二层可达）\n- 适合：大流量 Web 服务（生产首选）\n\n**3. TUN 模式（IP 隧道）**\n- 原理：把请求包封装成 IP-in-IP 隧道发给后端，后端解封装后处理，响应直接回客户端\n- 支持**跨机房/跨网段**（这是 DR 做不到的）\n- 要求后端支持隧道协议、能配 VIP\n- 适合：跨地域分发\n\n**4. FULLNAT 模式**\n- 原理：同时改源 IP 和目标 IP（类似「SNAT + DNAT」），LVS 与后端可以处于不同网段\n- 阿里等大厂在开源 LVS 上扩展的模式\n- 优点：部署最灵活，后端无需感知 VIP\n- 缺点：回程经过 LVS，且丢失了客户端真实 IP（需额外传 X-Forwarded-For）\n\n**选择口诀**：\n- 同网段 + 大流量 → **DR**\n- 跨网段 + 能配隧道 → TUN\n- 后端改不了配置/跨网段 → NAT 或 FULLNAT\n\n**对比 Nginx**：LVS 是四层（不看内容、性能高），Nginx 是七层（能按 URL 分流、能改 Header）。典型架构是 LVS 做四层入口，Nginx 做七层转发。",
+    "tags": ["LVS", "DR模式", "NAT"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1602,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "LVS DR 模式为什么要求后端在 lo 上配 VIP 并抑制 ARP？",
+    "answer": "这是 DR 模式能成立的两个必要条件，缺一不可。\n\n**1. 为什么在 lo 上配 VIP**\nDR 模式的包到达后端时，**目标 IP 仍是 VIP**（LVS 只改了 MAC）。后端内核要认为「这个 IP 是我的」才会接收并处理，所以必须在本地配上 VIP。\n- 配在 `lo`（回环）而不是 `eth0`：因为 eth0 上的 VIP 会触发对外 ARP 响应（见下一点）\n- 命令：`ip addr add 192.168.1.100/32 dev lo`\n\n**2. 为什么要抑制 ARP**\n如果后端在 eth0 上配了 VIP 并正常响应 ARP，那么：\n- 客户端/网关发 ARP 问「谁是 192.168.1.100」时，**后端也会抢答**\n- 结果本该到 LVS 的流量直接被后端接走 → 绕过 LVS，负载均衡失效\n- 多台后端还会互相抢答 → ARP 冲突、流量乱窜\n\n抑制方法（两种常见写法）：\n```bash\n# 方式一：arp_ignore / arp_announce\nsysctl -w net.ipv4.conf.all.arp_ignore=1        # 只回答「目标IP在接收网卡上」的ARP\nsysctl -w net.ipv4.conf.all.arp_announce=2      # 发送ARP时用最合适的源地址\nsysctl -w net.ipv4.conf.lo.arp_ignore=1\nsysctl -w net.ipv4.conf.lo.arp_announce=2\n```\n\n```bash\n# 方式二：用 arptables 直接丢弃 VIP 的 ARP\narptables -A IN -d $VIP -j DROP\narptables -A OUT -s $VIP -j mangle --mangle-ip-s $RIP\n```\n\n**验证是否配好**：\n- 在客户端 `arping -I eth0 <VIP>`，应该**只有 LVS** 回应\n- 如果后端也回应，说明抑制没生效，DR 会不稳定\n\n**实操提醒**：`all` 和 `lo` 都要设，且要先设 sysctl 再加 VIP（顺序错了也可能抢答）。这些配置写进开机脚本，重启后别忘了恢复。",
+    "tags": ["DR模式", "ARP抑制", "VIP"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1603,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 工作在 OSI 模型的哪一层？",
+    "options": [
+      { "key": "A", "text": "四层（传输层）" },
+      { "key": "B", "text": "七层（应用层）" },
+      { "key": "C", "text": "三层（网络层）" },
+      { "key": "D", "text": "二层（数据链路层）" }
+    ],
+    "answer": ["A"],
+    "explanation": "LVS 是四层负载均衡，基于 IP + 端口转发，不解析应用层内容。因此性能极高但不支持按 URL/域名分流。需要七层能力时用 Nginx/HAProxy。",
+    "tags": ["LVS", "四层", "OSI"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1604,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 的八种调度算法有哪些？最常用哪几个？",
+    "answer": "八种算法，分静态与动态两类。\n\n**静态算法**（不考虑后端当前负载）：\n1. **rr**（轮询）：请求依次分发，最简单\n2. **wrr**（加权轮询）：按权重分配，性能好的机器权重高\n3. **dh**（目标地址哈希）：按目标 IP 哈希，用于缓存集群\n4. **sh**（源地址哈希）：按客户端 IP 哈希，实现会话保持\n\n**动态算法**（根据实时连接数判断）：\n5. **lc**（最少连接）：连接数最少的优先，适合长连接\n6. **wlc**（加权最少连接）：**最常用**，兼顾权重与实时负载\n7. **sed**（最短延迟）：wlc 的改进版，考虑权重与连接数的比值\n8. **nq**（永不排队）：新连接优先给空闲机器，避免空转\n\n**最常用的三个**：\n\n| 算法 | 场景 |\n|---|---|\n| **wlc** | 默认算法，后端性能不均时最合适（生产首选） |\n| **rr / wrr** | 后端性能一致、请求耗时均匀（如静态资源） |\n| **sh** | 需要会话保持的老应用（无共享 session） |\n\n**sh 的坑**：NAT 环境下大量用户共用出口 IP，会导致严重倾斜（全压到一台）。有共享 session 时优先解决会话共享，而不是靠 sh。\n\n**配置示例**：\n```\nipvsadm -A -t 192.168.1.100:80 -s wlc     # -s 指定算法\nipvsadm -a -t 192.168.1.100:80 -r 10.0.0.1:80 -g -w 10\nipvsadm -a -t 192.168.1.100:80 -r 10.0.0.2:80 -g -w 5\n```",
+    "tags": ["调度算法", "wlc", "会话保持"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1605,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 相比 Nginx 做负载均衡，以下说法正确的是？（多选）",
+    "options": [
+      { "key": "A", "text": "LVS 是四层，性能更高，能承载更大并发" },
+      { "key": "B", "text": "Nginx 是七层，能按 URL/域名/host 分流" },
+      { "key": "C", "text": "LVS 无法做健康检查（需配合 Keepalived）" },
+      { "key": "D", "text": "Nginx 无法做四层代理" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：Nginx 从 1.9.0 起支持 stream 模块做四层（TCP/UDP）代理，只是默认不编译需要加 --with-stream。C 准确：LVS 内核模块本身不做健康检查，通常用 Keepalived 配合。",
+    "tags": ["LVS vs Nginx", "四层七层"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1606,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "Keepalived 如何配合 LVS 实现高可用？VRRP 协议起什么作用？",
+    "answer": "**Keepalived = VRRP 协议 + LVS 管理**，解决「LVS 本身单点」的问题。\n\n**VRRP 的作用**：多台 LVS 组成一个虚拟路由器组，共享一个 VIP。同一时刻只有一台持有 VIP 并对外服务。\n\n**工作流程**：\n1. 每台 LVS 配置 VRRP 实例（`vrrp_instance`），设定 `priority`（优先级）\n2. Master 周期性（默认 1 秒）发 VRRP 通告（多播 224.0.0.18）\n3. Backup 收不到通告超过 `advert_int × 3` → 判定 Master 故障 → **抢占 VIP**\n4. 抢占时通过 `notify_master` 脚本执行 `ipvsadm` 恢复规则（或用 `lvs_sync_daemon_interface` 同步连接表）\n\n**关键配置项**：\n```\nvrrp_instance VI_1 {\n    state MASTER              # 初始状态（实际由优先级决定）\n    interface eth0             # 发 VRRP 的网卡\n    virtual_router_id 51       # 同一组必须相同\n    priority 100               # 越大越优先\n    advert_int 1\n    authentication { auth_type PASS; auth_pass xxxx }   # 同一组必须一致\n    virtual_ipaddress { 192.168.1.100 }\n    notify_master \"/etc/keepalived/master.sh\"\n    notify_backup \"/etc/keepalived/backup.sh\"\n}\n```\n\n**常见问题**：\n\n1. **同时两台都持有 VIP（脑裂）**\n   - 原因：VRRP 多播被防火墙拦、`advert_int` 过大、`virtual_router_id` 冲突\n   - **必须监控**：在每台机器上 `ip addr` 检查 VIP 是否只在预期的那台\n2. **`virtual_router_id` 冲突**：同网段有两组 Keepalived 用了相同 ID → 互相干扰\n3. **抢占问题**：`nopreempt` 可关闭抢占（原 Master 恢复后不夺回 VIP），适合避免频繁切换\n4. **规则不同步**：Master 上手工加的 ipvsadm 规则不会自动同步到 Backup，需脚本或用 `ipvsadm-save`",
+    "tags": ["Keepalived", "VRRP", "高可用"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1607,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "Keepalived 中出现两台机器同时持有 VIP（脑裂），最可能的原因是？",
+    "options": [
+      { "key": "A", "text": "VRRP 多播被防火墙拦截，或 virtual_router_id 配置冲突" },
+      { "key": "B", "text": "优先级配置正确" },
+      { "key": "C", "text": "后端服务器太多" },
+      { "key": "D", "text": "VIP 配置了两个" }
+    ],
+    "answer": ["A"],
+    "explanation": "脑裂的典型原因：VRRP 通告发不出去/收不到（防火墙拦多播、网卡问题）、或同网段有两组 Keepalived 用了相同 virtual_router_id 互相干扰。必须监控 ip addr 确认 VIP 唯一。",
+    "tags": ["Keepalived", "脑裂", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1608,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "如何用 ipvsadm 查看 LVS 的转发状态和连接数？",
+    "answer": "常用四条命令：\n\n**1. 查看虚拟服务与真实服务器**\n```\nipvsadm -L -n                 # 简表\nipvsadm -L -n --stats        # 带流量统计（字节、包数、速率）\nipvsadm -L -n --rate         # 带速率\n```\n输出重点看：\n- `ActiveConn`（活跃连接数）—— 判断后端是否均衡\n- `InActConn`（非活跃，如保持的连接）\n- 各 RS 的 `Conns` 累计值，差异大说明调度不均\n\n**2. 查看连接表**\n```\nipvsadm -L -n -c             # 当前所有连接\n```\n可用于排查「卡住的长连接」、确认请求是否真的到了后端。\n\n**3. 查看超时配置**\n```\nipvsadm -L -n --timeout\n```\nTCP 默认 900 秒，连接堆积时可能要调小。\n\n**4. 统计总量**\n```\nipvsadm -L -n --stats\ngrep -c '' /proc/net/ip_vs    # 连接表行数\n```\n\n**关键指标判读**：\n| 现象 | 可能原因 |\n|---|---|\n| 所有流量集中在一台 RS | 调度算法不合适、或会话保持过度、或其它 RS 健康检查失败 |\n| ActiveConn 很高但业务量低 | 连接未正常关闭（应用问题或超时设置过长） |\n| 某台 RS 的 Conns 增长很慢 | 该 RS 被判定不可用（配合 Keepalived 的健康检查） |\n\n**排查「请求不均衡」的快捷路径**：\n1. `ipvsadm -L -n --stats` 看各 RS 的 Conns 累计\n2. 差异明显 → 检查调度算法、权重、健康检查结果\n3. 检查是否有 sh/会话保持导致倾斜",
+    "tags": ["ipvsadm", "连接数", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1609,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 相比 LVS 和 Nginx，以下哪些是它的优势？（多选）",
+    "options": [
+      { "key": "A", "text": "同时支持四层和七层代理" },
+      { "key": "B", "text": "内置强大的健康检查（主动探测、多种协议）" },
+      { "key": "C", "text": "支持丰富的 ACL 规则与统计面板" },
+      { "key": "D", "text": "单机并发性能高于 LVS" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：LVS 在内核态转发，单机并发通常优于 HAProxy（用户态）。HAProxy 的价值在于「比 Nginx 更专业的负载均衡能力」（更丰富的健康检查、ACL、统计、会话保持策略）。",
+    "tags": ["HAProxy", "优势", "对比"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1610,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的健康检查是怎么做的？和 Nginx 有什么区别？",
+    "answer": "**HAProxy 同时支持主动与被动检查，且协议支持更丰富**，这是它的核心优势之一。\n\n**1. 主动健康检查（check）**\n```\nbackend web_servers\n    server s1 10.0.0.1:80 check inter 2s rise 2 fall 3\n    server s2 10.0.0.2:80 check inter 2s rise 2 fall 3\n```\n- `inter 2s`：每 2 秒探测一次\n- `rise 2`：连续 2 次成功才标记为可用\n- `fall 3`：连续 3 次失败才标记为不可用\n\n**支持多种检查方式**：\n- `option httpchk GET /health`：HTTP 检查（可校验状态码与内容）\n- `check port 8080`：独立端口探测\n- `check ssl` / `check send-proxy`：TLS 检查\n- MySQL/Redis 等可用 `option mysql-check` / `option redis-check`\n- 自定义脚本：`option external-check`\n\n**2. 被动健康检查**（也支持）\n`observe` 关键字：通过实际请求结果观察后端状态，类似 Nginx 的 max_fails。\n\n**与 Nginx 的关键差异**：\n\n| | Nginx 开源版 | HAProxy |\n|---|---|---|\n| 主动检查 | ❌ 不支持（需第三方模块） | ✅ 内置，协议丰富 |\n| 被动检查 | ✅ max_fails/fail_timeout | ✅ 支持，且可观测 |\n| 检查内容 | 仅连接层 | 可校验 HTTP 状态码、响应内容、自定义脚本 |\n| 状态同步 | 各 worker 独立 | 统一的运行时状态 |\n\n**实践建议**：\n- 后端有明确的健康接口 → HAProxy 主动检查更可靠（不用等真实流量打到坏节点）\n- 用 Nginx 但需要主动检查 → 部署 `nginx_upstream_check_module`（需重新编译），或把检查交给前置的 HAProxy/LVS\n\n**注意**：主动检查会产生额外流量，`inter` 不宜过小（1-2s 合理）；检查频率过高会加重后端负担。",
+    "tags": ["HAProxy", "健康检查", "对比"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1611,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "HAProxy 配置中，backend 段里的 server 后面加 backup 表示什么？",
+    "options": [
+      { "key": "A", "text": "该服务器是主用" },
+      { "key": "B", "text": "该服务器只在其他服务器都不可用时才启用" },
+      { "key": "C", "text": "该服务器只做备份流量" },
+      { "key": "D", "text": "禁用该服务器" }
+    ],
+    "answer": ["B"],
+    "explanation": "backup 表示热备：正常情况下不接收流量，只有当所有非 backup 节点都不可用时才启用。常用于保证最低可用性。对应还有 disabled（默认不启用，可手动开启）。",
+    "tags": ["HAProxy", "backup", "主备"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1612,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "LVS 出现「请求到后端但响应不回客户端」，如何排查？",
+    "answer": "这是 DR/TUN 模式下的经典问题，核心在**回程路径**。\n\n**先判断现象**：客户端只看到 SYN 重传超时（抓包可用 tcpdump），也就是「请求到了但没有响应」。\n\n**排查顺序**：\n\n**1. 确认后端是不是真的收到了请求**\n在 RS 上抓包：\n```bash\ntcpdump -i any -nn host <客户端IP> and port 80\n```\n- 收到 SYNs 但没有响应 → 问题在 RS 的 VIP 配置\n- 完全没收到 → 问题在 LVS 转发（检查 ipvsadm -L -n -c 有没有 ERR）\n\n**2. 检查后端 VIP 配置（DR 模式最常见原因）**\n```bash\nip addr show lo                 # VIP 是否在 lo 上\nsysctl net.ipv4.conf.all.arp_ignore\nsysctl net.ipv4.conf.lo.arp_announce\n```\nVIP 没配 → 内核不认这个目标 IP，直接丢包（RS 会拒绝或不做响应）。\n\n**3. 检查 ARP 抑制是否生效（导致流量被抢）**\n```bash\narping -I eth0 <VIP> -c 3       # 在客户端侧执行\n```\n如果除了 LVS 还有 RS 回应 → 流量可能直接到了 RS（绕过 LVS），表现为「部分请求成功部分超时」。\n\n**4. 检查 RS 的网关与路由（DR 模式不需要改网关，但容易误配）**\nDR 模式下 RS 的默认网关应该保持原样（指向真实网关），**不要**改成 LVS。改错了响应包会往 LVS 发，LVS 不处理回程 → 超时。\n\n**5. 检查 LVS 侧 ipvsadm 配置**\n```bash\nipvsadm -L -n\n```\n- 转发模式标记是否正确（DR 应该是 `g` 即 gateway）\n- RS 的端口是否正确\n\n**6. 检查 MTU / 大包问题**\n```bash\nss -lntp                        # 后端是否正常监听\n```\nTUN 模式下 MTU 变小会导致大包被丢，需要 `iptables -t mangle` 或调 MSS（`iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1400`）。\n\n**7. 检查防火墙**\nRS 上的 iptables/安全组是否放行来自 LVS 及客户端源 IP 的流量（DR 模式下客户端源 IP 未变）。\n\n**排查口诀**：DR 模式 90% 的问题在 **RS 的 VIP 与 ARP 配置**，其次是**网关被误改**。这两个地方优先查。",
+    "tags": ["LVS", "DR模式", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1613,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 如何实现会话保持？有哪些方式？",
+    "answer": "四种方式，按推荐度：\n\n**1. 应用层 Cookie 插入（最推荐）**\n```\nbackend web\n    balance roundrobin\n    cookie SERVERID insert indirect nocache\n    server s1 10.0.0.1:80 cookie s1 check\n    server s2 10.0.0.2:80 cookie s2 check\n```\n- HAProxy 在响应里插入 `Set-Cookie: SERVERID=s1`\n- 后续请求带这个 cookie 就固定到 s1\n- `indirect`：不在请求头里暴露这个 cookie（只从响应读）\n- `nocache`：不让缓存设备缓存带 cookie 的响应\n- **优点**：不依赖源 IP，NAT 环境下也准确\n\n**2. 源 IP 哈希（source）**\n```\nbalance source\n```\n- 按客户端 IP 哈希固定后端\n- 缺点：NAT 环境下大量用户共用出口 IP → 严重倾斜\n\n**3. 粘性表（stick-table）**\n```\nbackend web\n    stick-table type ip size 200k expire 30m\n    stick on src\n```\n- 用内存表记录「IP → 后端」的映射，可设置过期时间\n- 比单纯 source 更可控（可调整粒度、可观测）\n\n**4. uri 哈希**\n```\nbalance uri\n```\n- 按 URL 哈希，适合缓存集群（同一资源固定到一台，提高缓存命中）\n\n**选择建议**：\n| 场景 | 方式 |\n|---|---|\n| 能改应用/接受 Cookie | **cookie insert**（最可靠） |\n| 老应用、无 Cookie | source 或 stick-table |\n| 缓存集群 | uri 哈希 |\n\n**最优解其实是「消除会话状态」**：把 session 存到 Redis，应用变无状态，就可以用纯轮询。这是根本方案，而不是靠负载均衡器的粘性。",
+    "tags": ["HAProxy", "会话保持", "cookie"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1614,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 部署后流量全压在一台后端上，可能的原因有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "调度算法用了 sh（源地址哈希），且客户端出口 IP 集中" },
+      { "key": "B", "text": "其他后端的健康检查失败被摘除" },
+      { "key": "C", "text": "权重配置差异过大" },
+      { "key": "D", "text": "客户端使用了 HTTP/2" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "A 是 NAT 环境的经典坑；B/C 是配置层面原因。D 与 LVS 四层调度无关。排查路径：ipvsadm -L -n --stats 看各 RS 累计连接 → 再看算法与健康状态。",
+    "tags": ["LVS", "负载不均", "排查"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1615,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 frontend/backend/listen/global/defaults 五段分别是什么？",
+    "answer": "五个配置段的职责：\n\n**1. global**（全局）\n- 进程级配置：`maxconn`（总并发上限）、`daemon`、日志、`chroot`、user/group\n```\nglobal\n    maxconn 50000\n    log /dev/log local0\n```\n\n**2. defaults**（默认值）\n- 为后续 frontend/backend 提供默认参数，减少重复\n```\ndefaults\n    mode http           # 或 tcp\n    timeout connect 5s\n    timeout client 50s\n    timeout server 50s\n```\n**注意**：`mode http` 和 `mode tcp` 差别巨大（七层 vs 四层），继承时要小心。\n\n**3. frontend**（前端，接收请求）\n```\nfrontend web_in\n    bind *:80\n    acl is_api path_beg /api\n    use_backend api_servers if is_api\n    default_backend web_servers\n```\n- 定义监听端口、ACL 规则、如何路由到 backend\n\n**4. backend**（后端服务器组）\n```\nbackend web_servers\n    balance leastconn\n    server s1 10.0.0.1:80 check\n    server s2 10.0.0.2:80 check backup\n```\n- 定义服务器列表、调度算法、健康检查\n\n**5. listen**（frontend + backend 合并）\n```\nlisten stats\n    bind *:8404\n    stats enable\n    stats uri /stats\n```\n- 适合简单场景与统计页面，配置更短\n\n**典型组合关系**：\n```\nglobal → defaults → frontend(bind + acl) → backend(servers)\n```\n\n**排障提示**：配置改了用 `haproxy -c -f /etc/haproxy/haproxy.cfg` 校验语法（对应 Nginx 的 `nginx -t`）。运行时用 `socat` 连 admin socket 看状态。",
+    "tags": ["HAProxy", "配置结构"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1616,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 mode 参数中，http 与 tcp 的本质区别是？",
+    "options": [
+      { "key": "A", "text": "http 是七层（能解析请求内容），tcp 是四层（只转发字节流）" },
+      { "key": "B", "text": "http 只能处理静态资源" },
+      { "key": "C", "text": "tcp 模式性能更差" },
+      { "key": "D", "text": "两者完全相同" }
+    ],
+    "answer": ["A"],
+    "explanation": "mode http 能解析 HTTP 头、支持 ACL 按 URL/host/header 路由、能插入 cookie；mode tcp 只做四层转发，可用于任意协议（MySQL/Redis/MQTT），性能更高但无法按内容分流。",
+    "tags": ["HAProxy", "mode", "四层七层"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1617,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "四层负载均衡如何传递客户端真实 IP？各方案有什么代价？",
+    "answer": "四层转发时，后端看到的源 IP 会因模式而异，这是选型时必须考虑的点。\n\n**各模式的真实 IP 情况**：\n\n| 模式 | 后端看到的源 IP | 说明 |\n|---|---|---|\n| LVS DR | **客户端真实 IP** | IP 层未改，只改 MAC，最理想 |\n| LVS NAT | 客户端真实 IP | 但回程要经过 LVS |\n| LVS FULLNAT | **LVS 的 IP**（丢真实 IP） | 需额外手段传递 |\n| HAProxy tcp | 客户端真实 IP | 透明转发 |\n| Nginx stream | 客户端真实 IP | 同上 |\n\n**丢真实 IP 时怎么办**（主要针对 FULLNAT 与某些代理场景）：\n\n1. **PROXY Protocol（推荐）**\n- 代理在连接开头插入一行文本，携带真实 IP/端口\n- 后端需支持（Nginx `proxy_protocol`、HAProxy `send-proxy`、MySQL 支持 `proxy_protocol`）\n```\n# HAProxy 侧\nserver s1 10.0.0.1:80 send-proxy\n# Nginx 侧\nlisten 80 proxy_protocol;\n```\n- 优点：四层就能传真实 IP（不依赖 HTTP 头），适合 TCP 服务\n- 代价：后端必须配合，否则协议解析错乱\n\n2. **TOA 内核模块**（LVS FULLNAT 常用）\n- 在 TCP 选项里带真实 IP，后端装 toa 模块解析\n- 阿里开源（`toa`），需编译进后端内核\n- 代价：非标准，后端需定制内核\n\n3. **应用层头传递**（仅 HTTP）\n- `X-Forwarded-For`、`X-Real-IP`\n- 代价：只适用于 HTTP(S)，且可被伪造（需信任边界）\n\n4. **会话保持代替 IP**\n- 如果只是为了让同一用户打到同一后端，用 cookie 粘性即可，不一定非要真实 IP\n\n**选型建议**：\n- 能选 DR 就选 DR（天然有真实 IP，性能也最好）\n- 必须 FULLNAT 时，HTTP 场景用 XFF + `set_real_ip_from`，TCP 场景用 PROXY Protocol\n- 不要在生产用「猜测式」的 IP 还原逻辑（如直接信任任意 XFF）",
+    "tags": ["真实IP", "PROXY Protocol", "FULLNAT"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1618,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 VIP 是什么？为什么需要它？",
+    "answer": "**VIP（Virtual IP，虚拟 IP）**：对外暴露的服务地址，客户端只知道这个 IP，不感知后端有几台服务器。\n\n**为什么需要**：\n1. **屏蔽后端变化**：增加/减少后端、替换故障机器，客户端无感知（IP 不变）\n2. **便于高可用**：VIP 在 LVS 主备之间漂移（由 Keepalived 通过 VRRP 控制），实现入口层高可用\n3. **统一入口**：DNS 只解析到 VIP，避免 DNS 变更的延迟与缓存问题\n\n**VIP 的来源**：\n- 自己申请的独立公网/内网 IP\n- 云上用弹性 IP（EIP）或负载均衡实例的 IP\n- 与域名绑定：`A 记录 → VIP`\n\n**VIP 在 DR 模式下的特殊性**：\n- LVS 和所有后端都要配这个 VIP（后端配在 lo 上，并抑制 ARP）\n- 所以「VIP 属于谁」由 ARP 响应决定，必须做 ARP 抑制，否则会被后端抢走\n\n**常见误解**：\n- ❌「VIP 就是后端的第一台机器」→ 不对，VIP 是独立地址，与物理机无关\n- ❌「VIP 配好了就自动高可用」→ 还需要 Keepalived 等机制管理漂移",
+    "tags": ["VIP", "LVS", "基础概念"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1619,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "评估「要不要引入 LVS」时，以下哪些是合理的判断依据？（多选）",
+    "options": [
+      { "key": "A", "text": "当前 Nginx 已是瓶颈（CPU/连接数打满），需要更高吞吐" },
+      { "key": "B", "text": "需要按 URL/域名做七层分流，且后端服务多" },
+      { "key": "C", "text": "团队有能力维护内核态转发与 Keepalived" },
+      { "key": "D", "text": "只要想提高可用性就必须上 LVS" }
+    ],
+    "answer": ["A", "C"],
+    "explanation": "B 恰恰是 LVS 做不到的（需要七层，应该用 Nginx/HAProxy）。D 过于绝对：可用性可以靠 Nginx + Keepalived 实现，不必引入 LVS。LVS 的价值在「四层高吞吐」，只有在 Nginx 成为瓶颈时才值得引入。",
+    "tags": ["选型", "LVS", "架构"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1620,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 如何查看运行状态和统计信息？",
+    "answer": "三种方式：\n\n**1. 内置统计页面（最直观）**\n```\nfrontend stats\n    bind *:8404\n    stats enable\n    stats uri /stats\n    stats refresh 10s\n    stats auth admin:yourpassword    # 务必加认证\n    stats admin if TRUE              # 允许在页面上摘除/启用节点\n```\n访问 `http://<haproxy-ip>:8404/stats` 能看到：\n- 每个 backend/server 的**当前连接数、状态（UP/DOWN）**\n- 每秒请求、响应时间、错误数、重试次数\n- 可以直接在页面上把某台 server 置为维护状态\n\n**2. Runtime API（socket）**\n```\n# 配置\nglobal\n    stats socket /var/run/haproxy.sock mode 660 level admin\n\n# 查询\n echo \"show stat\" | socat stdio /var/run/haproxy.sock\necho \"show info\" | socat stdio /var/run/haproxy.sock\n\n# 动态操作（无需 reload）\necho \"disable server web/s1\" | socat stdio /var/run/haproxy.sock\necho \"enable server web/s1\" | socat stdio /var/run/haproxy.sock\n```\n**这是运维最常用的方式**——可以在不停服务的情况下摘除故障节点。\n\n**3. Prometheus 采集**\n- `haproxy_exporter` 读取 socket 或统计页 → 暴露指标\n- 监控 `haproxy_backend_up`、`haproxy_server_up`、响应时间、连接数\n\n**关键指标判读**：\n| 指标 | 含义 |\n|---|---|\n| `qcur` / `qmax` | 当前/最大排队请求数（非 0 说明后端扛不住） |\n| `ctime` / `rtime` / `ttime` | 连接/响应/总时间 |\n| `ereq` | 请求错误数 |\n| `dses` | 会话数 |\n| `chkfail` | 健康检查失败次数 |\n\n**配置变更**：`haproxy -c -f <cfg>` 校验 → `systemctl reload haproxy`（平滑重载，不断连接）。",
+    "tags": ["HAProxy", "统计", "Runtime API"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1621,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "困难",
+    "question": "LVS + Keepalived + Nginx 三层架构各承担什么职责？为什么需要三层？",
+    "answer": "典型的高可用入口架构，由下到上（或由外到内）三层：\n\n```\n客户端\n  ↓\n[LVS + Keepalived]     四层：VIP、高可用、高吞吐\n  ↓\n[Nginx 集群]            七层：按域名/URL 分流、SSL 卸载、缓存\n  ↓\n[应用服务器]            业务逻辑\n```\n\n**各层职责**：\n\n| 层 | 职责 | 为什么不省 |\n|---|---|---|\n| **LVS** | 四层转发、承载大并发 | Nginx 单机连接数/CPU 有上限，LVS 在内核态转发性能高一个量级 |\n| **Keepalived** | VIP 漂移、LVS 主备 | 否则 LVS 本身是单点 |\n| **Nginx** | 七层路由、SSL、缓存、限流 | LVS 是四层，看不到 URL，无法按路径分发 |\n\n**为什么需要三层（而不是两层）**：\n\n1. **性能分层**：LVS 扛住流量峰值（四层几乎无解析开销），Nginx 只处理经过筛选的七层逻辑\n2. **功能分层**：SSL 卸载、URL 路由、Header 改写都在 Nginx 做，LVS 不参与\n3. **故障隔离**：Nginx 挂了 LVS 能摘除；LVS 挂了 Keepalived 能切换\n4. **扩展性**：Nginx 层可水平扩容（加机器到 LVS 后端池），不影响入口\n\n**简化场景**：\n- 流量不大（QPS < 数千）→ **LVS + Keepalived 可省略**，直接 Nginx 双机 + Keepalived 就够\n- 云环境 → 直接用云 SLB（已包含四层能力），不需要自建 LVS\n- 需要更灵活的路由（灰度、A/B）→ Nginx/Ingress 层做，LVS 只做入口\n\n**一句话判断**：只有当 **Nginx 成为瓶颈、且流量确实很大** 时，才值得引入 LVS。否则两层（Nginx + Keepalived）更简单、故障面更小。",
+    "tags": ["架构", "三层", "选型"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1622,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 VIP 在后端服务器上通常配置在哪块网卡上（DR 模式）？",
+    "options": [
+      { "key": "A", "text": "lo（回环网卡），并抑制 ARP" },
+      { "key": "B", "text": "eth0，正常响应 ARP" },
+      { "key": "C", "text": "任意网卡，无需额外配置" },
+      { "key": "D", "text": "不需要在后端配置 VIP" }
+    ],
+    "answer": ["A"],
+    "explanation": "DR 模式要求后端配 VIP 在 lo 上（接收目标为 VIP 的包），同时抑制 ARP 响应。若配在 eth0 并响应 ARP，流量会被后端抢走，绕过 LVS。",
+    "tags": ["DR模式", "VIP", "lo"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1623,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "如何对 LVS/HAProxy 做压测并判断容量上限？",
+    "answer": "**压测目标**：找出「第一个瓶颈点」以及「安全容量上限」。\n\n**1. 压测工具**\n- 四层：`wrk`、`ab`（HTTP）；TCP 层可用 `iperf3` 或自建 TCP 压测\n- 更高并发：`locust`、`k6`（能模拟复杂场景）\n- 注意：压测机自身的端口数与 CPU 也可能成为瓶颈（用多台压测机）\n\n**2. 阶梯加压找拐点**\n```bash\nwrk -t8 -c200 -d30s http://VIP/\nwrk -t8 -c500 -d30s http://VIP/\nwrk -t8 -c1000 -d30s http://VIP/\n```\n每档记录：**QPS、P99 延迟、错误率**。\n拐点判断：QPS 不再上升而延迟陡增，或错误率抬头 → 已到瓶颈。\n\n**3. 监控各层指标，定位瓶颈**\n\n| 层 | 关注指标 | 命令/来源 |\n|---|---|---|\n| LVS | 并发连接、转发速率 | `ipvsadm -L -n --stats`、`/proc/net/ip_vs` |\n| 系统 | CPU 软中断、连接跟踪、端口耗尽 | `top`（si 高）、`dmesg | grep conntrack`、`ss -s` |\n| HAProxy | `qcur`（排队）、`ctime`、错误数 | stats 页面 / socket |\n| Nginx | `worker_connections`、`active` | `stub_status` |\n| 后端应用 | CPU、线程池、DB 连接 | 应用监控 |\n\n**4. 常见瓶颈与解决**\n- **TIME_WAIT 堆积 / 端口耗尽** → 开 `tcp_tw_reuse`，扩大本地端口范围，或让 LVS 而非压测机承担连接\n- **conntrack 表满** → `dmesg` 会报 `nf_conntrack: table full`，调大 `nf_conntrack_max`\n- **LVS 转发能力上限** → 加 LVS 机器做集群（ECMP 或 DNS 轮询多个 VIP）\n- **HAProxy `maxconn` 打满** → 提高 `maxconn`，同时检查 `ulimit -n`\n- **后端应用先撑不住** → 此时负载均衡还没到瓶颈，该优化应用\n\n**5. 安全容量**\n- 压测得到的极限值 × **0.5~0.7** 作为生产上限\n- 因为生产流量模型不同（更复杂）、且需要留出故障时的余量\n\n**重要提醒**：压测要**在隔离环境**做，或用生产压测 + 熔断预案。别为了压测把线上打挂。",
+    "tags": ["压测", "容量评估", "瓶颈"],
+    "frequency": "中频"
+  }
+]

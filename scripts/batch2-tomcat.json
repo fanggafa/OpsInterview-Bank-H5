@@ -1,0 +1,295 @@
+[
+  {
+    "id": 1801,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 的内存结构是怎样的？哪些区域会 OOM，哪些不会？",
+    "answer": "按线程共享与否分两块：\n\n**线程共享（堆内）**\n1. **堆（Heap）**：对象实例。分新生代（Eden + 2 个 Survivor）和老年代。**会 OOM**（最常见）\n2. **方法区 / 元空间（Metaspace）**：类元数据、常量、静态变量。JDK 8+ 用本地内存。**会 OOM**（Metaspace OOM）\n\n**线程私有**\n3. **虚拟机栈**：方法调用的栈帧（局部变量、操作数栈）。栈太深 → **StackOverflowError**，不是 OOM\n4. **本地方法栈**：Native 方法\n5. **程序计数器**：当前字节码行号，唯一不会 OOM 的区域\n\n**直接内存（堆外）**：NIO 的 DirectByteBuffer，受 `-XX:MaxDirectMemorySize` 限制，**会 OOM**\n\n**关键区分**：\n| 区域 | 溢出类型 |\n|---|---|\n| 堆 | `OutOfMemoryError: Java heap space` |\n| 元空间 | `OutOfMemoryError: Metaspace` |\n| 虚拟机栈 | `StackOverflowError` |\n| 直接内存 | `OutOfMemoryError: Direct buffer memory` |\n\n**排查命令**：\n```\njmap -heap <pid>         -- 查看堆配置与使用\njstat -gcutil <pid> 1000 -- 各代使用率与 GC 次数\njcmd <pid> VM.native_memory -- 看 Native 内存分布\n```\n\n**常见误解**：容器里看到进程内存远超 `-Xmx`，那是堆外内存（元空间、直接内存、线程栈、JVM 自身）—— 这是 K8s 里 Pod 被 OOMKilled 的常见原因。",
+    "tags": ["JVM", "内存结构", "OOM"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1802,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 有哪些核心组件？一个 HTTP 请求是怎么被处理的？",
+    "answer": "**核心组件（从外到内）**：\n\n1. **Server**：最外层容器，代表整个 Tomcat 实例\n2. **Service**：把 Connector 和 Engine 绑定在一起\n3. **Connector**：负责网络连接与协议解析（HTTP/1.1、HTTP/2、AJP）\n4. **Engine**：请求处理引擎，内部有 Host\n5. **Host**：虚拟主机（对应一个域名），内部有 Context\n6. **Context**：一个 Web 应用的上下文（对应一个 WAR 或目录）\n7. **Wrapper**：一个 Servlet，最内层\n\n**请求处理流程**：\n```\n客户端\n → Connector（监听端口，解析 HTTP，封装成 Request/Response）\n → Engine → Host（按域名匹配）→ Context（按 path 匹配应用）\n → Wrapper（按 URL 匹配 Servlet）\n → Servlet 处理\n → 响应原路返回\n```\n\n**Connector 的关键参数**：\n```xml\n<Connector port=\"8080\" protocol=\"Http11NioProtocol\"\n    maxThreads=\"500\"          <!-- 工作线程上限，不够会排队 -->\n    acceptCount=\"200\"         <!-- 队列长度，线程满了排队到这里 -->\n    maxConnections=\"10000\"    <!-- 最大连接数 -->\n    connectionTimeout=\"20000\" <!-- 连接超时 -->\n    minSpareThreads=\"50\"\n/>\n```\n\n**关键概念：「最多能接多少并发」由三个参数共同决定**\n- `maxThreads`：同时处理的请求数\n- `acceptCount`：排队的请求数\n- 超出两者之和 → 直接拒绝（表现为连接超时或 RST）\n\n**排障要点**：Tomcat 卡住时先看线程栈（`jstack`），确认是「线程都在等 DB/下游」还是「线程都在执行 CPU 密集任务」——前者要扩线程或优化下游，后者扩线程无效。",
+    "tags": ["Tomcat", "架构", "请求流程"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1803,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "JDK 8 之后，方法区的实现是什么？",
+    "options": [
+      { "key": "A", "text": "永久代（PermGen）" },
+      { "key": "B", "text": "元空间（Metaspace），使用本地内存" },
+      { "key": "C", "text": "堆内存中的对象区" },
+      { "key": "D", "text": "栈内存" }
+    ],
+    "answer": ["B"],
+    "explanation": "JDK 8 移除了永久代，改为元空间（Metaspace），使用本地内存而非堆，受 -XX:MaxMetaspaceSize 限制。这样避免了 PermGen 固定大小导致的 OOM，也更灵活。",
+    "tags": ["元空间", "Metaspace", "JDK8"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1804,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 的垃圾回收算法有哪几种？分代回收为什么这样设计？",
+    "answer": "**四种基础算法**：\n\n1. **标记-清除（Mark-Sweep）**\n   - 标记存活对象 → 清除未标记的\n   - 缺点：**内存碎片**，大对象可能分配失败\n2. **标记-复制（Mark-Copy）**\n   - 把存活对象复制到另一半空间\n   - 优点：无碎片、分配简单\n   - 缺点：浪费一半空间（适合存活率低的场景）\n3. **标记-整理（Mark-Compact）**\n   - 标记 → 把存活对象向一端移动 → 清理边界外\n   - 优点：无碎片\n   - 缺点：移动对象成本高（STW 更长）\n4. **分代收集**：按对象生命周期分区域用不同算法（不是独立算法，是组合策略）\n\n**分代设计的原因**（弱分代假说）：\n- 绝大多数对象「朝生夕灭」→ 新生代用**复制算法**（存活少，复制成本低）\n- 少数对象活得久 → 老年代用**标记-清除 / 标记-整理**\n\n**内存分配与晋升**：\n- 新对象进 Eden\n- Minor GC：Eden + 一个 Survivor 存活对象复制到另一个 Survivor，年龄 +1\n- 年龄达阈值（默认 15，`-XX:MaxTenuringThreshold`）→ 晋升老年代\n- 大对象直接进老年代（`-XX:PretenureSizeThreshold`）\n- 动态年龄判断：Survivor 中同年龄对象总和 > 一半 → 该年龄及以上直接晋升\n\n**关键参数**：\n```\n-Xmn / -XX:NewRatio       -- 新生代大小\n-XX:SurvivorRatio         -- Eden : Survivor 比例（默认 8:1）\n-XX:MaxTenuringThreshold  -- 晋升阈值\n```\n\n**面试常问**：为什么新生代不用标记-整理？因为存活对象少，复制成本远低于整理大量存活对象；且复制没有碎片问题。",
+    "tags": ["GC算法", "分代", "复制算法"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1805,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "以下哪些是 JVM 常见的垃圾收集器？（多选）",
+    "options": [
+      { "key": "A", "text": "Serial / ParNew" },
+      { "key": "B", "text": "CMS（Concurrent Mark Sweep）" },
+      { "key": "C", "text": "G1（Garbage First）" },
+      { "key": "D", "text": "Epoll" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "Serial/ParNew/Parallel Scavenge/CMS/G1/ZGC/Shenandoah 都是垃圾收集器。Epoll 是 Linux 的 IO 多路复用机制，与 GC 无关。",
+    "tags": ["GC收集器", "G1", "CMS"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1806,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "CMS 和 G1 有什么区别？为什么 JDK 9 之后推荐 G1？",
+    "answer": "**CMS（Concurrent Mark Sweep，JDK 8 及以前的老年代收集器）**\n- 基于**标记-清除**，追求低停顿（并发标记/并发清理）\n- 缺点：\n  1. **内存碎片**（清除不整理）→ 大对象分配失败触发 Full GC\n  2. **Concurrent Mode Failure**：并发清理期间老年代又被填满 → 退化为 Serial Old 全停顿\n  3. 无法控制停顿时间（不知道会停多久）\n- 已在 JDK 14 被移除\n\n**G1（Garbage First，JDK 9+ 默认）**\n- 把堆划分成多个大小相等的 **Region**，按「垃圾最多」优先回收（名字来源）\n- 逻辑上仍有分代（Eden/Survivor/Old/Humongous），但物理上不连续\n- 优点：\n  1. **可预测停顿**：`-XX:MaxGCPauseMillis` 设定目标，G1 自己挑 Region 组合来满足\n  2. **无碎片问题**：年轻代用复制，老年代用「标记-整理」（Region 间复制）\n  3. 支持大堆（几十 GB 也 OK）\n  4. 有 Mixed GC，避免全堆 Full GC\n- 缺点：单次回收仍可能较长；小堆（< 4GB）优势不明显；写屏障有额外开销\n\n**关键对比表**：\n| | CMS | G1 |\n|---|---|---|\n| 内存布局 | 连续分代 | Region 分块 |\n| 算法 | 标记-清除 | 标记-整理（Region 复制） |\n| 碎片 | ❌ 有 | ✅ 无 |\n| 停顿可控 | ❌ 不可控 | ✅ MaxGCPauseMillis |\n| 大堆支持 | 一般 | 好 |\n\n**为什么推荐 G1**：可预测停顿 + 无碎片，且是大堆场景的稳妥选择。但**如果堆小（< 4G）且追求极致吞吐**，Parallel Scavenge 反而更合适；**追求超低延迟（< 10ms）** 则用 ZGC。\n\n**切换命令**：`-XX:+UseG1GC`（JDK 9+ 默认已是 G1）。\n\n**常见误解**：G1 不等于「零停顿」，只是「停顿可控」。STW 仍然存在，只是时间短且可预测。",
+    "tags": ["CMS", "G1", "GC选型"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1807,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "如何排查 JVM 内存泄漏？常用的命令和步骤是什么？",
+    "answer": "**核心思路：先确认「涨」，再定位「谁占的」，最后找「为什么没释放」。**\n\n**1. 确认是泄漏还是正常占用**\n```\njstat -gcutil <pid> 1000 10      -- 每秒一次看 10 次\n```\n判断依据：\n- **泄漏**：老年代（O）持续上涨，Full GC 后也不回落\n- **正常**：Full GC 后能明显回落，只是基线较高\n\n**2. 抓取内存快照**\n```\njmap -dump:live,format=b,file=/tmp/heap.hprof <pid>\n# 或\njcmd <pid> GC.heap_dump /tmp/heap.hprof\n```\n注意：dump 会 STW，大堆可能停顿数秒，要低峰做或从从节点做。\n\n**3. 分析快照（MAT / VisualVM / jprofiler）**\n关键看两个视图：\n- **Dominator Tree**：谁占了最多内存（哪个对象「支配」了整棵引用树）\n- **Leak Suspects**：MAT 自动分析的可疑泄漏点\n- **Path to GC Roots**：为什么这个对象没被回收（找到强引用链）\n\n**4. 对比两次快照**\n```\n间隔 10-30 分钟各 dump 一次，用 MAT 的 Compare 功能\n```\n持续增长的对象类型就是嫌疑对象——这是最有效的方法。\n\n**5. 常见泄漏原因**\n| 原因 | 特征 |\n|---|---|\n| 静态集合只增不减 | Map/List 持续增长 |\n| 缓存无上限/无过期 | 缓存对象占比高 |\n| 监听器未注销 | Listener 引用链指向业务对象 |\n| ThreadLocal 未清理 | 线程池复用导致持有 |\n| 连接/流未关闭 | 持有 buffer 与 socket |\n| 内部类持有外部类 | 匿名类/Runnable 引用 |\n\n**6. 实时观察（不用 dump）**\n```\njmap -histo:live <pid> | head -30     -- 各类实例数与占用\njcmd <pid> GC.class_histogram          -- 同上，新写法\n```\n连续观察几次，看哪类对象数量在涨。\n\n**7. 应急手段**\n- 临时加 `-Xmx` 并重启，争取排查时间\n- 如果是缓存问题，先加容量上限\n\n**关键提醒**：**没有 dump 就没有真相**。线上 OOM 一定要配置 `-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/path`，否则 OOM 后无从查起。",
+    "tags": ["内存泄漏", "heapdump", "MAT"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1808,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "查看 JVM 各代内存使用率与 GC 次数的命令是？",
+    "options": [
+      { "key": "A", "text": "jstat -gcutil <pid> [间隔] [次数]" },
+      { "key": "B", "text": "jps -l" },
+      { "key": "C", "text": "javac -version" },
+      { "key": "D", "text": "jmap -heap" }
+    ],
+    "answer": ["A"],
+    "explanation": "jstat -gcutil 输出各区使用率（E/S/O/M）、YGC/FGC 次数与耗时，是观察 GC 行为最轻量的工具。jps 只列进程，jmap -heap 看配置与一次快照。",
+    "tags": ["jstat", "GC监控"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1809,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 线程池满了会怎样？如何判断是线程池问题？",
+    "answer": "**现象**：请求变慢或直接超时/被拒，但 CPU 可能不高。\n\n**Tomcat 的三层缓冲机制**：\n1. `maxThreads`：并发处理线程数（默认 200）\n2. `acceptCount`：等待队列（默认 100）\n3. 超出两者 → 连接被拒绝（客户端看到连接超时或 RST）\n\n**判断依据（关键）**：\n\n1. **看线程状态**\n```\njstack <pid> | grep \"http-nio-8080-exec\" | wc -l     -- 当前线程数\njstack <pid> > /tmp/thread.txt                       -- 完整栈\n```\n统计线程都在干什么：\n- 大量线程 BLOCKED 在某锁上 → 锁竞争\n- 大量线程 WAITING 在 DB 连接/HTTP 客户端 → 下游慢\n- 大量线程 RUNNABLE 且 CPU 高 → 计算密集\n\n2. **看 Tomcat 的 connector 状态**（Tomcat 7+ 有 JMX 或 status 页面）\n- `currentThreadsBusy` 接近 `maxThreads` → 线程池满\n\n3. **看队列**\n- 如果 `acceptCount` 也满了，客户端开始被拒\n\n**不同原因的对策完全不同**：\n\n| 根因 | 加线程有用吗 | 正确做法 |\n|---|---|---|\n| 下游慢（DB/HTTP） | ❌ 无用，反而加剧 | 优化下游、加超时、加熔断 |\n| 锁竞争 | ❌ 无用 | 缩小锁粒度、减少临界区 |\n| CPU 密集 | ❌ 无用 | 扩机器（横向）或优化算法 |\n| 慢请求占线程（大文件、长轮询） | ✅ 有用 | 加线程 / 改异步 Servlet / 换 WebFlux |\n\n**关键认知**：**盲目调大 maxThreads 是反模式**。线程多了只会让下游压力更大，且上下文切换开销上升。先定位「线程在等什么」。\n\n**常用排查命令**：\n```\ncurl http://localhost:8080/manager/status   -- 需配 manager 用户\njstack <pid> | grep -c \"http-nio\"\njcmd <pid> Thread.print                      -- 等同 jstack\n```",
+    "tags": ["Tomcat", "线程池", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1810,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "以下哪些是 JVM 启动时应该配置的、与「容器化」相关的参数？（多选）",
+    "options": [
+      { "key": "A", "text": "-XX:MaxRAMPercentage（按容器内存百分比设堆）" },
+      { "key": "B", "text": "-XX:+UseContainerSupport（让 JVM 感知 cgroup 限制）" },
+      { "key": "C", "text": "-XX:+HeapDumpOnOutOfMemoryError（OOM 时自动 dump）" },
+      { "key": "D", "text": "-Xmx 设为宿主机总内存的 80%" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 在容器里很危险：宿主机内存往往远大于容器 limit，设成宿主机 80% 会导致容器超 limit 被 OOMKilled。应该用 MaxRAMPercentage 按容器 limit 计算（如 75%），并留出堆外内存空间。",
+    "tags": ["容器化", "JVM参数", "OOMKilled"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1811,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "线上 Java 应用 CPU 100%，如何定位到具体代码行？",
+    "answer": "**五步定位法**（这是运维/面试必会的硬技能）：\n\n**1. 确认是 Java 进程**\n```\ntop\n```\n找到 CPU 高的进程 PID，确认是 java。\n\n**2. 找占用最高的线程**\n```\ntop -Hp <pid>                      -- 看线程级\n# 或用\nps -Lp <pid> -o tid,pcpu,stat,comm --sort=-pcpu | head\n\n# 或一步到位\nprintf '%x\\n' <tid>                -- 把 TID 转成十六进制\n```\n\n**3. 抓线程栈**\n```\njstack <pid> > /tmp/jstack.txt\n```\n**4. 在栈里搜索那个十六进制 TID**\n```\ngrep -A 30 'nid=0x<十六进制TID>' /tmp/jstack.txt\n```\n找到的栈顶就指向具体方法：\n- 栈顶是业务方法 → 业务代码死循环/正则回溯/大计算\n- 栈顶是 GC 线程 → 内存问题，不是 CPU 问题\n- 栈顶是 `Object.wait` / `park` → 不是真占 CPU，可能看错了线程\n\n**5. 确认根因**\n- **死循环/正则回溯**：栈固定在某个方法，多次采样都相同\n- **频繁 GC**：`jstat -gcutil 1` 看 FGC 频率与耗时 → 是 GC 吃 CPU，要查内存\n- **锁竞争**：大量线程 BLOCKED（但这类通常是 CPU 不高、吞吐低）\n- **大量短连接/加解密**：栈在 socket/加解密相关方法\n\n**多次采样法（关键技巧）**：\n```\nfor i in 1 2 3 4 5; do jstack <pid> | grep -A 5 'nid=0x<tid>'; sleep 1; done\n```\n如果每次栈顶都在同一个方法 → **确定是它**。若每次都不同 → 是 GC 或系统调用。\n\n**进阶工具**：\n- `arthas`：`thread -n 3`（找最忙的 3 个线程）、`profiler start` 生成火焰图\n- `async-profiler`：采样生成火焰图，能看到方法级耗时分布\n- `perf` + FlameGraph（Linux 层）\n\n**注意**：jstack 会 STW（安全点），大堆时可能停顿；生产上优先用 arthas 或异步采样工具。",
+    "tags": ["CPU100%", "jstack", "火焰图"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1812,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 的 JVM 参数应该如何设置？-Xms、-Xmx、-Xmn 各是什么？",
+    "answer": "**三个基础参数**：\n\n```\n-Xms4g            -- 堆初始大小\n-Xmx4g            -- 堆最大大小\n-Xmn1g            -- 新生代大小（等价 -XX:NewSize=X -XX:MaxNewSize=X）\n```\n\n**关键原则**：\n\n1. **`-Xms` 与 `-Xmx` 设成一样**\n   - 避免堆动态扩缩带来的性能抖动\n   - 但也意味着进程启动就占这么多内存（容器 limit 要够）\n\n2. **新生代不要太大也不要太小**\n   - 太大 → Minor GC 一次回收太多，停顿长，且老年代空间被挤压\n   - 太小 → Minor GC 频繁，且短命对象容易提前晋升\n   - 参考：老年代 : 新生代 ≈ 2:1 到 3:1（用 `-XX:NewRatio` 控制）\n   - 也可用 `-XX:SurvivorRatio=8`（Eden:Survivor = 8:1）\n\n3. **留出堆外空间**（容器场景最关键）\n   ```\n   -XX:MaxMetaspaceSize=256m      -- 元空间上限（防止无限涨）\n   -XX:MaxDirectMemorySize=256m   -- 直接内存上限\n   ```\n   容器 limit = 堆 + 元空间 + 直接内存 + 线程栈（约 1MB × 线程数）+ JVM 自身，**堆放 60-75%** 是常见安全值。\n\n**推荐模板（容器 4G limit）**：\n```\n-XX:MaxRAMPercentage=70\n-XX:InitialRAMPercentage=70\n-XX:MaxMetaspaceSize=256m\n-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200\n-XX:+HeapDumpOnOutOfMemoryError\n-XX:HeapDumpPath=/logs/heap.hprof\n-Xlog:gc*:file=/logs/gc.log:time,uptime:filecount=5,filesize=50m\n```\n\n**为什么用 MaxRAMPercentage 而不是 -Xmx**：容器 limit 变化时（改资源配置）无需改启动参数，JVM 自动按比例算。\n\n**注意**：JDK 8u191+ 才支持容器感知；更早版本会读宿主机内存，导致堆开过大被 OOMKilled。",
+    "tags": ["JVM参数", "Tomcat", "容器"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1813,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 出现 OutOfMemoryError: Metaspace，最常见的原因是？",
+    "options": [
+      { "key": "A", "text": "类加载过多（动态生成类、热部署泄漏）" },
+      { "key": "B", "text": "对象实例太多" },
+      { "key": "C", "text": "线程数过多" },
+      { "key": "D", "text": "GC 参数配置错误" }
+    ],
+    "answer": ["A"],
+    "explanation": "Metaspace 存类元数据，溢出说明类加载太多且没能卸载。常见于：动态代理/CGLIB 生成类过多、JSP/热部署反复加载导致 ClassLoader 泄漏、大量反射生成类。对象太多是 heap OOM，线程太多是栈/本地内存问题。",
+    "tags": ["Metaspace", "OOM", "类加载"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1814,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "什么是 STW？哪些 GC 阶段会 STW？如何减少 STW 的影响？",
+    "answer": "**STW（Stop The World）**：GC 期间暂停所有应用线程，此时请求不被处理。\n\n**为什么会 STW**：\n- 标记阶段需要「一致的对象图快照」，如果应用还在改引用，标记结果就不准\n- 复制/整理阶段要移动对象，应用线程访问对象会出错\n\n**各收集器的 STW 阶段**：\n| 收集器 | STW 阶段 |\n|---|---|\n| Serial | 整个 GC 全程 |\n| Parallel | 整个 GC 全程（但多线程并行缩短时间） |\n| **CMS** | 初始标记、重新标记（较短）；并发标记/清理不 STW |\n| **G1** | 初始标记、最终标记、筛选回收（可控） |\n| ZGC | 极短（亚毫秒级） |\n\n**影响与判断**：\n- Minor GC 的 STW 通常几十毫秒，可接受\n- Full GC 的 STW 可能数秒 → 大量请求超时\n- 判断：`jstat -gcutil` 看 FGC 次数与 `FGCT`（累计耗时）\n\n**减少 STW 的手段**：\n\n1. **选对收集器**\n   - 大堆 + 低延迟 → G1（设 `-XX:MaxGCPauseMillis`）\n   - 超大堆 + 极低延迟 → ZGC\n2. **控制堆大小**：堆太大，单次 GC 扫描时间长。堆不是越大越好\n3. **减少对象产生速率**：优化代码、避免大对象、对象复用\n4. **避免 Full GC**\n   - 不要设 `-XX:+DisableExplicitGC` 后又调用 `System.gc()`\n   - 防止元空间/Metaspace 涨满触发 Full GC\n   - 避免晋升过快（Survivor 太小）\n5. **GC 日志分析**：`-Xlog:gc*` 记录每次 STW 时长，找出最长的几次并分析原因\n\n**关键认知**：**STW 无法消除，只能缩短和控制**。对延迟敏感的服务，要把「最坏情况 STW」纳入容量与超时设计（如 RPC 超时要大于 STW 时间）。",
+    "tags": ["STW", "GC停顿", "调优"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1815,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 应用响应慢，可能的原因有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "线程池已满，请求在排队" },
+      { "key": "B", "text": "下游依赖（DB/Redis/HTTP）慢" },
+      { "key": "C", "text": "频繁 Full GC 导致 STW" },
+      { "key": "D", "text": "Tomcat 的 Connector 端口没有开放" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 会导致完全连不上（连接拒绝/超时），不是「响应慢」。A/B/C 是响应慢的三大类原因，排查顺序建议：先看 GC（jstat）→ 再看线程栈（jstack，判断在等什么）→ 最后查下游。",
+    "tags": ["Tomcat", "响应慢", "排查"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1816,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "如何从 GC 日志判断应用是否存在内存问题？",
+    "answer": "**先开启 GC 日志**（JDK 9+ 统一日志）：\n```\n-Xlog:gc*:file=/logs/gc.log:time,uptime,level,tags:filecount=5,filesize=50m\n```\nJDK 8 写法：\n```\n-XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:/logs/gc.log\n-XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=5 -XX:GCLogFileSize=50M\n```\n\n**关键看四个指标**：\n\n**1. Full GC 频率**\n- 正常：几天一次或更少\n- 异常：每小时多次、甚至每分钟 → 内存不足或泄漏\n- 危险：连续 Full GC（每次回收后用量不降）→ 即将 OOM\n\n**2. GC 后老年代占用（最关键的判断）**\n```\n[GC 后] 老年代: 2G -> 1.9G(4G)\n```\n- 回收后仍占 90%+ 且持续上升 → **内存泄漏**\n- 回收后能降到 50% 以下 → 正常\n\n**3. GC 停顿时间**\n- Minor GC 通常 < 50ms（G1 可更低）\n- Full GC 可能数秒 → 影响接口超时\n- 关注 `Pause Young` / `Pause Full` 后的耗时\n\n**4. 晋升速率**\n- 新生代 GC 后存活对象多、快速晋升 → Survivor 太小或对象生命周期偏长\n- 调整 `-Xmn` 或 `-XX:SurvivorRatio`\n\n**典型日志模式识别**：\n\n| 模式 | 含义 |\n|---|---|\n| 老年代缓慢上涨，Full GC 后微降 | 内存泄漏 |\n| 老年代突然占满 → Full GC | 大对象突增或缓存未设上限 |\n| Minor GC 频繁但老年代稳定 | 新生代太小，可调 -Xmn |\n| Full GC 耗时极长（>5s） | 堆太大或对象太多，考虑换 G1/ZGC |\n| `to-space exhausted` / `Evacuation Failure` | 晋升失败，Survivor/老年代不足 |\n\n**分析工具**：\n- `GCViewer` / `gceasy.io`：可视化日志，自动给出调优建议\n- 直接 grep：`grep -c \"Full GC\" gc.log` 数次数\n\n**实践建议**：\n1. GC 日志必须常开（开销极小）并轮转\n2. 配置 `-XX:+HeapDumpOnOutOfMemoryError`，OOM 时留下现场\n3. 把 GC 指标接入监控（Prometheus 的 jvm_gc_* 指标），不要靠人看日志\n\n**注意**：GC 日志本身不能告诉你「哪个对象泄漏」，只能告诉你「有泄漏」。定位具体对象还需要 heap dump。",
+    "tags": ["GC日志", "内存问题", "分析"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1817,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 如何部署多个应用？context path 是什么？",
+    "answer": "**部署方式**（三种）：\n\n1. **目录/WAR 放入 webapps**\n```\nwebapps/\n  ├── ROOT/          -- 根路径 /\n  ├── api.war        -- 路径 /api\n  └── admin/         -- 路径 /admin\n```\n2. **server.xml 配置 Context**\n```xml\n<Context docBase=\"/opt/apps/myapp\" path=\"/myapp\" reloadable=\"false\" />\n```\n3. **独立 context 文件**（推荐，避免改 server.xml）\n```\nconf/Catalina/localhost/myapp.xml\n内容：<Context docBase=\"/opt/apps/myapp\" reloadable=\"false\" />\n```\n\n**context path 是什么**：应用在 Tomcat 中的访问前缀。\n- `path=\"/\"` → 访问 `http://host:8080/`\n- `path=\"/api\"` → 访问 `http://host:8080/api/...`\n- 应用内部代码不应硬编码 context path（用 `request.getContextPath()`）\n\n**关键注意**：\n\n1. **`reloadable=\"true\"` 千万别在生产用**\n   - 它会监控 class 文件变化并自动重载 → 频繁重载会导致 **Metaspace 泄漏**（ClassLoader 无法回收）\n   - 这是 Metaspace OOM 的经典原因之一\n2. **`autoDeploy` 关掉**（生产）：避免自动部署意外覆盖应用\n3. **多应用共享与隔离**：\n   - 各 Context 有独立 ClassLoader（互相隔离）\n   - 但共享 Tomcat 的 JVM 堆，一个应用泄漏会影响全部 → 关键应用建议独立实例\n4. **context path 冲突**：两个应用配了相同 path → 启动失败，日志会有明确报错\n\n**排查相关命令**：\n```\nls webapps/                 -- 看部署了哪些\ncurl http://localhost:8080/manager/html   -- 管理界面（需配权限）\ntail -f logs/catalina.out   -- 部署日志\n```",
+    "tags": ["Tomcat", "部署", "context path"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1818,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "Tomcat 默认的 HTTP 连接器端口是？",
+    "options": [
+      { "key": "A", "text": "80" },
+      { "key": "B", "text": "8080" },
+      { "key": "C", "text": "8005" },
+      { "key": "D", "text": "8443" }
+    ],
+    "answer": ["B"],
+    "explanation": "8080 是默认 HTTP 端口；8005 是 shutdown 端口（用于接收关闭指令，安全上建议改为 -1 禁用）；8443 是默认 HTTPS 端口；80 需要 root 权限或端口转发。",
+    "tags": ["Tomcat", "端口", "基础"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1819,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 有哪些常用排查工具？各自看什么？",
+    "answer": "按场景分四类：\n\n**1. 进程与基础信息**\n```\njps -l                    -- 列出 Java 进程与主类\njinfo <pid>               -- 查看/动态修改 JVM 参数\njcmd <pid> VM.flags       -- 查看启动参数（推荐，取代 jinfo）\n```\n\n**2. GC 与内存**\n```\njstat -gcutil <pid> 1000   -- 各区使用率、GC 次数与耗时（轻量，首选）\njstat -gc <pid> 1000       -- 各区容量（KB）\njmap -heap <pid>           -- 堆配置与使用情况\njmap -histo:live <pid>     -- 各类对象数量与占用（会触发 Full GC，慎用）\njmap -dump:live,format=b,file=x.hprof <pid>   -- 堆快照\njcmd <pid> GC.heap_dump x.hprof                -- 同上，新写法\n```\n\n**3. 线程与 CPU**\n```\njstack <pid>                       -- 线程栈（会 STW，注意时机）\njstack -l <pid>                    -- 含锁信息\njcmd <pid> Thread.print            -- 等同\njstack <pid> | grep BLOCKED        -- 找锁竞争\n```\n\n**4. 高级诊断**\n```\n# Arthas（阿里开源，生产最实用）\nthread -n 3              -- 最忙的 3 个线程\ndashboard                -- 整体概览\nwatch / trace / tt       -- 方法级观测（不重启）\nprofiler start           -- 生成火焰图\n\n# async-profiler\n./profiler.sh -d 30 -f out.html <pid>   -- CPU/内存/锁火焰图\n```\n\n**按症状选工具（速查表）**：\n\n| 症状 | 首选工具 |\n|---|---|\n| CPU 高 | top -Hp → jstack / arthas thread -n |\n| 内存涨 / OOM | jstat → jmap -histo → heap dump |\n| 接口慢 | arthas trace（看方法耗时） |\n| 线程卡死 | jstack 看 BLOCKED / DEADLOCK |\n| GC 频繁 | jstat -gcutil + GC 日志 |\n| 内存泄漏 | 两次 heap dump 对比 |\n\n**生产注意事项**：\n- `jmap -dump` 会 STW，大堆可能停顿数秒 → 低峰做或从从节点做\n- `jstack` 也需要安全点，但通常很快\n- **优先用 arthas/async-profiler**，它们对线上影响更小\n- 所有操作前先确认在哪个实例上做（多实例时别搞错机器）",
+    "tags": ["JVM工具", "jstack", "arthas"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1820,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "关于 JVM 的 G1 收集器，以下说法正确的是？（多选）",
+    "options": [
+      { "key": "A", "text": "把堆划分为多个 Region，按垃圾多少优先回收" },
+      { "key": "B", "text": "可通过 -XX:MaxGCPauseMillis 设定停顿目标" },
+      { "key": "C", "text": "JDK 9 起成为默认垃圾收集器" },
+      { "key": "D", "text": "完全消除了 STW 停顿" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：G1 的停顿是「可控」而非「消除」，仍有 STW（初始标记、最终标记、筛选回收）。要亚毫秒级停顿需要用 ZGC/Shenandoah。",
+    "tags": ["G1", "Region", "停顿"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1821,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "Java 应用在 K8s 中频繁被 OOMKilled，但 heap 看起来没超，为什么？",
+    "answer": "**根因：容器内存 ≠ 堆内存**。进程实际占用 = 堆 + 堆外，而 `-Xmx` 只管堆。\n\n**容器内存的组成部分**：\n```\n容器 RSS = 堆(Xmx) + 元空间 + 直接内存 + 线程栈 + JIT 代码缓存 + GC 结构 + 本地库 + JVM 自身\n```\n粗算：每线程栈 1MB，200 线程就是 200MB；元空间可能 100-300MB；直接内存（Netty/NIO）可能上百 MB。\n\n**典型场景**：\n1. **`-Xmx` 设成了容器 limit 的比例过大**（如 limit 4G，Xmx 设 3.8G）\n   → 堆还没满，但堆外一涨就超 limit\n2. **用 `-Xmx` 按宿主机内存算**（老版本 JDK 不感知 cgroup）\n   → 宿主机 64G，Xmx 设 32G，容器 limit 4G → 立刻被杀\n3. **JDK 8 早期版本（< 8u191）不感知容器**\n   → `Runtime.maxMemory()` 返回宿主机内存\n4. **Netty DirectBuffer 泄漏**\n   → `-XX:MaxDirectMemorySize` 没设或设得大，实际超 limit\n5. **线程数过多**\n   → 每个线程 1MB 栈，几百线程吃掉几百 MB\n\n**排查方法**：\n```bash\n# 1. 确认被杀原因\nkubectl describe pod <pod> | grep -A5 \"Last State\"\n# 看到 Reason: OOMKilled, Exit Code: 137 就是容器级 OOM\n\n# 2. 对比容器内存与堆\nkubectl top pod <pod>                      -- 容器实际内存\njcmd <pid> VM.native_memory summary        -- 需要 -XX:NativeMemoryTracking=summary\njcmd <pid> GC.heap_info                    -- 堆使用\n\n# 3. 算差值\n容器内存 - 堆使用 = 堆外占用\n```\n\n**正确配置**：\n```\n# 容器 limit 4G，堆占 70%\n-XX:MaxRAMPercentage=70\n-XX:MaxMetaspaceSize=256m\n-XX:MaxDirectMemorySize=256m\n-XX:ActiveProcessorCount=4          # 避免 JVM 开过多 GC 线程\n-XX:+UseG1GC\n```\n留 30% 给堆外是常见安全值。\n\n**如果是 Netty 应用**，还要注意 `-Dio.netty.maxDirectMemory` 与池化配置。\n\n**关键认知**：K8s 的 OOMKilled 是 **cgroup 层面**杀进程（看 RSS），与 JVM 的 `OutOfMemoryError`（看堆/元空间）是两件事，日志里**不会**有 Java 异常堆栈——这是排查时最容易困惑的点。",
+    "tags": ["OOMKilled", "堆外内存", "容器"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1822,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "容器中限制内存为 2G，JVM 堆最合理的设置方式是？",
+    "options": [
+      { "key": "A", "text": "-Xmx2g，用满容器内存" },
+      { "key": "B", "text": "-XX:MaxRAMPercentage=70，约 1.4G" },
+      { "key": "C", "text": "-Xmx 设为宿主机内存的 80%" },
+      { "key": "D", "text": "不设置，让 JVM 自动决定" }
+    ],
+    "answer": ["B"],
+    "explanation": "必须给堆外内存（元空间、直接内存、线程栈）留空间，通常堆放 60-75%。A 会因堆外占用超 limit 被 OOMKilled；C 完全错误（宿主机内存远大于容器 limit）；D 在旧 JDK 上会按宿主机算，同样危险。",
+    "tags": ["容器", "JVM参数", "MaxRAMPercentage"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1823,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 的 AJP 协议是什么？为什么建议关闭？",
+    "answer": "**AJP（Apache JServ Protocol）**是 Tomcat 与前置 Apache httpd 之间的二进制协议，用于把请求转发给 Tomcat，比 HTTP 更省带宽（头部用整数编码而非文本）。\n\n**配置**（server.xml）：\n```xml\n<Connector port=\"8009\" protocol=\"AJP/1.3\" secretRequired=\"false\" />\n```\n\n**为什么建议关闭**：\n\n1. **默认配置不安全（历史漏洞）**\n   - 旧版本默认 `secretRequired=\"false\"`，且 AJP 监听所有网卡\n   - **Ghostcat 漏洞（CVE-2020-1938）**：攻击者通过 AJP 可读取应用目录下任意文件（包括 WEB-INF 下的配置与源码），甚至远程执行\n   - 影响 Tomcat 6/7/8/9 多个版本\n\n2. **现代架构不需要 AJP**\n   - 现在多用 Nginx 反向代理 HTTP/HTTPS 到 Tomcat，性能足够\n   - 前置 Apache 的场景也可以改用 HTTP 代理\n   - 容器化/K8s 场景更不会用 AJP\n\n3. **关闭方法**\n   - 直接注释掉 server.xml 里的 AJP Connector\n   - 或设置 `secretRequired=\"true\"` + 强 secret（仅当确实需要 AJP）\n   - 确认 8009 端口不再监听：`ss -lntp | grep 8009`\n\n**排查是否暴露**：\n```bash\nss -lntp | grep -E '8009|AJP'\n# 或从外部扫描\nnmap -p 8009 <host>\n```\n\n**同类加固项**：\n- 关闭 shutdown 端口（8005）或改为 -1\n- 禁用 manager/host-manager 应用或加 IP 白名单\n- 关闭 autoDeploy、reloadable\n- 版本及时升级（尤其有 CVE 时）\n\n**面试加分点**：能说出 Ghostcat 这个具体漏洞与 AJP 的关系，说明真的做过安全加固，而不是只知道「AJP 是协议」。",
+    "tags": ["AJP", "Ghostcat", "安全加固"],
+    "frequency": "中频"
+  }
+]

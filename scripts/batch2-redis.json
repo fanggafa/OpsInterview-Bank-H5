@@ -1,0 +1,450 @@
+[
+  {
+    "id": 3801,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 ZSet 底层用的是什么结构？为什么不用普通链表？",
+    "answer": "ZSet 底层是**跳表（skiplist）+ 哈希表**的组合，而不是红黑树或链表。\n\n为什么需要两个结构：\n- **哈希表**（dict）：存 member → score 的映射，让 `ZSCORE` 这样的查询是 O(1)\n- **跳表**（zskiplist）：按 score 有序排列，让范围查询（ZRANGE、ZRANGEBYSCORE）高效\n\n**为什么用跳表不用红黑树**：\n1. **范围查询更简单**：跳表底层是有序链表，找到起点后顺序遍历即可；红黑树要先中序遍历，实现复杂\n2. **实现简单、易调试**：跳表代码量远小于平衡树的旋转逻辑\n3. **并发友好**（虽 Redis 单线程用不上，但设计上更好）\n4. 插入/删除平均 O(log N)，与红黑树同阶\n\n**为什么不用普通链表**：\n- 链表查找是 O(N)，范围查询定位起点太慢\n- 跳表通过多级索引把查找降到 O(log N)\n\n小数据量时：元素少且值小时用 **listpack**（7.0 前是 ziplist）压缩存储，超过阈值（默认 128 个元素 / 64 字节）才转为跳表。\n\n相关配置：`zset-max-listpack-entries`、`zset-max-listpack-value`。",
+    "tags": ["ZSet", "跳表", "底层结构"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3802,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 String 类型底层是怎么存的？为什么有 SDS 而不是 C 字符串？",
+    "answer": "Redis 自己实现了 **SDS（Simple Dynamic String）**，而不是直接用 C 的 `char*`。\n\nSDS 结构：\n```\nstruct sdshdr {\n    int len;      // 已用长度\n    int alloc;    // 分配的总容量\n    char buf[];   // 实际数据（以 \\0 结尾，兼容 C 函数）\n}\n```\n\n**为什么不用 C 字符串**：\n\n| 问题 | C 字符串 | SDS |\n|---|---|---|\n| 获取长度 | O(N) 遍历 | **O(1)** 直接读 len |\n| 二进制安全 | ❌ 遇 \\0 截断 | ✅ 按 len 判断，可存图片/协议数据 |\n| 缓冲区溢出 | 易发生（strcat） | ✅ 自动扩容 |\n| 频繁修改 | 每次 realloc | ✅ 预分配（free 空间）+ 惰性释放 |\n\n**扩容策略**（减少 realloc 次数）：\n- len < 1MB：翻倍分配（alloc = 2 × len）\n- len ≥ 1MB：每次多分配 1MB\n\n**惰性释放**：缩短字符串时不立即回收内存（`sdsfree` 才回收），留给后续 append 复用。\n\n**编码选择**（`OBJECT ENCODING` 可看）：\n- int：能用 long 表示的整数，直接存\n- embstr：短字符串（≤44 字节），header 与数据连续分配，只分配一次\n- raw：长字符串，分开分配\n\n**一条命令记住**：`SET key 123` 得到 int 编码，`SET key abc` 得到 embstr，`SET key <超长>` 得到 raw。",
+    "tags": ["String", "SDS", "底层结构"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3803,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 ZSet 底层使用什么数据结构实现有序范围查询？",
+    "options": [
+      { "key": "A", "text": "红黑树" },
+      { "key": "B", "text": "跳表（skiplist）+ 哈希表" },
+      { "key": "C", "text": "普通双向链表" },
+      { "key": "D", "text": "B+ 树" }
+    ],
+    "answer": ["B"],
+    "explanation": "跳表保证按 score 有序、范围查询高效；哈希表保证 member→score 查询 O(1)。用跳表而非红黑树，是因为范围查询更简单、实现更易调试。",
+    "tags": ["ZSet", "跳表"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3804,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 集群的 16384 个槽是怎么来的？为什么不是 65536？",
+    "answer": "16384 是 Redis 作者 antirez 在权衡后的选择，主要有四个理由：\n\n**1. 心跳包大小**\n集群节点间要互相发心跳（PING/PONG），心跳里带一个 bitmap 表示「我负责哪些槽」。\n- 16384 个槽 → bitmap 是 16384/8 = **2KB**\n- 65536 个槽 → **8KB**\n节点数多时（如 100 节点），心跳包会占用大量带宽。2KB 是能接受的平衡点。\n\n**2. 节点数量上限**\n- 16384 槽意味着理论上最多 16384 个主节点（实测受限于心跳带宽，实际远小于此）\n- Redis 作者认为超过 1000 个主节点时，集群本身已经不是好方案了\n\n**3. 槽位分配的粒度**\n- 16384 个槽分摊给 N 个节点，粒度足够细（如 20 节点 ≈ 819 槽/节点），扩容迁移成本可控\n\n**4. 位运算效率**\n- 槽号用 14 位表示（2^14 = 16384），对 key 做 CRC16 后取模或位运算都很高效\n\n**关键点**：这个数字是**硬编码在配置里的**（`cluster-node-timeout` 无关，是协议层面的），不可修改。改变它意味着集群协议不兼容。\n\n面试加分：能说出「心跳包大小与节点数上限的权衡」，说明理解集群设计而不是死记数字。",
+    "tags": ["集群", "hash slot", "16384"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3805,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "什么是 Redis 的 Pipeline？它解决了什么问题？有什么限制？",
+    "answer": "**Pipeline（管道）**：一次发送多条命令、不等待逐条响应，最后统一读取所有结果。\n\n**解决的问题**：减少网络往返（RTT）。\n- 不用 Pipeline：N 条命令 = N 次 RTT\n- 用 Pipeline：N 条命令 = **1 次 RTT**\n在跨机房场景（RTT 可能 20-50ms）效果巨大。\n\n**与事务的区别**：\n| | Pipeline | MULTI/EXEC 事务 |\n|---|---|---|\n| 原子性 | ❌ 不保证 | ✅ 保证一起执行 |\n| 目的 | 减少 RTT | 保证原子 |\n| 中间失败 | 后续命令照常执行 | 整体执行，不中断 |\n\n**限制与注意**：\n1. **不能太大**：一次塞 10 万条命令会占用大量内存（客户端与服务端都在排队），建议每批 100-1000 条\n2. **不是原子操作**：中间某条失败，其余仍会执行，错误要自己处理\n3. **阻塞风险**：超大 Pipeline 会让服务端在短时间内集中处理，影响其他客户端\n4. **不减少服务端执行时间**：只是省了网络往返，命令本身还是串行执行\n\n**实践建议**：\n- 批量操作优先用原生批量命令（如 `MGET`、`MSET`、`HMSET`）而非 Pipeline\n- Pipeline 适合「逻辑上无关但想一起发」的场景\n- 配合 `redis-cli --pipe` 做批量导入",
+    "tags": ["Pipeline", "RTT", "批量"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3806,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "以下哪些情况会导致 Redis 变慢或阻塞？（多选）",
+    "options": [
+      { "key": "A", "text": "执行 KEYS * 遍历所有 key" },
+      { "key": "B", "text": "对超大 key 执行 DEL" },
+      { "key": "C", "text": "AOF 使用 always 策略，每次写都 fsync" },
+      { "key": "D", "text": "读取一个 10 字节的 String" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "A 是 O(N) 全遍历；B 的 DEL 是同步释放内存，大 key 会卡住主线程（应改用 UNLINK）；C 的 always 每次写都刷盘，吞吐骤降。D 是最普通的操作，不会阻塞。",
+    "tags": ["阻塞", "慢查询", "大key"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3807,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 used_memory 和 used_memory_rss 有什么区别？为什么两者差很多？",
+    "answer": "两个指标视角不同：\n\n- **used_memory**：Redis 自己统计的「逻辑内存」，即数据 + 内部结构占用的字节数\n- **used_memory_rss**：操作系统看到的「物理内存」（Resident Set Size），即 Redis 进程实际占用的物理页\n\n**正常情况**：rss 略大于 used_memory（有内存分配器的碎片与开销）\n\n**两者差很多的情况**：\n\n1. **rss 远大于 used_memory**\n   - 内存碎片：频繁增删导致分配器（jemalloc）留下空洞\n   - 大 key 删除后内存未归还 OS\n   - 解决：开 `activedefrag yes` 做主动碎片整理；或重启\n\n2. **used_memory 远大于 rss**\n   - 部分内存被 swap 换出到磁盘（**危险信号**）\n   - 性能会急剧下降\n   - 解决：关掉 swap（`vm.swappiness=0`）或加大内存\n\n**查看方式**：\n```\nINFO memory\n```\n关注 `used_memory_human`、`used_memory_rss_human`、`mem_fragmentation_ratio`（= rss/used）。\n\n**mem_fragmentation_ratio 判断**：\n- 1.0 - 1.5：正常\n- \\> 1.5：碎片较多，考虑碎片整理\n- **< 1**：正在使用 swap，必须立即处理\n\n**易混淆点**：`maxmemory` 限制的是 used_memory，不是 rss。所以即使 rss 很高（碎片），也不会触发淘汰。",
+    "tags": ["内存", "碎片", "rss"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3808,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 中查看当前所有 key 数量的命令是？",
+    "options": [
+      { "key": "A", "text": "KEYS *" },
+      { "key": "B", "text": "DBSIZE" },
+      { "key": "C", "text": "SCAN 0" },
+      { "key": "D", "text": "INFO keyspace" }
+    ],
+    "answer": ["B"],
+    "explanation": "DBSIZE 直接返回 key 总数，O(1)，安全。KEYS * 是 O(N) 会阻塞，生产禁用。INFO keyspace 也能看（含过期数），但不只是总数。",
+    "tags": ["DBSIZE", "key 数量"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3809,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 的哨兵（Sentinel）如何判断主库故障并完成切换？",
+    "answer": "分四步，涉及「主观下线 → 客观下线 → 选举 → 切换」：\n\n**1. 主观下线（SDOWN）**\n单个哨兵按 `down-after-milliseconds` 判断主库无响应 → 标记为「主观下线」，仅代表自己的看法。\n\n**2. 客观下线（ODOWN）**\n该哨兵向其他哨兵询问「你也认为主库挂了吗？」\n- 当认为下线的哨兵数 ≥ `quorum`（法定票数）→ 判定「客观下线」\n- **注意**：先只对主库做客观下线判断（从库故障只做主观，不切换）\n\n**3. 选举 Leader 哨兵**\n- 发现 ODOWN 的哨兵向其他哨兵请求投票（`SENTINEL is-master-down-by-addr`）\n- 每个哨兵在一个纪元（epoch）内只投一票，先到先得\n- 获得**多数票**（超过哨兵总数的一半）且票数 ≥ quorum 的成为 Leader\n\n**4. 执行故障转移**\nLeader 从从库中选新主，选择依据（依次）：\n1. 排除已下线、响应慢的从库\n2. 选 `slave-priority` 最高的\n3. 优先级相同，选**复制偏移量最大**的（数据最新）\n4. 再相同，选 `runid` 最小的\n\n然后：新主执行 `SLAVE NO ONE` → 其他从库指向新主 → 旧主恢复后作为从库加入\n\n**关键配置**：\n```\nsentinel monitor mymaster 127.0.0.1 6379 2   -- 最后的 2 就是 quorum\nsentinel down-after-milliseconds mymaster 30000\ndown-after-milliseconds\n```\n\n**常见坑**：哨兵数量应为**奇数且 ≥3**，否则容易出现脑裂（两个分区各自选出主库）。",
+    "tags": ["哨兵", "故障转移", "quorum"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3810,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "关于 Redis 的持久化，以下说法正确的是？（多选）",
+    "options": [
+      { "key": "A", "text": "RDB 恢复速度快，但可能丢失最后一次快照后的数据" },
+      { "key": "B", "text": "AOF everysec 最多丢约 1 秒数据" },
+      { "key": "C", "text": "混合持久化把 RDB 与 AOF 的优点结合，是 4.0+ 推荐做法" },
+      { "key": "D", "text": "开启 AOF 后就不再需要 RDB，可以完全关闭 RDB" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 不完全正确：实践中仍建议保留 RDB 用于冷备与快速恢复。混合持久化（aof-use-rdb-preamble）正是把 RDB 格式写入 AOF 头部，兼顾两者。",
+    "tags": ["持久化", "RDB", "AOF"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3811,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 如何实现分布式限流？",
+    "answer": "常用三种算法，都可以用 Redis 的原子命令实现：\n\n**1. 固定窗口计数（简单但有临界问题）**\n```\n-- 对 key 自增，设置过期\nINCR limit:user:1001\nEXPIRE limit:user:1001 60   -- 第一次设置\n-- 判断返回值 > 阈值 则拒绝\n```\n推荐用 Lua 保证「自增 + 设过期」原子。\n问题：临界突刺（59 秒和 01 秒各 100 次 = 2 秒内 200 次）。\n\n**2. 滑动窗口（用 ZSet，精确但内存高）**\n```\nZREMRANGEBYSCORE key 0 (now - window)   -- 清掉窗口外的\nZCARD key                                -- 当前窗口内数量\nZADD key now now                         -- 记录本次\nEXPIRE key window\n```\n用 Lua 打包成原子操作。优点精确，缺点每个请求一条记录，内存占用大。\n\n**3. 令牌桶 / 漏桶（允许突发，最实用）**\nRedis 官方有基于 Lua 的令牌桶实现思路：\n- 用 Hash 存 `tokens`（当前令牌数）和 `last_refill`（上次补充时间）\n- 每次请求计算「距上次过了多久 × 速率」补充令牌\n- 令牌够则扣减放行，不够则拒绝\n\n**生产建议**：\n- 优先用 **令牌桶**（支持突发、平滑）\n- 一定要用 **Lua 脚本**保证原子性，不要用多条命令拼\n- key 加业务前缀，避免冲突\n- 降级策略：Redis 不可用时不能把请求全放过去，要有本地兜底限流",
+    "tags": ["限流", "令牌桶", "Lua"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3812,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis Cluster 的故障转移是怎么工作的？什么情况下会发生脑裂？",
+    "answer": "**故障检测与转移**：\n\n1. **主观下线（PFAIL）**：节点 A 向 B 发 PING 超时 → A 标记 B 为 PFAIL（仅自己的看法）\n2. **客观下线（FAIL）**：A 通过 Gossip 收集其他节点对 B 的判断，当**超过半数主节点**都标记 B 为 PFAIL → 升级为 FAIL，广播全网\n3. **从节点发起选举**：B 的从节点延迟一段时间（`cluster-node-timeout × 随机因子`）后，向所有主节点请求投票\n4. **投票与晋升**：主节点检查「该从节点数据是否足够新（offset）」，投出赞成票。获得**多数主节点**投票的从节点晋升为新主，接管 B 的槽位\n5. **其他节点更新路由**：通过 Gossip 扩散新拓扑\n\n**脑裂（split-brain）**：\n\n发生条件：网络分区，两边各自认为对方挂了。\n\nRedis Cluster 的防护机制：\n- **需要多数派投票**：分区少数派那侧的从节点拿不到多数票，无法晋升 → 不会双主\n- **`cluster-node-timeout`**：节点间失联超过该时间才判定故障\n- **`cluster-require-full-coverage`**：默认 yes，任一槽位不可用则整个集群拒绝服务（**这是保护数据一致性的关键，但也意味着可用性下降**）\n\n真正容易脑裂的场景：\n- 主库所在分区与多数节点隔离（少数派），但主库仍在对外服务 → 客户端可能还在往它写数据，同时多数派已选出新主 → **两边都接受写入**\n\n缓解手段：\n1. 客户端要能感知拓扑变化，及时切换\n2. 设置 `min-replicas-to-write`（如 1），让主库在没有足够从库确认时**拒绝写入**，这是最有效的防止脑裂丢数据的配置\n3. 网络层面避免长时间分区\n\n**对比哨兵**：哨兵同样需要多数投票，脑裂风险类似，也需要 `min-replicas-to-write` 这类配置兜底。",
+    "tags": ["集群", "故障转移", "脑裂"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3813,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 默认有多少个数据库（database）？集群模式呢？",
+    "options": [
+      { "key": "A", "text": "默认 16 个；集群模式只有 1 个（db 0）" },
+      { "key": "B", "text": "默认 1 个；集群有 16 个" },
+      { "key": "C", "text": "都是 16 个" },
+      { "key": "D", "text": "都是 1 个" }
+    ],
+    "answer": ["A"],
+    "explanation": "单机默认 databases 16（0-15），可用 SELECT 切换。但集群模式不支持多数据库，只有 db 0。实践上也不推荐用多库（运维复杂、集群不兼容、容易误操作）。",
+    "tags": ["database", "集群", "常见坑"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3814,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 Lua 脚本有什么优势？使用时要注意什么？",
+    "answer": "**优势**：\n1. **原子性**：Lua 脚本在执行期间不会被其他命令打断，天然原子（但不是事务回滚语义——出错后前面已执行的不会撤销）\n2. **减少 RTT**：多条命令合并成一次调用\n3. **服务端计算**：避免把大量数据拉到客户端再算\n\n**典型场景**：分布式锁释放（比较+删除）、限流、库存扣减、复杂条件更新。\n\n**坑与注意**：\n\n1. **不能在脚本里做耗时操作**：脚本执行期间会阻塞整个 Redis（单线程），死循环会导致服务不可用\n   - 用 `SCRIPT KILL` 可杀（前提是脚本还没写操作）\n   - 或用 `lua-time-limit` 限制\n2. **脚本中的 key 必须在同一个节点**：\n   - 集群模式下，脚本操作的所有 key 必须落在同一个 slot，否则报 CROSSSLOT\n   - 解决：用 hash tag（如 `{user:1001}:cart`、`{user:1001}:order` 强制同槽）\n3. **必须用 KEYS 声明 key**：\n   - 脚本要用 `KEYS[1]` 而非把 key 拼进字符串，否则集群无法路由\n4. **不要用随机数/时间**做决策依据：\n   - Redis 5.0 前用 `redis.replicate_commands()` 才能用基于时间/随机的脚本\n   - 否则主从数据会不一致\n\n**实践建议**：优先用 redis.call 的原子命令组合，脚本越短越好；把脚本用 `SCRIPT LOAD` 预热，用 `EVALSHA` 调用省带宽。",
+    "tags": ["Lua", "原子性", "集群限制"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3815,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "关于 Redis 的 SCAN 命令，以下说法正确的是？（多选）",
+    "options": [
+      { "key": "A", "text": "SCAN 是渐进式遍历，不会像 KEYS 那样阻塞" },
+      { "key": "B", "text": "SCAN 可能返回重复元素，需要调用方自行去重" },
+      { "key": "C", "text": "SCAN 保证在一次完整遍历中返回所有 key，不会遗漏" },
+      { "key": "D", "text": "SCAN 的 COUNT 参数决定每次返回多少，但实际数量不保证" }
+    ],
+    "answer": ["A", "B", "D"],
+    "explanation": "C 是错的：SCAN 是弱一致遍历，遍历期间如果有增删，某些 key 可能被遗漏或重复返回。这对「统计总数」不安全，但对「批量处理」是可接受的。",
+    "tags": ["SCAN", "遍历", "KEYS 替代"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3816,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 主从切换后，客户端连接报错或数据丢失，如何排查？",
+    "answer": "分「为什么连不上/报错」和「为什么丢数据」两条线。\n\n**A. 客户端报错**\n\n常见错误与原因：\n| 报错 | 原因 |\n|---|---|\n| `READONLY` | 连到了从库（从库默认 read_only） |\n| `MOVED xxx` | 集群模式下 key 不在该节点 |\n| `CLUSTERDOWN` | 集群不可用（槽位未全覆盖） |\n| 连接超时/被拒 | 客户端仍指向旧主地址 |\n\n排查：\n1. `INFO replication` 看当前节点是主还是从\n2. 用 `redis-cli -h 新IP -p 端口 PING` 确认新主可达\n3. 检查客户端配置（是否支持哨兵/集群自动发现，还是写死了 IP）\n4. 若写死 IP → **这是最常见的根因**，应改用哨兵或集群模式 + 域名或 VIP\n\n**B. 数据丢失**\n\n丢失环节判断：\n1. **异步复制导致**：主库写入内存并返回客户端，尚未同步到从库就挂了 → 这部分必然丢\n   - 确认复制模式：`INFO replication` 看是否半同步，`Rpl_semi_sync` 是否生效\n2. **脑裂导致**：旧主仍在对外服务并接受写入，与新的主并存 → 双方数据分叉\n   - 检查是否配置了 `min-replicas-to-write`\n   - 从日志里找旧主的写入记录\n3. **故障转移选错了从库**：哨兵选优先级/offset 时选到了较旧的从库\n   - 看 `slave-priority` 与 `slave_repl_offset`\n\n**C. 事后弥补**\n- 从旧主的 AOF/RDB 里抢救数据\n- 对比新旧主的数据（按业务字段核对）\n- 通知业务方核对关键数据（订单、金额）\n\n**D. 长期改进**\n- 用 VIP / 域名而非写死 IP\n- 开半同步 + `min-replicas-to-write 1`\n- 定期做切换演练，量化 RTO/RPO\n- 监控 `master_link_status`、`master_last_io_seconds_ago`",
+    "tags": ["主从切换", "数据丢失", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3817,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 中使用 LPUSH + BRPOP 实现消息队列，最大的问题是？",
+    "options": [
+      { "key": "A", "text": "无法实现消息确认（ACK），消息可能丢失" },
+      { "key": "B", "text": "速度太慢" },
+      { "key": "C", "text": "不支持持久化" },
+      { "key": "D", "text": "只能单机使用" }
+    ],
+    "answer": ["A"],
+    "explanation": "BRPOP 弹出后消息就从 Redis 消失了，如果消费者处理时崩溃，消息就永久丢失（无 ACK 与重投）。Redis 5.0 的 Stream 提供了消费组+ACK+PENDING 列表，才真正解决了这个问题。",
+    "tags": ["消息队列", "BRPOP", "Stream"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3818,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis Stream 相比 List 做消息队列，有什么优势？",
+    "answer": "Redis 5.0 引入的 Stream 是专门为消息队列设计的，解决了 List 的三个硬伤。\n\n**List 做队列的问题**：\n1. 无 ACK 机制：BRPOP 弹出即消费，消费者崩溃 → 消息永久丢失\n2. 无消费组：多个消费者无法协同（List 是一条消息只被一个消费）\n3. 无消息回溯：消费过的消息无法重新读取\n\n**Stream 的能力**：\n| 能力 | 说明 |\n|---|---|\n| **消费组** | XGROUP CREATE，多消费者协同消费（每条消息组内只投一次） |\n| **ACK 机制** | XACK 确认；未确认的留在 PENDING 列表，可 XCLAIM 转移给其他消费者 |\n| **消息 ID** | 按时间戳递增，可精确回溯（XRANGE 指定范围） |\n| **阻塞读** | XREAD BLOCK |\n| **消息持久** | 可保留（配合 MAXLEN 裁剪），不因消费而删除 |\n\n**常用命令**：\n```\nXADD mystream * field value      -- 生产\nXGROUP CREATE mystream g1 $      -- 建消费组\nXREADGROUP GROUP g1 c1 COUNT 10 BLOCK 5000 STREAMS mystream >\nXACK mystream g1 <id>            -- 确认\nXPENDING mystream g1             -- 查看未确认\nXCLAIM mystream g1 c2 0 <id>     -- 转移给另一个消费者\n```\n\n**注意**：Stream 仍不是完整 MQ——无跨节点强一致、无复杂路由、运维工具少。要求高可靠时用 Kafka/RocketMQ。Stream 适合「轻量、容忍少量丢失、不想引入外部组件」的场景。",
+    "tags": ["Stream", "消息队列", "消费组"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3819,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "以下哪些是 Redis 的典型应用场景？（多选）",
+    "options": [
+      { "key": "A", "text": "缓存热点数据" },
+      { "key": "B", "text": "分布式锁" },
+      { "key": "C", "text": "计数器与排行榜" },
+      { "key": "D", "text": "存储大量历史归档日志（胜于文件系统）" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 不合适：Redis 是内存数据库，存大量归档日志成本极高，且不适合大对象持久存储。归档应用对象存储或文件系统。",
+    "tags": ["应用场景", "选型"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3820,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 内存持续增长但 used_memory 稳定，可能是什么原因？",
+    "answer": "这是典型的「逻辑内存正常但物理内存涨」问题，核心在 `used_memory_rss`。\n\n**先确认**：\n```\nINFO memory\n```\n对比 `used_memory` 与 `used_memory_rss`，算 `mem_fragmentation_ratio = rss / used`。\n\n**常见原因**：\n\n1. **内存碎片（最常见）**\n   - 频繁增删 key，尤其大小不一的 key，jemalloc 会留下无法复用的小空洞\n   - ratio > 1.5 且持续上升可判定\n   - 解决：开 `activedefrag yes`（在线碎片整理），或低峰重启\n\n2. **大 key 删除未归还内存**\n   - DEL 大 key 后，内存可能留在分配器里不还给 OS\n   - 用 `MEMORY PURGE`（4.0+）主动归还未用内存\n\n3. **RDB fork 的 copy-on-write 未释放**\n   - fork 期间写入导致内存翻倍，快照完成后应回落\n   - 若长期不回落，检查是否有子进程残留（`ps aux | grep redis-rdb`）\n\n4. **client buffer 持续增长**\n   - 慢客户端堆积（输出缓冲）或 Pipeline 过大\n   - 查 `CLIENT LIST` 的 `omem` 字段，或 `client-output-buffer-limit`\n   - 这类内存计入 used_memory 但常被忽略\n\n5. **AOF rewrite 缓冲区**\n   - rewrite 期间新写入进 AOF 缓冲，大写入量时占用可观\n\n6. **内存被 swap 换出（反向问题）**\n   - 若 ratio < 1，说明部分内存在 swap 里，是更危险的信号\n\n**排查命令序列**：\n```\nINFO memory              -- 看两个指标与比例\nMEMORY DOCTOR            -- Redis 自己的诊断\nMEMORY STATS             -- 细分内存分布\nCLIENT LIST              -- 看 omem/qbuf\n```\n\n**处置建议**：\n- ratio 1.5 以内可接受，先观察\n- 开 activedefrag（注意会消耗 CPU）\n- 长期方案：规范 key 大小、避免频繁大 key增删、设置合理的 maxmemory 与淘汰策略",
+    "tags": ["内存增长", "碎片", "排查"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3821,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 key 命名有哪些最佳实践？为什么要避免过长或过多的 key？",
+    "answer": "**命名规范**：\n1. **用业务前缀**：`user:1001:profile`、`order:20250101:count`（用冒号分层，可读且便于 SCAN 匹配）\n2. **语义清晰**：能一眼看出存什么，如 `cache:product:123` 优于 `p123`\n3. **控制长度**：建议 ≤ 64 字节。key 本身也占内存，几百万个长 key 浪费可观\n4. **不用中文/特殊字符**（可用但不利于跨语言与命令行操作）\n5. **统一大小写风格**（通常全小写）\n\n**为什么要避免过长或过多**：\n\n过长（如把整个 JSON 拼进 key）：\n- 每 key 都占内存，百万级 key 时浪费明显\n- 集群模式下 key 是哈希计算的输入，过长影响路由效率\n- 日志和慢查询里打印出来极难阅读\n\n过多（如每个用户每篇文章一个 key）：\n- **哈希冲突与 O(N) 遍历成本上升**\n- 集群模式下容易数据倾斜\n- 大量小 key 的过期检查与内存碎片负担重\n- 运维上 SCAN 遍历慢\n\n**推荐做法**：\n- 用 Hash 聚合小字段：`HMSET user:1001 name x age 20` 而不是 `SET user:1001:name x` + `SET user:1001:age 20`\n- 但注意 Hash 也会变成大 key，通常建议单 Hash ≤ 1000 字段\n- 设计时按「访问模式」决定粒度：总是一起读写的放一起\n\n**反例**：把 session 存成 `<userid><timestamp><random>` 这种超长 key，且每请求一个——内存和遍历成本双高。",
+    "tags": ["key 设计", "命名规范", "大key"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3822,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 WAIT 命令与半同步复制的关系是？",
+    "options": [
+      { "key": "A", "text": "WAIT 是客户端层面的「等待 N 个从库确认」，弥补 Redis 默认异步复制的不足" },
+      { "key": "B", "text": "WAIT 与复制无关" },
+      { "key": "C", "text": "WAIT 会自动开启半同步复制" },
+      { "key": "D", "text": "WAIT 只用于集群模式" }
+    ],
+    "answer": ["A"],
+    "explanation": "Redis 的主从复制默认是异步的，没有像 MySQL 那样的半同步配置。WAIT 让客户端主动等待「至少 N 个从库已同步到某个 offset」，是一种客户端侧的补偿手段。但它无法保证强一致（超时后仍返回当前同步数）。",
+    "tags": ["WAIT", "复制", "一致性"],
+    "frequency": "低频"
+  },
+  {
+    "id": 3823,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 扩容时如何迁移数据？集群模式下有什么注意事项？",
+    "answer": "**单机/主从扩容**：数据量增加只能纵向扩容（加内存）或分片改造（迁移到集群）。\n\n**集群扩容标准流程**：\n\n1. **加入新节点**\n```\nCLUSTER MEET <新节点IP> <端口>\nCLUSTER NODES    -- 确认节点已加入\n```\n\n2. **分配槽位（resharding）**\n```\n-- 把一部分槽从旧节点迁移到新节点\nredis-cli --cluster reshard <现有节点IP>:<端口>\n```\n或原生命令：\n```\nCLUSTER SETSLOT <slot> IMPORTING <源节点ID>   -- 在目标节点执行\nCLUSTER SETSLOT <slot> MIGRATING <目标节点ID> -- 在源节点执行\nCLUSTER GETKEYSINSLOT <slot> <count>          -- 拿到要迁的 key\nMIGRATE <目标IP> <端口> \"\" 0 5000 KEYS <key...>\nCLUSTER SETSLOT <slot> NODE <目标节点ID>      -- 完成后通知所有节点\n```\n\n3. **验证**\n```\nredis-cli --cluster check <任意节点>\nCLUSTER INFO    -- 看 cluster_state:ok\n```\n\n**关键注意事项**：\n\n1. **迁移期间的访问**：源节点找不到 key 会返回 `ASK` 重定向，客户端要支持 ASK 语义（不是 MOVED）\n2. **大 key 迁移会阻塞**：单个大 key 可能阻塞数秒，应选低峰或分批\n3. **必须迁移整槽**：不能只迁半个槽\n4. **MIGRATE 的 KEYS 参数宜少**：建议每批 10-100 个 key\n5. **扩容后是否需要 rebalance**：`--cluster rebalance` 可均衡槽数，但要注意各节点容量差异（可加权）\n6. **监控**：迁移期间关注 `cluster_slots_migrating`、网络带宽、内存\n\n**替代方案**：用 `redis-cli --cluster add-node --cluster-slave` 加从节点分担读；或用 Proxy 层（Codis/Twemproxy）做更多自定义控制。",
+    "tags": ["扩容", "reshard", "槽迁移"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3824,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "关于 Redis 的分布式锁实现，以下哪些说法正确？（多选）",
+    "options": [
+      { "key": "A", "text": "加锁必须用 SET key value NX PX timeout，保证原子性" },
+      { "key": "B", "text": "解锁要校验 value 是自己的，并用 Lua 保证原子" },
+      { "key": "C", "text": "业务执行时间可能超过 TTL 时，需要看门狗续期" },
+      { "key": "D", "text": "Redis 分布式锁可以做到与 ZooKeeper 同级的强一致" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是常见误解：Redis 主从是异步复制，主库写入锁后未同步就宕机，新主没有这把锁 → 两个客户端同时持锁。所以 Redis 锁是 AP 倾向的，强一致场景应用 ZooKeeper/etcd 或数据库行锁。",
+    "tags": ["分布式锁", "SETNX", "一致性"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3825,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 6.0 的多线程 IO 具体是怎么回事？命令执行是否变成了多线程？",
+    "answer": "**结论先说：命令执行仍然是单线程**，多线程只用于网络 IO。\n\n**为什么引入多线程 IO**：\n单线程瓶颈不再是命令执行，而是**网络读写与协议解析**。高 QPS 下，主线程把大量时间花在 read()/write() 和 RESP 协议解析上。\n\n**多线程 IO 的工作方式**：\n1. 主线程 accept 连接\n2. 把就绪的 socket **分发给多个 IO 线程**去读、解析命令\n3. 主线程**串行执行**所有命令（保证原子性）\n4. 再由 IO 线程把响应写回 socket\n\n**关键点**：\n- 命令执行阶段没有任何并行，所以不存在多线程的数据竞争问题\n- 并发安全语义与之前完全一致\n- 默认关闭，需配置开启：\n```\nio-threads 4              -- IO 线程数，建议 ≤ CPU 核数，通常 4-8\nio-threads-do-reads yes   -- 开启读多线程\n```\n\n**什么时候有效**：\n- 高 QPS 小命令（如 GET/SET）场景提升明显\n- 如果业务本身是慢命令堆积（如 KEYS、大 key），多线程 IO 帮助有限\n- CPU 已打满且瓶颈在命令执行时，多线程 IO 无效\n\n**常见误解**：\n- ❌ 「Redis 6.0 变多线程了」→ 只是 IO 多线程\n- ❌ 「设 io-threads 越多越好」→ 超过 CPU 核数会因上下文切换反而下降\n\n**后续版本**：7.0 引入了多线程（sharded）的某些特性优化，但核心执行模型仍是单线程。",
+    "tags": ["多线程IO", "6.0", "单线程"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3826,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "如何安全地遍历 Redis 中的大 key 并删除？",
+    "answer": "**核心原则：绝不用 DEL，改用 UNLINK + SCAN 渐进处理。**\n\n**为什么不能 DEL**：\n- DEL 是**同步**释放内存，几百万个元素的 Hash/List 可能阻塞主线程数秒\n- 期间所有请求排队，表现为服务超时\n\n**正确做法**：\n\n1. 用 UNLINK 异步删除（4.0+）\n```\nUNLINK bigkey   -- 只从 keyspace 移除，内存在后台线程释放\n```\n\n2. 超大集合要**分批删除元素**，而不是整体删除\n```\n-- Hash 分批删\nHSCAN bigkey 0 COUNT 100      -- 拿到一批 field\nHDEL bigkey field1 field2 ...  -- 逐批删除\n\n-- List 从尾部弹\nRPOP bigkey 100               -- 每次弹 100 个\n\n-- Set\nSSCAN bigkey 0 COUNT 100 → SREM\n\n-- ZSet\nZSCAN bigkey 0 COUNT 100 → ZREM\n```\n循环直到删空，每批之间加短暂 sleep 让其他请求有机会执行。\n\n3. 迁移大 key 用 MIGRATE 也要分批（一次迁整 key 会阻塞）。\n\n**先找到大 key**：\n```\nredis-cli --bigkeys              -- 各类型最大的 key（采样，会扫全库但渐进）\nredis-cli --memkeys              -- 按内存排序（4.0+）\nMEMORY USAGE <key>               -- 单 key 精确内存\n```\n注意 `--bigkeys` 本身也是全库 SCAN，生产低峰执行。\n\n**常见事故**：业务方直接 `DEL cart:biguser`，结果 Redis 卡住 10 秒，全站超时。所以应当把「删除大 key 必须用 UNLINK」写进团队规范。",
+    "tags": ["大key", "UNLINK", "删除"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3827,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 中设置 key 10 秒后过期的命令是？",
+    "options": [
+      { "key": "A", "text": "SET key value EX 10" },
+      { "key": "B", "text": "SET key value TTL 10" },
+      { "key": "C", "text": "EXPIRE key 10" },
+      { "key": "D", "text": "SETEX 10 key value" }
+    ],
+    "answer": ["A"],
+    "explanation": "SET key value EX 10（秒）或 PX（毫秒）是推荐写法，原子且清晰。EXPIRE 也能设但需要先 SET 再单独设置（非原子）；D 的参数顺序是 SETEX key 10 value。",
+    "tags": ["过期", "SET EX", "命令"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3828,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的 INFO 命令里，你最关注哪些指标？为什么？",
+    "answer": "按「是否影响可用性」排序，最该盯的几组：\n\n**1. 内存（memory 段）**\n```\nused_memory_human         -- 逻辑内存\nused_memory_rss_human     -- 物理内存\nmem_fragmentation_ratio   -- >1.5 碎片多；<1 在用 swap（危险）\nmaxmemory                 -- 上限是否合理\n```\n\n**2. 连接（clients 段）**\n```\nconnected_clients         -- 当前连接数\nblocked_clients           -- 被阻塞的（BRPOP 等）\nmaxclients                -- 上限是否接近\n```\n连接数接近上限会直接拒绝新连接。\n\n**3. 复制（replication 段）**\n```\nrole                      -- master/slave\nmaster_link_status        -- 从库是否连上主库（down 就是出事了）\nmaster_last_io_seconds_ago -- 多久没收到主库数据\nslave_repl_offset         -- 复制偏移量\n```\n从库的 `master_link_status` 是必看项。\n\n**4. 持久化（persistence 段）**\n```\nrdb_last_bgsave_status    -- 上次 RDB 是否成功（err 说明备份失败）\naof_last_bgrewrite_status -- AOF 重写状态\naof_last_write_status     -- AOF 写入状态（err 很危险）\nrdb_changes_since_last_save\n```\n\n**5. 统计（stats 段）**\n```\nkeyspace_hits / keyspace_misses  -- 算命中率\nrejected_connections             -- 被拒绝的连接数（>0 就有问题）\nexpired_keys / evicted_keys      -- 过期与淘汰数量（evicted 持续增长说明内存不足）\n```\n\n**6. CPU（cpu 段）**\n```\nused_cpu_sys / used_cpu_user\n```\n单核打满即瓶颈。\n\n**7. 集群（cluster 段）**\n```\ncluster_state             -- ok / fail\ncluster_slots_ok          -- 可用槽数\n```\n\n**一句话**：内存、连接、复制、持久化这四组只要有异常，服务就一定出问题；其余用于性能调优。",
+    "tags": ["INFO", "监控指标", "运维"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3829,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 要做异地容灾，以下哪些考虑是必要的？（多选）",
+    "options": [
+      { "key": "A", "text": "跨地域复制必然带来延迟，需评估对业务的影响" },
+      { "key": "B", "text": "明确 RTO/RPO 目标，决定是热备还是冷备" },
+      { "key": "C", "text": "异地节点通常设为只读，避免双写冲突" },
+      { "key": "D", "text": "只要开了异地复制就不需要本地高可用了" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：异地容灾不能替代本地高可用。跨地域切换耗时较长（分钟级），本地机房内的主从切换才是分钟内的第一道防线。两者是分层关系。",
+    "tags": ["异地容灾", "RTO", "RPO"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3830,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 的 maxmemory 和 maxmemory-policy 怎么配合使用？",
+    "answer": "两者是「上限」与「超限后怎么办」的配套关系。\n\n**maxmemory**：内存使用的硬上限，达到后触发淘汰策略。\n```\nmaxmemory 4gb\n```\n- 不设或设 0：不限制，可能吃光内存导致 OOM\n- 建议设为物理内存的 60%-70%（留空间给 fork 的 COW 与系统）\n\n**maxmemory-policy**：超限时的淘汰行为，8 种可选：\n\n| 策略 | 说明 |\n|---|---|\n| noeviction（默认） | 不淘汰，写入直接报错 |\n| allkeys-lru | 所有 key 中淘汰最久未用 |\n| allkeys-lfu | 所有 key 中淘汰使用频率最低 |\n| allkeys-random | 所有 key 随机淘汰 |\n| volatile-lru | **只**从设了 TTL 的 key 中淘汰最久未用 |\n| volatile-lfu | 只从有 TTL 的 key 中淘汰频率最低 |\n| volatile-random | 只从有 TTL 的 key 中随机淘汰 |\n| volatile-ttl | 只从有 TTL 的 key 中淘汰剩余时间最短的 |\n\n**怎么选**：\n- **纯缓存**（数据可重建）→ `allkeys-lru` 或 `allkeys-lfu`（推荐 LFU，更保护热点）\n- **缓存 + 持久数据混存**（如 Redis 里既有缓存也有队列）→ `volatile-*`，但前提是缓存 key 都设了 TTL，否则淘汰不动\n- **不能丢数据**（当数据库用）→ `noeviction`，宁可报错也不要丢\n\n**常见事故**：设了 `volatile-lru` 但大量 key 没设 TTL → 内存满了却淘汰不掉 → 写入报错。这是很典型的配置踩坑。\n\n**监控**：`evicted_keys` 持续增长说明一直在淘汰，需要评估内存是否够；`keyspace_misses` 上升可能是淘汰导致的。",
+    "tags": ["maxmemory", "淘汰策略", "配置"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3831,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "缓存和数据库双写时，为什么推荐「先更新库再删缓存」？删缓存失败怎么办？",
+    "answer": "**为什么是删缓存而不是更新缓存**：\n1. 更新缓存在并发下顺序难保证（两个线程更新库的先后与更新缓存的先后不一致 → 脏数据）\n2. 写多读少时白白浪费缓存计算\n3. 删缓存更简单，下次读自然会重建\n\n**为什么先更新库再删缓存**：\n- 反过来的「先删缓存再更新库」有个致命窗口：\n  - T1 删缓存 → T2 读未命中 → T2 从库读旧值 → T2 回填旧值到缓存 → T1 更新库\n  - 结果缓存里长期是旧值\n- 「先更新库再删缓存」的窗口小得多（只在「读完旧库值但还没来得及回填」的瞬间）\n\n**删缓存失败怎么办**（这是必须有的兜底）：\n\n1. **重试**：删失败进重试队列，指数退避重试 N 次\n2. **消息队列补偿**：把「要删的 key」投递到 MQ，由消费者保证最终删除\n3. **订阅 binlog**：用 Canal/Debezium 监听库变更，异步删缓存（解耦且可靠，推荐）\n4. **延迟双删**：更新库后删一次，延迟几百毫秒再删一次（覆盖「别人读到旧值回填」的窗口）\n5. **TTL 兜底**：所有缓存必须有 TTL，让最终一致有上限\n\n**实践优先级**：TTL 兜底（必须有）+ binlog 订阅（最可靠）+ 重试（简单场景够用）。\n\n**注意**：这些手段都是**最终一致**，不是强一致。要求强一致的场景（如库存扣减）应当直接读写数据库或用分布式锁，别指望缓存一致性方案。",
+    "tags": ["缓存一致性", "延迟双删", "binlog"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3832,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 中什么命令可以查看某个 key 的内存占用？",
+    "options": [
+      { "key": "A", "text": "MEMORY USAGE key" },
+      { "key": "B", "text": "STRLEN key" },
+      { "key": "C", "text": "TTL key" },
+      { "key": "D", "text": "TYPE key" }
+    ],
+    "answer": ["A"],
+    "explanation": "MEMORY USAGE key 返回该 key 及其值占用的字节数（可加 SAMPLES 参数控制采样精度）。STRLEN 只对 String 有效，TTL 看过期时间，TYPE 看类型。",
+    "tags": ["MEMORY USAGE", "大key", "排查"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3833,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "困难",
+    "question": "Redis 的性能突然下降，有哪些排查方向？按优先级说。",
+    "answer": "按「影响面从大到小」排查，避免一上来就看慢日志。\n\n**0. 先确认是 Redis 本身还是网络/客户端**\n```\nredis-cli --latency -h host -p port        -- 测客户端到 Redis 的延迟\nredis-cli --intrinsic-latency 100          -- 测 Redis 自身固有延迟（不含网络）\n```\n两者差异大 → 问题在网络或客户端；都高 → 问题在 Redis。\n\n**1. 慢命令与阻塞（最高优先级）**\n```\nSLOWLOG GET 10          -- 看最近的慢命令（超过 slowlog-log-slower-than）\nLATENCY DOCTOR          -- Redis 自诊断\nLATENCY HISTORY <事件>  -- 看具体事件的时间线\n```\n常见元凶：KEYS、HGETALL 大 hash、大 key 的 DEL、SORT、复杂 Lua 脚本。\n\n**2. 大 key / 热 key**\n```\nredis-cli --bigkeys\nredis-cli --hotkeys     -- 需开启 LFU\n```\n\n**3. 持久化阻塞**\n```\nINFO persistence\nrdb_last_bgsave_status / aof_last_bgrewrite_status\nlatest_fork_usec        -- fork 耗时（毫秒），超过几十毫秒就有影响\n```\nfork 慢 + COW 内存翻倍，是常见的周期性抖动原因。\n\n**4. 内存与淘汰**\n```\nINFO memory    -- 碎片率、是否用 swap\nINFO stats     -- evicted_keys 是否在增长\n```\n达到 maxmemory 后持续淘汰也会拖慢。\n\n**5. 连接与网络**\n```\nINFO clients   -- connected_clients 是否接近 maxclients\nCLIENT LIST    -- 看 omem/qbuf 大的客户端（输出缓冲堆积）\n```\n\n**6. CPU 与系统**\n```\ntop -H -p <pid>      -- Redis 是否单核打满\nvmstat 1             -- 看上下文切换、swap\n```\n\n**7. 复制影响**\n- 从库重连时全量同步（PSYNC 失败退化为全量）会占大量带宽与 CPU\n- 查日志里的 `Full resync` 频率\n\n**排查口诀**：先量延迟（/网络还是/本体）→ 再看慢命令 → 再查大 key → 最后看持久化与系统。\n\n**最容易被忽略的**：客户端连接池配置不当（如每次请求新建连接），会让瓶颈在 TCP 握手而非 Redis。",
+    "tags": ["性能下降", "排查", "延迟"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3834,
+    "type": "multiple",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "以下哪些做法能有效降低 Redis 的内存占用？（多选）",
+    "options": [
+      { "key": "A", "text": "给缓存 key 设置合理的 TTL" },
+      { "key": "B", "text": "用 Hash 把多个小字段聚合，减少 key 数量" },
+      { "key": "C", "text": "选择合适的淘汰策略并设置 maxmemory" },
+      { "key": "D", "text": "把所有值都用 JSON 序列化后存 String，保持统一格式" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 反而增加内存与 CPU：JSON 有大量冗余字符与转义，且每次读写都要序列化/反序列化。能用原地命令操作的结构（Hash/List/ZSet）优先用原生类型。",
+    "tags": ["内存优化", "TTL", "数据结构"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3835,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "为什么 Redis 集群不支持多 key 操作？有什么绕过办法？",
+    "answer": "**原因**：集群把数据按 hash slot 分散到多个节点。`MGET k1 k2 k3` 若 k1/k2/k3 落在不同节点，单个节点无法完成操作，直接报错：\n```\nCROSSSLOT Keys in request don't hash to the same slot\n```\n这本质是分布式系统的 CAP 权衡：为了水平扩展，放弃了跨分片的原子多 key 操作。\n\n**绕过办法**：\n\n1. **hash tag（最常用）**\n用 `{}` 包住相同部分，Redis 只对 {} 内的内容算哈希：\n```\n{user:1001}:profile\n{user:1001}:order\n{user:1001}:cart\n```\n这三个 key 一定会落在同一个 slot，于是 `MGET`、Pipeline、Lua 都可以用。\n注意：hash tag 用得过度会导致数据倾斜（都聚集到一个节点）。\n\n2. **在 key 名前加业务前缀**\n如 `user:1001:profile` 这种方式在集群下**不保证**同槽（计算的是整个 key 名），所以要用 {} 而非单纯冒号。\n\n3. **客户端侧拆分**\n应用按 key 分组，分别向对应节点请求，再合并结果。代价是多一次逻辑。\n\n4. **用单机/主从而非集群**\n数据量不大时，主从 + 哨兵反而更省心，避免这些限制。\n\n**连带影响**（面试常问）：\n- Lua 脚本里用到的所有 key 也必须同槽\n- 事务 `MULTI/EXEC` 只能在单节点内保证原子\n- `SCAN`、`KEYS` 只作用于当前节点，全库遍历需要遍历所有 master",
+    "tags": ["集群", "多key", "hash tag"],
+    "frequency": "高频"
+  }
+]

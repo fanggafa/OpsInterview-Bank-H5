@@ -1,0 +1,157 @@
+[
+  {
+    "id": 1824,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 的堆外内存有哪些来源？为什么容器里容易超限？",
+    "answer": "**堆外内存**指不受 `-Xmx` 限制、但计入进程 RSS 的内存。\n\n**主要来源（6 类）**：\n\n1. **元空间（Metaspace）**\n   - 类元数据、方法字节码、常量池\n   - 受 `-XX:MaxMetaspaceSize` 限制（默认无上限！）\n   - 动态生成类多时会持续增长\n\n2. **直接内存（Direct Memory）**\n   - `ByteBuffer.allocateDirect()`、Netty 的池化 buffer、NIO\n   - 受 `-XX:MaxDirectMemorySize` 限制（默认≈Xmx）\n   - **Netty 应用的重灾区**\n\n3. **线程栈**\n   - 每线程默认 1MB（`-Xss` 可调）\n   - 200 线程 = 200MB\n\n4. **JIT 代码缓存（Code Cache）**\n   - 编译后的机器码，默认 240MB\n   - `-XX:ReservedCodeCacheSize` 可调\n\n5. **GC 自身结构**\n   - G1 的 Card Table、Remembered Set，可占堆的 1-10%\n\n6. **JVM 内部与本地库**\n   - JNI 调用、本地库（如 snappy/zstd 压缩）、malloc 的 arena\n\n**为什么容器里容易超**：\n\n容器 limit 是**整个进程的 RSS 上限**（cgroup 层），而 `-Xmx` 只管堆。常见错误：\n```\n# 错误：limit 2G，Xmx 2G\n-XX:MaxMetaspaceSize 未设 → 可能涨到 300M\n-XX:MaxDirectMemorySize 未设 → 默认≈Xmx = 2G 的额度\n→ 堆 2G + 堆外 → 必然超 2G → OOMKilled\n```\n\n**正确配置**：\n```\n-XX:MaxRAMPercentage=70           # 堆占容器 70%\n-XX:MaxMetaspaceSize=256m         # 必须显式设上限\n-XX:MaxDirectMemorySize=256m      # Netty 应用尤其重要\n-XX:ActiveProcessorCount=4        # 限制 GC/JIT 线程数\n```\n\n**排查方法**：\n```bash\n# 看 Native 内存明细（需启动时加 -XX:NativeMemoryTracking=summary）\njcmd <pid> VM.native_memory summary\n\n# 看堆外估算\njcmd <pid> VM.native_memory summary | grep -E 'Metaspace|Direct|Thread|Code'\n\n# 看进程实际 RSS\ngrep VmRSS /proc/<pid>/status\n```\n\n**关键认知**：`Runtime.maxMemory()` 返回的是**堆**上限，不是容器 limit。用它能看到的只是 Xmx，不能用来判断会不会被 OOMKilled。",
+    "tags": ["堆外内存", "容器", "OOMKilled"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1825,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 参数 -Xss 控制的是什么？设太小的后果是？",
+    "options": [
+      { "key": "A", "text": "每个线程的栈大小；太小会导致 StackOverflowError" },
+      { "key": "B", "text": "堆的总大小" },
+      { "key": "C", "text": "新生代大小" },
+      { "key": "D", "text": "元空间上限" }
+    ],
+    "answer": ["A"],
+    "explanation": "-Xss 是单线程栈容量（默认约 512KB-1MB）。设太小，递归稍深就 StackOverflowError；设太大，线程数多时内存开销大（每线程都占这么多）。这与堆大小无关。",
+    "tags": ["-Xss", "线程栈", "StackOverflow"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1826,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "Tomcat 启动很慢，如何排查？",
+    "answer": "**先量化「慢」**：正常 Tomcat 启动 3-10 秒（取决于应用），超过 30 秒就该查。\n\n**常见原因（按命中率）**：\n\n**1. 应用初始化慢（最常见）**\n- 大量 bean 初始化、依赖注入扫描\n- 数据库连接池预建连接（`initialSize` 大）\n- 缓存预热（加载大量数据）\n- 定时任务在启动时执行\n\n**定位方法**：\n```bash\n# 看 catalina.out 各阶段时间戳\ntail -f logs/catalina.out\n# 关键标记：\"Server startup in XXX ms\"\n\n# 用 jstack 在启动过程中采样，看卡在哪个方法\njstack <pid> > /tmp/startup.txt   # 启动中多采几次\n```\n*（注：上句的取样方法为示意，实战中最好在启动过程中循环 `jstack <pid> > /tmp/startup_$i.txt`，然后看每次栈顶。）*\n\n在 jstack 里找 `main` 线程的栈，就能看到卡在哪个初始化方法。\n\n**2. 类加载慢**\n- 应用 jar 多、类数量大（几万个类）\n- 磁盘 IO 慢或 jar 在远端存储（如 NFS）\n- `-Xshare:on` 或 CDS 未启用（可加速）\n\n**3. 随机数熵不足（经典坑，容易误判）**\n- Linux 早期 `/dev/random` 熵池不足 → SecureRandom 阻塞\n- 症状：启动卡在 `SecureRandom` 相关调用，几分钟不动\n- 解决：\n```bash\n# 临时：提高熵\ncat /proc/sys/kernel/random/entropy_avail\n# 用 urandom 或开启 haveged/rng-tools\n# 或 JVM 加：-Djava.security.egd=file:/dev/./urandom\n```\n\n**4. DNS 解析慢**\n- 启动时解析域名（DB/Redis 地址）超时\n- 检查 `/etc/resolv.conf` 是否有不可达的 nameserver\n\n**5. 磁盘 / 文件系统**\n- 容器内文件系统慢（overlayfs 上大量小文件）\n- jar 解压（`unpackWARs`）耗时\n\n**6. JIT 与 GC 初始化**\n- 堆很大时（如 32G），JVM 初始化数据结构需要时间\n- G1 的 Region 初始化（`-XX:G1HeapRegionSize` 可调）\n\n**7. 安全审计/字节码增强**\n- 使用 APM agent（SkyWalking/Jaeger）做字节码转换\n- Spring 的 `@Configuration` 大量扫描\n\n**排查工具箱**：\n```bash\n# 启动时间分解（JDK 9+）\n-Xlog:class+load=info           # 类加载耗时\n-Xlog:gc*=info\n\n# 启动过程采样\nfor i in {1..20}; do jstack <pid> > /tmp/s$i.txt; sleep 1; done\ngrep -A10 '\"main\"' /tmp/s*.txt   # 看 main 线程在做什么\n```\n\n**优化方向**：\n1. **惰性初始化**：非必需组件延迟加载（Spring 可用 `@Lazy`）\n2. **减少扫描**：精确配置 `@ComponentScan` 范围，避免扫描无用包\n3. **配置 CDS / AppCDS**：预加载类，显著加速（可省 30-50%）\n4. **预热缓存异步化**：启动后再异步加载\n5. **排查阻塞点**：优先解决「等 DNS/等熵/等 IO」这类外部依赖\n\n**关键提醒**：启动慢通常不影响运行性能，但会**拖长发布与回滚时间**、影响弹性扩缩容速度。在 K8s 里还会导致 readinessProbe 失败被反复重启 —— 这时应调大 `initialDelaySeconds` 或加 `startupProbe`。",
+    "tags": ["启动慢", "Tomcat", "排查"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1827,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "以下哪些 Tomcat 配置在生产环境应当关闭或加固？（多选）",
+    "options": [
+      { "key": "A", "text": "reloadable=true（自动重载）" },
+      { "key": "B", "text": "autoDeploy=true（自动部署）" },
+      { "key": "C", "text": "AJP Connector 监听所有网卡且无 secret" },
+      { "key": "D", "text": "配置 MaxMetaspaceSize 上限" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "A 会导致 Metaspace 泄漏（频繁重载 ClassLoader 无法回收）；B 可能被意外文件触发部署；C 就是 Ghostcat 漏洞的成因。D 是**应当开启**的加固项，不是关闭对象。",
+    "tags": ["Tomcat", "安全加固", "生产配置"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1828,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "JVM 的逃逸分析与标量替换是什么？对性能有什么影响？",
+    "answer": "**逃逸分析（Escape Analysis）**：JIT 编译时分析对象的作用域，判断它是否会「逃逸」出当前方法/线程。\n\n**三种逃逸状态**：\n1. **不逃逸**：对象只在方法内使用 → 可做最激进优化\n2. **方法逃逸**：作为返回值或参数传出方法 → 不能栈上分配\n3. **线程逃逸**：被其他线程访问 → 需要同步\n\n**两个关键优化**：\n\n1. **栈上分配（Stack Allocation）**\n- 不逃逸的对象直接在栈上分配，随方法结束自动回收\n- **不进入堆** → 减少 GC 压力\n\n2. **标量替换（Scalar Replacement）**\n- 把对象拆成基本类型字段，直接用局部变量\n- 例：`Point p = new Point(1,2)` 被优化成 `int x=1, int y=2`\n- 实际效果：**完全不创建对象**\n\n3. 还有**锁消除（Lock Elision）**：不逃逸的对象上的 synchronized 可被去掉\n\n**对性能的影响**：\n- 减少对象分配 → 减少 Minor GC 频率\n- 减少内存占用 → 堆压力小\n- 对短命小对象效果明显（如循环里 new 的临时对象）\n\n**开启方式**：\n```\n-XX:+DoEscapeAnalysis       # JDK 6u23+ 默认开启\n-XX:+EliminateAllocations   # 标量替换，默认开启\n```\n**注意**：只有 **C2 编译器**（Server 模式，方法被 JIT 编译后）才做逃逸分析。解释执行阶段不生效，所以要用**预热后**的性能数据评估。\n\n**为什么不能依赖它**：\n1. 分析有成本，复杂方法可能放弃优化\n2. 不保证一定做（是 hint 不是承诺）\n3. 不要写出「靠逃逸分析才能不 OOM」的代码 —— 那是脆弱的\n\n**面试常见追问**：「对象一定分配在堆上吗？」\n标准答案：**不一定**。逃逸分析后可在栈上分配或标量替换。但这是 JIT 优化，不能当作语言保证。",
+    "tags": ["逃逸分析", "标量替换", "JIT"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1829,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "JDK 中用于生成线程快照（排查死锁/卡顿）的命令是？",
+    "options": [
+      { "key": "A", "text": "jstack" },
+      { "key": "B", "text": "jstat" },
+      { "key": "C", "text": "jmap" },
+      { "key": "D", "text": "javap" }
+    ],
+    "answer": ["A"],
+    "explanation": "jstack 打印所有线程的调用栈，能看出线程卡在哪、是否有死锁（会直接输出 Found one Java-level deadlock）。jstat 看 GC，jmap 看内存，javap 反编译字节码。",
+    "tags": ["jstack", "线程快照", "死锁"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1830,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "困难",
+    "question": "Java 应用出现线程死锁，如何快速发现并定位？",
+    "answer": "**检测手段（按速度排序）**：\n\n**1. jstack 直接报告（最快）**\n```bash\njstack <pid> | grep -A 30 \"Found one Java-level deadlock\"\n```\nJVM 会自动检测并输出：\n```\nFound one Java-level deadlock:\n=============================\n\"Thread-1\":\n  waiting to lock monitor 0x... (object 0x..., a java.lang.Object),\n  which is held by \"Thread-2\"\n\"Thread-2\":\n  waiting to lock monitor 0x... (object 0x..., a java.lang.Object),\n  which is held by \"Thread-1\"\n```\n**直接告诉你：谁持有、谁在等、哪个对象**。\n\n**2. arthas thread -b（最方便）**\n```bash\nthread -b        # 直接找出阻塞其他线程的线程\n```\n\n**3. jcmd（JDK 8+）**\n```bash\njcmd <pid> Thread.print -l\n```\n\n**4. JMX / 监控**：`ThreadMXBean.findDeadlockedThreads()` 可编程检测，适合接入监控自动告警。\n\n**死锁的类型与识别**：\n\n| 类型 | 表现 | 识别方式 |\n|---|---|---|\n| **Java 级死锁** | 两线程互相等对方的锁 | jstack 直接报告 |\n| **等待外部资源** | 都在等 DB/HTTP 响应 | 栈在 socketRead/wait，不是真死锁 |\n| **线程池耗尽** | 线程都在等任务队列 | 栈在 pool 的 take/getTask |\n| **GC 停顿假象** | 应用无响应但线程栈正常 | 看 jstat 的 Full GC 耗时 |\n\n**关键区分**：jstack 没报死锁但应用卡住，通常不是锁问题，而是：\n- 下游依赖超时（DB、HTTP、Redis）\n- GC 长时间 STW\n- 线程池/连接池耗尽\n- 磁盘 IO 阻塞\n\n**死锁的根因与预防**：\n1. **加锁顺序不一致**（最常见）→ 统一多把锁的获取顺序\n2. **嵌套锁范围过大** → 缩小临界区\n3. **业务逻辑中同步调用外部并持锁** → 把外部调用移出锁\n4. **使用 `tryLock` 带超时**（`ReentrantLock.tryLock(timeout)`）\n```java\nif (lock.tryLock(1, TimeUnit.SECONDS)) {\n    try { ... } finally { lock.unlock(); }\n}\n```\n- **超时后放弃**，避免无限等待 → 死锁变成可观测的失败\n\n**排查顺序建议**：\n1. `jstack` 抓快照（抓 2-3 次，间隔几秒）\n2. 搜 `deadlock` 关键字\n3. 没有死锁 → 统计各状态线程数（BLOCKED / WAITING / RUNNABLE）\n4. BLOCKED 多 → 锁竞争\n5. WAITING 在 socket → 下游慢\n6. RUNNABLE 但 CPU 不高 → 磁盘 IO 或 GC\n\n**线上应急**：\n- 无法立即修复时，先保留 thread dump → 重启止血 → 事后分析 dump\n- 重启前**一定要 dump**，否则现场丢失、无法定位根因",
+    "tags": ["死锁", "jstack", "线程"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1831,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "什么是 Tomcat 的 maxThreads？如何合理设置？",
+    "answer": "**maxThreads** 是 Tomcat 处理请求的最大工作线程数（默认 200）。\n\n**不是越大越好**——这是核心认知：\n\n**为什么不能盲目调大**：\n1. **内存**：每线程 1MB 栈，1000 线程 = 1GB\n2. **上下文切换**：线程数远超 CPU 核数时，切换开销吃掉 CPU\n3. **下游压力**：线程越多，同时打向 DB/下游的请求越多 → 更容易压垮下游\n4. **阻塞无收益**：如果瓶颈在 DB，加线程只会让更多线程一起等 DB\n\n**合理估算方法**：\n\n**1. 基于「每个请求的耗时构成」**\n```\n需要的线程数 ≈ QPS × 平均响应时间（秒）\n```\n例如 QPS 500，平均耗时 200ms → 500 × 0.2 = **100 线程**\n再留 30-50% 余量 → 150 左右。\n\n**2. 基于 CPU 密集 vs IO 密集**\n```\n线程数 ≈ CPU 核数 × (1 + 等待时间 / 计算时间)\n```\n- CPU 密集（计算为主）：线程数 ≈ 核数 + 1\n- IO 密集（等 DB/HTTP 为主）：等待/计算比大，线程数可显著大于核数\n\n**3. 基于压测（最可靠）**\n- 阶梯加压，观察「吞吐拐点」\n- 线程数增加但 QPS 不再上升、延迟陡增 → 已过最佳值\n\n**配套参数**：\n```xml\n<Connector port=\"8080\"\n    maxThreads=\"300\"       <!-- 工作线程 -->\n    minSpareThreads=\"50\"    <!-- 保底线程 -->\n    acceptCount=\"200\"       <!-- 排队队列长度 -->\n    maxConnections=\"8000\"   <!-- 最大连接数 -->\n/>\n```\n- `maxThreads + acceptCount` = 系统能「接收」的总请求\n- 超出 → 拒绝（客户端超时/RST）\n\n**监控判读**：\n- `currentThreadsBusy` 长期接近 maxThreads → 线程不够或下游慢\n- 线程数不高但请求慢 → **瓶颈不在线程，别加**\n\n**一句话**：先搞清「线程在等什么」，再决定加不加。加线程是最后手段，不是首选。",
+    "tags": ["maxThreads", "Tomcat", "容量"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1832,
+    "type": "multiple",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "以下哪些是 JVM 可以进行的热更新/不重启变更？（多选）",
+    "options": [
+      { "key": "A", "text": "用 jinfo/jcmd 动态修改部分 VM 参数（如某些 -XX 开关）" },
+      { "key": "B", "text": "用 arthas 的 redefine 重新加载类（有限制）" },
+      { "key": "C", "text": "修改 -Xmx 堆大小上限" },
+      { "key": "D", "text": "开启/关闭 GC 日志输出" }
+    ],
+    "answer": ["A", "B", "D"],
+    "explanation": "C 不能热改：-Xms/-Xmx 只在启动时生效，运行中无法调整（部分参数如 MaxMetaspaceSize 也不可热改）。可用 `jinfo -flags` 查看哪些是 manageable（可动态修改）。",
+    "tags": ["热更新", "JVM参数", "arthas"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1833,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "Tomcat 的 session 如何持久化？集群环境下应注意什么？",
+    "answer": "**Session 持久化的四种方案**：\n\n**1. 内存（默认，单机）**\n- 存 `StandardManager` 内存，重启丢失\n- 集群下各节点独立 → **登录状态不共享**\n\n**2. 文件持久化（单机容错）**\n```xml\n<Manager className=\"org.apache.catalina.session.StandardManager\"\n         pathname=\"SESSIONS.ser\" maxActiveSessions=\"-1\" />\n```\n- 关闭时序列化到磁盘，启动时恢复\n- 只解决「重启不丢」，不解决「集群共享」\n\n**3. Tomcat 集群复制（DeltaManager / BackupManager）**\n- 通过组播/数据库同步 session 到其他节点\n- `DeltaManager`：每次变更都广播给所有节点（开销大，建议 ≤4 节点）\n- `BackupManager`：只同步给一个备份节点（适合大集群）\n- **缺点**：网络开销大，节点多时性能下降\n\n**4. 外部存储（生产推荐）**\n- Redis / Memcached 存 session\n- 用 `Tomcat Redis Session Manager` 或 Spring Session\n- 优点：**应用无状态**、可任意扩缩容、重启不丢\n- 缺点：每次请求多一次 Redis 访问（可优化为只读 session id）\n\n**集群环境的注意事项**：\n\n1. **session id 不能重复**：多节点独立生成可能冲突 → 需配置 `jvmRoute` 让 session id 带上节点标识\n```xml\n<Engine name=\"Catalina\" defaultHost=\"localhost\" jvmRoute=\"node1\">\n```\n\n2. **session 对象必须可序列化**：否则复制/存储失败（`NotSerializableException`）\n- 放入 session 的对象都要实现 `Serializable`\n- 注意内部引用的对象也要可序列化\n\n3. **session 过期与清理**：外部存储要有 TTL，否则 Redis 里堆积无效 session\n\n4. **负载均衡的会话保持**：如果 session 在节点内存，必须配粘性（cookie/源IP）；如果 session 在 Redis，则**不需要粘性**（这是外部存储的最大好处）\n\n5. **安全**：session id 要防劫持（HttpOnly、Secure、定期轮换），Redis 里的 session 数据要设合理 TTL\n\n**选型建议**：\n- 单机 → 内存足够（配合 keepalive 的 session 时间）\n- 集群 → **一律用 Redis 存 session**，不要用 Tomcat 自带的集群复制（除非节点极少且流量很小）\n\n**验证方式**：\n- 登录后看响应头是否带 `Set-Cookie: JSESSIONID=...`\n- 用不同节点访问，确认 session 一致（外部存储时应天然一致）",
+    "tags": ["session", "集群", "Redis"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1834,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "JVM 出现 OutOfMemoryError: Java heap space，最直接的短期缓解手段是？",
+    "options": [
+      { "key": "A", "text": "调大 -Xmx 并重启（同时抓取 heap dump 保留现场）" },
+      { "key": "B", "text": "调大 -Xss" },
+      { "key": "C", "text": "增加线程数" },
+      { "key": "D", "text": "关闭 GC" }
+    ],
+    "answer": ["A"],
+    "explanation": "堆溢出最直接的是加堆内存。但**必须同时 dump 保留现场**，否则重启后无法定位根因；且加堆只是延缓，根因（泄漏或数据量增长）仍需解决。B/C/D 完全不对应堆溢出。",
+    "tags": ["heap OOM", "应急处置"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1835,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "中等",
+    "question": "如何为 Tomcat 配置优雅停机（graceful shutdown）？",
+    "answer": "**优雅停机 = 不再接新请求 + 处理完进行中的请求再退出**，避免用户看到 502。\n\n**不优雅的表现**：直接用 `kill -9` 或 `systemctl stop` 会立即终止进程，正在处理的请求全部失败。\n\n**实现方式**：\n\n**1. 用 SIGTERM 而非 SIGKILL**\n```bash\n# 优雅\nkill <pid>              # 默认发 SIGTERM(15)\nsystemctl stop tomcat   # systemd 默认也发 SIGTERM\n\n# 粗暴（禁止在生产用）\nkill -9 <pid>\n```\nTomcat 收到 SIGTERM 会执行 shutdown hook：停止接收新请求、等待线程池任务完成（受 `unloadDelay` 控制）、关闭连接池。\n\n**2. 在 K8s 中配合 preStop 与宽限期**\n```yaml\nlifecycle:\n  preStop:\n    exec:\n      command: [\"/bin/sh\", \"-c\", \"sleep 15\"]   # 等 LB 摘除完成\nterminationGracePeriodSeconds: 60               # 给足处理时间\n```\n**关键**：\n- K8s 先发 SIGTERM，同时从 Endpoints 摘除（**摘除需要时间**，所以 preStop 要 sleep）\n- 若应用收到 SIGTERM 立刻停止监听，但 LB 还在往里转流量 → 502\n- 所以 **preStop sleep 10-30 秒**是标准做法\n\n**3. 配置 Tomcat 的宽限期**\n```xml\n<Server port=\"-1\" shutdown=\"SHUTDOWN\">\n  <Service name=\"Catalina\">\n    <!-- 等待进行中请求完成的时间 -->\n  </Service>\n</Server>\n```\n或用 Spring Boot 的优雅停机：\n```yaml\nserver:\n  shutdown: graceful\nspring:\n  lifecycle:\n    timeout-per-shutdown-phase: 30s\n```\n这是最省事的方案（Spring Boot 2.3+）。\n\n**4. 主动探活配合**\n- 停机开始时，先让 readinessProbe 返回失败 → LB 摘除 → 等一会再停进程\n- 需要应用暴露「正在关闭」状态（如 Spring 的 `AvailabilityChangeEvent`）\n\n**验证方式**：\n- 用 `ab`/`wrk` 持续打压，同时执行停机命令\n- 观察错误率：**优雅停机应为 0 错误**，非优雅会有大量 502/连接重置\n\n**常见错误**：\n1. 用了 `kill -9`（无处理机会）\n2. K8s 里 `terminationGracePeriodSeconds` 太短（< 请求耗时）\n3. 没有 preStop sleep → LB 摘除延迟期间仍在收流量\n4. 停机时主动关闭了连接池，导致进行中的请求失败\n\n**一句话**：**SIGTERM + 足够宽限期 + 先摘流量再停进程**，三者缺一不可。",
+    "tags": ["优雅停机", "graceful", "K8s"],
+    "frequency": "高频"
+  }
+]
