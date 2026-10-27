@@ -1,0 +1,72 @@
+[
+  {
+    "id": 2625,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "KVM 的 `virsh` 常用命令有哪些？如何用 XML 定义一台虚拟机？",
+    "answer": "**`virsh` 是 KVM 的命令行管理工具——相当于 vCenter 的命令行版。**\n\n**最常用的 12 条**：\n```\nvirsh list --all                    # 所有 VM（含关机）\nvirsh start/shutdown/destroy <vm>   # 启动/优雅关机/强制关机\nvirsh reboot <vm>\nvirsh console <vm>                  # 进控制台（类似 IPMI）\nvirsh domblklist <vm>               # 看磁盘\nvirsh domiflist <vm>                # 看网卡\nvirsh dumpxml <vm>                  # 导出配置\nvirsh define <file>.xml             # 从 XML 定义 VM\nvirsh undefine <vm>                 # 删除 VM 定义（不删磁盘！）\nvirsh snapshot-list <vm>\nvirsh domstats <vm>                 # 详细统计\n```\n**`undefine` 不删磁盘文件**——磁盘要手动删（这是「删除 VM 后磁盘还在」的原因）。\n\n**最小可用 XML**：\n```xml\n<domain type='kvm'>\n  <name>web01</name>\n  <memory unit='GiB'>4</memory>\n  <vcpu>2</vcpu>\n  <os><boot dev='hd'/></os>\n  <devices>\n    <disk type='file' device='disk'>\n      <driver name='qemu' type='qcow2' cache='none' io='native'/>\n      <source file='/var/lib/libvirt/images/web01.qcow2'/>\n      <target dev='vda' bus='virtio'/>\n    </disk>\n    <interface type='bridge'>\n      <source bridge='br0'/>\n      <model type='virtio'/>\n    </interface>\n    <graphics type='vnc' port='-1' autoport='yes'/>\n  </devices>\n</domain>\n```\n\n**四个关键配置项（影响性能）**：\n```xml\n<driver ... cache='none' io='native'/>    # 数据库场景必用\n<model type='virtio'/>                     # 网卡用 virtio（不要 e1000）\n<target dev='vda' bus='virtio'/>          # 磁盘用 virtio\n<vcpu placement='static'>2</vcpu>          # 固定 vCPU（不要 auto）\n```\n\n**「不用 XML 手写」的替代方案**：\n```bash\nvirt-install --name web01 --memory 4096 --vcpus 2 \\\n  --disk path=/var/lib/libvirt/images/web01.qcow2,size=50,format=qcow2 \\\n  --network bridge=br0,model=virtio \\\n  --cdrom /iso/ubuntu.iso\n```\n**`virt-install` 更简单**，XML 用于「精细控制」和「批量模板」。\n\n**「改配置的正确流程」**：\n```bash\nvirsh edit <vm>          # 编辑（会自动校验）\n# 或\nvirsh dumpxml <vm> > x.xml && vi x.xml && virsh define x.xml\n```\n**部分配置（如内存、vCPU）需要关机才能改。**\n\n**一句话**：**`virsh` 就是 KVM 的「管理面」——`list/start/shutdown/console/domblklist` 是日常必备，注意 `undefine` 不删磁盘，性能相关的关键是「virtio + cache=none + io=native」。**"
+  },
+  {
+    "id": 2626,
+    "type": "multiple",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "「虚拟机启动失败」时，以下哪些排查方向是对的？（多选）",
+    "options": [
+      { "key": "A", "text": "看 virsh start 的报错信息与 /var/log/libvirt/qemu/<vm>.log" },
+      { "key": "B", "text": "检查磁盘文件是否存在、权限是否对" },
+      { "key": "C", "text": "检查虚拟网络/网桥是否存在" },
+      { "key": "D", "text": "直接删除 VM 重新创建" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是「不看病因就动手术」——**直接重建会丢失配置（可能很难复原）且磁盘里的数据可能本来没问题**。三项正确项构成完整的排查链：日志（原因）、磁盘（最常缺）、网络（常被忽略但会导致启动失败）。补充：⑤**内存不足**（宿主机无法分配）；⑥**XML 配置损坏**（用 `virsh define` 修复）；⑦**锁文件残留**（`/var/lib/libvirt/qemu/*.pid` 或 `.lock`）。**「启动失败」的日志在 `/var/log/libvirt/qemu/<vm>.log`**，这是第一手信息。"
+  },
+  {
+    "id": 2627,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "「混合部署」虚拟机与容器时，资源怎么分配？",
+    "answer": "**核心矛盾：虚拟机要「独占」，容器要「共享」，两者在宿主机的资源上会打架。**\n\n**三种模式**：\n\n**1. 物理隔离（最安全）**\n```\n专用宿主机跑 VM，另一批跑容器（如 K8s 节点）\n→ 完全隔离，互不影响\n→ 代价是资源利用率低\n```\n\n**2. 同宿主机 + 资源限制（常见）**\n```\n用 cgroup 给 VM 和容器都设上限\n→ 但要防止「VM 占满 → 容器饿死」\n```\n```xml\n<!-- VM 的 cgroup 限制 -->\n<cputune><quota>400000</quota></cputune>\n```\n\n**3. 容器跑在 VM 里（最隔离）**\n```\nVM 作为「容器宿主机」\n→ 双层隔离，但性能有损失\n→ 常见于多租户场景（每个租户一个 VM 跑 K8s）\n```\n\n**资源分配的四个建议**：\n\n| 资源 | 建议 |\n|---|---|\n| **CPU** | VM 用绑核（独占）；容器用 shares + limit |\n| **内存** | **都设上限**（不让任何一方吃光） |\n| **磁盘 IO** | VM 用独立盘；容器用 overlay（共享盘） |\n| **网络** | VM 用桥接；容器用 CNI（注意 VLAN/网段规划） |\n\n**「最容易出问题的三个点」**：\n\n**1. 内存争抢（最危险）**\n```\nVM 的 balloon + 容器的 limit 都要设\n否则「容器突发内存 → 宿主机 OOM → VM 被杀」\n```\n\n**2. 磁盘 IO 争抢**\n```\nVM 的数据库和容器的批量任务抢同一块盘\n→ 用不同物理盘，或 cgroup 的 blkio 限速\n```\n\n**3. 网络规划冲突**\n```\nVM 用 192.168.1.0/24，容器也用 → 冲突\n→ K8s 的 Pod CIDR 要规划到不同网段\n```\n\n**「现实中的主流做法」**：\n```\n把「有状态、需要强隔离」的放 VM（数据库、老系统）\n把「无状态、弹性」的放容器（Web 应用、微服务）\n→ 不是「全部迁移到容器」，而是「各归其位」\n```\n\n**一句话**：**VM 与容器混部时，关键是「每个都设资源上限」防止互相踩踏，并且网络与磁盘 IO 要规划隔离——更现实的做法是「有状态放 VM、无状态放容器」。**"
+  },
+  {
+    "id": 2628,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "困难",
+    "question": "如何判断「一台虚拟机是不是需要扩容」？看什么指标？",
+    "answer": "**「看客户机内部的指标」而不是只看虚拟机监控——因为客户机最清楚自己的压力。**\n\n**四个维度的判断标准**：\n\n**1. CPU**\n```\n客户机看：\n- 负载（load average）与 vCPU 数比较\n- CPU 使用率持续 > 70%\n- 更重要的是「CPU 就绪等待」（vmstat 的 r 列 / top 的 %CPU 饱和）\n```\n**关键：vCPU 不是越多越好** —— 超过物理核数会加剧调度竞争，且客户机 OS 的调度开销变大。\n\n**2. 内存**\n```\n客户机看：\n- available < 10%\n- swap 使用持续增长\n- OOM 事件（dmesg）\n```\n**「可用内存 < 10% + swap 在用」才是真的不够**（不是看 free 小）。\n\n**3. 磁盘**\n```\n客户机看：\n- df 使用率 > 85%\n- 增长趋势（predict_linear 预计多久满）\n- 磁盘 IO 的 await\n```\n\n**4. 网络**\n```\n- 带宽是否接近上限\n- 重传率（ss -ti 的 retrans）\n```\n\n**「扩容前要回答的三个问题」**：\n```\n1. 是「资源不够」还是「应用效率低」？\n   （优化 SQL 可能比加内存更有效）\n2. 扩容能解决问题吗？\n   （如果是锁竞争、单线程瓶颈，加资源没用）\n3. 扩到多少够？\n   （按当前增长的 1.5-2 倍，不要「凭感觉加一点」）\n```\n\n**「最容易被忽略的一点」**：**扩容可能让问题更严重**\n```\nvCPU 从 4 加到 16 → 如果应用是单线程瓶颈，反而增加调度开销\n内存从 16G 加到 64G → 如果 GC 参数没调，GC 停顿可能更长\n```\n**「先 profiling，再扩容」** 比「盲目加资源」省钱且有效。\n\n**推荐的做法**：\n```\n1. 先看「是不是应用问题」（profile、慢查询、GC）\n2. 确认是资源瓶颈后，按「峰值 × 1.5」扩容\n3. 扩容后观察一周，确认真的改善\n4. 记录「扩容的触发阈值」作为下次的标准\n```\n\n**一句话**：**判断扩容要看「客户机内部指标（尤其 CPU 就绪与 available 内存）」——但扩容前必须确认「是资源不够还是应用效率低」，否则加了资源也不会变快。**"
+  },
+  {
+    "id": 2629,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "「虚拟机里时间不同步」导致业务出问题，怎么快速定位与修复？",
+    "answer": "**虚拟化环境的时间问题通常来自「VM 内没跑 NTP」或「时钟源配置不对」。**\n\n**Step 1：快速确认现状**\n```bash\ntimedatectl                    # 看时间、时区、NTP synchronized\nchronyc tracking               # 看 offset（偏差多少）\nchronyc sources                # 看有没有 ^* 源\ndate -R                        # 看时区\n```\n**`NTP synchronized: no` 或 `chronyc sources` 没有 `^*` → 时间没同步。**\n\n**Step 2：判断是「时间错」还是「时区错」**\n```\ndate            # 显示的时间\ndate -u         # UTC 时间（与宿主机对比）\n```\n**「时间差整数小时」= 时区问题；「差几秒/几分钟」= 时钟漂移问题**——两者修法完全不同。\n\n**Step 3：修复（分情况）**\n\n**A. 时区错**\n```bash\ntimedatectl set-timezone Asia/Shanghai\n```\n\n**B. 时钟漂移（最常见）**\n```bash\n# 1. 确认 chronyd 在跑\nsystemctl status chronyd\n# 2. 配置时间源（/etc/chrony.conf）\nserver ntp.aliyun.com iburst\nmakestep 1.0 3          # 关键：允许大偏差时跳变\n# 3. 重启并强制校正\nsystemctl restart chronyd\nchronyc makestep        # 立即强制同步（不等渐进调整）\n```\n**`makestep` 是关键** —— 偏差大时 chrony 默认只渐进调整，可能要几小时才追上。\n\n**C. 时钟源配置（虚拟化特有）**\n```xml\n<!-- KVM：用 kvm-clock（最准） -->\n<clock offset='utc'>\n  <timer name='kvmclock' present='yes'/>\n  <timer name='hpet' present='no'/>\n</clock>\n```\n**「用 hpet 时钟源」会导致明显漂移**。\n\n**Step 4：验证修复效果**\n```bash\nchronyc tracking            # offset 应 < 100ms\nwatch -n 5 'date +%s.%N'    # 观察是否稳定增长\n```\n\n**Step 5：五个「时间不对」的业务影响（快速判断）**\n```\n- TLS 握手失败 → 证书校验\n- JWT/TOTP 校验失败 → 登录/二次验证\n- 分布式一致性（etcd/Kafka）→ 租约失效\n- 日志时间线错乱 → 排障困难\n- 定时任务错时触发\n```\n\n**「根治」**：\n```\n□ 所有 VM 都装 chrony（不是「可选」）\n□ 宿主机也同步\n□ 配 makestep（允许跳变）\n□ 监控时间偏移（> 1 秒告警）\n```\n\n**一句话**：**虚拟机时间不同步先分清「时区错」还是「时钟漂移」，修法是「chrony + makestep 强制校正」，并且所有 VM 都必须装 NTP —— 这是必选项不是可选项。**"
+  },
+  {
+    "id": 2630,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "虚拟机内存 4GB，但宿主机上该 QEMU 进程的 RSS 显示 6GB，最可能的原因是？",
+    "options": [
+      { "key": "A", "text": "RSS 包含共享页与 QEMU 自身的开销，不代表实际占用，要看 cgroup 的 memory.current" },
+      { "key": "B", "text": "内存泄漏" },
+      { "key": "C", "text": "配置错了" },
+      { "key": "D", "text": "统计 bug" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`RSS` 会把「共享页」也算进去**（多个 QEMU 共享的库、KSM 合并后的页），所以 RSS 往往虚高。**准确的方式是看 cgroup**：`cat /sys/fs/cgroup/.../memory.current`。B 有可能但不是首选解释（要先排除统计口径）；C 不准确；D 也不对——RSS 本身定义如此。**排查内存的正确顺序**：①cgroup 的 `memory.current`（真实占用）；②`smaps_rollup`（细分）；③RSS（仅参考）。这也是「容器内存统计要 `working_set` 而非 `usage`」的同类问题。"
+  },
+  {
+    "id": 2631,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "「虚拟机被限速」怎么发现和排查？",
+    "answer": "**虚拟化平台通常会「限速」来保护宿主机——但限速的痕迹往往很隐蔽。**\n\n**三种常见的限速**：\n\n| 类型 | 配置位置 | 表现 |\n|---|---|---|\n| **CPU 限速** | cgroup 的 `cpu.max` / `quota` | `steal time` 高，但宿主机 CPU 空闲 |\n| **磁盘 IO 限速** | cgroup 的 `blkio.throttle` | IO 延迟陡增，但磁盘 util 不高 |\n| **网络限速** | 平台或 libvirt 的 `bandwidth` | 带宽跑到固定值就不涨 |\n\n**发现「CPU 被限速」**：\n```bash\n# 在客户机里\nvmstat 1 5      # 看 st（steal）列\n# st 持续 > 5% → 拿不到物理 CPU\n\n# 在宿主机上\ncat /sys/fs/cgroup/cpu.max          # 或 cfs_quota/cfs_period\n```\n**「限速 vs 超分」的区分**：\n```\n限速：该 VM 被设了 quota，即使宿主机空闲也跑不满\n超分：宿主机 CPU 被其他 VM 抢走\n→ 都表现为 st 高，但解法不同（改 quota vs 迁移/降超分）\n```\n\n**发现「磁盘被限速」**：\n```bash\n# 用 fio 测顺序/随机 IOPS，看是否稳定在某个上限\nfio --name=t --ioengine=libaio --direct=1 --rw=randread \\\n    --bs=4k --numjobs=4 --iodepth=32 --runtime=30 --size=1G\n# 若 IOPS 恒定在 3000（且不是盘的能力上限），就是被限速\n```\n**云盘的「IOPS 上限」和「平台限速」表现一样**——要查云监控的「是否触顶」。\n\n**发现「网络被限速」**：\n```bash\niperf3 -c <target> -t 10 -P 4     # 多流测\n# 若稳定在固定值（如 1Gbps），可能被限速\n```\n\n**「最常见的三个限速来源」**：\n```\n1. 云厂商的「实例规格自带带宽/IOPS 上限」\n   → 升级规格才能提升（不是配置问题）\n2. 平台管理员设的 cgroup 限制（多租户隔离）\n3. libvirt 的 <bandwidth> 配置\n```\n\n**排查顺序**：\n```\n1. 先确认「是否稳定在上限」（限速的特征是「恒定」）\n2. 查 cgroup 的 quota\n3. 查云厂商的实例规格上限\n4. 查 libvirt 的 XML 配置\n```\n\n**一句话**：**「虚拟机限速」的特征是「性能恒定在某个值」而非「波动」——分别查 CPU cgroup quota、磁盘 fio 的 IOPS 上限、网络 iperf3 的带宽上限，云上别忘了「实例规格自带的上限」。**"
+  }
+]

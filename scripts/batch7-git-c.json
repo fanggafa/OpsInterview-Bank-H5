@@ -1,0 +1,79 @@
+[
+  {
+    "id": 2813,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "GitLab 的 Merge Request 怎么配「质量门禁」？",
+    "answer": "**门禁的目的是「不让问题进入 main」，不是「卡人」。**\n\n**1. 五个基础门禁**\n\n| 门禁 | 配置位置 | 作用 |\n|---|---|---|\n| **CI 必须通过** | Settings → Merge requests → Pipelines must succeed | 测试/构建失败不能合 |\n| **至少 1 人 Approve** | Merge request approvals | 代码 review |\n| **禁止自己 approve**（单人仓库除外） | 同上 | 防止自我批准 |\n| **讨论全部解决** | Settings → All discussions must be resolved | 未解决的意见不能合 |\n| **源分支不能落后** | Settings → Pipelines must succeed + 「rebase」要求 | 防止合并后引入冲突 |\n\n**2. 代码覆盖率门禁（可选但有用）**\n```yaml\n# .gitlab-ci.yml\ncoverage-check:\n  script:\n    - coverage=$(grep -oP 'total.*?\\K[0-9]+(?=%)' coverage.txt)\n    - |\n      if [ \"$coverage\" -lt 80 ]; then\n        echo \"覆盖率 $coverage% 低于 80%\"\n        exit 1\n      fi\n```\n**「新增代码覆盖率」比「总覆盖率」更有意义**——老代码的历史包袱不该拦住新提交。\n\n**3. 安全扫描门禁**\n```yaml\ninclude:\n  - template: Security/SAST.gitlab-ci.yml\n  - template: Security/Secret-Detection.gitlab-ci.yml\n\n# 设置「不新增 Critical」而非「零漏洞」\n```\n**「零漏洞」不可达（老项目永远过不了），「不新增」才可落地。**\n\n**4. 分支保护（关键）：**\n```\nSettings → Repository → Protected branches\n\nmain:\n  Allowed to merge: Maintainer\n  Allowed to push: No one          # 必须走 MR\n  Require approval from Code Owners: On\n```\n**「main 禁止直接 push」是最基本的保护**——很多「规范」在「直接 push」面前形同虚设。\n\n**5. Push Rules（GitLab Premium）**\n```\n- 禁止删除 tag\n- 禁止 force push 到受保护分支\n- 提交信息必须匹配正则（如 `^(feat|fix|docs):`）\n- 禁止提交大于 N MB 的文件\n```\n\n**「门禁落地」的三个要点**：\n```\n1. 先松后紧：一开始别加太多门禁（团队会绕过）\n2. 门禁要快：CI 超过 10 分钟，团队会「跳过」\n3. 门禁要准：误报太多会让团队麻木\n```\n\n**「最该先加的三条」**：\n```\n1. main 禁止直接 push\n2. CI 必须通过\n3. 至少 1 人 approve\n```\n**这三条能挡住 90% 的低级问题。**\n\n**一句话**：**MR 门禁的核心是「main 只接受通过验证的合并」——先加「禁止直推 + CI 通过 + 人工 approve」三条，再逐步加覆盖率与安全扫描。**"
+  },
+  {
+    "id": 2814,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "困难",
+    "question": "自建 GitLab 的「升级」怎么做？有哪些风险点？",
+    "answer": "**GitLab 升级的核心风险：不能跳版本、数据库迁移不可逆、恢复依赖密钥。**\n\n**1. 版本路径（最重要的规则）**\n```\n✗ 12.x → 16.x（直接跳）\n✓ 12.x → 12.latest → 13.0 → 13.latest → 14.0 ...\n```\n**GitLab 要求「按升级路径逐个大版本升」**——官方提供 upgrade path 工具：\n```\nhttps://gitlab-com.gitlab.io/support/toolbox/upgrade-path/\n```\n**跳过路径会导致数据库迁移失败，且不可逆。**\n\n**2. 升级前必做四件事**\n```\n□ 完整备份（应用数据 + 配置 + gitlab-secrets.json）\n□ 记录当前版本号（cat /opt/gitlab/version-manifest.txt）\n□ 检查「废弃特性」清单（官方 deprecations）\n□ 在测试环境演练（同一版本路径）\n```\n**「没备份就升级」是最致命的错误**——某些版本的数据库迁移不可回退。\n\n**3. 升级步骤**\n```bash\n# 1. 备份\ngitlab-backup create BACKUP=before-upgrade\ntar -czf secrets.tar.gz /etc/gitlab/gitlab-secrets.json /etc/gitlab/gitlab.rb\n\n# 2. 针对当前版本安装（按路径的下一个目标版本）\n# Ubuntu/Debian\nexport GITLAB_VERSION=16.3.4\nexport GITLAB_GPG_KEY=\"https://packages.gitlab.com/gitlab/gitlab-ee/gpgkey\"\ncurl -fsSL $GITLAB_GPG_KEY | gpg --dearmor > /etc/apt/trusted.gpg.d/gitlab.gpg\necho \"deb https://packages.gitlab.com/gitlab/gitlab-ee/ubuntu/ focal main\" > /etc/apt/sources.list.d/gitlab.list\napt-get update\napt-get install gitlab-ee=$GITLAB_VERSION\n\n# 3. 重配与检查\ngitlab-ctl reconfigure\ngitlab-rake gitlab:check SANITIZE=true\n```\n\n**4. 五个高频风险点**\n\n| 风险 | 说明 |\n|---|---|\n| **跳过版本** | 数据库迁移失败，无法回退 |\n| **没备份 secrets** | 恢复后 CI 变量/2FA 数据无法解密 |\n| **磁盘空间不足** | 升级需要额外空间（备份 + 解压） |\n| **内存不足** | 升级期间 Sidekiq 迁移会吃内存 |\n| **依赖升级** | PostgreSQL/Redis 版本可能被强制升级（不可回退） |\n\n**「PostgreSQL 版本被升级」是最隐蔽的**——GitLab 13+ 会升级内置 PG，升级后无法回退到旧 PG，所以备份必须在升级前做。\n\n**5. 回滚的现实**\n```\n可以回退：装回旧版本的包（前提：数据库迁移没发生）\n不能回退：数据库已迁移（只能从备份恢复）\n→ 所以「升级前备份」是唯一的回滚手段\n```\n\n**一句话**：**GitLab 升级必须「按官方路径逐版本升 + 升级前完整备份（含 gitlab-secrets.json）+ 测试环境演练」——跳版本和没备份是两大杀手。**"
+  },
+  {
+    "id": 2815,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git fetch` 和 `git pull` 的区别是？",
+    "options": [
+      { "key": "A", "text": "fetch 只下载更新不改工作区，pull = fetch + merge" },
+      { "key": "B", "text": "两者完全一样" },
+      { "key": "C", "text": "pull 只下载，fetch 会合并" },
+      { "key": "D", "text": "fetch 会删除本地分支" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`git pull = git fetch + git merge`**（或 rebase，取决于配置）。**「先 fetch 再决定怎么合并」是更安全的习惯**——fetch 后可以用 `git log HEAD..origin/main` 看清楚有什么变化，再决定 merge 还是 rebase。补充：`git pull --rebase` 可以避免产生多余的 merge commit；`git config pull.rebase true` 可设为默认。**「直接 pull 导致意外合并」是新手常见问题**——尤其在有本地未推送提交时。"
+  },
+  {
+    "id": 2816,
+    "type": "multiple",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "关于「代码审查（Code Review）」，以下哪些做法有效？（多选）",
+    "options": [
+      { "key": "A", "text": "控制单次 MR 的大小（几百行以内），大改动拆分成多个" },
+      { "key": "B", "text": "用自动化工具先做格式/lint 检查，人工专注逻辑" },
+      { "key": "C", "text": "给出具体的修改建议（而不是「这里不好」）" },
+      { "key": "D", "text": "为了效率，草率看过就 approve" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 完全违背 review 的意义——**自动化能查的（格式/语法/漏洞）交给机器，人只专注「设计是否合理、逻辑是否有坑」**。补充：⑤**review 要覆盖「测试」**（有没有测试？边界情况测了吗）；⑥**review 要覆盖「运维影响」**（要不要改配置？要不要迁移？）；⑦**小 MR 是效率的关键**——1000 行的 MR 没人能认真看完。**顶级实践**：把「review 意见」分为「必须改（blocker）」和「建议（nit）」，避免所有意见都变成阻塞。"
+  },
+  {
+    "id": 2817,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "Git 的 hook 有哪些？如何在团队里统一使用？",
+    "answer": "**两类 hook：客户端（本地）与服务端（GitLab/GitHub 侧）。**\n\n**1. 客户端 hook（最常用）**\n\n| hook | 触发时机 | 典型用途 |\n|---|---|---|\n| **pre-commit** | 提交前 | lint、格式化、禁大文件、密钥扫描 |\n| commit-msg | 提交信息写好 | 校验提交信息格式（Conventional Commits） |\n| pre-push | 推送前 | 跑单元测试、阻止推到 main |\n| post-checkout / post-merge | 切换/合并后 | 自动安装依赖 |\n\n**2. 服务端 hook（GitLab 的 Server Hooks）**\n```\n/pre-receive   → 推送前（可以拒绝）\n/post-receive  → 推送后（通知、触发 CI）\n/update        → 单个分支更新时\n```\n**服务端 hook 是「唯一无法被绕过的」**——客户端 hook 用户可以 `--no-verify` 跳过。\n\n**3. 如何统一团队使用（关键问题）**\n\n**客户端 hook 不能自动同步**（`.git/hooks` 不在版本控制里）→ 三种方案：\n\n**方案 A：pre-commit 框架（推荐）**\n```yaml\n# .pre-commit-config.yaml（这个文件进仓库）\nrepos:\n  - repo: https://github.com/pre-commit/pre-commit-hooks\n    rev: v4.5.0\n    hooks:\n      - id: check-added-large-files\n        args: ['--maxkb=1024']\n      - id: detect-private-key\n  - repo: https://github.com/gitleaks/gitleaks\n    rev: v8.18.0\n    hooks: [{id: gitleaks}]\n```\n```bash\n# 每个成员初始化一次\npre-commit install\n```\n**`.pre-commit-config.yaml` 进仓库 = 配置统一，成员只需执行一次 install。**\n\n**方案 B：husky（前端生态常用）**\n```json\n// package.json\n\"husky\": { \"hooks\": { \"pre-commit\": \"lint-staged\" } }\n```\n\n**方案 C：服务端兜底（必需）**\n```\n客户端 hook 可以被跳过 → 必须在 CI 里也跑同样的检查\n→ 「客户端快反馈 + 服务端强制」双保险\n```\n\n**「最佳组合」**：\n```\npre-commit（客户端，快速反馈）\n  ↓ 被跳过时\nCI（服务端，强制拦截）\n  ↓ 仍漏过的\n服务端 hook / 定期扫描（最后防线）\n```\n\n**「最容易失败的统一方式」**：\n```\n✗ 在文档里写「请大家自己配 hook」（没人配）\n✗ 用「install.sh 脚本装 hook」（新人忘了跑）\n✓ 用 pre-commit 框架（配置进仓库 + 一次 install）\n✓ 并且 CI 里也跑同样的检查\n```\n\n**一句话**：**hook 分「客户端（易被跳过）」和「服务端（强制）」——统一团队用 `pre-commit` 框架（配置进仓库），并且 CI 必须跑同样的检查作为兜底。**"
+  },
+  {
+    "id": 2818,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "GitLab Pages、Artifacts、Packages、Container Registry 分别用来存什么？",
+    "answer": "**四个不同的「存储与分发」能力，容易混淆。**\n\n| 功能 | 存什么 | 典型用途 |\n|---|---|---|\n| **Pages** | **静态网站**（HTML/JS/CSS） | 文档站、前端演示 |\n| **Artifacts** | **流水线产物**（jar、测试报告） | 阶段间传递、下载构建结果 |\n| **Packages** | **软件包**（npm/maven/nuget/pypi） | 内部依赖库分发 |\n| **Container Registry** | **容器镜像** | 部署镜像仓库 |\n\n**1. Pages（最简单）**\n```yaml\npages:\n  script: [mkdir -p public, cp index.html public/]\n  artifacts:\n    paths: [public]\n```\n**注意**：Pages 有大小限制，且是**静态托管**（不能跑后端）。\n\n**2. Artifacts（最常用）**\n```yaml\nbuild:\n  script: [mvn package]\n  artifacts:\n    paths: [target/*.jar]\n    expire_in: 1 week          # 必须设过期，否则越积越多\n    reports:\n      junit: target/surefire-reports/*.xml   # 可渲染测试报告\n```\n**`expire_in` 是必须的**——不设过期会长期占用存储。\n\n**3. Packages（内部依赖）**\n```yaml\npublish:\n  script:\n    - mvn deploy -DaltDeploymentRepository=gitlab::default::https://...\n```\n**适合「公司内部的公共库」**——比 Nexus 轻量，但与 CI 强绑定。\n\n**4. Container Registry**\n```yaml\nbuild-image:\n  script:\n    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .\n    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA\n```\n**注意**：Registry 的存储增长很快，**必须有清理策略**（GitLab 有内置的 cleanup policy）。\n\n**「最容易犯的存储错误」**：\n```\n✗ Artifacts 不设 expire_in → 堆积几十 GB\n✗ Registry 不配清理策略 → 磁盘打满\n✗ 把「构建产物」也提交到 git → 仓库变大\n```\n\n**选择建议**：\n```\n静态文档 → Pages\n流水线中间产物 → Artifacts（记得设过期）\n内部库（npm/maven） → Packages 或 Nexus\n容器镜像 → Container Registry 或 Harbor\n```\n**「镜像用 Harbor、其他用 GitLab 内置」是常见组合**——Harbor 的镜像管理（复制、扫描、保留策略）更专业。\n\n**一句话**：**Pages 存静态站、Artifacts 存流水线产物（必须设过期）、Packages 存内部依赖、Registry 存镜像（必须配清理）——最容易出事的是「不设过期与清理策略」。**"
+  },
+  {
+    "id": 2819,
+    "type": "multiple",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "关于「Git 大仓库」，以下哪些做法是有效的？（多选）",
+    "options": [
+      { "key": "A", "text": "用 git clone --depth 1（浅克隆）只拿最新提交" },
+      { "key": "B", "text": "用 --filter=blob:none（部分克隆）按需下载文件" },
+      { "key": "C", "text": "用 Git LFS 管理二进制大文件" },
+      { "key": "D", "text": "直接把大文件提交到仓库，之后删掉就不会占空间" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是最常见的误解：**Git 会永久保留历史里的所有版本**——即使后来删除了文件，它仍存在于历史中，仓库体积不会减少。要真正移除必须**改写历史**（`git filter-repo`），而这会让所有 commit hash 改变、所有协作者必须重新 clone。三项正确做法分别解决「clone 慢」（A、B）和「大文件存储」（C）。补充：⑤**`.gitignore` 预防**（构建产物、`node_modules`、二进制文件）；⑥**pre-commit 检查大文件**（推送前拦住）。"
+  }
+]

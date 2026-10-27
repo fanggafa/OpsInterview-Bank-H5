@@ -1,0 +1,72 @@
+[
+  {
+    "id": 2800,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "Git 的三个工作区域分别是什么？一次提交经过哪些步骤？",
+    "answer": "**三个区域 + 一个远程仓库**：\n\n```\n工作区（Working Directory）\n  ↓ git add\n暂存区（Index / Staging Area）\n  ↓ git commit\n本地仓库（Repository，.git 目录）\n  ↓ git push\n远程仓库（Remote）\n```\n\n**关键认知：Git 存的不是「差异」，是「快照」**\n```\n每次 commit 都是一个「完整快照的指针」\n→ 切换分支时是「换指针」，不是「应用补丁」\n→ 这就是 Git 切分支极快的原因\n```\n\n**文件在 Git 里的四种状态**：\n```\nUntracked（未跟踪）  → git add → Staged\nModified（已修改）   → git add → Staged\nStaged（已暂存）     → git commit → Committed\nCommitted（已提交）  → 修改 → Modified\n```\n\n**最常用的六条命令**：\n```\ngit status              # 当前状态（最常用）\ngit diff                # 工作区 vs 暂存区\ngit diff --staged       # 暂存区 vs 最后一次提交\ngit log --oneline -10\ngit add -p              # 交互式选择要暂存的部分（推荐）\ngit restore <file>      # 撤销工作区修改\n```\n\n**三个「撤销」的区别（最容易混）**：\n\n| 命令 | 作用范围 | 是否破坏数据 |\n|---|---|---|\n| `git restore <file>` | 撤销工作区修改 | ⚠️ 修改会丢 |\n| `git restore --staged <file>` | 从暂存区撤出（回到工作区） | ✅ 安全 |\n| `git reset --soft HEAD~1` | 撤销 commit，改动留在暂存区 | ✅ 安全 |\n| `git reset --hard HEAD~1` | 撤销 commit + 丢弃改动 | ⚠️ **危险** |\n\n**「`--hard` 是唯一会丢代码的操作」**——用之前确认没有未提交的重要改动。\n\n**实践建议**：\n```\ngit add -p            # 拆分成多个有意义的提交，而不是一个巨大的 commit\ngit commit -m '...'   # 提交信息写「为什么改」，不是「改了什么」\n```"
+  },
+  {
+    "id": 2801,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "merge 和 rebase 有什么区别？团队该怎么选？",
+    "answer": "**核心区别：merge 保留历史分叉，rebase 把历史拉成直线。**\n\n```\nmerge 后：            rebase 后：\nA---B---C---M         A---B---C'---D'\n     \\     /                  （直线）\n      D---E\n```\n\n| | merge | rebase |\n|---|---|---|\n| 历史 | **保留真实分叉** | 线性、干净 |\n| 冲突 | 一次解决 | **每个 commit 都可能冲突** |\n| hash | 原有 commit 不变 | **commit hash 全部改变** |\n| 安全性 | **安全**（不改历史） | **改写历史**（危险） |\n| 可追溯性 | 好（能看到真实的分支合并） | 差（看不出曾经分叉过） |\n\n**最关键的一条：rebase 会改写 commit hash**\n```\n→ 已推送的分支上做 rebase，需要 force push\n→ 会破坏别人基于该分支的工作\n→ 团队共享分支（main/develop）绝不能 rebase\n```\n\n**推荐的团队规范**：\n\n| 场景 | 用什么 |\n|---|---|\n| **个人特性分支同步主干** | **rebase**（保持直线，合并时干净） |\n| **特性分支合入 main** | **merge（或 squash merge）**（保留「一个特性一次合并」的痕迹） |\n| **共享分支/main** | **绝不 rebase** |\n| 紧急修复 | cherry-pick |\n\n**「rebase 的黄金法则」**：\n```\n只对自己独占的分支做 rebase，绝不对已经push且别人在用的分支做\n```\n\n**常用命令**：\n```bash\ngit rebase main                # 把当前分支变基到 main\ngit rebase -i HEAD~3           # 交互式整理最近 3 个 commit（squash/fixup/reword）\ngit pull --rebase             # pull 时用 rebase 而不是 merge\ngit merge --no-ff feature     # 强制生成 merge commit（保留分支痕迹）\ngit merge --squash feature    # 把分支所有提交合成一个\n```\n\n**「`--no-ff` 的价值」**：\n```\n默认 fast-forward merge 不产生 merge commit → 看不到「这里曾经是一个分支」\n--no-ff 强制生成 merge commit → 能看出「这个特性是一起合进来的」\n```\n\n**冲突时**：\n```bash\ngit rebase main              # 冲突\n# 修改冲突文件\ngit add <file>\ngit rebase --continue        # 继续\ngit rebase --abort           # 放弃，回到 rebase 前\n```\n\n**一句话**：**「个人分支 rebase 保持干净，共享分支只 merge 不改历史」——rebase 的价值是直线历史，代价是改写 hash。**"
+  },
+  {
+    "id": 2802,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "GitLab 的 CI/CD 权限怎么设计？Runner 怎么管？",
+    "answer": "**GitLab 的权限是「层级 + 角色」，Runner 是「执行凭据」的风险点。**\n\n**1. 三层权限结构**\n```\nGroup（组） → Subgroup（子组） → Project（项目）\n```\n**项目权限可以继承组级，也可能被单独覆盖**——这是「以为收紧了其实没有」的常见原因。\n\n**五种角色（权限从低到高）**：\n\n| 角色 | 能做什么 |\n|---|---|\n| Guest | 看 issue |\n| Reporter | 看代码、看 CI 日志 |\n| **Developer** | 推代码、跑流水线 |\n| Maintainer | 改设置、管理成员、**改 CI 变量** |\n| **Owner** | 删除项目、转移项目 |\n\n**「Developer 能跑流水线」是关键风险点**——如果 CI 变量里有生产凭据，Developer 就能用它。\n\n**2. CI 变量（Secret）的分级**\n```\n- Protected 变量：只在受保护的分支/标签上可用（**必须勾选**）\n- Masked 变量：日志里不显示\n- Environment scope：限定环境（如只对 production 环境）\n```\n**「变量不勾 Protected，等于所有分支都能拿到生产密码」**——这是最高频的 GitLab 安全失误。\n\n**3. 受保护分支**\n```\nSettings → Repository → Protected branches\n\nmain：\n  Allowed to merge: Maintainer\n  Allowed to push: No one（必须走 MR）\n```\n**「main 禁止直接 push」是最基本的保护**。\n\n**4. Runner 的三种类型**\n\n| 类型 | 说明 | 适用 |\n|---|---|---|\n| **Shared（共享）** | GitLab 实例级，所有项目可用 | 一般构建 |\n| **Group（组级）** | 组内共享 | 团队共用 |\n| **Specific（项目级）** | 只给特定项目 | **生产部署（推荐）** |\n\n**Runner 的关键风险**：\n```\n✗ 用共享 Runner 部署生产\n   → 任何项目（包括别人的 PR）都能用这个 Runner\n   → 如果它持有生产凭据，等于所有人都有生产权限\n✓ 用专用 Runner（标签隔离）+ 只给特定项目\n```\n\n**5. Runner 的隔离**\n```toml\n# config.toml\n[[runners]]\n  executor = \"docker\"\n  [runners.docker]\n    privileged = false        # **绝不开 privileged**\n    volumes = [\"/cache\", \"/var/run/docker.sock\"]  # **别挂 docker.sock**\n    image = \"alpine\"          # 固定基础镜像\n```\n**「privileged + docker.sock」等于把宿主机 root 给了流水线。**\n\n**6. 六个必查的安全配置**\n```\n□ 生产 CI 变量勾了 Protected\n□ main 分支禁止直接 push\n□ 部署用专用 Runner（不用共享 Runner）\n□ Runner 的 docker 权限最小化（无 privileged/docker.sock）\n□ 项目成员定期 review（离职/转岗清理）\n□ 部署 token 有有效期且最小权限\n```\n\n**一句话**：**GitLab 的权限设计要点是「Protected 变量 + 受保护分支 + 专用 Runner」——最容易出错的是「变量没勾 Protected」和「用共享 Runner 部署生产」。**"
+  },
+  {
+    "id": 2803,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "困难",
+    "question": "代码仓库「越来越大」（几个 GB），导致 clone 很慢。怎么处理？",
+    "answer": "**Git 仓库大的根本原因：历史里有大文件，且 Git 会永久保留所有版本。**\n\n**Step 1：找出「谁在占空间」**\n```bash\n# 找最大的对象（按内容大小排序）\ngit rev-list --objects --all | \\\n  git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' | \\\n  awk '/^blob/ {print $3, $4}' | sort -rn | head -20\n\n# 或用现成工具（推荐）\ngit-sizer --verbose                      # 各类型占用\ngit-sizer ----filter=blob:none          # 只看历史\n```\n\n**Step 2：五个减小体积的手段**\n\n**1. 浅克隆（最简单，用户侧）**\n```bash\ngit clone --depth 1 <url>              # 只要最新一次提交\ngit clone --depth 1 --single-branch    # 只要一个分支\n```\n**这解决「clone 慢」但不解决「仓库本身大」。**\n\n**2. 部分克隆（Git 2.19+，推荐）**\n```bash\ngit clone --filter=blob:none <url>     # 只拿元数据和最新文件\ngit clone --filter=tree:0 <url>        # 更激进\n```\n**这是大仓库的最佳方案**——需要时才下载历史文件内容。\n\n**3. 从历史中移除大文件（彻底但危险）**\n```bash\n# 用 git-filter-repo（官方推荐，替代已弃用的 filter-branch）\ngit filter-repo --path big-file.zip --invert-paths\n```\n**⚠️ 这会改写所有 commit hash**——所有协作者必须重新 clone，且要协调好时间。\n\n**4. 用 Git LFS 管理大文件（前瞻方案）**\n```bash\ngit lfs install\ngit lfs track '*.psd' '*.zip' '*.jar'\n```\n**但 LFS 迁移需要改写历史**（`git lfs migrate import`），且 LFS 存储另算费用。\n\n**5. 拆分仓库（治本）**\n```\n一个仓库放多个项目 → 克隆时要拿全部历史\n拆分后每个仓库只拿自己需要的\n```\n\n**Step 3：处理顺序（推荐）**\n```\n1. 先给用户「浅克隆/部分克隆」的方案（立刻见效，零风险）\n2. 分析大文件来源，加 .gitignore 与 pre-commit 检查（防止继续变差）\n3. 评估是否值得「清洗历史」（成本高，需全员协调）\n```\n\n**Step 4：防止继续变大（最容易忽略）**\n```\n# pre-commit hook 检查大文件\nfind . -type f -size +10M -not -path './.git/*'\n\n# .gitignore 里加上\n*.zip\n*.jar\n*.psd\nnode_modules/\ndist/\n```\n**「删除文件」不会减小仓库**——Git 保留了历史版本，必须清洗历史才行。\n\n**一句话**：**仓库大的解法分两层：「用户侧用浅克隆/部分克隆立刻缓解」，以及「清理历史大文件或用 LFS 治本」——但清洗历史要全员协调，优先做前者。**"
+  },
+  {
+    "id": 2804,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "GitLab 备份怎么做？恢复时要注意什么？",
+    "answer": "**GitLab 的备份不只是「代码」——配置、数据库、上传文件、CI 变量都要备份。**\n\n**1. 备份内容（`gitlab-backup create` 覆盖什么）**\n```\n✓ 数据库（PostgreSQL）\n✓ 仓库数据（所有 Git 仓库）\n✓ 上传文件（头像、附件、LFS 对象）\n✓ CI artifacts、容器镜像（如果启用 registry）\n✗ **配置文件 /etc/gitlab/gitlab.rb**（不含！）\n✗ **密钥 /etc/gitlab/gitlab-secrets.json**（不含！）\n```\n**「配置和密钥不在备份包里」是最容易踩的坑**——只恢复备份包，GitLab 起不来或数据无法解密（CI 变量、2FA 都依赖密钥）。\n\n**2. 完整备份脚本**\n```bash\n#!/usr/bin/env bash\n# 1. 应用备份\ngitlab-backup create BACKUP=dump-$(date +%F) SKIP=registry\n\n# 2. 配置文件（必须单独备份！）\ntar -czf /backup/gitlab-config-$(date +%F).tar.gz \\\n  /etc/gitlab/gitlab.rb /etc/gitlab/gitlab-secrets.json\n\n# 3. 检查备份大小是否合理\ndu -sh /var/opt/gitlab/backups/*.tar\n```\n\n**3. 恢复步骤（顺序很重要）**\n```bash\n# 1. 停服务（保持数据库、Redis 之外的部分停止）\ngitlab-ctl stop puma\ngitlab-ctl stop sidekiq\n\n# 2. 恢复「配置和密钥」（必须最先！）\ntar -xzf gitlab-config-xxx.tar.gz -C /\n\n# 3. 恢复应用数据（会覆盖现有数据）\ngitlab-backup restore BACKUP=dump-2024-01-15\n\n# 4. 检查、重建、启动\ngitlab-ctl reconfigure\ngitlab-ctl restart\ngitlab-rake gitlab:check SANITIZE=true\n```\n**「先恢复配置和密钥」是关键**——顺序反了，数据恢复后也无法正常使用。\n\n**4. 五个高频问题**\n\n| 问题 | 原因 |\n|---|---|\n| **恢复后 CI 变量丢失/无法解密** | 没恢复 `gitlab-secrets.json` |\n| **恢复后无法登录** | 数据库恢复但 LDAP/2FA 配置不同 |\n| **版本不匹配恢复失败** | **备份只能恢复到「同版本或更高版本」** |\n| **仓库数据不一致** | 备份时有人正在 push（应停写入或用一致性选项） |\n| **恢复很慢** | 大仓库（GB 级）恢复需要数小时（要预留窗口） |\n\n**5. 「版本限制」是最重要的**：\n```\nGitLab 的恢复要求：\n- 同版本 ✅\n- 更高版本 ✅（但可能需要升级步骤）\n- 更低版本 ❌（会失败）\n→ 所以升级前备份，只能恢复到「升级后的版本」\n→ 建议备份同时记录版本号\n```\n\n**6. 验证（必须做）**\n```\n在隔离环境（独立 VM）做一次完整恢复：\n1. 起来后能登录\n2. 仓库能 clone\n3. CI 流水线能跑\n4. CI 变量可见\n```\n**「只备份不验证」= 出事时才发现备份不可用。**\n\n**一句话**：**GitLab 备份要「应用数据 + 配置文件 + gitlab-secrets.json 三件套」，恢复时先恢复配置和密钥；并且必须在隔离环境真实恢复验证一次。**"
+  },
+  {
+    "id": 2805,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git reset --hard HEAD~1` 会做什么？",
+    "options": [
+      { "key": "A", "text": "撤销最近一次 commit，并丢弃工作区未提交的修改" },
+      { "key": "B", "text": "只是撤销 commit，改动保留" },
+      { "key": "C", "text": "删除远程分支" },
+      { "key": "D", "text": "回滚到上一个 tag" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`--hard` 是唯一会「丢代码」的 reset 模式**，它会同时重置 HEAD、暂存区和工作区。对比：`--soft` 只移动 HEAD（改动留在暂存区）、`--mixed`（默认）移动 HEAD + 清暂存区（改动留在工作区）。**误用 `--hard` 后的补救**：如果 commit 过，可以用 `git reflog` 找到之前的 hash 恢复（**这是 Git 的救命稻草**）；如果没提交过，改动就真的没了。**建议**：不确定时先用 `--soft` 或 `git stash`。"
+  },
+  {
+    "id": 2806,
+    "type": "multiple",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "以下哪些是「代码仓库」常见的安全风险？（多选）",
+    "options": [
+      { "key": "A", "text": "代码里硬编码了密码/密钥/AK，并且被提交到历史里" },
+      { "key": "B", "text": "仓库被设为公开，内部代码泄漏" },
+      { "key": "C", "text": "开发者有 Maintainer 权限，能改 CI 变量并拿到生产凭据" },
+      { "key": "D", "text": "仓库里有 README 文档" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 完全无害。三项正确风险都是真实高频：A 是最常见的——**即使后来删除了文件，历史里仍然存在**（必须清洗历史或轮换密钥）；B 常因「临时公开给外部看」忘记改回；C 是「CI 变量没勾 Protected」的直接后果。补充：⑤**fork 出去的仓库**（员工 fork 到个人账号，权限收不回）；⑥**webhook 泄露**（webhook URL 常带 token）。**核查命令**：`gitleaks detect --source . --log-opts=\"--all\"` 能扫出历史里的密钥。"
+  }
+]
