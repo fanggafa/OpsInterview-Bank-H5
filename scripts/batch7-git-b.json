@@ -1,0 +1,57 @@
+[
+  {
+    "id": 2807,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "Git 分支策略（Git Flow / GitHub Flow / Trunk Based）怎么选？",
+    "answer": "**选择依据是「发布节奏」和「团队规模」，不是「哪个更先进」。**\n\n| 策略 | 分支 | 发布 | 适用 |\n|---|---|---|---|\n| **Git Flow** | main + develop + feature + release + hotfix | 按版本发布 | **传统软件、有明确版本号** |\n| **GitHub Flow** | main + feature | **随时可发布** | SaaS、Web 应用 |\n| **Trunk Based** | 只有 main（+ 短命分支） | **持续发布** | **高频交付、CI/CD 成熟** |\n\n**Git Flow（分支最多，最重）**\n```\nmain      ← 只放已发布版本\n  ↑\ndevelop   ← 集成分支\n  ↑\nfeature/* ← 功能开发\nrelease/* ← 发布准备\nhotfix/*  ← 线上紧急修复\n```\n**优点**：版本控制清晰，适合「多版本并行维护」\n**缺点**：**分支多、合并复杂**，不适合每天多次发布\n\n**GitHub Flow（最简单）**\n```\nmain      ← 随时可部署\n  ↑\nfeature/* ← 从 main 拉，提 PR，合并后立刻部署\n```\n**优点**：简单，适合持续交付\n**缺点**：只有一个「即将上线」的状态，不适合「发布窗口」的概念\n\n**Trunk Based（最激进，也最高效）**\n```\nmain      ← 所有开发直接合入（或极短命分支，< 1 天）\n         ← 用特性开关控制「未完成功能」\n```\n**优点**：合并冲突最少，交付最快（DORA 高效团队的主流）\n**缺点**：**必须有很强的 CI + 特性开关 + 自动化测试**，否则主干不稳定\n\n**选择建议**：\n\n| 你的情况 | 推荐 |\n|---|---|\n| 传统软件、季度版本、多版本维护 | **Git Flow** |\n| Web/SaaS、每周或每天发布 | **GitHub Flow** |\n| CI/CD 成熟、追求最快交付 | **Trunk Based + 特性开关** |\n| 团队 < 5 人 | **GitHub Flow**（Git Flow 太重） |\n\n**「特性开关」是 Trunk Based 的关键**：\n```\n未完成的代码可以直接合入 main，用开关控制是否对外可见\n→ 避免长时间分支（长分支 = 合并地狱）\n```\n\n**最该避免的**：\n```\n✗ 用 Git Flow 但每天要发布（release 分支会一直堵着）\n✗ 用 Trunk Based 但没有自动化测试（主干天天红）\n✗ 分支活了几周才合并（冲突爆炸）\n```\n\n**「长分支」是所有策略的共同敌人**——不管哪种策略，分支活得越久，合并越痛苦。\n\n**一句话**：**「发布节奏决定分支策略」——季度版本用 Git Flow，每周发布用 GitHub Flow，每天多次发布用 Trunk Based（必须有特性开关）。**"
+  },
+  {
+    "id": 2808,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "困难",
+    "question": "「误把密码提交到 Git 仓库」，怎么彻底处理？",
+    "answer": "**最关键认知：删掉文件 ≠ 删掉历史——密码仍在 Git 历史里。**\n\n**Step 1：立即轮换凭据（第一优先级，别管 Git）**\n```\n1. 立刻废弃泄漏的密码/密钥/AK\n2. 生成新的\n3. 更新所有使用它的地方（应用配置、CI 变量、文档）\n```\n**「先轮换，后清理 Git」**——清理历史要几小时，而密码每分钟都可能在被使用。\n\n**Step 2：评估泄漏范围**\n```\n- 仓库是公开还是私有？（公开 = 可能已被爬取）\n- 泄漏多久了？（看 commit 时间）\n- 有多少人 clone 过？（私有仓库风险小一些）\n- 有没有被 fork？\n```\n**「已推送到公开仓库的密钥」应当视为「已泄漏」**——GitHub 上有专门的爬虫在扫。\n\n**Step 3：清理 Git 历史（三选一）**\n\n**方案 A：`git filter-repo`（官方推荐）**\n```bash\n# 删除某个文件的所有历史\ngit filter-repo --path secrets.env --invert-paths\n# 或替换内容（把密码替换成占位符）\ngit filter-repo --replace-text <(echo 'actual_secret==>REDACTED')\n```\n**会改写所有 commit hash** → 所有协作者必须重新 clone。\n\n**方案 B：BFG Repo-Cleaner（更简单）**\n```bash\njava -jar bfg.jar --replace-text passwords.txt repo.git\n```\n\n**方案 C：如果仓库刚建（历史很短）**\n```\n最简单：删掉仓库重建，只保留清理后的代码\n```\n\n**Step 4：清理后的善后（容易漏）**\n```\n□ 强制推送所有分支（git push --force --all）\n□ 通知所有协作者重新 clone（旧 clone 仍有密码）\n□ 清理 GitLab/GitHub 的 fork（fork 里也有历史）\n□ 清理 CI 的缓存/构建产物（可能含密码）\n□ 检查是否还有 GitLab 的「仓库归档」\n```\n**「fork 里还有密码」是最容易漏的**——很多人清理了主仓库，但 fork 没管。\n\n**Step 5：防止再发生（最重要）**\n\n**1. 提交前扫描（pre-commit hook）**\n```bash\n# .pre-commit-config.yaml\n- repo: https://github.com/gitleaks/gitleaks\n  hooks: [{id: gitleaks}]\n```\n\n**2. CI 里扫全历史**\n```bash\ngitleaks detect --source . --log-opts=\"--all\" --verbose\n```\n\n**3. 用密钥管理（根本解法）**\n```\n✗ 密码写在配置文件里（还得提交）\n✓ 从 Vault/环境变量/CI Secret 注入\n```\n\n**4. 仓库设置**\n```\nGitHub：开启 Secret Scanning + Push Protection（推送时就拦住）\nGitLab：开启 Secret Detection\n```\n\n**「Push Protection」是最有效的**——在推送前就拦住，比事后清理好太多。\n\n**一句话**：**密码进 Git 了要「先轮换（立刻）→ 再评估范围 → 清理历史 → 通知重clone → 加上提交前扫描」——顺序不能反，且「轮换」永远优先于「清理」。**"
+  },
+  {
+    "id": 2809,
+    "type": "multiple",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "关于「GitLab Runner 的安全配置」，以下哪些是必要的？（多选）",
+    "options": [
+      { "key": "A", "text": "生产部署用专用 Runner（不用共享 Runner）" },
+      { "key": "B", "text": "Runner 的 docker executor 不开 privileged 模式" },
+      { "key": "C", "text": "Runner 尽量不挂载宿主机的 docker.sock" },
+      { "key": "D", "text": "为了方便构建镜像，Runner 应该开 privileged 并挂载 docker.sock" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 等于**把宿主机 root 权限交给流水线**——`privileged` 容器可以挂载宿主机文件系统、访问所有设备；`docker.sock` 能让流水线控制宿主机上的所有容器。**如果 PR 的流水线能改代码，攻击者就能通过 PR 拿到宿主机 root**。替代方案：①用 **Kaniko**（用户态构建镜像，不需要 daemon）；②用 **BuildKit rootless**；③用「Docker-in-Docker」但也需要 privileged（比挂 socket 稍安全但仍有风险）。A 的原因：共享 Runner 会被所有项目（包括外部 PR）使用，如果它持有生产凭据，等于所有人都有生产权限。"
+  },
+  {
+    "id": 2810,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "GitLab 的性能变慢，怎么排查？（自建 GitLab）",
+    "answer": "**GitLab 是个「大杂烩」——Rails + PostgreSQL + Redis + Sidekiq + Gitaly，逐层排查。**\n\n**Step 1：先定位「哪个组件慢」**\n```bash\ngitlab-ctl status          # 所有组件的运行状态\ngitlab-ctl tail            # 实时看所有日志\n```\n关键日志：\n```\n/var/log/gitlab/gitlab-rails/production.log      # Web 请求\n/var/log/gitlab/gitaly/current                    # Git 操作（clone/push）\n/var/log/gitlab/sidekiq/current                   # 后台任务\n/var/log/gitlab/postgresql/current                # 数据库\n```\n\n**Step 2：按「慢的是哪类操作」分流**\n\n| 慢的操作 | 排查方向 |\n|---|---|\n| **网页加载慢** | Rails 的响应时间、数据库慢查询 |\n| **clone/push 慢** | **Gitaly**（Git 存储服务） |\n| **CI 流水线慢** | Runner 队列、Runner 资源 |\n| **后台任务慢** | Sidekiq 队列积压 |\n| **搜索慢** | Elasticsearch（如启用） |\n\n**Step 3：五个高频原因**\n\n**1. 内存不足（最常见）**\n```bash\nfree -h\n# GitLab 的 Puma + Sidekiq 很吃内存，官方建议 8GB 起\n```\n**「内存不足导致 swap」是 GitLab 变慢的头号原因。**\n\n**2. 数据库慢查询**\n```sql\nSELECT query, calls, mean_time FROM pg_stat_statements\nORDER BY mean_time DESC LIMIT 10;\n```\n\n**3. Sidekiq 积压**\n```\n管理界面 → Admin → Monitoring → Background Jobs\n看队列长度与处理速率\n```\n\n**4. Gitaly 慢（仓库大）**\n```\ngitlab-ctl tail gitaly | grep -i 'duration'\n# 大仓库的 clone 会很慢 → 用浅克隆/部分克隆\n```\n\n**5. 磁盘 IO**\n```\niostat -x 1 5\n# GitLab 对 IO 敏感（尤其 Gitaly 和小文件多的仓库）\n```\n\n**Step 4：可调的关键参数**\n```ruby\n# /etc/gitlab/gitlab.rb\npuma['worker_processes'] = 4        # 按 CPU 调整\nsidekiq['concurrency'] = 10         # 并发数（吃内存）\npostgresql['shared_buffers'] = \"2GB\"\ngitlab_rails['db_pool'] = 15\n```\n**改完必须 `gitlab-ctl reconfigure`。**\n\n**Step 5：用户侧的优化（不用改服务端）**\n```\n- 用浅克隆（--depth 1）\n- 用部分克隆（--filter=blob:none）\n- 大仓库考虑用 Git LFS\n```\n\n**一句话**：**GitLab 变慢先分清「网页慢 / Git 操作慢 / CI 慢 / 后台任务慢」，最常见的三个原因是「内存不足」「数据库慢查询」「Gitaly 仓库太大」。**"
+  },
+  {
+    "id": 2811,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git stash` 用来做什么？和 `git commit` 到临时分支有什么区别？",
+    "answer": "**`git stash` 是「临时把未提交的改动收起来」，让工作区干净。**\n\n**典型场景**：\n```\n正在开发 A 功能，突然要切分支修 bug\n→ 改的东西不能提交（不完整），但也不能带走（会冲突）\n→ git stash，切过去修 bug，回来后 git stash pop\n```\n\n**常用命令**：\n```bash\ngit stash                    # 收起来\ngit stash list               # 看有哪些\ngit stash pop                # 恢复最近一个（并从 stash 列表移除）\ngit stash apply              # 恢复但不移除（可重复用）\ngit stash drop               # 丢弃最近一个\ngit stash -u                 # 包含未跟踪文件（**默认不含**）\ngit stash -m 'message'       # 带说明（多个 stash 时有用）\n```\n**`-u` 容易忘**：默认 `git stash` **不包含新建的未跟踪文件**——新加的文件还在工作区。\n\n**和「临时分支提交」的对比**：\n\n| | `git stash` | 临时分支 commit |\n|---|---|---|\n| 用途 | **短期、临时** | **可能长期、可共享** |\n| 可见性 | 只在本机 stash 栈 | 可以推送到远程 |\n| 冲突风险 | 恢复时可能冲突 | 也是 |\n| 安全性 | **栈可能被误删**（无备份） | 有 commit 记录 |\n\n**「什么时候该用分支而不是 stash」**：\n```\n✗ 用 stash 存了三天还没处理 → 容易忘、容易丢\n✓ 改动较大/要保留较久 → 建个临时分支提交（wip 分支）\n```\n**`git stash` 适合「几小时内的临时切换」，不适合长期存放。**\n\n**两个坑**：\n```\n1. stash 栈是本地的，不推送到远程 → 换机器就没了\n2. stash pop 冲突时，stash 不会自动删除（要 git stash drop）\n```\n\n**一句话**：**`git stash` 适合「临时切换」，改动丢弃风险高且只在本机——改动较大或要保留较久，用临时分支 commit 更稳妥。**"
+  },
+  {
+    "id": 2812,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "困难",
+    "question": "如何排查「clone 一个仓库特别慢」？",
+    "answer": "**clone 慢有三层原因：网络、服务端、仓库本身。**\n\n**Step 1：先分段测量**\n```bash\nGIT_TRACE=1 GIT_CURL_VERBOSE=1 git clone <url> 2>&1 | head -50\n```\n**看卡在哪一步**：DNS → TCP 连接 → 认证 → 协商 → 接收对象。\n\n**Step 2：三层排查**\n\n**A. 网络层**\n```bash\nping <git服务器>\ncurl -w '%{time_namelookup} %{time_connect} %{time_appconnect} %{time_total}\\n' -o /dev/null -s https://<git服务器>\n```\n**卡在 `time_connect`** → 网络/防火墙问题\n**卡在测速** → 带宽不够（跨国、走公网）\n\n**B. 服务端（GitLab）**\n```bash\n# 看 Gitaly 的日志（clone 的执行时间）\ngitlab-ctl tail gitaly | grep -i 'repository.*clone\\|duration'\n```\n**服务端慢的常见原因**：\n- 内存不足（swap）\n- 磁盘 IO 慢\n- Gitaly 并发限制\n\n**C. 仓库本身（最常见）**\n```bash\n# 看仓库大小与对象数量\ngit count-objects -vH\ngit-sizer\n```\n\n**Step 3：仓库大的三个解法**\n```bash\n# 1. 浅克隆（只要最新一次提交）——最快见效\ngit clone --depth 1 <url>\n\n# 2. 部分克隆（只要元数据，文件按需下载）\ngit clone --filter=blob:none <url>\n\n# 3. 只要一个分支\ngit clone --single-branch --branch main <url>\n```\n**「浅克隆」能把 GB 级仓库的 clone 时间从几十分钟降到几十秒。**\n\n**Step 4：五个高频原因排序**\n\n| 原因 | 占比 | 解法 |\n|---|---|---|\n| **仓库历史里有大文件** | 高 | 清洗历史 / LFS / 浅克隆 |\n| 跨国网络（没走专线） | 高 | 内网镜像 / 专线 |\n| GitLab 服务器资源不足 | 中 | 加内存、换 SSD |\n| 分支/标签太多 | 中 | 浅克隆、清理无用分支 |\n| 认证/SSO 每次握手慢 | 低 | 缓存凭据 |\n\n**Step 5：团队级方案**\n```\n1. 在办公网部署「Git 镜像/缓存」（如 GitLab 的 Geo）\n2. 默认推荐浅克隆（写进文档）\n3. 定期清理大文件（或迁移到 LFS）\n4. CI 里用 `--depth 1`（流水线不需要完整历史）\n```\n**「CI 流水线用浅克隆」是最容易实现的优化**——CI 只需要最新代码。\n\n**一句话**：**clone 慢要用 `GIT_TRACE` 分段定位（网络 vs 服务端 vs 仓库），最有效的解法是「浅克隆 / 部分克隆」和「清洗历史大文件」。**"
+  }
+]

@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**827 题**（558 简答 + 140 单选 + 129 多选），23 个分类
+- 题库：**921 题**（627 简答 + 150 单选 + 144 多选），23 个分类
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -57,7 +57,7 @@ npm run dev          # http://127.0.0.1:5273
 ```
 ops-interview-h5/
 ├── docs/ops-interview-bank-PRD.md   # 产品需求文档
-├── public/data/questions.json       # 题库（827 题）
+├── public/data/questions.json       # 题库（921 题）
 ├── scripts/
 │   ├── validate-data.mjs            # 题库结构校验
 │   └── measure.mjs                  # 移动端布局实测（CDP，需本地起 dev）
@@ -124,7 +124,7 @@ ops-interview-h5/
 
 ## 维护题库
 
-题库共 **827 题**：558 道简答题 + 140 道单选题 + 129 道多选题，分布在 23 个分类中。
+题库共 **921 题**：627 道简答题 + 150 道单选题 + 144 道多选题，分布在 23 个分类中。
 
 ### 当前进度
 
@@ -145,15 +145,18 @@ ops-interview-h5/
 | 消息队列 | 41 | 23 | 10 | 8 | 40 ✅ |
 | 安全与跳板机 | 40 | 32 | 2 | 6 | 40 ✅ |
 | LVS/HAProxy | 40 | 24 | 9 | 7 | 40 ✅ |
+| 存储与备份 | **36** | 26 | 5 | 5 | 40 |
 | DNS | 35 | 19 | 9 | 7 | 35 ✅ |
 | iptables/firewalld | 35 | 22 | 7 | 6 | 35 ✅ |
 | Nginx | 35 | 22 | 7 | 6 | 35 ✅ |
 | Tomcat/JVM | 35 | 21 | 8 | 6 | 35 ✅ |
+| 虚拟化 | **32** | 25 | 2 | 5 | 35 |
+| Git/GitLab | **26** | 18 | 3 | 5 | 35 |
 
-**已完成的分类共 17 个，全部达标。**「待扩充」清单已清空。
+**已完成的分类共 20 个**（19 个达标，存储与备份/虚拟化/Git 已有题待补齐）。
 
 **待填充**（登记在 `scripts/pending-categories.mjs`）：
-存储与备份、虚拟化、Git/GitLab、日志与ELK、自动化与配置管理、云与高可用（6 个）。
+日志与ELK、自动化与配置管理、云与高可用（3 个）。
 
 ### 分类与编号段
 
@@ -201,6 +204,9 @@ npm run validate:data
 3. **答案可带 `**强调**`**：标出最关键的词（渲染层支持粗体）
 4. **可用 `[[图:id]]` 插图**：流程/链路/对比类题目建议配图（见「答案插图」一节）
 5. **必须可验证**：涉及命令、参数、阈值的，写在主流稳定版本范围内，避免强依赖易变细节
+6. **`difficulty` 与 `frequency` 是两个独立字段**：前者是「难度」（简单/中等/困难），后者是「考察频率」（高频/中频/低频）。批量生成时极易把「困难」误填进 `frequency`——`npm run validate:data` 会拦下，别手改绕过校验。
+
+> 实测教训：`difficulty` 误填入 `frequency` 的问题在第五、六、七批各出现过一次（分别 14、6、11 题），全部由校验脚本拦下。写题时建议先把两个字段分开列清楚再合并。
 
 ### 简答题
 

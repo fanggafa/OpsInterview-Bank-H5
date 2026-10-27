@@ -8,9 +8,6 @@
  * 交付进度维护方式：完成一批就往 PENDING 里移除该项。
  */
 export const PENDING_CATEGORIES = [
-  '存储与备份',
-  '虚拟化',
-  'Git/GitLab',
   '日志与ELK',
   '自动化与配置管理',
   '云与高可用',

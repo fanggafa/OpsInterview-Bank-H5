@@ -1,0 +1,49 @@
+[
+  {
+    "id": 2620,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "虚拟机磁盘「越用越大」但里面没那么多数据，是什么原因？",
+    "answer": "**精简置备（thin）磁盘「只增不减」——删了文件空间也不回收。**\n\n**原因**：\n```\nthin 磁盘按「写入过的位置」分配空间\n删文件只是「标记为可用」，块分配记录还在\n→ 文件从 10GB 变成 1GB，但磁盘文件仍是 10GB\n```\n\n**三种格式的差异**：\n\n| 格式 | 机制 | 删文件后空间回收 |\n|---|---|---|\n| **qcow2（稀疏）** | 按需分配 | ❌ 不自动 |\n| **raw（预分配）** | 固定大小 | — |\n| **VMware thin** | 按需分配 | ❌ 不自动（要 sDelete/UNMAP） |\n\n**回收空间的方法**：\n\n**1. qcow2 的回收**\n```bash\n# 需要关机或在线\nqemu-img convert -O qcow2 -c src.qcow2 dst.qcow2    # 重建（最彻底）\nvirt-sparsify --in-place disk.qcow2                  # 原地压缩\n```\n\n**2. 让 GUEST 支持 TRIM/UNMAP（关键前提）**\n```xml\n<driver name='qemu' type='qcow2' discard='unmap'/>\n```\n```bash\n# VM 内定期\nfstrim -av          # ext4/xfs 都支持\n```\n**「没有 discard=unmap，怎么 fstrim 都没用」**——这是最常见的配置遗漏。\n\n**3. VMware 的回收**\n```\nWindows VM：用 sDelete 清零空闲空间，再「精简置备回收」\nLinux VM：fstrim\n然后 vmkfstools --punchzero <vmdk>\n```\n\n**「两条路径的区别」**：\n```\ndiscard=unmap + fstrim → 实时反馈给虚拟化层（在线回收）\nqemu-img convert      → 离线重建成一个新文件（最彻底）\n```\n\n**监控与预防**：\n```\n□ 定期检查 qemu-img info 的 disk size vs actual size\n□ 数据存储/宿主机磁盘水位告警\n□ 开启 discard + 定期 fstrim\n```\n\n**「不要激进地做 convert」**：\n```\n大磁盘重建要很久（几小时），且需要双倍空间\n→ 选在维护窗口做，或者只在磁盘紧张时做\n```\n\n**一句话**：**精简置备磁盘「只增不减」是设计如此——要回收空间必须「开启 `discard=unmap` + VM 内 `fstrim`」，或离线用 `qemu-img convert` 重建。**"
+  },
+  {
+    "id": 2621,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "困难",
+    "question": "虚拟化平台的「容量规划」怎么做？为什么不能只看 CPU 和内存？",
+    "answer": "**因为「存储 IOPS」和「网络」往往比 CPU/内存更早成为瓶颈。**\n\n**四个维度都要算**：\n\n**1. CPU（相对容易算）**\n```\nvCPU 需求 = Σ(各 VM 的 vCPU) × 超分比倒数\n物理核 = vCPU 总数 / 超分比 / 目标利用率\n\n例：100 台 VM × 4 vCPU = 400 vCPU\n超分 3:1 → 需要 133 物理核\n利用率 70% → 需要约 190 核（约 10 台 20 核的宿主机）\n```\n\n**2. 内存（建议不超分）**\n```\n总内存 = Σ(各 VM 内存) × 1.3（余量）\n```\n\n**3. 存储 IOPS（最容易不够）**\n```\n⚠️ 不能简单相加！\n多个 VM 的 IOPS 峰值不会同时出现\n→ 通常按「Σ峰值 × 0.3~0.5」估算（并发系数）\n→ 但数据库类的 IOPS 必须按峰值算（不能打折）\n```\n**「容量够了但 IOPS 不够」是虚拟化平台最常见的问题**——磁盘还有 50% 空间，但 IO 已经完全跑不动。\n\n**4. 网络带宽**\n```\n- VM 之间的流量（东西向）常被忽略\n- 存储流量（iSCSI/NFS）也要算\n- 备份/迁移流量（会瞬间打满）\n→ 万兆起步，存储网络独立\n```\n\n**「容量规划的三个陷阱」**：\n\n**1. 只看平均值，不看峰值**\n```\n平均 CPU 30% → 但每天早高峰到 90%\n→ 必须按峰值 + 余量规划\n```\n\n**2. 用「当前用量」预测未来**\n```\n业务在增长，当前 30% 可能半年后变 60%\n→ 要按「增长趋势」规划（并留扩容路径）\n```\n\n**3. 忘了「冗余（N+1）」**\n```\n10 台宿主机，挂 1 台要能接管\n→ 实际需按「9 台的容量承载 10 台的负载」\n→ 有效容量只有 90%\n```\n\n**规划的产出（要能回答）**：\n```\n1. 当前可用容量（减掉冗余后）\n2. 当前利用率\n3. 预计何时达到 80%\n4. 扩容需要多久（采购/开通）\n5. 瓶颈会先出现在哪（CPU? 内存? IOPS?）\n```\n\n**「最容易被忽略的一条」**：**存储的「IOPS 随容量增长而增长（SSD）」还是「固定（HDD 阵列）」**——HDD 阵列的 IOPS 是由盘数决定的，加容量不等于加 IOPS。\n\n**一句话**：**虚拟化容量规划要同时算「CPU、内存、IOPS、带宽」四维——其中 IOPS 最容易算错（不能简单相加）且最容易先成为瓶颈。**"
+  },
+  {
+    "id": 2622,
+    "type": "multiple",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "「虚拟机性能调优」时，以下哪些是真正有效的手段？（多选）",
+    "options": [
+      { "key": "A", "text": "磁盘用 virtio 驱动 + cache=none + io=native" },
+      { "key": "B", "text": "网络用 virtio 或多队列，匹配 vCPU 数" },
+      { "key": "C", "text": "关键 VM 绑核（vcpupin），消除调度抖动" },
+      { "key": "D", "text": "给 VM 分配远超实际需求的 vCPU（越多越快）" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是常见误区：**vCPU 过多会导致「CPU 就绪等待」加剧**（宿主机要同时调度更多 vCPU），且客户机 OS 的调度开销也变大——**「vCPU 数是性能问题的常见来源，不是解决方案」**。三项正确做法针对的正是虚拟化的三大开销：IO（virtio/cache）、网络（多队列）、调度（绑核）。补充：⑤**NUMA 亲和**（大内存 VM 要在一个 NUMA 节点内）；⑥**大页内存**（减少页表开销）；⑦**关闭不必要的设备**（USB、声卡等减少中断）。"
+  },
+  {
+    "id": 2623,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "「虚拟机在线扩容磁盘」怎么做？要注意什么？",
+    "answer": "**分三步：扩虚拟磁盘 → 扩分区/文件系统 → 验证。**\n\n**1. 扩虚拟磁盘（虚拟化层）**\n```bash\n# KVM：需要关机或用 virsh blockresize（部分场景支持在线）\nvirsh blockresize <vm> /var/lib/libvirt/images/disk.qcow2 200G\n\n# qemu-img（必须关机）\nqemu-img resize disk.qcow2 +50G\n```\n**注意**：`qemu-img resize` 只能「扩」不能「缩」（缩小有数据损坏风险）。\n\n**2. 扩分区（客户机内）**\n```bash\n# 1. 让内核重新读取磁盘大小\necho 1 > /sys/class/block/sda/device/rescan\n# 或重启 VM\n\n# 2. 查看新大小\nfdisk -l /dev/sda\n\n# 3. 扩分区（fdisk/growpart）\ngrowpart /dev/sda 3          # 最简单（cloud-utils 包）\n# 或 fdisk 删除分区再重建（**起始扇区必须相同**）\n```\n**「fdisk 重建分区时起始扇区写错」= 数据丢失**——用 `growpart` 更安全。\n\n**3. 扩文件系统**\n```bash\n# XFS（只能扩）\nxfs_growfs /data\n\n# ext4\nresize2fs /dev/sda3\n```\n**`xfs_growfs` 的参数是挂载点，`resize2fs` 是设备路径**——串了会报错。\n\n**四种情况的处理**：\n\n| 场景 | 做法 |\n|---|---|\n| 单分区 + 文件系统 | growpart → xfs_growfs |\n| **LVM** | pvresize → lvextend → xfs_growfs |\n| 分区后是 LVM | 要在 LVM 层先扩 PV |\n| 分区表是 GPT + 分区在末尾 | 可以扩；**分区在中间则无法扩** |\n\n**LVM 的完整流程**：\n```bash\n# 磁盘扩容后\npvresize /dev/sda3           # 扩 PV\nlvextend -l +100%FREE /dev/vg/lv\nxfs_growfs /data\n```\n\n**注意事项**：\n```\n□ 扩之前先备份（虽然操作安全，但分区表操作有风险）\n□ 确认「分区在磁盘末尾」（中间的分区无法扩）\n□ 云盘扩容要先在云控制台扩，再在 OS 内扩\n□ 验证：df -h 是否反映新容量\n```\n\n**一句话**：**在线扩容磁盘 = 「扩虚拟磁盘（最好关机）→ `growpart` 扩分区 → `xfs_growfs`/`resize2fs` 扩文件系统」——用 `growpart` 比手写 fdisk 安全得多，LVM 要先 `pvresize`。**"
+  },
+  {
+    "id": 2624,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "困难",
+    "question": "虚拟化环境「宿主机负载不高，但所有 VM 都感觉卡」，怎么排查？",
+    "answer": "**「宿主机指标看起来正常」是假象——要看更细的维度。**\n\n**Step 1：先看「宿主机 CPU 真实状态」**\n```bash\nmpstat -P ALL 1 5           # 每个核的明细\nvmstat 1 5                  # r（运行队列）、cs（上下文切换）\n```\n```\n关键：\n- r 列持续 > 核数 → 有排队（即使 %util 不高）\n- cs 异常高 → 上下文切换过多（调度问题）\n- st 不在宿主机看（那是客户机的指标）\n```\n**「CPU 使用率 50% 但运行队列很长」是典型的「调度瓶颈」**——不是算力不够，是调度不过来。\n\n**Step 2：五个「宿主机看起来正常」但实际有问题的情况**\n\n**1. NUMA 跨节点访问**\n```bash\nnumastat -p <qemu进程>\n# numa_foreign 高 → VM 的内存在远端 NUMA 节点\n```\n**「内存分配在不正确的 NUMA 节点」会导致明显性能下降，但宿主机指标完全正常。**\n\n**2. CPU 频率被降（节能策略）**\n```bash\ncpupower frequency-info\ncat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor\n# powersave → 降频；performance → 满频\n```\n**「为省电用 `powersave`」会让延迟敏感的应用明显变慢。**\n\n**3. 存储 IO 的「隐形瓶颈」**\n```bash\niostat -x 1 5    # 看物理盘\n# 关键：await 高但 %util 低 → 盘或网络存储的问题\n```\n\n**4. 网络丢包/重传**\n```bash\nss -ti | grep retrans\nnetstat -s | grep -i retrans\n```\n\n**5. 中断风暴 / 软中断集中**\n```bash\nmpstat -P ALL 1 5 | grep -i soft\ncat /proc/interrupts | head -20    # 看中断是否集中在单核\n```\n**「网卡中断全部落在 CPU0」是经典的性能杀手。**\n\n**Step 3：三个「全局性」检查**\n```bash\n# 1. 内核参数是否被改（如 numa_balancing）\nsysctl -a | grep -i numa\n# 2. 是否有异常的 cgroup 限制\nsystemd-cgtop\n# 3. 平台层是否有告警（vCenter/OpenStack 的事件）\n```\n\n**Step 4：对比实验（最有效）**\n```\n把一台 VM 迁移到另一台宿主机 → 是否恢复？\n→ 恢复 = 原宿主机有问题（硬件/NUMA/中断）\n→ 不恢复 = VM 自身或共享存储的问题\n```\n\n**「所有 VM 都卡」的三种典型原因**：\n```\n1. 共享存储变慢（所有 VM 共用 → 全卡）\n2. 宿主机硬件退化（CPU 降频、内存故障引发纠错）\n3. 网络设备故障（交换机抖动 → 全卡）\n```\n**「全部都卡」几乎必然是「共享资源」出问题**——存储、网络、或宿主机硬件。\n\n**一句话**：**「宿主机指标正常但 VM 全卡」要查 NUMA 跨节点、CPU 降频、存储/网络隐形瓶颈、中断分布——「所有 VM 都卡」的元凶几乎必然是共享资源（存储/网络）。**"
+  }
+]
