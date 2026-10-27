@@ -144,11 +144,21 @@ describe('首页 · 快捷入口', () => {
     expect(router.currentRoute.value.path).toBe('/interview')
   })
 
-  it('右上角按钮进入设置页', async () => {
+  it('右上角按钮直接切换主题，不跳转页面', async () => {
     const { wrapper, router } = await mountHome()
+    const before = router.currentRoute.value.path
+
     await wrapper.find('.hero__btn').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/me')
+
+    // 仍留在首页，且主题被切成深色
+    expect(router.currentRoute.value.path).toBe(before)
+    expect(JSON.parse(localStorage.getItem('oi_settings')).theme).toBe('dark')
+
+    // 再点一次切回浅色
+    await wrapper.find('.hero__btn').trigger('click')
+    await flushPromises()
+    expect(JSON.parse(localStorage.getItem('oi_settings')).theme).toBe('light')
   })
 })
 

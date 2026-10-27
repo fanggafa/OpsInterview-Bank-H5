@@ -227,16 +227,17 @@ const resultText = computed(() => {
         :class="{ 'chip--active': !state.category }"
         @click="selectCategory('')"
       >
-        全部<span class="chip__count">{{ bank.total }}</span>
+        <span class="chip__label">全部</span><span class="chip__count">{{ bank.total }}</span>
       </button>
       <button
         v-for="cat in availableCategories"
         :key="cat"
         class="chip"
         :class="{ 'chip--active': state.category === cat }"
+        :title="cat"
         @click="selectCategory(cat)"
       >
-        {{ cat }}<span class="chip__count">{{ categoryCounts[cat] }}</span>
+        <span class="chip__label">{{ cat }}</span><span class="chip__count">{{ categoryCounts[cat] }}</span>
       </button>
     </nav>
 
@@ -370,7 +371,22 @@ const resultText = computed(() => {
 .bank-tabs {
   margin-bottom: 6px;
 }
+/* 分类名较长，网格内字号略小，保证 8 字分类名能完整显示 */
+.bank-tabs .chip {
+  font-size: 12.5px;
+}
+/**
+ * chip 内的文字容器：长度超出时省略，不撑破胶囊。
+ * 不设 min-width:0 的话，flex 子项会被内容撑开（这就是分类名溢出边框的原因）。
+ */
+.chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chip__count {
+  flex-shrink: 0;
   margin-left: 3px;
   font-size: 10px;
   opacity: 0.65;

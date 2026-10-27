@@ -171,8 +171,14 @@ export const STORAGE_KEYS = {
   PROGRESS: 'oi_progress',
 }
 
-/** 底部 TabBar（4 项，不含首页） */
+/**
+ * 底部 TabBar（5 项）。
+ *
+ * 首页必须在里面：否则从首页进到其他 Tab 后，底部栏没有回首页的入口
+ * （只有浏览器后退键，在 PWA/微信里体验很差）。
+ */
 export const TAB_ITEMS = [
+  { path: '/', label: '首页', icon: 'home' },
   { path: '/bank', label: '题库', icon: 'bank' },
   { path: '/practice', label: '刷题', icon: 'practice' },
   { path: '/stats', label: '统计', icon: 'stats' },

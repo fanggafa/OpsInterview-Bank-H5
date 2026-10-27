@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import App from '@/App.vue'
@@ -63,15 +63,39 @@ describe('应用挂载冒烟', () => {
 })
 
 describe('TabBar', () => {
-  it('渲染 4 项且当前路由高亮', async () => {
+  it('渲染 5 项且当前路由高亮', async () => {
     const router = makeRouter()
     router.push('/bank')
     await router.isReady()
 
     const wrapper = mount(TabBar, { global: { plugins: [pinia, router] } })
     const links = wrapper.findAll('.tabbar__item')
-    expect(links).toHaveLength(4)
+    expect(links).toHaveLength(5)
     expect(wrapper.find('.tabbar__item--active').text()).toContain('题库')
+  })
+
+  it('底部栏包含「首页」入口，且能回到首页（否则进去就出不来）', async () => {
+    const router = makeRouter()
+    router.push('/bank')
+    await router.isReady()
+
+    const wrapper = mount(TabBar, { global: { plugins: [pinia, router] } })
+    const labels = wrapper.findAll('.tabbar__label').map((n) => n.text())
+    expect(labels).toContain('首页')
+
+    const homeLink = wrapper.findAll('.tabbar__item').find((l) => l.text().includes('首页'))
+    await homeLink.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/')
+  })
+
+  it('在首页时「首页」高亮', async () => {
+    const router = makeRouter()
+    router.push('/')
+    await router.isReady()
+
+    const wrapper = mount(TabBar, { global: { plugins: [pinia, router] } })
+    expect(wrapper.find('.tabbar__item--active').text()).toContain('首页')
   })
 
   it('子路由通过 meta.parent 继承高亮', async () => {
@@ -79,6 +103,7 @@ describe('TabBar', () => {
       history: createMemoryHistory(),
       routes: [
         { path: '/question/:id', component: QuestionView, meta: { parent: '/bank' } },
+        { path: '/', component: BankView },
         { path: '/bank', component: BankView },
         { path: '/practice', component: BankView },
         { path: '/stats', component: StatsView },

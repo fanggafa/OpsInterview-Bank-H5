@@ -24,7 +24,7 @@ npm run dev          # http://127.0.0.1:5273
 | `npm run dev` | 开发服务器（127.0.0.1:5273） |
 | `npm run build` | 生产构建到 `dist/` |
 | `npm run preview` | 预览构建产物（127.0.0.1:5274） |
-| `npm run test` | 运行 vitest（25 个文件 / 490 个用例） |
+| `npm run test` | 运行 vitest（26 个文件 / 498 个用例） |
 | `npm run validate:data` | 校验题库结构（枚举 / id / 题数 / 字段） |
 | `npm run check:encoding` | 编码守卫（防中文被写坏，见[编码守卫](#编码守卫)） |
 | `npm run verify` | **提交前跑这个**：编码 + 题库 + 测试 + 构建 全流程 |
@@ -49,6 +49,21 @@ npm run dev          # http://127.0.0.1:5273
 | `/me` | 主题三态（浅色/深色/跟随系统）、清空数据、关于 |
 
 一共 12 条路由，含 404。
+
+### 底部导航栏
+
+5 个一级页签：**首页 / 题库 / 刷题 / 统计 / 我的**。
+
+- **首页必须在底部栏里**：早先版本只有 4 项（不含首页），从首页进到其他 Tab 后底部栏没有回首页的入口，只能靠浏览器后退——在 PWA/微信里体验很差。
+- 沉浸式页面（`/practice`、`/interview/run`）不显示底部栏，它们要占满整屏。
+- 二级页面通过路由 `meta.parent` 让所属 Tab 保持高亮（如 `/question/:id` 高亮「题库」）。
+
+### 主题切换
+
+- **首页右上角按钮：点一下直接切浅色/深色**（不再跳「我的」页再选）。
+  按钮图标随状态变化：深色下显示太阳、浅色下显示月亮，`aria-label` 同步说明「切换到浅色/深色主题」。
+- `/me` 页保留三态选择（浅色 / 深色 / 跟随系统）——「跟随系统」只能在设置里选，快捷按钮只在明暗之间切。
+- 主题通过 `<html data-theme>` + CSS 变量驱动，切换时同步 `theme-color` meta。
 
 ---
 
@@ -82,7 +97,7 @@ ops-interview-h5/
 │       ├── practice.js              # 刷题队列与断点续刷
 │       ├── gestures.js              # 滑动手势判定（轴锁定 + 阈值 + 速度）
 │       └── scroll.js                # 回到顶部（兼容测试环境）
-├── tests/                           # vitest（25 个文件 / 490 个用例）
+├── tests/                           # vitest（26 个文件 / 498 个用例）
 ├── deploy/nginx.conf.snippet        # Nginx 配置片段
 ├── vercel.json / netlify.toml       # 平台配置
 └── index.html
@@ -860,6 +875,12 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
   并且新增了 `validate:data` 的围栏成对与表格分隔行检查兜底。
 - **路由模式**由 `VITE_ROUTER_MODE` 控制：默认 history（需 rewrite），
   `hash` 用于 Pages 等无 rewrite 环境。不要为部署改源码。
+- **`.chip` 这类胶囊一律要 `min-width: 0`**：flex 子项默认 `min-width:auto`，
+  内容比容器宽时不会收缩，文字会直接溢出边框。分类胶囊因此踩过坑（见下条）。
+- **分类筛选不要用固定列宽 grid**：分类名长度差得远（`MySQL` 5 字符 vs
+  `iptables/firewalld` 19 字符），`grid-template-columns: minmax(104px, 1fr)`
+  会让长名字撑破胶囊。改用 `flex-wrap` + 每个胶囊按内容自适应宽度。
+  `tests/chip-overflow.test.js` 会检查这条不被回退。
 - 改动后务必跑**全量** `npm run test`，不能只看被改动的文件。
 
 ---

@@ -96,6 +96,27 @@ describe('分类 Tab · 全部可见（回归）', () => {
     const first = wrapper.findAll('nav[aria-label="分类筛选"] .chip')[1]
     expect(first.text()).toContain('1')
   })
+
+  it('分类名用独立容器承载，防止长名字撑破胶囊（显示 bug）', async () => {
+    const { wrapper } = await mountBank()
+    const chips = wrapper.findAll('nav[aria-label="分类筛选"] .chip')
+    // 每个 chip 内的文字都在 .chip__label 里，配合 CSS 的 ellipsis 才不会溢出
+    chips.forEach((chip) => {
+      expect(chip.find('.chip__label').exists()).toBe(true)
+    })
+    // 长分类名也要有(自动化与配置管理 / iptables/firewalld 这类)
+    const longChip = chips.find((c) => c.text().includes('iptables/firewalld'))
+    expect(longChip).toBeTruthy()
+    expect(longChip.find('.chip__label').text()).toBe('iptables/firewalld')
+  })
+
+  it('长分类名有 title 兜底（省略后仍可看到全名）', async () => {
+    const { wrapper } = await mountBank()
+    const longChip = wrapper
+      .findAll('nav[aria-label="分类筛选"] .chip')
+      .find((c) => c.text().includes('iptables/firewalld'))
+    expect(longChip.attributes('title')).toBe('iptables/firewalld')
+  })
 })
 
 describe('分类 Tab · 从题库动态推导（可扩展）', () => {
