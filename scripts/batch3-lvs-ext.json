@@ -1,0 +1,40 @@
+[
+  {
+    "id": 1640,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "四层负载均衡（LVS）和七层（Nginx/HAProxy）该怎么选？",
+    "answer": "**核心区别：四层看不懂 HTTP，七层能解析报文。**\n\n| | 四层（LVS/DR） | 七层（Nginx/HAProxy） |\n|---|---|---|\n| 依据 | IP + 端口 | URL、Host、Header、Cookie |\n| 性能 | **极高**（内核态转发，十万级并发） | 万级，受用户态与内存限制 |\n| 功能 | 只做转发 | 路由、改写、限流、SSL 卸载、会话保持 |\n| 建连 | **三次握手由客户端直连 RS**（DR/NAT）或不参与 | 完整代理两次连接 |\n\n**典型架构：两者叠加而非二选一**\n```\n用户 → LVS（四层，扛连接数与流量）→ Nginx（七层，按域名/路径分发）→ 应用\n```\nLVS 做流量入口抗 DDoS 与大并发，Nginx 做业务路由与 SSL。\n\n**选择口诀**：\n- 只要「按端口分发 + 超高并发」→ LVS\n- 需要「按域名/URL 分发、灰度、改写头」→ Nginx/HAProxy\n- 需要「WebSocket 长连接计数、健康检查更细」→ HAProxy（四层五层都强，且支持 `tcp-check`）"
+  },
+  {
+    "id": 1641,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 `balance source` 算法与 `balance roundrobin` 的本质差别是？",
+    "options": [
+      { "key": "A", "text": "source 按源 IP 哈希固定后端，能实现会话保持；roundrobin 轮询不保证同一客户端落到同一后端" },
+      { "key": "B", "text": "两者完全相同" },
+      { "key": "C", "text": "source 性能更好" },
+      { "key": "D", "text": "roundrobin 支持健康检查，source 不支持" }
+    ],
+    "answer": ["A"],
+    "explanation": "`source` 是源地址哈希，同一客户端 IP 稳定落同一后端，**代价是负载可能不均**（大量请求来自同一 NAT 出口 IP 时全压一台）。`roundrobin` 最均衡但无会话保持，需应用无状态或配合共享 Session。补充：`leastconn`（最小连接，适合长连接）、`uri`（按 URI 哈希做缓存亲和）。"
+  },
+  {
+    "id": 1642,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "Keepalived 做 LVS 高可用时，以下哪些配置或检查是必要的？（多选）",
+    "options": [
+      { "key": "A", "text": "state 与 priority 区分主备，且 backup 的 priority 要低于 master" },
+      { "key": "B", "text": "virtual_router_id 在同一网段内必须唯一，否则会互相抢 VIP" },
+      { "key": "C", "text": "用 vrrp_script 检测后端真实服务（如 nginx 进程、RS 端口），故障时主动降权/摘 VIP" },
+      { "key": "D", "text": "主备都要配 nopreempt 才能正常切换" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 错误：`nopreempt` 只在 `state BACKUP` 下有效，作用是「主恢复后不抢回 VIP」，两台都配会导致切换不回来。补充要点：④同一网段的 VRRP 组播 224.0.0.18 必须放通（防火墙常踩坑）；⑤`advert_int` 与 `vrrp_script` 的 `interval`、`fall`/`rise` 要匹配，避免误切；⑥DR 模式下 RS 上要配 VIP 到 lo 并做 ARP 抑制，否则 VIP 冲突。"
+  }
+]

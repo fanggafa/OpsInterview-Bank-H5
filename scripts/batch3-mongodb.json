@@ -1,0 +1,449 @@
+[
+  {
+    "id": 2000,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 和 MySQL 的核心区别是什么？什么样的业务适合用 MongoDB？",
+    "answer": "**核心区别在「数据模型」**：\n\n| | MySQL | MongoDB |\n|---|---|---|\n| 模型 | 表 / 行 / 强 schema | 集合 / 文档（BSON）/ 弱 schema |\n| 关联 | JOIN（服务端） | 内嵌文档 或 `$lookup`（能力弱） |\n| 事务 | 强，ACID 完整 | 4.0 起单文档原子，4.0+ 副本集多文档事务，**集群版分片事务性能差** |\n| 扩展 | 主要垂直扩展 + 分库分表 | **原生水平分片** |\n| 一致性 | 强一致（可调隔离级别） | 默认读写关注可调，**最终一致**更容易 |\n\n**适合 MongoDB 的场景**：\n1. **文档结构多变**：表单、配置、埋点事件、日志类数据\n2. **天然嵌套**：一篇文章带评论/标签，一次查询取完，不需要 JOIN\n3. **读写比高、需要灵活查询**：商品目录、内容管理\n4. **需要快速水平扩展**：数据量预计会暴涨且无强关联\n5. **地理位置查询**：内置 GEO 索引，很适合「附近的店」\n\n**不适合**：\n- 强事务的金融账务（多文档事务代价高）\n- 复杂多表关联分析（`$lookup` 性能差，没有 JOIN 优化器）\n- 单表关联度极高的传统 ERP\n- 需要严格 schema 约束的核心交易库"
+  },
+  {
+    "id": 2001,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 中一个文档（document）的最大限制是？",
+    "options": [
+      { "key": "A", "text": "4MB" },
+      { "key": "B", "text": "16MB" },
+      { "key": "C", "text": "64MB" },
+      { "key": "D", "text": "无限制" }
+    ],
+    "answer": ["B"],
+    "explanation": "单文档上限 16MB，这是硬限制。超过时应该拆分到多个文档，或用 **GridFS** 存大文件（把文件切成 255KB 的 chunks 存到两个集合）。注意：单文档 16MB 不等于集合能存多少——集合本身没有大小上限。另外设计上不建议把文档做到接近 16MB，因为更新时可能触发整文档重写和频繁 move。"
+  },
+  {
+    "id": 2002,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 集群有哪几种部署形态？各自最小节点数是多少？",
+    "answer": "**三种形态**：\n\n| 形态 | 组成 | 最小节点 | 说明 |\n|---|---|---|---|\n| **单机**（Standalone） | 1 进程 | 1 | 只适合开发测试，**无冗余** |\n| **副本集**（ReplicaSet） | 1 Primary + N Secondary（+ Arbiter） | **3**（PSA 或 PSS） | 生产标准，自动故障切换 |\n| **分片集群**（Sharded Cluster） | mongos + config 副本集 + N 个 shard 副本集 | shard≥1、config≥3、mongos≥1 | 大数据量水平扩展 |\n\n**副本集为什么至少 3 个**：需要多数派选主（quorum = N/2+1）。2 节点时任一挂掉就无法选主，反而**比单机更不可用**。\n\n**我的节点角色**：\n- **Primary**：唯一接受写\n- **Secondary**：复制数据，可配 `readPreference` 分担读\n- **Arbiter**（仲裁者）：只投票不存数据，用于「硬件不够但想凑 3 票」的场景。**不推荐**——它不存数据，主挂了无法接管，还容易引发一致性问题\n- **Hidden**：不对客户端可见，用于备份/分析\n- **Delayed**：延迟 N 秒复制，**防误删的救命节点**\n\n**分片集群的 config 服务器**：从 3.4 起必须是**副本集**（CSRS），不能是 3 个独立进程。"
+  },
+  {
+    "id": 2003,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "关于 MongoDB 副本集的写关注（writeConcern），以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "w:1 只等主节点写入成功就返回，宕机可能丢数据" },
+      { "key": "B", "text": "w:\"majority\" 等多数节点确认，可用性换一致性" },
+      { "key": "C", "text": "j:true 表示等写入 journal 落盘后才返回" },
+      { "key": "D", "text": "w:0 会返回明确的写入结果，可用于确认是否成功" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 错误：`w:0`（Unacknowledged）发出后**立即返回，不等待任何确认**，也无法得知是否写入成功，只用于日志类可丢数据。常见组合：`{w:\"majority\", j:true}` 是最安全的配置（等多数派 + 落盘），代价是延迟增加。注意 `w:majority` 在 5.0 起用的是 **majority commit point**，语义比早期更严格。"
+  },
+  {
+    "id": 2004,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "副本集是怎么选主的？为什么会出现「脑裂」？MongoDB 怎么防止？",
+    "answer": "**选主流程**：\n1. Primary 心跳（默认 10s 一次 `heartbeatIntervalMillis`）超时 → Secondary 认为主挂了\n2. 任一节点发起选举（`requestElection`），带上自己的 `optime` 与 `electionId`\n3. 收到**多数派**投票（`N/2+1`）且自己的 **optime 不低于其他候选者** → 当选 Primary\n4. 所有节点通过 oplog 追赶新主\n\n**关键机制：Raft 式的 term + 多数派**。同一 term 内一个节点只能投一票，所以**两个分区不可能各自选出主**（少数派那侧拿不到多数票）。\n\n**为什么仍可能丢数据而不是脑裂**：\n- 老主在少数派分区里，它**会自己降级**（`stepDown`）——这是 MongoDB 与 Redis 的关键区别\n- 但如果老主还认为自己是主且**客户端仍连它**，写入会失败（`NotWritablePrimary` 错误）\n- 真正的风险是**未复制的写入丢失**：老主写入成功但还没同步就挂了 → 新主没有这条数据\n\n**防护：`writeConcern: majority`**。它保证「写入已被多数节点确认」才返回，那么任何新主必然包含这条数据。**这是最有效的防丢数据手段**。\n\n**其他相关配置**：\n- `priority`：值越高越优先被选为主，设 0 表示永不为主（用于异地灾备节点）\n- `votes`：投票权，最多 7 个投票节点\n- `settings.catchUpTimeoutMillis`：新节点追数据超时\n\n**桌面演练**：`rs.stepDown(60)` 手动让主降级，观察切换耗时与客户端报错。"
+  },
+  {
+    "id": 2005,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "查看当前节点是主还是从、以及复制延迟，应该执行哪个命令？",
+    "options": [
+      { "key": "A", "text": "db.stats()" },
+      { "key": "B", "text": "rs.status()" },
+      { "key": "C", "text": "db.serverStatus()" },
+      { "key": "D", "text": "db.currentOp()" }
+    ],
+    "answer": ["B"],
+    "explanation": "`rs.status()` 给出成员列表、stateStr（PRIMARY/SECONDARY）、健康状态与 `optimeDate`；`rs.printReplicationInfo()` 看 oplog 大小与时间窗口；`rs.printSecondaryReplicationInfo()` 看各从节点延迟。**oplog 窗口太小是常见事故**：写入量大而 oplog 只够 1 小时，从节点维护超过 1 小时就要全量重同步。"
+  },
+  {
+    "id": 2006,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "oplog 是什么？它的工作原理和运维要点是什么？",
+    "answer": "**oplog（operations log）** 是副本集里主节点记录所有写操作的**固定大小 capped collection**（`local.oplog.rs`），从节点 tail 它来重放操作。**它不是 binlog**——它是「幂等的操作记录」，重放是 apply 效果而非 SQL 语句。\n\n**工作方式**：\n```\n写请求 → 主节点执行并写入 oplog → 从节点 tail oplog 并在本地 apply\n```\n所有节点都有 oplog，从节点也可能被别的节点 tail（链式复制）。\n\n**oplog 是幂等的**：`$inc` 会被改写成 `$set` 为最终值，所以重放一次或多次结果相同（这是与 MySQL row/binlog 的关键差异，也是能做「幂等重放」的原因）。\n\n**运维要点**：\n\n1. **窗口大小是生命线**\n```\nrs.printReplicationInfo()   # 看 oplog 时间窗口\n```\n官方建议**至少 24 小时**。窗口 = oplogSize / 写入速率。\n\n2. **改 oplog 大小**（4.0+ 支持在线）\n```\ndb.adminCommand({replSetResizeOplog: 1, size: 20480})   # 单位 MB\n```\n\n3. **窗口不足的后果**：从节点维护超过窗口 → `OplogTooStale` → 必须**全量初始同步**（拷贝所有数据 + 建索引），耗时可能数小时\n\n4. **影响窗口的因素**：批量删除、批量 update、建索引（在 oplog 里按条记录）、大文档\n\n5. **监控**：`replSetGetStatus` 的 `optimeDate` 差值、`db.getReplicationInfo()`\n\n6. **4.4+ 的 oplog 大小按 MB 还是时间**：可以用 `oplogSizeMB` 固定，或让系统按「至少 990MB 且保持 24 小时」自动计算"
+  },
+  {
+    "id": 2007,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "创建索引时，以下哪些做法是推荐的？（多选）",
+    "options": [
+      { "key": "A", "text": "生产环境大集合建索引用 background: true（4.2+ 已不需要，索引构建会自动让出）" },
+      { "key": "B", "text": "遵循 ESR 原则：等值字段在前、排序字段在中、范围字段在后" },
+      { "key": "C", "text": "用复合索引覆盖多个查询，避免每个查询单独建索引" },
+      { "key": "D", "text": "给每个字段都建一个单字段索引，保证所有查询都快" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是典型误区：索引越多写入越慢（每次写要更新所有索引）、占内存（WiredTiger 的 cache 被索引挤占）、优化器选择成本上升。实践要建**最少的、能覆盖实际查询模式**的复合索引，并用 `db.collection.aggregate([{$indexStats:{}}])` 定期检查 `ops` 为 0 的**无用索引**并删除。"
+  },
+  {
+    "id": 2008,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "复合索引的「最左前缀原则」在 MongoDB 里怎么体现？ESR 原则是什么？",
+    "answer": "**最左前缀**：复合索引 `{a:1, b:1, c:1}` 能支持\n- `{a}`、`{a,b}`、`{a,b,c}` 的前缀查询\n- **不能**支持单独 `{b}` 或 `{c}`（除非用 `$exists` 之类的技巧，或走覆盖索引扫描）\n- 也**不能**跳过 a 直接 `{a,c}`（c 用不上索引，只能过滤）\n\n**注意**：`$in` 和等值查询是例外——`{a:1, b:2}` 和 `{a:{$in:[1,2]}, b:2}` 都能走索引。\n\n**ESR 原则（Equality → Sort → Range）**，来自 MongoDB 官方：\n\n| 顺序 | 字段类型 | 原因 |\n|---|---|---|\n| 1 | **E** quality（等值） | 等值查询能直接定位到区间，放最前可最大化缩小范围 |\n| 2 | **S** ort（排序） | 排序字段必须连续，放在范围字段前面才能用索引顺序，避免内存排序 |\n| 3 | **R** ange（范围） | 范围查询（`$gt`、`$lt`）会「截断」后续字段的索引利用 |\n\n**为什么 Sort 要在 Range 前面**：索引内先按 a 排、再按 b 排。如果 b 是范围条件（`b > 5`），那么 c 字段在 b 的多个值里都是有序的，但整体来看 c 的顺序被打乱了，**无法直接满足 `sort(c)`**。\n\n**验证方法**：\n```\ndb.coll.find({a:1, c:{$gt:3}}).sort({b:1}).explain(\"executionStats\")\n```\n看 `stage` 是否为 `IXSCAN`（走索引）、`SORT` 阶段是否出现（出现说明内存排序）、`totalKeysExamined` 与 `totalDocsExamined` 是否接近 `nReturned`。"
+  },
+  {
+    "id": 2009,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "在 explain 输出里看到 `stage: \"COLLSCAN\"`，说明什么？",
+    "options": [
+      { "key": "A", "text": "用上了索引，性能很好" },
+      { "key": "B", "text": "全集合扫描，没有用上索引" },
+      { "key": "C", "text": "使用了覆盖索引" },
+      { "key": "D", "text": "这是一个内存排序" }
+    ],
+    "answer": ["B"],
+    "explanation": "常见 stage 对照：`COLLSCAN` 全表扫描（危险）→ `IXSCAN` 索引扫描（好）→ `FETCH` 回表取文档 → `SORT` 内存排序（危险，除非有索引顺序）→ `SORT_MERGE` 用索引排序（好）。注意 `COLLSCAN` 不一定是错的：集合很小或查询要返回大部分文档时，全扫反而更快。"
+  },
+  {
+    "id": 2010,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的 WiredTiger 存储引擎是怎么组织的？和 MMAPv1 有什么区别？",
+    "answer": "**WiredTiger 自 3.2 起成为默认引擎**，MMAPv1 已在 4.2 移除。\n\n**WiredTiger 核心结构**：\n\n| 概念 | 说明 |\n|---|---|\n| **B-Tree 索引** | 类似老引擎 |\n| **文档级并发控制** | 不同文档可并发写，MMAPv1 是库级锁 |\n| **MVCC** | 多版本，读不阻塞写 |\n| **WAL（journal）** | 写入先写 journal，`j:true` 才等它落盘 |\n| **压缩** | 默认 **snappy** 压缩索引和集合，可配 zlib/zstd |\n| **cache** | 默认 = `(总内存 - 1GB) / 2`，最低 0.25GB |\n\n**MMAPv1 的问题**（为什么被淘汰）：\n- 内存映射文件，**cache 由 OS 管**，MongoDB 无法精细控制\n- **集合级锁**，并发写极差\n- 文档更新变大后会「换位置」（padding 机制），索引膨胀\n\n**运维要点**：\n\n1. **cache 是核心指标**\n```\ndb.serverStatus().wiredTiger.cache\n```\n看 `bytes currently in the cache` 与 `maximum bytes configured` 的比值；页面淘汰（`pages evicted`）、`pages read into cache` 持续上升说明 cache 不够。\n\n2. **cache 与实际内存的关系**：MongoDB 进程 RSS 通常比 cache 大不少（索引 + 连接 + 碎片）。容器部署时易 OOM。\n\n3. **压缩配置只能在建集合时指定**（或用 `collMod` + 重建）\n```\ndb.createCollection(\"logs\", {storageEngine: {wiredTiger: {configString: \"collection. block_compressor=zstd\"}}})\n```\n\n4. **checkpoint**：默认每 60s 一次（`checkpoint=(wait=60)`），journal 保证崩溃后 60s 内的数据不会丢"
+  },
+  {
+    "id": 2011,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的分片集群是怎么工作的？片键的选择有什么原则？",
+    "answer": "**架构三部分**：\n\n```\n客户端 → mongos（路由，无状态，可多部署）\n           ├→ config 副本集（3 节点，存元数据：chunk 分布、片键）\n           └→ shard 1..N（每个是副本集，存实际数据）\n```\n\n**数据切分**：按片键把集合切成 **chunk**（默认最大 128MB），mongos 根据 chunk 范围路由到对应 shard。**balancer** 后台在 shard 间迁移 chunk 保持均衡。\n\n**片键选择原则（面试重点）**：\n\n| 原则 | 好 | 坏 |\n|---|---|---|\n| **基数高** | `userId`、`orderId` | `gender`、`status`（只有几个值） |\n| **写分散** | 哈希片键 / 时间+ID 组合 | **单调递增**（`_id: 1` 或用 `createTime`）→ 写入全落最后一个 shard（**热点**） |\n| **查询常用** | 常用过滤字段 | 完全随机的冷字段 → 查询要**广播到所有 shard** |\n| **不可变** | 固定字段 | 片键字段**不能更新**（更新会报错） |\n\n**分片策略**：\n- **范围分片（ranged）**：适合范围查询，但单调键会热点\n- **哈希分片（hashed）**：`sh.shardCollection(\"db.coll\", {_id: \"hashed\"})`，写均匀但范围查询要广播\n- **复合分片**（5.0+ zone）：`{region: 1, _id: 1}` 可做地域亲和\n\n**经典反例**：用 `_id` 的 ObjectId 直接范围分片 → ObjectId 里含时间戳，近似单调 → 持续热点写入。\n\n**其他要点**：\n- 分片后**不能改片键**，要改必须重建集合\n- 查询必须带片键才能「定位分片」，否则 `mongos` 广播到全部 shard（`shard count` 高）\n- 用 `sh.status()`、`db.coll.getShardDistribution()` 监控分布\n- 迁移时（`moveChunk`）会消耗 IO，可配 `_secondaryThrottle` 让迁移走从节点"
+  },
+  {
+    "id": 2012,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "分片集群里，查询**没有**带片键时会怎样？",
+    "options": [
+      { "key": "A", "text": "直接报错" },
+      { "key": "B", "text": "查询随机落到某个 shard，可能漏数据" },
+      { "key": "C", "text": "mongos 广播到所有 shard，由 mongos 合并去重" },
+      { "key": "D", "text": "mongos 自动找 config 服务器查询" }
+    ],
+    "answer": ["C"],
+    "explanation": "这叫 **scatter-gather（广播查询）**，功能上正确但性能差：N 个 shard 都要查，mongos 还要做归并排序。数据量大时是主要慢查询来源。所以片键必须与**最高频的查询条件**相关；确需多维度查询时，考虑把该集合放到独立 shard 上，或在 mongos 层限流。"
+  },
+  {
+    "id": 2013,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的备份方式有哪些？推荐哪种？",
+    "answer": "**四种方式**：\n\n| 方式 | 命令/工具 | 适用 | 缺点 |\n|---|---|---|---|\n| **逻辑备份** | `mongodump` / `mongorestore` | 小数据量、跨版本迁移、单个集合 | 慢，大库不可行；副本集下可能不一致 |\n| **物理备份** | 直接拷贝 `dbPath` 文件 | 大数据量快速恢复 | **必须停库或做 fsync 锁**，否则文件不一致 |\n| **文件系统快照** | LVM / 云盘快照 | 大数据量、秒级 | 依赖存储层能力 |\n| **云托管备份** | Atlas / 云厂商自动备份 | 生产标准 | 成本 |\n\n**推荐组合**：\n- 小库（< 100GB）：**mongodump**，配合 `--oplog` 保证时间点一致性\n```\nmongodump --uri=\"mongodb://u:p@host:27017/db?replicaSet=rs0\" --oplog\nmongorestore --oplogReplay <dir>\n```\n- 大库：**副本集从节点 + 文件系统快照**，或直接 `fsyncLock`\n```\ndb.fsyncLock()        # 刷盘并锁住写\n# 拷贝 dbPath\n# db.fsyncUnlock()\n```\n\n**必须注意的坑**：\n1. **mongodump 在副本集上必须走 secondary**（`--readPreference=secondary` 或直连从节点），否则会拖慢主库\n2. **`--oplog` 才能保证时间点一致**，否则备份期间写入会产生不一致\n3. **恢复后索引要重建**：mongodump 会带着索引定义，但大库重建索引很慢，考虑 `--noIndexRestore` 后手动建\n4. **验证备份可用性**：定期在隔离环境真实 restore 一次——**没验证过的备份等于没有备份**\n5. 大库恢复时用 `--numInsertionWorkersPerCollection 4` 并行加速\n\n**生产实践**：从节点做延迟复制（`priority: 0` + `hidden: true` + 延迟 1h），误删时可从这个节点抢数据。"
+  },
+  {
+    "id": 2014,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 慢查询诊断，以下哪些手段有效？（多选）",
+    "options": [
+      { "key": "A", "text": "开启慢查询日志：db.setProfilingLevel(1, {slowms: 100})" },
+      { "key": "B", "text": "用 db.currentOp() 查看正在执行的长操作，并可 killOp" },
+      { "key": "C", "text": "对可疑查询用 explain(\"executionStats\") 看是否走了索引" },
+      { "key": "D", "text": "重启数据库即可解决慢查询" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 只是临时清缓存，问题必然复发且可能引发雪崩（重启后大量请求涌入）。补充手段：①`db.system.profile` 聚合分析找出最高耗时模式：`db.system.profile.find({millis:{$gt:100}}).sort({millis:-1}).limit(10)`；②`$indexStats` 找无用索引；③`db.serverStatus().globalLock` 看锁等待；④开启 `operationProfiling.mode: slowOp` 需注意 `system.profile` 本身是固定集合，会占空间。"
+  },
+  {
+    "id": 2015,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 常见的高可用故障场景有哪些？分别怎么处理？",
+    "answer": "**场景一：Primary 宕机**\n- 自动选主（默认 10-30 秒），客户端重连后恢复\n- **前提**：连接串要带 `replicaSet=rs0` 与多个 seed 节点，否则连接写死的老主会一直失败\n- 检查：`rs.status()` 看新主是否 stable\n\n**场景二：Secondary 落后/失联**\n- `rs.printSecondaryReplicationInfo()` 看 `syncedTo` 延迟\n- 延迟持续增长 → 检查网络带宽、主库写入量、从库是否在做重活（备份/报表）\n- 落后超过 oplog 窗口 → 无法增量追上，需 `rs.remove` 后重新 `rs.add` 做全量同步\n\n**场景三：多数派失效（两个节点挂掉）**\n- 只剩 1 个节点时**无法选主，集群只读**\n- 处置：强制单节点模式把剩下那台拉起来\n```\nrs.conf()  # 修改配置，去掉挂掉的成员，votes 调整\nrs.reconfig(cfg, {force: true})   # 危险操作，仅在灾难恢复时用\n```\n- 数据可能丢，必须评估\n\n**场景四：分片集群的 mongos 全挂**\n- 客户端完全不可用，需立即重启 mongos（无状态，重启即恢复）\n\n**场景五：config 服务器挂了**\n- 无法迁移 chunk、无法路由新数据，集群**写会失败**——必须优先恢复 config\n\n**演练建议**：定期做 `rs.stepDown()`、杀主进程、模拟网络分区，量化 RTO。"
+  },
+  {
+    "id": 2016,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 中 `$elemMatch` 与直接写 `{\"arr.a\": 1, \"arr.b\": 2}` 的区别是？",
+    "options": [
+      { "key": "A", "text": "没有区别" },
+      { "key": "B", "text": "$elemMatch 要求同一数组元素同时满足所有条件；后者只要数组中分别存在即可" },
+      { "key": "C", "text": "$elemMatch 只能用于字符串数组" },
+      { "key": "D", "text": "后者性能一定更好" }
+    ],
+    "answer": ["B"],
+    "explanation": "这是 MongoDB 数组查询的经典陷阱。`{\"arr.a\":1, \"arr.b\":2}` 会匹配「有某个元素的 a=1」且「有某个（可能是另一个）元素的 b=2」。要「同一个元素同时满足 a=1 且 b=2」必须用 `$elemMatch`。对应到 `$not` 时，`$elemMatch + $not` 的语义又不同，需要单独测试验证。"
+  },
+  {
+    "id": 2017,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 聚合管道里 $lookup、$unwind、$group、$facet 分别做什么？",
+    "answer": "**聚合管道** = 一系列 stage 串联，数据流逐个处理。\n\n| stage | 作用 | 示例场景 |\n|---|---|---|\n| **$match** | 过滤（应放最前，能走索引） | 按时间范围筛 |\n| **$project** | 投影/重命名字段（减少数据传输） | 只取需要的字段 |\n| **$group** | 分组聚合（`_id` 是分组键） | 求和、计数、去重 |\n| **$unwind** | 把数组拆成多行 | 把订单明细摊平成行 |\n| **$lookup** | 类似 LEFT JOIN，关联另一个集合 | 订单补商品信息 |\n| **$facet** | 一次遍历产出多个结果集 | 同页面同时要「总数+分页数据+聚合统计」 |\n| **$addFields** | 增加计算字段 | 计算总价 |\n| **$sort / $limit / $skip** | 排序分页 | 列表页 |\n\n**重要的性能建议**：\n1. **$match 必须放最前**，否则无法用索引，且白处理大量文档\n2. **$lookup 很慢**：它不走索引（除非 5.0+ 的 `$lookup` with `pipeline` + 内层 `$match` 能用上索引），大集合关联会内存溢出\n3. **$unwind 会放大数据量**：先 `$match` 缩小再 `$unwind`\n4. **$facet 的每个子管道不能用外层的 $sort 索引**，依赖前面的 `$match`\n5. **管道内存限制 100MB**，超出要开 `allowDiskUse: true`（会写临时文件，变慢）\n\n**示例：一次查询同时拿统计和分页**\n```javascript\ndb.orders.aggregate([\n  { $match: { status: \"paid\" } },\n  { $facet: {\n      total: [{ $count: \"n\" }],\n      list:  [{ $sort: { createdAt: -1 } }, { $skip: 20 }, { $limit: 10 }]\n  }}\n])\n```"
+  },
+  {
+    "id": 2018,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "困难",
+    "question": "MongoDB 内存占用很高，如何排查和优化？",
+    "answer": "**先分清「正常高」和「有问题」**。\n\n**Step 1：看 WiredTiger cache**\n```\ndb.serverStatus().wiredTiger.cache\n```\n关注：\n- `maximum bytes configured`：cache 上限，默认 `(RAM-1GB)/2`\n- `bytes currently in the cache`：正常会跑到接近上限，**这是设计如此**（缓存热数据）\n- `pages evicted by application threads`：**这个不为 0 就是危险信号**——说明 cache 不足，应用线程被迫同步淘汰\n- `pages read into cache`：持续高说明缓存命中差\n\n**Step 2：看索引与文档开销**\n```\ndb.coll.stats().indexSizes        # 索引总体积\ndb.coll.aggregate([{$indexStats:{}}])   # 每个索引的使用次数\n```\n索引也占 cache。**删掉 `ops:0` 的无用索引**是最容易拿到的收益。\n\n**Step 3：看连接与游标**\n```\ndb.serverStatus().connections     # current/available\ndb.serverStatus().metrics.cursor.open\n```\n连接过多（每个连接有 1MB 左右的栈 + 缓冲）、游标没关闭（应用 `forEach` 中途 break 不 close）都会涨内存。\n\n**Step 4：看碎片**\n```\ndb.coll.stats().wiredTiger        # \"block-manager\" 里的碎片指标\n```\n频繁删除 + 小文档插入会产生大量碎片。`compact` 可整理，但**会锁库、需要额外磁盘空间**，必须在从节点轮流执行。\n\n**优化手段**：\n\n| 手段 | 收益 | 代价 |\n|---|---|---|\n| 删除无用索引 | 直接释放 cache | 无 |\n| 调大 `wiredTigerCacheSizeGB` | 提高命中率 | 需重启（4.4+ 可动态 `setParameter`） |\n| 用 zstd 压缩集合 | 磁盘与 IO 减少 | CPU 增加 |\n| 归档冷数据 / TTL 索引 | 集合变小 | 需业务支持 |\n| `compact` 整理碎片 | 空间回收 | 锁表、耗时 |\n| 限制连接池大小 | 内存下降 | 并发能力降 |\n\n**注意容器部署**：MongoDB 看不到宿主机全部内存时会算错 cache；用 `--wiredTigerCacheSizeGB` 显式指定。"
+  },
+  {
+    "id": 2019,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 安全加固，以下哪些是必要措施？（多选）",
+    "options": [
+      { "key": "A", "text": "开启认证 auth=true，并启用 RBAC 角色" },
+      { "key": "B", "text": "生产环境绑定内网 IP（bindIp），不要监听 0.0.0.0" },
+      { "key": "C", "text": "启用 TLS/SSL 加密客户端连接与副本集内部通信" },
+      { "key": "D", "text": "为防止误操作，给应用账号使用 root 角色即可" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 严重错误：应用账号只应给 `readWrite` on 特定库（`db.grantRolesToUser`）。历史教训：2017 年大量 MongoDB 因 27017 无认证公网暴露被勒索删库。补充措施：④开启审计（企业版或 `--auditDestination`）；⑤用 `security.javascriptEnabled: false` 关闭服务端 JS（除非需要 `$where`）；⑥定期 `db.getUsers()` 审计账号；⑦用密钥文件或 x509 做副本集内部认证（`keyFile` 权限必须 400）。"
+  },
+  {
+    "id": 2020,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 4.0 引入的多文档事务有哪些限制？",
+    "options": [
+      { "key": "A", "text": "没有任何限制，和 MySQL 完全一样" },
+      { "key": "B", "text": "默认事务最长 60 秒，且分片集群下性能开销显著" },
+      { "key": "C", "text": "只支持单文档" },
+      { "key": "D", "text": "只能在单机上使用" }
+    ],
+    "answer": ["B"],
+    "explanation": "关键限制：①事务默认超时 `transactionLifetimeLimitSeconds=60`；②事务内**不能创建/删除集合与索引**（4.4+ 允许在事务内建集合）；③事务内**不能读 oplog**；④分片集群事务要求**所有 shard 版本 ≥ 4.2**，且跨 shard 事务的两阶段提交开销大、易冲突；⑤事务期间持有的锁会影响并发。核心原则：**能用单文档原子操作就用**，MongoDB 的单文档更新本身就是原子的。"
+  },
+  {
+    "id": 2021,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "什么是「读关注」readConcern？local、majority、linearizable 有什么区别？",
+    "answer": "**readConcern 决定「读到的数据有多可信」**——即会不会读到「已被回滚的、未提交的」数据。\n\n| 级别 | 语义 | 场景 |\n|---|---|---|\n| **local**（默认） | 读本节点已有的数据，**可能读到之后被回滚的写** | 大多数业务，性能最好 |\n| **available** | 最弱，分片下可能读到孤儿文档 | 极少用 |\n| **majority** | 只返回**已被多数派确认**的数据（不会回滚） | 金额、订单等关键读 |\n| **linearizable** | 更强：保证读到「比所有已确认写更新」的数据 | 分布式锁、选举类场景，**只能用于单文档读且会阻塞** |\n| **snapshot**（4.0+） | 事务内一致性快照 | 多文档事务 |\n\n**核心组合**：\n- **写 `w:\"majority\"` + 读 `readConcern:\"majority\"`** 才是「不丢 + 不脏读」的完整方案。只设写关注，读仍可能读到即将回滚的数据\n- 强一致读用 `linearizable`，但它会等主节点与多数派同步，延迟高\n\n**读偏好 readPreference**（另一个维度，别混淆）：\n- `primary`：只读主，强一致\n- `primaryPreferred`：主优先，主不可用读从\n- `secondary`：只读从，分摊压力但**可能读到旧数据**\n- `nearest`：延迟最低的节点\n\n**实践口诀**：读偏好管「从哪读」，读关注管「读到什么状态」，写关注管「写多可靠」。三者一起配才有一致性保证。"
+  },
+  {
+    "id": 2022,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 连接数暴涨怎么处理？连接池应该怎么配？",
+    "answer": "**先定位原因**：\n```\ndb.serverStatus().connections     # current / available / totalCreated\ndb.currentOp({active:true})       # 谁在跑\n```\n`totalCreated` 持续快速增长说明**连接被频繁创建销毁**，通常是应用没复用连接池。\n\n**常见原因**：\n1. **应用每次请求新建连接**（未用连接池，或池大小配错为 0）\n2. **连接泄漏**：异常路径没 return 连接\n3. **连接池上限过大**：每个应用实例 100 连接 × 50 实例 = 5000\n4. **慢查询堆积**：每个请求等连接超时，排队导致连接数飙升\n5. **副本集切换**：客户端重连风暴\n6. **未配 `maxPoolSize` 默认值**：Java 驱动默认 `maxPoolSize: 100`\n\n**连接池配置原则**：\n\n```\n单应用实例 maxPoolSize ≈ (期望 QPS × 平均查询耗时ms) / 1000 × 冗余系数\n```\n经验值：一般 `maxPoolSize: 20-50`，`minPoolSize: 5-10`（保活，减少冷启动）。\n\n**关键**：`maxPoolSize × 应用实例数 < MongoDB maxIncomingConnections`（默认 65536，但要考虑 `ulimit -n`）。\n\n**服务端调优**：\n```\nnet.maxIncomingConnections: 2000\n# 同时调系统限制\nulimit -n 64000\n```\n\n**监控指标**：`connections.current` 接近 `available` 就要告警；`connections.totalCreated` 增长率。\n\n**应急手段**：\n```\ndb.currentOp({secs_running: {$gt: 30}})   # 找长事务\ndb.killOp(<opid>)                          # 杀掉\ndb.adminCommand({setParameter: 1, maxIncomingConnections: 3000})   # 动态调"
+  },
+  {
+    "id": 2023,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 里怎么实现「自增 ID」？为什么默认用 ObjectId？",
+    "answer": "**ObjectId 的设计**：12 字节 = 4 字节时间戳 + 5 字节机器/进程随机值 + 3 字节递增计数器。\n\n**为什么默认用它**（而非自增）：\n1. **分布式友好**：客户端就能生成，不需要中心化序列，天然适配分片\n2. **大致有序**：含时间戳，按 `_id` 排序近似按插入时间\n3. **唯一性高**：随机 + 计数器，冲突概率极低\n4. **信息自描述**：`ObjectId().getTimestamp()` 能反查创建时间\n\n**「ObjectId 单调递增」的坑**：它大致按时间递增，所以**用它做范围片键会导致写入热点集中在最后一个 shard**。分片时要么用哈希片键，要么用 `{业务字段: 1, _id: 1}` 复合片键。\n\n**需要自增 ID 时**：\n用「计数器集合 + `findOneAndUpdate` + `$inc`」：\n```javascript\n// 原子自增，返回更新后的值\ndb.counters.findOneAndUpdate(\n  { _id: \"orderId\" },\n  { $inc: { seq: 1 } },\n  { upsert: true, returnDocument: \"after\" }\n)\n```\n这是 MongoDB 官方推荐做法。代价是**中心化热点**（一个文档反复写），高并发下会成为瓶颈——所以能用 ObjectId/雪花 ID 就别用自增。"
+  },
+  {
+    "id": 2024,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 有哪些索引类型？（多选）",
+    "options": [
+      { "key": "A", "text": "单字段索引、复合索引" },
+      { "key": "B", "text": "TTL 索引（按时间自动过期删除）" },
+      { "key": "C", "text": "文本索引（支持全文检索）与地理空间索引（2dsphere）" },
+      { "key": "D", "text": "部分索引（partialFilterExpression，只索引满足条件的文档）" }
+    ],
+    "answer": ["A", "B", "C", "D"],
+    "explanation": "还有：①唯一索引 `unique: true`（**注意默认允许一个 null**，多字段都 null 会冲突）；②稀疏索引 `sparse`（已建议改用 partial）；③多键索引（数组字段自动展开）；④通配符索引 `$**`（4.2+，适合未知字段，但体积大）；⑤哈希索引（分片用）；⑥覆盖索引（查询字段全在索引里，不 FETCH）。TTL 索引是**后台每 60 秒扫描一次**，不是精确到期，且只能用于日期字段或日期数组。"
+  },
+  {
+    "id": 2025,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的 `$where`、`$regex` 有哪些性能陷阱？",
+    "answer": "**两者都是「无法走索引」的重灾区**。\n\n**`$where`**（执行 JavaScript 表达式）：\n- **完全不走索引**，逐文档执行 JS → 全集合扫描\n- 每次执行都要在服务端起 JS 引擎上下文，CPU 与内存开销巨大\n- **安全风险**：可执行任意 JS（配合注入可读系统信息），生产应 `security.javascriptEnabled: false`\n- 替代方案：用聚合管道的 `$expr`（4.2+，能走索引）或 `$function`（仍慢但可控）\n\n**`$regex`**：\n- **只有「前缀锚定」的正则能走索引**：`/^abc/` 可以，`/abc/`（中间匹配）和 `/abc$/`（后缀）不行\n- 不区分大小写的 `/^abc/i` **也不能**走索引（除非用 `$regex` + `$options` 配合 collation 的特殊情况）\n- 替代方案：\n  - 前缀查询用范围：`{name: {$gte: \"abc\", $lt: \"abd\"}}`\n  - 全文检索用**文本索引**：`db.coll.createIndex({title: \"text\"})`，但中文分词效果差，中文场景建议用 ES\n  - 精确匹配不要用正则，直接用等值\n\n**验证手段**：`explain(\"executionStats\")` 里看 `totalDocsExamined` 是否等于集合总数——等于就是全扫。"
+  },
+  {
+    "id": 2026,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "关于索引的「覆盖查询」（covered query），以下说法正确的是？",
+    "options": [
+      { "key": "A", "text": "查询字段与返回字段全在索引里，可以完全不读文档（stage 无 FETCH）" },
+      { "key": "B", "text": "覆盖查询只对单字段索引有效" },
+      { "key": "C", "text": "覆盖查询会自动去重" },
+      { "key": "D", "text": "覆盖查询必须用 hint 才能生效" }
+    ],
+    "answer": ["A"],
+    "explanation": "三个条件才能构成覆盖查询：①查询条件字段在索引里；②返回字段（projection）全在索引里；③**不返回 `_id`**（除非 `_id` 在索引里）——这是最易漏的一条：不写 `{_id: 0}` 就会 FETCH。覆盖查询的价值是省掉回表 IO，高频小字段查询（如列表页只查 id+标题）提升明显。"
+  },
+  {
+    "id": 2027,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "数据迁移时怎么从 MySQL 同步到 MongoDB？有哪些坑？",
+    "answer": "**主流方案**：\n\n| 方案 | 工具 | 特点 |\n|---|---|---|\n| 一次性迁移 | `mongoimport`（先导出 CSV/JSON） | 简单，只适合停机迁移 |\n| 增量同步 | **Debezium + Kafka**（读 MySQL binlog） | 最可靠，可不停机 |\n| 增量同步 | **MongoDB Kafka Connector** | 官方支持 |\n| 双写 | 应用层双写 + 异步补偿 | 需改造代码，容易不一致 |\n| ETL | DataX / Flink CDC | 适合批量 + 定时 |\n\n**推荐的 Kubernetes-era 组合**：MySQL → Debezium（binlog）→ Kafka → Sink 到 MongoDB。\n\n**必须注意的坑**：\n\n1. **数据类型映射**\n   - MySQL `DECIMAL` → MongoDB **Double 会丢精度**！金额必须用 `Decimal128` 或存整数分\n   - `DATETIME` → 存 `Date` 类型（不是字符串），否则 TTL 索引与范围查询都失效\n   - `BIGINT` 超过 2^53 会丢精度，要存字符串或 Long\n2. **Schema 设计差异**：MySQL 的 JOIN 关系要在 Mongo 里决定是「内嵌」还是「引用」，迁移前必须先设计好，否则后期改造成本极高\n3. **主键**：迁移时保留原主键（不要用新 ObjectId），便于回溯和对账\n4. **索引要在数据导入之后再建**（先建索引再导数据会慢几十倍）\n5. **字符集**：确认 utf8mb4 的 emoji 等四字节字符能正确迁移\n6. **对账**：迁移后按「行数 + 关键字段校验和 + 抽样比对」三层验证\n7. **回滚方案**：保留双写一段时间，能切回去\n\n**容量评估**：MongoDB 文档内嵌会让单文档变大，注意 16MB 限制；粗略换算 MySQL 1GB 数据 ≈ Mongo 1.2-1.5GB（BSON 有字段名开销，压缩后可能反而更小）。"
+  },
+  {
+    "id": 2028,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "困难",
+    "question": "MongoDB 突然不可写，报 `NotWritablePrimary`，怎么排查？",
+    "answer": "**这个错误的意思是「连的这个节点不是主」**，不一定是数据库坏了。\n\n**排查顺序**：\n\n**1. 确认当前是不是主**\n```\nrs.status()          # 看 myState，1=PRIMARY 2=SECONDARY\nrs.isMaster()        # ismaster: true?\ndb.hello()\n```\n\n**2. 是不是发生了切换**\n```\nrs.status().members[]   # 看各成员 stateStr 与 optimeDate\n```\n- 原主重启/网络抖动 → 自动选主\n- 检查 `rs.status().members[i].stateStr` 从 `SECONDARY` 变 `PRIMARY` 的时间\n\n**3. 客户端连接串问题（最常见）**\n```\n# 错：只写一个地址\nmongodb://10.0.0.1:27017/db\n# 对：带上 replicaSet 与多个 seed\nmongodb://10.0.0.1:27017,10.0.0.2:27017,10.0.0.3:27017/db?replicaSet=rs0\n```\n只写单地址时，客户端**无法感知拓扑变化**，主挂了就一直连旧的。\n\n**4. 主节点为什么降级**\n```\ndb.adminCommand({getLog: \"global\"})\n```\n常见原因：\n- `stepDown` 被手动执行或 `priority` 竞争中放弃\n- **主节点与多数派失联超过 `electionTimeoutMillis`（默认 10s）** → 主动降级避免脑裂\n- oplog 写入失败 / 磁盘满 → `rs.status()` 里有 `lastWriteError`\n\n**5. 集群整体不可写（无主）**\n```\nrs.status().ok 与 members 状态全部 SECONDARY\n```\n说明**多数派不可用**（挂了 2 个只剩 1 个），需要人干预：\n```\ncfg = rs.conf()\ncfg.members = [cfg.members[0]]     # 只保留存活节点\nrs.reconfig(cfg, {force: true})    # 强制单节点，会丢数据风险\n```\n**这是最后手段**，必须有备份。\n\n**6. 分片集群的特殊情况**\n- `mongos` 缓存的路由表过期 → 重启 mongos 或 `db.adminCommand({flushRouterConfig: 1})`\n- config 副本集不可用 → 整个集群写不了\n\n**预防**：连接串写全 3 个 seed + `replicaSet` + `retryWrites=true`（驱动自动重试一次）。"
+  },
+  {
+    "id": 2029,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "以下哪些操作会**阻塞** MongoDB 主节点？（多选）",
+    "options": [
+      { "key": "A", "text": "在大集合上创建索引（4.2+ 之前使用 background 仍影响）" },
+      { "key": "B", "text": "db.collection.compact() 整理碎片" },
+      { "key": "C", "text": "在副本集从节点上执行 mongodump" },
+      { "key": "D", "text": "collection.drop()" }
+    ],
+    "answer": ["A", "B", "D"],
+    "explanation": "C 不阻塞主节点——这正是「备份走从节点」的意义。注意 A：4.2 起 MongoDB 的索引构建改用**混合索引构建**，只在开始和结束短暂持有排他锁，中间让出，影响大幅降低；但超大集合仍会消耗大量 IO 与 cache。B 的 `compact` 会对集合加写锁，且需要约等量的额外磁盘空间。D 的 `drop` 会短暂阻塞该库的所有操作。"
+  },
+  {
+    "id": 2030,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的固定集合（capped collection）是什么？适合什么场景？",
+    "answer": "**固定集合**：创建时指定固定大小，写入是**循环覆盖最旧数据**（类似环形缓冲区）。\n\n```javascript\ndb.createCollection(\"logs\", { capped: true, size: 10485760, max: 10000 })\n```\n\n**特性**：\n- 插入**顺序写入**，非常快（WiredTiger 下有专门优化）\n- **不能删除单个文档**（`delete` 无效，只能 `drop` 整个集合）\n- **不能更新导致文档变大的操作**（会报错）\n- 天然按插入顺序，无需额外排序索引\n\n**适合场景**：\n1. **日志/事件流**：只留最近 N 条\n2. **环形缓冲区**：如最近 1000 条告警\n3. **oplog 本身**：MongoDB 内部就用 capped collection 实现 oplog\n\n**不适合**：需要删除、需要更新、需要长期归档的集合。\n\n**注意**：有 TTL 索引就不需要 capped collection——TTL 更灵活且能按时间精确过期。capped collection 的「按时间」很难控制，因为写入速率不固定。"
+  },
+  {
+    "id": 2031,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "TTL 索引删除过期文档的机制是？",
+    "options": [
+      { "key": "A", "text": "到期瞬间立即删除" },
+      { "key": "B", "text": "后台线程每 60 秒扫描一次，删除已过期的文档" },
+      { "key": "C", "text": "查询时才删除" },
+      { "key": "D", "text": "需要手动执行清理命令" }
+    ],
+    "answer": ["B"],
+    "explanation": "TTL 线程默认每 60 秒（`ttlMonitorSleepSecs`）跑一次，所以过期后最多 60 秒才会被删。且它是**单线程**的，大量文档同时过期时清理会很慢。要点：①字段必须是 `Date` 类型或包含 Date 的数组；②`expireAfterSeconds: 0` 表示「到期时间由字段值本身决定」，可用业务字段；③副本集上 TTL 只在**主节点**执行；④TTL 索引不能是复合索引的唯一字段。"
+  },
+  {
+    "id": 2032,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 水平扩容时，chunk 迁移的原理和风险是什么？",
+    "answer": "**迁移触发**：balancer 检测到 shard 间的 chunk 数量差异超过阈值 → 从多的 shard 迁到少的。\n\n**迁移过程（`moveChunk`）**：\n1. 源 shard 对目标 chunk **加锁**，不再接受该范围的写\n2. 拷数据到目标 shard\n3. 拷贝期间新写入记录到 **oplog 落后者队列**，等拷贝完成后补发\n4. 目标 shard 应用这些增量，确认一致\n5. 更新 config 服务器的元数据 → 新 shard 接管，源 shard 删除本地数据\n\n**风险与坑**：\n\n| 风险 | 说明 | 缓解 |\n|---|---|---|\n| **IO 与带宽峰值** | 迁移是全量拷贝 + 大量小写 | 配 `_secondaryThrottle` 让迁移走从节点；限制 `chunkSize` |\n| **cache 压力** | 目标 shard 需要缓存新数据 | 避免在业务高峰迁移 |\n| **孤儿文档** | 迁移失败可能残留 | `cleanupOrphaned` 清理 |\n| **锁阻塞** | 迁移期间该 chunk 范围的写被阻塞几十毫秒到秒级 | 应用要有重试 |\n| **迁移风暴** | 大 chunk 反复迁移 | 调 `chunkSize`，或用 zone 固定数据位置 |\n\n**重要参数**：\n```\nsh.setBalancerState(true/false)     # 手动关停 balancer（改架构时必做）\nsh.isBalancerRunning()\ndb.settings.chunksize               # 默认 128MB（4.4+ 可 64MB）\n```\n\n**运维经验**：\n- 做架构变更 / 大批量导入时**先关 balancer**，否则会和你的操作抢资源\n- 迁移期间监控 `mongos` 的延迟与 `sh.getBalancerState()`\n- 加了新 shard 后，`sh.moveChunk` 可手动预约迁移，比等自动均衡更快\n- `sh.status()` 里有 `lastCommittedOpTime`，迁移慢时可查 `sh.isBalancerRunning()` 卡在哪"
+  },
+  {
+    "id": 2033,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "困难",
+    "question": "从零搭建一套生产可用的 MongoDB 副本集，关键步骤和配置有哪些？",
+    "answer": "**Step 1：系统层准备（所有节点）**\n```\n# 1. 关闭透明大页（THP）—— 官方强制要求，否则性能严重下降\necho never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag\n# 2. 调 ulimit（连接数）\n* soft nofile 64000\n* hard nofile 64000\n* soft nproc 64000\n# 3. 文件系统：xfs（官方推荐），mount 加 noatime\n# 4. 关闭 NUMA 或配 interleave（否则 cache 分配不均）\n```\n\n**Step 2：mongod 关键配置**\n```yaml\nstorage:\n  dbPath: /data/mongodb\n  wiredTiger:\n    engineConfig:\n      cacheSizeGB: 8           # 显式指定！(RAM-1)/2 或留 30% 给系统\n    collectionConfig:\n      blockCompressor: zstd    # 比 snappy 压得好，CPU 稍高\nnet:\n  port: 27017\n  bindIp: 10.0.0.1          # 只绑内网\n  maxIncomingConnections: 3000\nreplication:\n  replSetName: rs0\n  oplogSizeMB: 20480         # 至少能覆盖 24 小时写入\nsecurity:\n  keyFile: /etc/mongo/keyfile # 400 权限，内容 base64 随机 756 字节\n  authorization: enabled\noperationProfiling:\n  mode: slowOp\n  slowOpThresholdMs: 100\n```\n\n**Step 3：初始化副本集**\n```javascript\nrs.initiate({\n  _id: \"rs0\",\n  members: [\n    { _id: 0, host: \"10.0.0.1:27017\", priority: 2 },   // 优先主\n    { _id: 1, host: \"10.0.0.2:27017\", priority: 1 },\n    { _id: 2, host: \"10.0.0.3:27017\", priority: 1, secondaryDelaySecs: 3600, hidden: true }\n  ],\n  settings: { chainingAllowed: true, heartbeatIntervalMillis: 2000 }\n})\n```\n第 3 个成员配 **hidden + 延迟 1 小时**，做误删保护。\n\n**Step 4：创建账号**\n```javascript\nuse admin\ndb.createUser({user: \"admin\", pwd: \"***\", roles: [{role: \"userAdminAnyDatabase\", db: \"admin\"}, \"clusterAdmin\"]})\nuse appdb\ndb.createUser({user: \"app\", pwd: \"***\", roles: [{role: \"readWrite\", db: \"appdb\"}]})\n```\n\n**Step 5：验证与压测**\n```\nrs.status()\nrs.printReplicationInfo()          # oplog 窗口 ≥ 24h\nrs.printSecondaryReplicationInfo()\nrs.stepDown(60)                    # 演练切换\n```\n\n**Step 6：监控与备份**\n- exporter：`percona/mongodb_exporter` 或 MongoDB Connector\n- 关键指标：`oplog 窗口`、`replication lag`、`cache dirty ratio`、`connections`、`slow query`\n- 备份：从 hidden 节点 `mongodump --oplog` 每日 + 每周文件系统快照"
+  },
+  {
+    "id": 2034,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 副本集需要监控的关键指标，以下哪些是必须的？（多选）",
+    "options": [
+      { "key": "A", "text": "复制延迟（replication lag）与 oplog 窗口" },
+      { "key": "B", "text": "WiredTiger cache 使用率与 eviction 情况" },
+      { "key": "C", "text": "连接数 current/available、慢查询数量" },
+      { "key": "D", "text": "副本集成员状态（是否有主、成员是否 healthy）" }
+    ],
+    "answer": ["A", "B", "C", "D"],
+    "explanation": "四项都是核心。再加几项常被忽略的：⑤`asserts`（尤其 `regular` 与 `warning`，非 0 要查）；⑥`queues`（读/写排队数，持续 >0 说明到瓶颈）；⑦磁盘空间与 `dbPath` 增长趋势；⑧分片集群还要监控 `sharding.chunks imbalance`、`balancer` 状态、mongos 数量。"
+  },
+  {
+    "id": 2035,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的 ObjectId 和 MySQL 的自增 ID 在「索引插入」上有什么本质差异？",
+    "answer": "**根本差异在「插入顺序 vs 索引 B-Tree 的尾部」**。\n\n**MySQL 自增 ID（InnoDB 聚簇索引）**：\n- 主键单调递增 → 每次插入都落在 B+Tree **最右叶子节点** → 顺序写入，几乎不分裂\n- **这是 InnoDB 用自增主键性能好的根本原因**\n- 反例：用 UUID 作主键 → 随机插入 → 频繁页分裂、页利用率下降、缓存命中变差（但 MySQL 8.0 的 `innodb_autoinc_lock_mode` 与 B+Tree 优化缓解了部分问题）\n\n**MongoDB ObjectId**：\n- 前 4 字节是时间戳 → **趋势递增但不严格单调**（同一秒内随机部分不同）\n- 相比完全随机的 UUID 好很多，但**不如纯自增**\n- 更关键的是：MongoDB 的索引是**独立的 B-Tree**，不像 InnoDB 的聚簇索引（数据即索引）。所以索引随机插入的影响在 MongoDB 中相对更小——数据区按插入顺序排列，但索引仍会分裂\n\n**实践结论**：\n- MongoDB 用 ObjectId 完全可以，不要为了「插入性能」改成自增（自增反而造成**中心化热点**名次更严重，在分片下变成写热点）\n- 需要「单调」的场景（如时序数据按时间范围查询）：用 `{timestamp: 1}` 单独建索引，不要指望 `_id`\n- **分片场景下千万别用单调键做片键**，这是比 B-Tree 分裂更严重的性能问题"
+  },
+  {
+    "id": 2036,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "`db.collection.explain(\"executionStats\")` 中 `totalDocsExamined: 10000, nReturned: 10` 说明？",
+    "options": [
+      { "key": "A", "text": "索引利用极好" },
+      { "key": "B", "text": "扫描了大量文档才返回少量结果，索引效率差" },
+      { "key": "C", "text": "查询走了覆盖索引" },
+      { "key": "D", "text": "这是一个正常的全表扫描" }
+    ],
+    "answer": ["B"],
+    "explanation": "理想情况是 `totalDocsExamined ≈ nReturned`（甚至为 0，即覆盖查询）。差值巨大说明索引只做了粗筛，大量文档需要逐个 FETCH 判断，常见原因：①索引字段选择性差；②复合索引顺序不符合 ESR；③用 `$regex` 非前缀匹配；④索引不存在。同时看 `totalKeysExamined`——它也很高说明索引扫描范围过大。"
+  },
+  {
+    "id": 2037,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 常用的运维命令有哪些？（至少说出 8 个）",
+    "answer": "**按用途分组**：\n\n**状态查看**\n```\ndb.stats()                          # 当前库大小、集合数、indexSize\ndb.serverStatus()                   # 全局状态（连接、内存、opcounters）\ndb.currentOp()                      # 正在执行的操作\nrs.status()                         # 副本集状态\ndb.coll.stats()                     # 单集合详情（含 storageSize、碎片）\n```\n\n**性能诊断**\n```\ndb.coll.find(...).explain(\"executionStats\")   # 执行计划\ndb.setProfilingLevel(1, {slowms: 100})        # 开慢查询\ndb.system.profile.find({millis:{$gt:100}})    # 查慢查询\ndb.coll.aggregate([{$indexStats:{}}])         # 索引使用统计\n```\n\n**运维操作**\n```\ndb.fsyncLock() / db.fsyncUnlock()             # 备份用\nrs.stepDown(60)                               # 主动切换\nrs.printReplicationInfo()                     # oplog 窗口\ndb.adminCommand({replSetResizeOplog:1,size:20480})  # 改 oplog\nsh.status()                                   # 分片状态\nsh.setBalancerState(false)                    # 关均衡器\ndb.killOp(opid)                               # 杀操作\n```\n\n**备份恢复**\n```\nmongodump --uri=... --oplog -o /backup/\nmongorestore --oplogReplay /backup/\n```\n\n**注意**：4.4+ 很多 `db.xxx()` 有替代写法（如 `db.adminCommand({currentOp:1})`），脚本化时用 `db.adminCommand` 更稳。"
+  },
+  {
+    "id": 2038,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 4.4/5.0/6.0/7.0 各有哪些重要特性？（至少说 6 个）",
+    "answer": "**4.0**：多文档事务（副本集）、`$convert` 类型转换。\n\n**4.2**：\n- **通配符索引** `$**`\n- 分布式事务扩展到**分片集群**\n- 移除 MMAPv1，WiredTiger 唯一引擎\n\n**4.4**：\n- **Hedged Reads**（对冲读，向两个节点发请求取先返回的，降尾延迟）\n- **隐藏索引**（`hidden: true`，可先隐藏观察再删除，安全删索引）\n- `$unionWith`（管道里做 UNION）\n- 在线 `compact` / 在线改 oplog 大小\n- 移除 `db.collection.ensureIndex()` 等老 API\n\n**5.0**：\n- **原生时间序列集合**（`timeseries`，压缩率极高，替代手写分桶）\n- **版本化 API**（`apiVersion: 1`，让驱动行为稳定，跨版本升级更平滑）\n- **实时重分片**（reshardCollection，不用重建集合就能换片键）\n- 客户端字段级加密完善\n- `$expr` 支持 `$lookup` 索引优化\n\n**6.0**：\n- **集群同步（Cluster-to-Cluster Sync）**（`mongosync`，跨集群/跨云迁移）\n- **查询可终止**（`maxTimeMS` 可中断，治理慢查询）\n- 时间序列增强（二级索引、`$densify`/`$fill`）\n- 移除 `$where` 部分场景 + 更严格的安全默认\n\n**7.0**：\n- **分片集群复合片键 + 时间段分片**提升\n- **可查询加密（Queryable Encryption）** GA —— 能对加密字段做等值查询\n- 性能：聚合管道和 `$lookup` 大幅优化（官方称 5-10 倍）\n\n**运维关注点**：升级前必查「废弃 API 清单」，尤其 5.0 移除 `$where` 部分能力、6.0 强化认证；时间序列集合是 5.0 后的大杀器，日志/监控数据从 capped + 手工分桶迁移过来能省大量空间。"
+  },
+  {
+    "id": 2039,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 文档设计（schema design）的常见模式，以下哪些是合理的？（多选）",
+    "options": [
+      { "key": "A", "text": "内嵌（embedding）：一对少、总是一起读的子文档内嵌到父文档" },
+      { "key": "B", "text": "引用（referencing）：一对多且子文档数量无上限时，存子文档 ID 数组" },
+      { "key": "C", "text": "「扩展引用」：内嵌少量常用字段 + 引用全量数据，避免每次 JOIN" },
+      { "key": "D", "text": "把所有关联数据都内嵌到一个文档，避免任何 $lookup" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 会导致：单文档逼近 16MB 上限、更新时整文档重写（大文档更新极慢）、并发写冲突（同一文档只能有一个写者）。设计原则：①**访问模式优先**——先列出所有查询，再决定结构；②内嵌的判定标准是「一起读 + 数量有界」；③数组无界就不内嵌（用引用或分桶）；④注意「16MB 限制」与「更新范围」。还有 **bucket pattern（分桶模式）**：时序数据按时间窗聚成一批，是 5.0 时间序列集合出现前的经典手法。"
+  },
+  {
+    "id": 2040,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "困难",
+    "question": "数据库连接字符串（connection string）里 replicaSet、retryWrites、readPreference 分别起什么作用？",
+    "answer": "**连接串示例**：\n```\nmongodb://user:pwd@10.0.0.1:27017,10.0.0.2:27017,10.0.0.3:27017/appdb\n  ?replicaSet=rs0\n  &retryWrites=true\n  &readPreference=secondaryPreferred\n  &w=majority\n  &maxPoolSize=50\n```\n\n**`replicaSet=rs0`（最关键）**\n- 让驱动做**拓扑发现**：连上任意一个节点就能知道全部成员与主从\n- 不加这个参数 → 驱动按「单机模式」工作 → 主节点切换后**永远连不上新的主**\n- 这是 90% 的「切换后应用报 NotWritablePrimary」事故的根因\n\n**`retryWrites=true`（4.2+ 驱动默认）**\n- 遇到**可重试错误**（网络抖动、主节点切换、`NotWritablePrimary`）时，驱动自动重试一次\n- 前提：写操作必须**幂等**（`$set`、`$inc` 幂等；`$push` 不幂等可能重复）\n- 大幅减少切换期间的报错，**建议开启**\n\n**`readPreference`**\n| 值 | 行为 |\n|---|---|\n| `primary`（默认） | 只读主，强一致 |\n| `primaryPreferred` | 主可用读主，否则读从 |\n| `secondary` | 只读从，可能读到旧数据 |\n| `secondaryPreferred` | 从优先，都不可用才读主 |\n| `nearest` | 延迟最低 |\n- 配合 `maxStalenessSeconds` 可限制「最多容忍多少秒的旧数据」\n\n**其他重要参数**：\n- `w=majority` / `journal=true`：写关注\n- `maxPoolSize`（默认 100）/ `minPoolSize`\n- `serverSelectionTimeoutMS`（默认 30000）：选不到可用节点时等多久，**建议调小到 5000**，让故障快速失败而不是挂 30 秒\n- `connectTimeoutMS`、`socketTimeoutMS`\n- `readConcern=majority`：配合 `w=majority` 保证不读脏数据\n\n**一句话**：`replicaSet` 决定能不能切换，`retryWrites` 决定切换时是否报错，`readPreference` 决定读负载与一致性。"
+  }
+]

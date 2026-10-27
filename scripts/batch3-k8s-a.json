@@ -1,0 +1,202 @@
+[
+  {
+    "id": 4600,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Deployment、StatefulSet、DaemonSet 三者有什么区别？各自适合什么场景？",
+    "answer": "三者都管理 Pod，但「Pod 的身份」不同。\n\n| 控制器 | Pod 身份 | 调度 | 适用 |\n|---|---|---|---|\n| **Deployment** | 无状态、可互换，名字带随机后缀 | 任意节点 | Web 服务、无状态 API |\n| **StatefulSet** | 有状态、名字固定有序（`mysql-0/1/2`）、有稳定网络标识与独立存储 | 按序创建删除 | 数据库、ZK、Kafka、ES |\n| **DaemonSet** | 每节点一个（或指定节点） | 每节点必跑 | 日志采集、监控 agent、CNI |\n\n**关键差异点**：\n- **网络标识**：StatefulSet 配 Headless Service，`mysql-0.mysql-svc` 是稳定域名；Deployment 的 Pod IP 会变，域名指向 Service 而非 Pod\n- **存储**：StatefulSet 用 volumeClaimTemplates，每个副本独立 PVC 且随 Pod 重建绑定回原 PVC\n- **顺序**：StatefulSet 默认 `OrderedReady`，pod-0 Ready 才起 pod-1（可配 `podManagementPolicy: Parallel`）\n- **滚动更新**：StatefulSet 默认**倒序**（从最大序号开始）\n\n**一句话选型**：能无状态就用 Deployment；需要「每个实例有自己的数据」用 StatefulSet；需要「每个节点都有一份」用 DaemonSet。"
+  },
+  {
+    "id": 4601,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "同一个 Pod 内的多个容器，以下哪项是**不**共享的？",
+    "options": [
+      { "key": "A", "text": "Network Namespace（网络栈、IP、端口）" },
+      { "key": "B", "text": "IPC Namespace" },
+      { "key": "C", "text": "文件系统（根目录）" },
+      { "key": "D", "text": "挂载的 Volume" }
+    ],
+    "answer": ["C"],
+    "explanation": "Pod 内各容器共享 Network / IPC / UTS 命名空间和 Volume，但**文件系统是各自镜像的独立根目录**（这也是为什么共享文件必须走 emptyDir 之类的卷）。因此同一 Pod 内两个容器不能都监听 80 端口。"
+  },
+  {
+    "id": 4602,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "从执行 `kubectl apply -f pod.yaml` 到容器真正跑起来，中间经历了哪些环节？",
+    "answer": "**一条完整链路，六个环节**：\n\n```\nkubectl apply\n   │  (HTTP POST，携带 kubeconfig 里的证书/token)\n   ▼\n① kube-apiserver\n   │  认证(Authentication) → 鉴权(RBAC) → 准入(Admission: PSA/MutatingWebhook)\n   │  → 字段校验 → 写入 etcd\n   ▼\n② etcd（唯一持久化，state 落地）\n   ▼\n③ kube-scheduler（Watch 到未绑定的 Pod）\n   │  Filter（预选：资源够不够、污点、亲和性、污点容忍）\n   │  Score（优选：均衡打分）\n   │  Bind → 写回 etcd，标记 nodeName\n   ▼\n④ kubelet（Watch 到分配给自己的 Pod）\n   │  调 CRI 创建沙箱(Pause 容器)：建 netns、配 CNI、分配 Pod IP\n   │  调 CRI 拉镜像、创建业务容器（挂 volume、注入 env/secrets）\n   ▼\n⑤ containerd → runc\n   │  runc 按 OCI 规范 clone 出进程、setns 进命名空间、设 cgroups\n   ▼\n⑥ 容器启动 → 探针通过 → Pod Ready → 从 Endpoints 接管流量\n```\n\n**每一步失败时的典型现象**（排查时按阶段定位）：\n\n| 阶段 | 失败现象 |\n|---|---|\n| apiserver 拒绝 | `kubectl apply` 直接报错（schema/权限/准入拒绝） |\n| Scheduler 未绑定 | Pod **Pending**（Events: Insufficient cpu / taint / no match） |\n| kubelet 拉镜像失败 | **ImagePullBackOff** |\n| 容器启动即退出 | **CrashLoopBackOff**（配合 `--previous` 看日志） |\n| 探针不过 | Pod Running 但 **0/1 Ready**，Endpoints 为空 |\n\n**加分理解**：\n- 各组件之间**不是串行调用**，而是围绕 etcd 的 **Watch 机制**异步协作（声明式 + 最终一致）\n- 这就是为什么 `kubectl apply` 返回成功不代表 Pod 起来了，要 `kubectl rollout status` / `kubectl wait` 才等到真实状态"
+  },
+  {
+    "id": 4603,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 一直处于 Pending 状态，可能的原因有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "节点资源不足（CPU/内存 requests 大于节点可分配）" },
+      { "key": "B", "text": "节点有污点而 Pod 没有对应容忍" },
+      { "key": "C", "text": "nodeSelector / affinity 规则没有匹配到任何节点" },
+      { "key": "D", "text": "镜像拉取失败" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 的错误：Pending 表示「还没被调度或还没开始启动」，镜像拉取发生在调度成功之后，此时状态通常是 `ContainerCreating` 或 `ImagePullBackOff`，不会是 Pending。排查 Pending 首看 `kubectl describe pod` 最后一行 Events，常见就是「Insufficient cpu」「node(s) had taint」「didn't match node selector」「0/N nodes are available」几种。"
+  },
+  {
+    "id": 4604,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "ConfigMap 和 Secret 有什么区别？Secret 是加密存储的吗？",
+    "answer": "**区别**：\n\n| | ConfigMap | Secret |\n|---|---|---|\n| 用途 | 普通配置 | 密码、Token、证书 |\n| 存储 | 明文 | **Base64 编码**（不是加密） |\n| 内存 | 普通 | 挂载到 tmpfs，不落盘 |\n| 权限 | 常规 | 可配 RBAC 限制读取 |\n\n**关键结论：Secret 默认不是加密的**。Base64 只是编码，`kubectl get secret -o yaml` 后一行 `base64 -d` 就还原了。\n\n**真正的防护手段**：\n1. **开启 etcd 静态加密**（`EncryptionConfiguration`，AES-GCM 或 KMS）\n2. **RBAC 收紧**：不给普通用户 `get/list secrets` 权限\n3. **不要提交到 Git**：用 SealedSecrets / External Secrets / Vault 注入\n\n**使用注意**：\n- Secret 的 value 必须是 base64，直接写明文会创建失败\n- 挂载为文件时更新不会自动重启进程（需应用自己 watch 或配 checksum 注解触发滚动）\n- 环境变量方式注入的 Secret **不会热更新**，只有挂载卷方式才会（延迟约 1 分钟）"
+  },
+  {
+    "id": 4605,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "查看某个 Pod 中**指定容器**的实时日志，正确的命令是？",
+    "options": [
+      { "key": "A", "text": "kubectl logs mypod -c mycontainer -f" },
+      { "key": "B", "text": "kubectl log mypod --container=mycontainer" },
+      { "key": "C", "text": "kubectl exec mypod -c mycontainer -- logs" },
+      { "key": "D", "text": "kubectl describe pod mypod -c mycontainer" }
+    ],
+    "answer": ["A"],
+    "explanation": "多容器 Pod 必须用 `-c` 指定容器，多副本 Pod 要用 `deploy/xxx` 或 `-l app=xxx` 指定。常用组合：`kubectl logs -f --tail=100 --since=10m`、`--previous` 看崩溃前的日志（排查 CrashLoopBackOff 的必备）。"
+  },
+  {
+    "id": 4606,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "什么是 Init Container？它解决什么问题？",
+    "answer": "Init Container 是**在主容器启动前按序执行、必须全部成功退出**的特殊容器。\n\n**特点**：\n- 串行执行，一个失败则 Pod 重启重试（除非 `restartPolicy: Never`）\n- 共享 Pod 的 Volume 和网络，但有自己的镜像\n- 不参与 readiness，跑完就终止\n\n**典型用途**：\n\n| 场景 | 做法 |\n|---|---|\n| **等待依赖就绪** | 循环探测 MySQL/Redis 能否连通，避免主容器启动即崩 |\n| **初始化数据/目录** | 下载配置、`chown` 数据目录权限（修 volume 权限的经典手法） |\n| **拉取代码/密钥** | git clone、从 Vault 取凭据写入 emptyDir |\n| **数据库迁移** | 启动前跑 `flyway migrate` |\n\n**和 postStart 的区别**：\n- Init Container 在**主容器之前**，是独立容器，有完整镜像\n- `postStart` 是主容器的生命周期钩子，和主容器 ENTRYPOINT **并发**执行，不保证顺序\n\n**注意**：Init Container 的 `resources.requests` 会计入 Pod 调度总量，用最大的一项（`max`），不是求和。"
+  },
+  {
+    "id": 4607,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "节点状态变成 NotReady，请给出排查步骤。",
+    "answer": "按「节点 → kubelet → 容器运行时 → 网络」四层查。\n\n**1. 看节点详情与事件**\n```\nkubectl describe node <node> | tail -30   # 看 Conditions 与 Events\n```\n常见 Condition 原因：`KubeletNotReady`、`MemoryPressure`、`DiskPressure`、`NetworkUnavailable`。\n\n**2. 登上节点看 kubelet**\n```\nsystemctl status kubelet\njournalctl -u kubelet -n 200 --no-pager | grep -i error\n```\n高频原因：证书过期（`kubelet-client-certificate` 到期）、`kubelet` 连不上 apiserver、cgroup 驱动不一致。\n\n**3. 看容器运行时**\n```\nsystemctl status containerd\ncrictl ps -a | head           # 看是否有容器卡死\ncrictl info | grep -i runtime\n```\n运行时挂了 → kubelet 报 `runtime not ready`。\n\n**4. 看资源与内核**\n```\ndf -h                          # 磁盘满 → DiskPressure，镜像无法写入\ndmesg -T | tail -50            # 内核 panic、OOM、网卡 down\nfree -h; top\n```\n\n**5. 网络与 CNI**\n```\nls /etc/cni/net.d/\nkubectl get pods -n kube-system -o wide | grep <node>   # CNI Pod 是否正常\n```\n\n**6. 节点整体卡死**\n- `uptime` 负载极高、`ping` 不通 → 可能内核 hang 或硬件问题\n- 需要 `kubectl cordon` 摘流量，再考虑重启或迁移\n\n**处置原则**：先 `kubectl cordon <node>` 停止调度，再看是否要 `drain`（注意 DaemonSet 用 `--ignore-daemonsets`，有本地存储用 `--delete-emptydir-data`）。"
+  },
+  {
+    "id": 4608,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "以下哪些 Kubernetes 资源是**命名空间级**（namespace-scoped）的？（多选）",
+    "options": [
+      { "key": "A", "text": "Deployment" },
+      { "key": "B", "text": "Service" },
+      { "key": "C", "text": "PersistentVolume（PV）" },
+      { "key": "D", "text": "ConfigMap" }
+    ],
+    "answer": ["A", "B", "D"],
+    "explanation": "C 是集群级（cluster-scoped）：PV 不归属任何命名空间，只有 PVC 是命名空间级。其他集群级资源还有 Node、Namespace、ClusterRole/ClusterRoleBinding、StorageClass、IngressClass、CRD、PriorityClass 等。判断方法：`kubectl api-resources --namespaced=false` 一眼列全。"
+  },
+  {
+    "id": 4609,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "HPA（Horizontal Pod Autoscaler）是怎么工作的？为什么经常「不扩缩容」？",
+    "answer": "**原理**：HPA 控制器每 15 秒（`--horizontal-pod-autoscaler-sync-period`）从 metrics-server 拉指标，按公式算期望副本数。\n\n```\n期望副本 = 当前副本 × (当前指标值 / 目标指标值)\n```\n\n例：目标 CPU 60%，当前 3 副本平均 90% → `3 × 90/60 = 4.5` → 向上取整 5 副本。\n\n**前提条件（缺一不可）**：\n1. 装了 **metrics-server**（或 Prometheus Adapter 做自定义指标）\n2. 所有相关容器**必须设置 requests**——HPA 的 CPU 使用率是「相对 requests 的百分比」，没设 requests 就永远是 `<unknown>`\n3. `kubectl top pods` 能出数据\n\n**「不扩缩容」的常见原因**：\n\n| 现象 | 原因 |\n|---|---|\n| `TARGETS: <unknown>/60%` | metrics-server 没装 / requests 没设 |\n| 指标抖动频繁扩缩 | 需要 `behavior` 配置稳定窗口（默认扩容 0s、缩容 5min） |\n| 扩了但没效果 | 扩出来的是新 Pod，指标被稀释（新 Pod 刚启动 CPU 低） |\n| 卡在 maxReplicas | 上限设小了 |\n| 缩容迟迟不动 | 缩容默认有 5 分钟 stabilization 窗口 |\n\n**实践**：CPU 扩容适合「计算密集且能快速扩容」的服务；有长启动时间的服务应配 **VPA 或提前扩容**，HPA 来不及。\n\n**HPA / VPA / Cluster Autoscaler 区别**：HPA 改副本数，VPA 改单 Pod 的 requests，CA 加节点。"
+  },
+  {
+    "id": 4610,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Deployment 默认的滚动更新参数 `maxSurge` 和 `maxUnavailable` 分别是多少？",
+    "options": [
+      { "key": "A", "text": "25% 和 25%" },
+      { "key": "B", "text": "1 和 0" },
+      { "key": "C", "text": "0 和 25%" },
+      { "key": "D", "text": "25% 和 0" }
+    ],
+    "answer": ["A"],
+    "explanation": "两者的默认值都是 `25%`，即允许「超出期望副本 25%」和「不可用 25%」。两者不能同时为 0。想零中断快速更新常用 `maxSurge: 1, maxUnavailable: 0`（慢但稳）或 `maxSurge: 25%, maxUnavailable: 0`。注意百分比是**向上取整**计算的。"
+  },
+  {
+    "id": 4611,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "PV、PVC、StorageClass 三者的关系是什么？什么是动态供给？",
+    "answer": "类比「买存储」：\n\n| 概念 | 类比 | 说明 |\n|---|---|---|\n| **PV** | 一块已备好的磁盘 | 集群级资源，描述真实存储（NFS、云盘、Ceph） |\n| **PVC** | 用户的申请单 | 命名空间级，声明「我要 10Gi 读写」 |\n| **StorageClass** | 存储类型目录 | 描述「哪种存储、由哪个 provisioner 创建」 |\n\n**绑定流程（静态）**：管理员先建 PV → 用户建 PVC → 控制器按 size + accessModes + storageClassName 匹配绑定。\n\n**动态供给（更常用）**：PVC 里写 `storageClassName: ssd` → 集群用该 SC 的 provisioner **自动创建 PV** → 自动绑定。删 PVC 时是否删 PV 由 `reclaimPolicy` 决定：\n- `Delete`：默认，PVC 删除则 PV 与后端存储一起删（云盘场景注意数据丢失）\n- `Retain`：保留 PV，需手动清理——**重要数据必须设 Retain**\n\n**accessModes 含义**（易混）：\n- `ReadWriteOnce`（RWO）：**单节点**读写，不是单 Pod！同节点多 Pod 可同时挂\n- `ReadOnlyMany`（ROX）：多节点只读\n- `ReadWriteMany`（RWX）：多节点读写，需要 NFS/CephFS 这类共享存储\n\n**常见坑**：\n- PVC 处于 Pending，`kubectl describe pvc` 看是否「no persistent volumes available」或 SC 不存在\n- 一个 PVC 只能绑一个 PV，绑错了必须删了重建（不能改绑）\n- StatefulSet 用 `volumeClaimTemplates`，删 StatefulSet 不会删 PVC，要手动清"
+  },
+  {
+    "id": 4612,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "关于 Kubernetes 网络，以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "CNI 插件负责给 Pod 分配 IP 并配置节点间路由/overlay" },
+      { "key": "B", "text": "K8s 网络模型要求任意 Pod 之间可直连，无需 NAT" },
+      { "key": "C", "text": "kube-proxy 的 ipvs 模式比 iptables 模式在大规模 Service 下性能更好" },
+      { "key": "D", "text": "Pod 的 IP 在 Pod 重启后会保持不变" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 错误：Pod 是「一次性」的，重建后 IP 会重新分配（StatefulSet 也只是域名稳定，IP 不稳定）。这也是必须用 Service/DNS 而不是写死 Pod IP 的原因。ipvs 模式用哈希表查找 O(1)，iptables 是线性链表逐条匹配，Service 数量上千时差异明显。"
+  },
+  {
+    "id": 4613,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Service 的负载均衡是怎么实现的？iptables 模式和 ipvs 模式有什么区别？",
+    "answer": "**核心：Service 只是规则，不是进程**。流量转发由每个节点上的 **kube-proxy** 写入内核规则完成。\n\n**iptables 模式**：\n- 为每个 Service 生成一组 `KUBE-SVC-xxx` 链，每个 Endpoint 一条 `DNAT` 规则\n- 用 `statistic mode random` 做随机负载均衡\n- 问题：规则是**链表**，Service/Endpoint 越多，匹配越长；每次变更要**全量重写** iptables，几千个 Service 时同步耗时可达秒级\n\n**ipvs 模式**：\n- 基于 LVS 的 IPVS，内核哈希表，查找 O(1)\n- 支持多种调度算法：`rr`（轮询）、`wrr`、`lc`（最小连接）、`sh`（源地址哈希）\n- 变更只增量更新，规则规模大也不掉性能\n- 前提：内核有 `ip_vs` 模块，且节点上要有 `kube-ipvs0` 网卡\n\n**两者共同的坑**：\n```\nkubectl get svc       # 有 ClusterIP\ncurl <ClusterIP>      # 超时？\n```\n排查顺序：\n1. `kubectl get endpoints <svc>` —— **Endpoints 为空是最常见原因**（selector 不匹配、Pod 没 Ready）\n2. `kubectl get pods` 看 readinessProbe 是否通过\n3. 节点上 `iptables -t nat -L KUBE-SERVICES -n | grep <ip>` 或 `ipvsadm -Ln`\n4. `conntrack -L | grep <ip>` 是否有残留连接\n\n**Session 保持**：`sessionAffinity: ClientIP` + `sessionAffinityConfig.clientIP.timeoutSeconds`。\n\n**Headless Service**（`clusterIP: None`）：不分配 VIP、不做负载均衡，DNS 直接返回所有 Pod IP——StatefulSet 靠它做稳定域名。"
+  },
+  {
+    "id": 4614,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "StatefulSet 为什么要配合 Headless Service 使用？",
+    "options": [
+      { "key": "A", "text": "为了节省 ClusterIP 地址" },
+      { "key": "B", "text": "为了给每个 Pod 提供稳定的 DNS 名称，供集群成员互相发现" },
+      { "key": "C", "text": "Headless Service 才能做负载均衡" },
+      { "key": "D", "text": "为了支持 NodePort 暴露" }
+    ],
+    "answer": ["B"],
+    "explanation": "Headless Service 的 DNS 会为每个 Pod 返回独立 A 记录（`pod-name.svc-name.namespace.svc.cluster.local`），这正是 ZK/Kafka/MySQL 主从「各自知道其他成员地址」所需要的。C 说反了：Headless 不做负载均衡。"
+  },
+  {
+    "id": 4615,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如何让 Pod 实现优雅停机，避免滚动更新时请求报错？",
+    "answer": "**问题根源**：Pod 删除是**并发**发生的——kubelet 发 SIGTERM 的同时才从 Endpoints 摘除，而摘除要经过 kube-proxy/Ingress 异步生效。中间存在窗口：Pod 已经在关闭，但流量还在进来。\n\n**三要素**：\n\n**1. preStop 钩子（关键）——先「等」再「关」**\n```\nlifecycle:\n  preStop:\n    exec:\n      command: [\"sh\", \"-c\", \"sleep 10\"]\n```\n这 10 秒用来让 Endpoints 摘除生效，期间 Pod 仍正常服务。\n\n**2. terminationGracePeriodSeconds 要够大**\n```\nterminationGracePeriodSeconds: 60   # 默认 30，必须 > preStop睡眠 + 应用排水时间\n```\n超时未退出会被 `SIGKILL` 强杀。\n\n**3. 应用响应 SIGTERM**\n- 收到信号后：**先从注册中心/健康检查摘掉** → 处理完在途请求 → 关闭线程池 → 退出\n- 顺序错了（先关线程池）就会出现 502\n- Java 应用常见问题：`Runtime.addShutdownHook` 里做优雅关闭；Spring Boot 2.3+ 开 `server.shutdown=graceful`\n\n**readinessProbe 也要配**：更新期间新 Pod 未 Ready 不接流量，靠它把关。\n\n**验证方法**：滚动更新时用 `while true; do curl ...; done` 观察是否有非 200；或看 Ingress 访问日志有没有 502。"
+  },
+  {
+    "id": 4616,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 报 ImagePullBackOff，可能的原因有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "镜像名或 tag 写错，仓库中不存在" },
+      { "key": "B", "text": "私有仓库未配置 imagePullSecrets" },
+      { "key": "C", "text": "节点无法访问镜像仓库（网络或 DNS 问题）" },
+      { "key": "D", "text": "节点磁盘空间不足" }
+    ],
+    "answer": ["A", "B", "C", "D"],
+    "explanation": "四项都会导致拉取失败，其中 D 常被忽略：kubelet 报 `no space left on device` 或 `failed to register layer`，此时需清理 `/var/lib/containerd` 或配 kubelet 镜像回收阈值。排查先看 `kubectl describe pod` 的 Events 原文，里面通常直接给出 `401 Unauthorized` / `not found` / `i/o timeout` / `no space`。另外 `:latest` 配 `imagePullPolicy: Always` 会反复拉取，建议用固定 tag 或 digest。"
+  },
+  {
+    "id": 4617,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "resources 里 requests 和 limits 对 CPU 和内存的行为有什么不同？",
+    "answer": "**同一个字段，CPU 和内存的语义完全不同**——这是最容易踩的坑。\n\n| | CPU | 内存 |\n|---|---|---|\n| **requests** | 调度依据；保证的核数 | 调度依据 |\n| **超过 requests** | 正常，可抢占空闲 CPU | 正常 |\n| **超过 limits** | **被限流（throttle）**，不杀 | **被 OOMKilled** |\n| 单位 | 可小数（`500m`） | 只能是整数 |\n\n**结论**：\n- CPU 是「可压缩资源」，超了只是变慢，进程还活着\n- 内存是「不可压缩资源」，超了内核直接杀进程\n\n**引发的典型问题**：\n1. **CPU limits 设太小 → 莫名变慢**：Go/Java 应用在低 limits 下频繁被 throttle（`container_cpu_cfs_throttled_periods_total` 飙升）。很多团队干脆**不设 CPU limits**，只设 requests\n2. **内存 limits 设太小 → OOMKilled 循环**：同时要注意 `limits` 是**容器总内存**，JVM 堆外（Metaspace、直接内存、线程栈、native）都算在内。Java 容器需开 `-XX:MaxRAMPercentage`，别写死 `-Xmx` 过大\n3. **requests 设过大 → 调度不上**：Pod Pending\n\n**Guaranteed / Burstable / BestEffort QoS**：\n- 三者都设且相等 → Guaranteed（最不易被杀）\n- 只设一部分 → Burstable\n- 都没设 → BestEffort（优先被驱逐）\n\n节点内存压力时，kubelet 按 QoS 顺序驱逐：BestEffort → Burstable → Guaranteed。"
+  }
+]

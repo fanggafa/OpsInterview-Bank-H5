@@ -5382,6 +5382,92 @@
     "frequency": "高频"
   },
   {
+    "id": 1640,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "四层负载均衡（LVS）和七层（Nginx/HAProxy）该怎么选？",
+    "answer": "**核心区别：四层看不懂 HTTP，七层能解析报文。**\n\n| | 四层（LVS/DR） | 七层（Nginx/HAProxy） |\n|---|---|---|\n| 依据 | IP + 端口 | URL、Host、Header、Cookie |\n| 性能 | **极高**（内核态转发，十万级并发） | 万级，受用户态与内存限制 |\n| 功能 | 只做转发 | 路由、改写、限流、SSL 卸载、会话保持 |\n| 建连 | **三次握手由客户端直连 RS**（DR/NAT）或不参与 | 完整代理两次连接 |\n\n**典型架构：两者叠加而非二选一**\n```\n用户 → LVS（四层，扛连接数与流量）→ Nginx（七层，按域名/路径分发）→ 应用\n```\nLVS 做流量入口抗 DDoS 与大并发，Nginx 做业务路由与 SSL。\n\n**选择口诀**：\n- 只要「按端口分发 + 超高并发」→ LVS\n- 需要「按域名/URL 分发、灰度、改写头」→ Nginx/HAProxy\n- 需要「WebSocket 长连接计数、健康检查更细」→ HAProxy（四层五层都强，且支持 `tcp-check`）",
+    "tags": [
+      "四层",
+      "七层",
+      "选型"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1641,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "HAProxy 的 `balance source` 算法与 `balance roundrobin` 的本质差别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "source 按源 IP 哈希固定后端，能实现会话保持；roundrobin 轮询不保证同一客户端落到同一后端"
+      },
+      {
+        "key": "B",
+        "text": "两者完全相同"
+      },
+      {
+        "key": "C",
+        "text": "source 性能更好"
+      },
+      {
+        "key": "D",
+        "text": "roundrobin 支持健康检查，source 不支持"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "`source` 是源地址哈希，同一客户端 IP 稳定落同一后端，**代价是负载可能不均**（大量请求来自同一 NAT 出口 IP 时全压一台）。`roundrobin` 最均衡但无会话保持，需应用无状态或配合共享 Session。补充：`leastconn`（最小连接，适合长连接）、`uri`（按 URI 哈希做缓存亲和）。",
+    "tags": [
+      "HAProxy",
+      "会话保持",
+      "算法"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1642,
+    "type": "multiple",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "Keepalived 做 LVS 高可用时，以下哪些配置或检查是必要的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "state 与 priority 区分主备，且 backup 的 priority 要低于 master"
+      },
+      {
+        "key": "B",
+        "text": "virtual_router_id 在同一网段内必须唯一，否则会互相抢 VIP"
+      },
+      {
+        "key": "C",
+        "text": "用 vrrp_script 检测后端真实服务（如 nginx 进程、RS 端口），故障时主动降权/摘 VIP"
+      },
+      {
+        "key": "D",
+        "text": "主备都要配 nopreempt 才能正常切换"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 错误：`nopreempt` 只在 `state BACKUP` 下有效，作用是「主恢复后不抢回 VIP」，两台都配会导致切换不回来。补充要点：④同一网段的 VRRP 组播 224.0.0.18 必须放通（防火墙常踩坑）；⑤`advert_int` 与 `vrrp_script` 的 `interval`、`fall`/`rise` 要匹配，避免误切；⑥DR 模式下 RS 上要配 VIP 到 lo 并做 ARP 抑制，否则 VIP 冲突。",
+    "tags": [
+      "Keepalived",
+      "VRRP",
+      "高可用"
+    ],
+    "frequency": "高频"
+  },
+  {
     "id": 1801,
     "type": "short",
     "category": "Tomcat/JVM",
@@ -6174,6 +6260,1926 @@
       "K8s"
     ],
     "frequency": "高频"
+  },
+  {
+    "id": 2000,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 和 MySQL 的核心区别是什么？什么样的业务适合用 MongoDB？",
+    "answer": "**核心区别在「数据模型」**：\n\n| | MySQL | MongoDB |\n|---|---|---|\n| 模型 | 表 / 行 / 强 schema | 集合 / 文档（BSON）/ 弱 schema |\n| 关联 | JOIN（服务端） | 内嵌文档 或 `$lookup`（能力弱） |\n| 事务 | 强，ACID 完整 | 4.0 起单文档原子，4.0+ 副本集多文档事务，**集群版分片事务性能差** |\n| 扩展 | 主要垂直扩展 + 分库分表 | **原生水平分片** |\n| 一致性 | 强一致（可调隔离级别） | 默认读写关注可调，**最终一致**更容易 |\n\n**适合 MongoDB 的场景**：\n1. **文档结构多变**：表单、配置、埋点事件、日志类数据\n2. **天然嵌套**：一篇文章带评论/标签，一次查询取完，不需要 JOIN\n3. **读写比高、需要灵活查询**：商品目录、内容管理\n4. **需要快速水平扩展**：数据量预计会暴涨且无强关联\n5. **地理位置查询**：内置 GEO 索引，很适合「附近的店」\n\n**不适合**：\n- 强事务的金融账务（多文档事务代价高）\n- 复杂多表关联分析（`$lookup` 性能差，没有 JOIN 优化器）\n- 单表关联度极高的传统 ERP\n- 需要严格 schema 约束的核心交易库",
+    "tags": [
+      "选型",
+      "数据模型",
+      "对比"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2001,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 中一个文档（document）的最大限制是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "4MB"
+      },
+      {
+        "key": "B",
+        "text": "16MB"
+      },
+      {
+        "key": "C",
+        "text": "64MB"
+      },
+      {
+        "key": "D",
+        "text": "无限制"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "单文档上限 16MB，这是硬限制。超过时应该拆分到多个文档，或用 **GridFS** 存大文件（把文件切成 255KB 的 chunks 存到两个集合）。注意：单文档 16MB 不等于集合能存多少——集合本身没有大小上限。另外设计上不建议把文档做到接近 16MB，因为更新时可能触发整文档重写和频繁 move。",
+    "tags": [
+      "文档限制",
+      "GridFS",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2002,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 集群有哪几种部署形态？各自最小节点数是多少？",
+    "answer": "**三种形态**：\n\n| 形态 | 组成 | 最小节点 | 说明 |\n|---|---|---|---|\n| **单机**（Standalone） | 1 进程 | 1 | 只适合开发测试，**无冗余** |\n| **副本集**（ReplicaSet） | 1 Primary + N Secondary（+ Arbiter） | **3**（PSA 或 PSS） | 生产标准，自动故障切换 |\n| **分片集群**（Sharded Cluster） | mongos + config 副本集 + N 个 shard 副本集 | shard≥1、config≥3、mongos≥1 | 大数据量水平扩展 |\n\n**副本集为什么至少 3 个**：需要多数派选主（quorum = N/2+1）。2 节点时任一挂掉就无法选主，反而**比单机更不可用**。\n\n**我的节点角色**：\n- **Primary**：唯一接受写\n- **Secondary**：复制数据，可配 `readPreference` 分担读\n- **Arbiter**（仲裁者）：只投票不存数据，用于「硬件不够但想凑 3 票」的场景。**不推荐**——它不存数据，主挂了无法接管，还容易引发一致性问题\n- **Hidden**：不对客户端可见，用于备份/分析\n- **Delayed**：延迟 N 秒复制，**防误删的救命节点**\n\n**分片集群的 config 服务器**：从 3.4 起必须是**副本集**（CSRS），不能是 3 个独立进程。",
+    "tags": [
+      "副本集",
+      "分片集群",
+      "架构"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2003,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "关于 MongoDB 副本集的写关注（writeConcern），以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "w:1 只等主节点写入成功就返回，宕机可能丢数据"
+      },
+      {
+        "key": "B",
+        "text": "w:\"majority\" 等多数节点确认，可用性换一致性"
+      },
+      {
+        "key": "C",
+        "text": "j:true 表示等写入 journal 落盘后才返回"
+      },
+      {
+        "key": "D",
+        "text": "w:0 会返回明确的写入结果，可用于确认是否成功"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 错误：`w:0`（Unacknowledged）发出后**立即返回，不等待任何确认**，也无法得知是否写入成功，只用于日志类可丢数据。常见组合：`{w:\"majority\", j:true}` 是最安全的配置（等多数派 + 落盘），代价是延迟增加。注意 `w:majority` 在 5.0 起用的是 **majority commit point**，语义比早期更严格。",
+    "tags": [
+      "writeConcern",
+      "一致性",
+      "写关注"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2004,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "副本集是怎么选主的？为什么会出现「脑裂」？MongoDB 怎么防止？",
+    "answer": "**选主流程**：\n1. Primary 心跳（默认 10s 一次 `heartbeatIntervalMillis`）超时 → Secondary 认为主挂了\n2. 任一节点发起选举（`requestElection`），带上自己的 `optime` 与 `electionId`\n3. 收到**多数派**投票（`N/2+1`）且自己的 **optime 不低于其他候选者** → 当选 Primary\n4. 所有节点通过 oplog 追赶新主\n\n**关键机制：Raft 式的 term + 多数派**。同一 term 内一个节点只能投一票，所以**两个分区不可能各自选出主**（少数派那侧拿不到多数票）。\n\n**为什么仍可能丢数据而不是脑裂**：\n- 老主在少数派分区里，它**会自己降级**（`stepDown`）——这是 MongoDB 与 Redis 的关键区别\n- 但如果老主还认为自己是主且**客户端仍连它**，写入会失败（`NotWritablePrimary` 错误）\n- 真正的风险是**未复制的写入丢失**：老主写入成功但还没同步就挂了 → 新主没有这条数据\n\n**防护：`writeConcern: majority`**。它保证「写入已被多数节点确认」才返回，那么任何新主必然包含这条数据。**这是最有效的防丢数据手段**。\n\n**其他相关配置**：\n- `priority`：值越高越优先被选为主，设 0 表示永不为主（用于异地灾备节点）\n- `votes`：投票权，最多 7 个投票节点\n- `settings.catchUpTimeoutMillis`：新节点追数据超时\n\n**桌面演练**：`rs.stepDown(60)` 手动让主降级，观察切换耗时与客户端报错。",
+    "tags": [
+      "选主",
+      "脑裂",
+      "majority"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2005,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "查看当前节点是主还是从、以及复制延迟，应该执行哪个命令？",
+    "options": [
+      {
+        "key": "A",
+        "text": "db.stats()"
+      },
+      {
+        "key": "B",
+        "text": "rs.status()"
+      },
+      {
+        "key": "C",
+        "text": "db.serverStatus()"
+      },
+      {
+        "key": "D",
+        "text": "db.currentOp()"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "`rs.status()` 给出成员列表、stateStr（PRIMARY/SECONDARY）、健康状态与 `optimeDate`；`rs.printReplicationInfo()` 看 oplog 大小与时间窗口；`rs.printSecondaryReplicationInfo()` 看各从节点延迟。**oplog 窗口太小是常见事故**：写入量大而 oplog 只够 1 小时，从节点维护超过 1 小时就要全量重同步。",
+    "tags": [
+      "rs.status",
+      "复制延迟",
+      "命令"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2006,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "oplog 是什么？它的工作原理和运维要点是什么？",
+    "answer": "**oplog（operations log）** 是副本集里主节点记录所有写操作的**固定大小 capped collection**（`local.oplog.rs`），从节点 tail 它来重放操作。**它不是 binlog**——它是「幂等的操作记录」，重放是 apply 效果而非 SQL 语句。\n\n**工作方式**：\n```\n写请求 → 主节点执行并写入 oplog → 从节点 tail oplog 并在本地 apply\n```\n所有节点都有 oplog，从节点也可能被别的节点 tail（链式复制）。\n\n**oplog 是幂等的**：`$inc` 会被改写成 `$set` 为最终值，所以重放一次或多次结果相同（这是与 MySQL row/binlog 的关键差异，也是能做「幂等重放」的原因）。\n\n**运维要点**：\n\n1. **窗口大小是生命线**\n```\nrs.printReplicationInfo()   # 看 oplog 时间窗口\n```\n官方建议**至少 24 小时**。窗口 = oplogSize / 写入速率。\n\n2. **改 oplog 大小**（4.0+ 支持在线）\n```\ndb.adminCommand({replSetResizeOplog: 1, size: 20480})   # 单位 MB\n```\n\n3. **窗口不足的后果**：从节点维护超过窗口 → `OplogTooStale` → 必须**全量初始同步**（拷贝所有数据 + 建索引），耗时可能数小时\n\n4. **影响窗口的因素**：批量删除、批量 update、建索引（在 oplog 里按条记录）、大文档\n\n5. **监控**：`replSetGetStatus` 的 `optimeDate` 差值、`db.getReplicationInfo()`\n\n6. **4.4+ 的 oplog 大小按 MB 还是时间**：可以用 `oplogSizeMB` 固定，或让系统按「至少 990MB 且保持 24 小时」自动计算",
+    "tags": [
+      "oplog",
+      "复制",
+      "窗口"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2007,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "创建索引时，以下哪些做法是推荐的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "生产环境大集合建索引用 background: true（4.2+ 已不需要，索引构建会自动让出）"
+      },
+      {
+        "key": "B",
+        "text": "遵循 ESR 原则：等值字段在前、排序字段在中、范围字段在后"
+      },
+      {
+        "key": "C",
+        "text": "用复合索引覆盖多个查询，避免每个查询单独建索引"
+      },
+      {
+        "key": "D",
+        "text": "给每个字段都建一个单字段索引，保证所有查询都快"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 是典型误区：索引越多写入越慢（每次写要更新所有索引）、占内存（WiredTiger 的 cache 被索引挤占）、优化器选择成本上升。实践要建**最少的、能覆盖实际查询模式**的复合索引，并用 `db.collection.aggregate([{$indexStats:{}}])` 定期检查 `ops` 为 0 的**无用索引**并删除。",
+    "tags": [
+      "索引",
+      "ESR",
+      "优化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2008,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "复合索引的「最左前缀原则」在 MongoDB 里怎么体现？ESR 原则是什么？",
+    "answer": "**最左前缀**：复合索引 `{a:1, b:1, c:1}` 能支持\n- `{a}`、`{a,b}`、`{a,b,c}` 的前缀查询\n- **不能**支持单独 `{b}` 或 `{c}`（除非用 `$exists` 之类的技巧，或走覆盖索引扫描）\n- 也**不能**跳过 a 直接 `{a,c}`（c 用不上索引，只能过滤）\n\n**注意**：`$in` 和等值查询是例外——`{a:1, b:2}` 和 `{a:{$in:[1,2]}, b:2}` 都能走索引。\n\n**ESR 原则（Equality → Sort → Range）**，来自 MongoDB 官方：\n\n| 顺序 | 字段类型 | 原因 |\n|---|---|---|\n| 1 | **E** quality（等值） | 等值查询能直接定位到区间，放最前可最大化缩小范围 |\n| 2 | **S** ort（排序） | 排序字段必须连续，放在范围字段前面才能用索引顺序，避免内存排序 |\n| 3 | **R** ange（范围） | 范围查询（`$gt`、`$lt`）会「截断」后续字段的索引利用 |\n\n**为什么 Sort 要在 Range 前面**：索引内先按 a 排、再按 b 排。如果 b 是范围条件（`b > 5`），那么 c 字段在 b 的多个值里都是有序的，但整体来看 c 的顺序被打乱了，**无法直接满足 `sort(c)`**。\n\n**验证方法**：\n```\ndb.coll.find({a:1, c:{$gt:3}}).sort({b:1}).explain(\"executionStats\")\n```\n看 `stage` 是否为 `IXSCAN`（走索引）、`SORT` 阶段是否出现（出现说明内存排序）、`totalKeysExamined` 与 `totalDocsExamined` 是否接近 `nReturned`。",
+    "tags": [
+      "复合索引",
+      "ESR",
+      "explain"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2009,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "在 explain 输出里看到 `stage: \"COLLSCAN\"`，说明什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "用上了索引，性能很好"
+      },
+      {
+        "key": "B",
+        "text": "全集合扫描，没有用上索引"
+      },
+      {
+        "key": "C",
+        "text": "使用了覆盖索引"
+      },
+      {
+        "key": "D",
+        "text": "这是一个内存排序"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "常见 stage 对照：`COLLSCAN` 全表扫描（危险）→ `IXSCAN` 索引扫描（好）→ `FETCH` 回表取文档 → `SORT` 内存排序（危险，除非有索引顺序）→ `SORT_MERGE` 用索引排序（好）。注意 `COLLSCAN` 不一定是错的：集合很小或查询要返回大部分文档时，全扫反而更快。",
+    "tags": [
+      "explain",
+      "COLLSCAN",
+      "索引"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2010,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的 WiredTiger 存储引擎是怎么组织的？和 MMAPv1 有什么区别？",
+    "answer": "**WiredTiger 自 3.2 起成为默认引擎**，MMAPv1 已在 4.2 移除。\n\n**WiredTiger 核心结构**：\n\n| 概念 | 说明 |\n|---|---|\n| **B-Tree 索引** | 类似老引擎 |\n| **文档级并发控制** | 不同文档可并发写，MMAPv1 是库级锁 |\n| **MVCC** | 多版本，读不阻塞写 |\n| **WAL（journal）** | 写入先写 journal，`j:true` 才等它落盘 |\n| **压缩** | 默认 **snappy** 压缩索引和集合，可配 zlib/zstd |\n| **cache** | 默认 = `(总内存 - 1GB) / 2`，最低 0.25GB |\n\n**MMAPv1 的问题**（为什么被淘汰）：\n- 内存映射文件，**cache 由 OS 管**，MongoDB 无法精细控制\n- **集合级锁**，并发写极差\n- 文档更新变大后会「换位置」（padding 机制），索引膨胀\n\n**运维要点**：\n\n1. **cache 是核心指标**\n```\ndb.serverStatus().wiredTiger.cache\n```\n看 `bytes currently in the cache` 与 `maximum bytes configured` 的比值；页面淘汰（`pages evicted`）、`pages read into cache` 持续上升说明 cache 不够。\n\n2. **cache 与实际内存的关系**：MongoDB 进程 RSS 通常比 cache 大不少（索引 + 连接 + 碎片）。容器部署时易 OOM。\n\n3. **压缩配置只能在建集合时指定**（或用 `collMod` + 重建）\n```\ndb.createCollection(\"logs\", {storageEngine: {wiredTiger: {configString: \"collection. block_compressor=zstd\"}}})\n```\n\n4. **checkpoint**：默认每 60s 一次（`checkpoint=(wait=60)`），journal 保证崩溃后 60s 内的数据不会丢",
+    "tags": [
+      "WiredTiger",
+      "存储引擎",
+      "cache"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2011,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的分片集群是怎么工作的？片键的选择有什么原则？",
+    "answer": "**架构三部分**：\n\n```\n客户端 → mongos（路由，无状态，可多部署）\n           ├→ config 副本集（3 节点，存元数据：chunk 分布、片键）\n           └→ shard 1..N（每个是副本集，存实际数据）\n```\n\n**数据切分**：按片键把集合切成 **chunk**（默认最大 128MB），mongos 根据 chunk 范围路由到对应 shard。**balancer** 后台在 shard 间迁移 chunk 保持均衡。\n\n**片键选择原则（面试重点）**：\n\n| 原则 | 好 | 坏 |\n|---|---|---|\n| **基数高** | `userId`、`orderId` | `gender`、`status`（只有几个值） |\n| **写分散** | 哈希片键 / 时间+ID 组合 | **单调递增**（`_id: 1` 或用 `createTime`）→ 写入全落最后一个 shard（**热点**） |\n| **查询常用** | 常用过滤字段 | 完全随机的冷字段 → 查询要**广播到所有 shard** |\n| **不可变** | 固定字段 | 片键字段**不能更新**（更新会报错） |\n\n**分片策略**：\n- **范围分片（ranged）**：适合范围查询，但单调键会热点\n- **哈希分片（hashed）**：`sh.shardCollection(\"db.coll\", {_id: \"hashed\"})`，写均匀但范围查询要广播\n- **复合分片**（5.0+ zone）：`{region: 1, _id: 1}` 可做地域亲和\n\n**经典反例**：用 `_id` 的 ObjectId 直接范围分片 → ObjectId 里含时间戳，近似单调 → 持续热点写入。\n\n**其他要点**：\n- 分片后**不能改片键**，要改必须重建集合\n- 查询必须带片键才能「定位分片」，否则 `mongos` 广播到全部 shard（`shard count` 高）\n- 用 `sh.status()`、`db.coll.getShardDistribution()` 监控分布\n- 迁移时（`moveChunk`）会消耗 IO，可配 `_secondaryThrottle` 让迁移走从节点",
+    "tags": [
+      "分片",
+      "片键",
+      "chunk"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2012,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "分片集群里，查询**没有**带片键时会怎样？",
+    "options": [
+      {
+        "key": "A",
+        "text": "直接报错"
+      },
+      {
+        "key": "B",
+        "text": "查询随机落到某个 shard，可能漏数据"
+      },
+      {
+        "key": "C",
+        "text": "mongos 广播到所有 shard，由 mongos 合并去重"
+      },
+      {
+        "key": "D",
+        "text": "mongos 自动找 config 服务器查询"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "这叫 **scatter-gather（广播查询）**，功能上正确但性能差：N 个 shard 都要查，mongos 还要做归并排序。数据量大时是主要慢查询来源。所以片键必须与**最高频的查询条件**相关；确需多维度查询时，考虑把该集合放到独立 shard 上，或在 mongos 层限流。",
+    "tags": [
+      "分片",
+      "广播查询",
+      "路由"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2013,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的备份方式有哪些？推荐哪种？",
+    "answer": "**四种方式**：\n\n| 方式 | 命令/工具 | 适用 | 缺点 |\n|---|---|---|---|\n| **逻辑备份** | `mongodump` / `mongorestore` | 小数据量、跨版本迁移、单个集合 | 慢，大库不可行；副本集下可能不一致 |\n| **物理备份** | 直接拷贝 `dbPath` 文件 | 大数据量快速恢复 | **必须停库或做 fsync 锁**，否则文件不一致 |\n| **文件系统快照** | LVM / 云盘快照 | 大数据量、秒级 | 依赖存储层能力 |\n| **云托管备份** | Atlas / 云厂商自动备份 | 生产标准 | 成本 |\n\n**推荐组合**：\n- 小库（< 100GB）：**mongodump**，配合 `--oplog` 保证时间点一致性\n```\nmongodump --uri=\"mongodb://u:p@host:27017/db?replicaSet=rs0\" --oplog\nmongorestore --oplogReplay <dir>\n```\n- 大库：**副本集从节点 + 文件系统快照**，或直接 `fsyncLock`\n```\ndb.fsyncLock()        # 刷盘并锁住写\n# 拷贝 dbPath\n# db.fsyncUnlock()\n```\n\n**必须注意的坑**：\n1. **mongodump 在副本集上必须走 secondary**（`--readPreference=secondary` 或直连从节点），否则会拖慢主库\n2. **`--oplog` 才能保证时间点一致**，否则备份期间写入会产生不一致\n3. **恢复后索引要重建**：mongodump 会带着索引定义，但大库重建索引很慢，考虑 `--noIndexRestore` 后手动建\n4. **验证备份可用性**：定期在隔离环境真实 restore 一次——**没验证过的备份等于没有备份**\n5. 大库恢复时用 `--numInsertionWorkersPerCollection 4` 并行加速\n\n**生产实践**：从节点做延迟复制（`priority: 0` + `hidden: true` + 延迟 1h），误删时可从这个节点抢数据。",
+    "tags": [
+      "备份",
+      "mongodump",
+      "快照"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2014,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 慢查询诊断，以下哪些手段有效？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "开启慢查询日志：db.setProfilingLevel(1, {slowms: 100})"
+      },
+      {
+        "key": "B",
+        "text": "用 db.currentOp() 查看正在执行的长操作，并可 killOp"
+      },
+      {
+        "key": "C",
+        "text": "对可疑查询用 explain(\"executionStats\") 看是否走了索引"
+      },
+      {
+        "key": "D",
+        "text": "重启数据库即可解决慢查询"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 只是临时清缓存，问题必然复发且可能引发雪崩（重启后大量请求涌入）。补充手段：①`db.system.profile` 聚合分析找出最高耗时模式：`db.system.profile.find({millis:{$gt:100}}).sort({millis:-1}).limit(10)`；②`$indexStats` 找无用索引；③`db.serverStatus().globalLock` 看锁等待；④开启 `operationProfiling.mode: slowOp` 需注意 `system.profile` 本身是固定集合，会占空间。",
+    "tags": [
+      "慢查询",
+      "profiling",
+      "explain"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2015,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 常见的高可用故障场景有哪些？分别怎么处理？",
+    "answer": "**场景一：Primary 宕机**\n- 自动选主（默认 10-30 秒），客户端重连后恢复\n- **前提**：连接串要带 `replicaSet=rs0` 与多个 seed 节点，否则连接写死的老主会一直失败\n- 检查：`rs.status()` 看新主是否 stable\n\n**场景二：Secondary 落后/失联**\n- `rs.printSecondaryReplicationInfo()` 看 `syncedTo` 延迟\n- 延迟持续增长 → 检查网络带宽、主库写入量、从库是否在做重活（备份/报表）\n- 落后超过 oplog 窗口 → 无法增量追上，需 `rs.remove` 后重新 `rs.add` 做全量同步\n\n**场景三：多数派失效（两个节点挂掉）**\n- 只剩 1 个节点时**无法选主，集群只读**\n- 处置：强制单节点模式把剩下那台拉起来\n```\nrs.conf()  # 修改配置，去掉挂掉的成员，votes 调整\nrs.reconfig(cfg, {force: true})   # 危险操作，仅在灾难恢复时用\n```\n- 数据可能丢，必须评估\n\n**场景四：分片集群的 mongos 全挂**\n- 客户端完全不可用，需立即重启 mongos（无状态，重启即恢复）\n\n**场景五：config 服务器挂了**\n- 无法迁移 chunk、无法路由新数据，集群**写会失败**——必须优先恢复 config\n\n**演练建议**：定期做 `rs.stepDown()`、杀主进程、模拟网络分区，量化 RTO。",
+    "tags": [
+      "故障切换",
+      "stepDown",
+      "副本集"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2016,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 中 `$elemMatch` 与直接写 `{\"arr.a\": 1, \"arr.b\": 2}` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "没有区别"
+      },
+      {
+        "key": "B",
+        "text": "$elemMatch 要求同一数组元素同时满足所有条件；后者只要数组中分别存在即可"
+      },
+      {
+        "key": "C",
+        "text": "$elemMatch 只能用于字符串数组"
+      },
+      {
+        "key": "D",
+        "text": "后者性能一定更好"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "这是 MongoDB 数组查询的经典陷阱。`{\"arr.a\":1, \"arr.b\":2}` 会匹配「有某个元素的 a=1」且「有某个（可能是另一个）元素的 b=2」。要「同一个元素同时满足 a=1 且 b=2」必须用 `$elemMatch`。对应到 `$not` 时，`$elemMatch + $not` 的语义又不同，需要单独测试验证。",
+    "tags": [
+      "数组查询",
+      "elemMatch",
+      "语法"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2017,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 聚合管道里 $lookup、$unwind、$group、$facet 分别做什么？",
+    "answer": "**聚合管道** = 一系列 stage 串联，数据流逐个处理。\n\n| stage | 作用 | 示例场景 |\n|---|---|---|\n| **$match** | 过滤（应放最前，能走索引） | 按时间范围筛 |\n| **$project** | 投影/重命名字段（减少数据传输） | 只取需要的字段 |\n| **$group** | 分组聚合（`_id` 是分组键） | 求和、计数、去重 |\n| **$unwind** | 把数组拆成多行 | 把订单明细摊平成行 |\n| **$lookup** | 类似 LEFT JOIN，关联另一个集合 | 订单补商品信息 |\n| **$facet** | 一次遍历产出多个结果集 | 同页面同时要「总数+分页数据+聚合统计」 |\n| **$addFields** | 增加计算字段 | 计算总价 |\n| **$sort / $limit / $skip** | 排序分页 | 列表页 |\n\n**重要的性能建议**：\n1. **$match 必须放最前**，否则无法用索引，且白处理大量文档\n2. **$lookup 很慢**：它不走索引（除非 5.0+ 的 `$lookup` with `pipeline` + 内层 `$match` 能用上索引），大集合关联会内存溢出\n3. **$unwind 会放大数据量**：先 `$match` 缩小再 `$unwind`\n4. **$facet 的每个子管道不能用外层的 $sort 索引**，依赖前面的 `$match`\n5. **管道内存限制 100MB**，超出要开 `allowDiskUse: true`（会写临时文件，变慢）\n\n**示例：一次查询同时拿统计和分页**\n```javascript\ndb.orders.aggregate([\n  { $match: { status: \"paid\" } },\n  { $facet: {\n      total: [{ $count: \"n\" }],\n      list:  [{ $sort: { createdAt: -1 } }, { $skip: 20 }, { $limit: 10 }]\n  }}\n])\n```",
+    "tags": [
+      "聚合",
+      "lookup",
+      "facet"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2018,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "困难",
+    "question": "MongoDB 内存占用很高，如何排查和优化？",
+    "answer": "**先分清「正常高」和「有问题」**。\n\n**Step 1：看 WiredTiger cache**\n```\ndb.serverStatus().wiredTiger.cache\n```\n关注：\n- `maximum bytes configured`：cache 上限，默认 `(RAM-1GB)/2`\n- `bytes currently in the cache`：正常会跑到接近上限，**这是设计如此**（缓存热数据）\n- `pages evicted by application threads`：**这个不为 0 就是危险信号**——说明 cache 不足，应用线程被迫同步淘汰\n- `pages read into cache`：持续高说明缓存命中差\n\n**Step 2：看索引与文档开销**\n```\ndb.coll.stats().indexSizes        # 索引总体积\ndb.coll.aggregate([{$indexStats:{}}])   # 每个索引的使用次数\n```\n索引也占 cache。**删掉 `ops:0` 的无用索引**是最容易拿到的收益。\n\n**Step 3：看连接与游标**\n```\ndb.serverStatus().connections     # current/available\ndb.serverStatus().metrics.cursor.open\n```\n连接过多（每个连接有 1MB 左右的栈 + 缓冲）、游标没关闭（应用 `forEach` 中途 break 不 close）都会涨内存。\n\n**Step 4：看碎片**\n```\ndb.coll.stats().wiredTiger        # \"block-manager\" 里的碎片指标\n```\n频繁删除 + 小文档插入会产生大量碎片。`compact` 可整理，但**会锁库、需要额外磁盘空间**，必须在从节点轮流执行。\n\n**优化手段**：\n\n| 手段 | 收益 | 代价 |\n|---|---|---|\n| 删除无用索引 | 直接释放 cache | 无 |\n| 调大 `wiredTigerCacheSizeGB` | 提高命中率 | 需重启（4.4+ 可动态 `setParameter`） |\n| 用 zstd 压缩集合 | 磁盘与 IO 减少 | CPU 增加 |\n| 归档冷数据 / TTL 索引 | 集合变小 | 需业务支持 |\n| `compact` 整理碎片 | 空间回收 | 锁表、耗时 |\n| 限制连接池大小 | 内存下降 | 并发能力降 |\n\n**注意容器部署**：MongoDB 看不到宿主机全部内存时会算错 cache；用 `--wiredTigerCacheSizeGB` 显式指定。",
+    "tags": [
+      "内存",
+      "cache",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2019,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 安全加固，以下哪些是必要措施？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "开启认证 auth=true，并启用 RBAC 角色"
+      },
+      {
+        "key": "B",
+        "text": "生产环境绑定内网 IP（bindIp），不要监听 0.0.0.0"
+      },
+      {
+        "key": "C",
+        "text": "启用 TLS/SSL 加密客户端连接与副本集内部通信"
+      },
+      {
+        "key": "D",
+        "text": "为防止误操作，给应用账号使用 root 角色即可"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 严重错误：应用账号只应给 `readWrite` on 特定库（`db.grantRolesToUser`）。历史教训：2017 年大量 MongoDB 因 27017 无认证公网暴露被勒索删库。补充措施：④开启审计（企业版或 `--auditDestination`）；⑤用 `security.javascriptEnabled: false` 关闭服务端 JS（除非需要 `$where`）；⑥定期 `db.getUsers()` 审计账号；⑦用密钥文件或 x509 做副本集内部认证（`keyFile` 权限必须 400）。",
+    "tags": [
+      "安全",
+      "认证",
+      "RBAC"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2020,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 4.0 引入的多文档事务有哪些限制？",
+    "options": [
+      {
+        "key": "A",
+        "text": "没有任何限制，和 MySQL 完全一样"
+      },
+      {
+        "key": "B",
+        "text": "默认事务最长 60 秒，且分片集群下性能开销显著"
+      },
+      {
+        "key": "C",
+        "text": "只支持单文档"
+      },
+      {
+        "key": "D",
+        "text": "只能在单机上使用"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "关键限制：①事务默认超时 `transactionLifetimeLimitSeconds=60`；②事务内**不能创建/删除集合与索引**（4.4+ 允许在事务内建集合）；③事务内**不能读 oplog**；④分片集群事务要求**所有 shard 版本 ≥ 4.2**，且跨 shard 事务的两阶段提交开销大、易冲突；⑤事务期间持有的锁会影响并发。核心原则：**能用单文档原子操作就用**，MongoDB 的单文档更新本身就是原子的。",
+    "tags": [
+      "事务",
+      "限制",
+      "4.0"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2021,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "什么是「读关注」readConcern？local、majority、linearizable 有什么区别？",
+    "answer": "**readConcern 决定「读到的数据有多可信」**——即会不会读到「已被回滚的、未提交的」数据。\n\n| 级别 | 语义 | 场景 |\n|---|---|---|\n| **local**（默认） | 读本节点已有的数据，**可能读到之后被回滚的写** | 大多数业务，性能最好 |\n| **available** | 最弱，分片下可能读到孤儿文档 | 极少用 |\n| **majority** | 只返回**已被多数派确认**的数据（不会回滚） | 金额、订单等关键读 |\n| **linearizable** | 更强：保证读到「比所有已确认写更新」的数据 | 分布式锁、选举类场景，**只能用于单文档读且会阻塞** |\n| **snapshot**（4.0+） | 事务内一致性快照 | 多文档事务 |\n\n**核心组合**：\n- **写 `w:\"majority\"` + 读 `readConcern:\"majority\"`** 才是「不丢 + 不脏读」的完整方案。只设写关注，读仍可能读到即将回滚的数据\n- 强一致读用 `linearizable`，但它会等主节点与多数派同步，延迟高\n\n**读偏好 readPreference**（另一个维度，别混淆）：\n- `primary`：只读主，强一致\n- `primaryPreferred`：主优先，主不可用读从\n- `secondary`：只读从，分摊压力但**可能读到旧数据**\n- `nearest`：延迟最低的节点\n\n**实践口诀**：读偏好管「从哪读」，读关注管「读到什么状态」，写关注管「写多可靠」。三者一起配才有一致性保证。",
+    "tags": [
+      "readConcern",
+      "一致性",
+      "读偏好"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2022,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 连接数暴涨怎么处理？连接池应该怎么配？",
+    "answer": "**先定位原因**：\n```\ndb.serverStatus().connections     # current / available / totalCreated\ndb.currentOp({active:true})       # 谁在跑\n```\n`totalCreated` 持续快速增长说明**连接被频繁创建销毁**，通常是应用没复用连接池。\n\n**常见原因**：\n1. **应用每次请求新建连接**（未用连接池，或池大小配错为 0）\n2. **连接泄漏**：异常路径没 return 连接\n3. **连接池上限过大**：每个应用实例 100 连接 × 50 实例 = 5000\n4. **慢查询堆积**：每个请求等连接超时，排队导致连接数飙升\n5. **副本集切换**：客户端重连风暴\n6. **未配 `maxPoolSize` 默认值**：Java 驱动默认 `maxPoolSize: 100`\n\n**连接池配置原则**：\n\n```\n单应用实例 maxPoolSize ≈ (期望 QPS × 平均查询耗时ms) / 1000 × 冗余系数\n```\n经验值：一般 `maxPoolSize: 20-50`，`minPoolSize: 5-10`（保活，减少冷启动）。\n\n**关键**：`maxPoolSize × 应用实例数 < MongoDB maxIncomingConnections`（默认 65536，但要考虑 `ulimit -n`）。\n\n**服务端调优**：\n```\nnet.maxIncomingConnections: 2000\n# 同时调系统限制\nulimit -n 64000\n```\n\n**监控指标**：`connections.current` 接近 `available` 就要告警；`connections.totalCreated` 增长率。\n\n**应急手段**：\n```\ndb.currentOp({secs_running: {$gt: 30}})   # 找长事务\ndb.killOp(<opid>)                          # 杀掉\ndb.adminCommand({setParameter: 1, maxIncomingConnections: 3000})   # 动态调",
+    "tags": [
+      "连接数",
+      "连接池",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2023,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 里怎么实现「自增 ID」？为什么默认用 ObjectId？",
+    "answer": "**ObjectId 的设计**：12 字节 = 4 字节时间戳 + 5 字节机器/进程随机值 + 3 字节递增计数器。\n\n**为什么默认用它**（而非自增）：\n1. **分布式友好**：客户端就能生成，不需要中心化序列，天然适配分片\n2. **大致有序**：含时间戳，按 `_id` 排序近似按插入时间\n3. **唯一性高**：随机 + 计数器，冲突概率极低\n4. **信息自描述**：`ObjectId().getTimestamp()` 能反查创建时间\n\n**「ObjectId 单调递增」的坑**：它大致按时间递增，所以**用它做范围片键会导致写入热点集中在最后一个 shard**。分片时要么用哈希片键，要么用 `{业务字段: 1, _id: 1}` 复合片键。\n\n**需要自增 ID 时**：\n用「计数器集合 + `findOneAndUpdate` + `$inc`」：\n```javascript\n// 原子自增，返回更新后的值\ndb.counters.findOneAndUpdate(\n  { _id: \"orderId\" },\n  { $inc: { seq: 1 } },\n  { upsert: true, returnDocument: \"after\" }\n)\n```\n这是 MongoDB 官方推荐做法。代价是**中心化热点**（一个文档反复写），高并发下会成为瓶颈——所以能用 ObjectId/雪花 ID 就别用自增。",
+    "tags": [
+      "ObjectId",
+      "自增ID",
+      "主键"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2024,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 有哪些索引类型？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "单字段索引、复合索引"
+      },
+      {
+        "key": "B",
+        "text": "TTL 索引（按时间自动过期删除）"
+      },
+      {
+        "key": "C",
+        "text": "文本索引（支持全文检索）与地理空间索引（2dsphere）"
+      },
+      {
+        "key": "D",
+        "text": "部分索引（partialFilterExpression，只索引满足条件的文档）"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "还有：①唯一索引 `unique: true`（**注意默认允许一个 null**，多字段都 null 会冲突）；②稀疏索引 `sparse`（已建议改用 partial）；③多键索引（数组字段自动展开）；④通配符索引 `$**`（4.2+，适合未知字段，但体积大）；⑤哈希索引（分片用）；⑥覆盖索引（查询字段全在索引里，不 FETCH）。TTL 索引是**后台每 60 秒扫描一次**，不是精确到期，且只能用于日期字段或日期数组。",
+    "tags": [
+      "索引类型",
+      "TTL",
+      "文本索引"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2025,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的 `$where`、`$regex` 有哪些性能陷阱？",
+    "answer": "**两者都是「无法走索引」的重灾区**。\n\n**`$where`**（执行 JavaScript 表达式）：\n- **完全不走索引**，逐文档执行 JS → 全集合扫描\n- 每次执行都要在服务端起 JS 引擎上下文，CPU 与内存开销巨大\n- **安全风险**：可执行任意 JS（配合注入可读系统信息），生产应 `security.javascriptEnabled: false`\n- 替代方案：用聚合管道的 `$expr`（4.2+，能走索引）或 `$function`（仍慢但可控）\n\n**`$regex`**：\n- **只有「前缀锚定」的正则能走索引**：`/^abc/` 可以，`/abc/`（中间匹配）和 `/abc$/`（后缀）不行\n- 不区分大小写的 `/^abc/i` **也不能**走索引（除非用 `$regex` + `$options` 配合 collation 的特殊情况）\n- 替代方案：\n  - 前缀查询用范围：`{name: {$gte: \"abc\", $lt: \"abd\"}}`\n  - 全文检索用**文本索引**：`db.coll.createIndex({title: \"text\"})`，但中文分词效果差，中文场景建议用 ES\n  - 精确匹配不要用正则，直接用等值\n\n**验证手段**：`explain(\"executionStats\")` 里看 `totalDocsExamined` 是否等于集合总数——等于就是全扫。",
+    "tags": [
+      "性能",
+      "正则",
+      "where"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2026,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "关于索引的「覆盖查询」（covered query），以下说法正确的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "查询字段与返回字段全在索引里，可以完全不读文档（stage 无 FETCH）"
+      },
+      {
+        "key": "B",
+        "text": "覆盖查询只对单字段索引有效"
+      },
+      {
+        "key": "C",
+        "text": "覆盖查询会自动去重"
+      },
+      {
+        "key": "D",
+        "text": "覆盖查询必须用 hint 才能生效"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "三个条件才能构成覆盖查询：①查询条件字段在索引里；②返回字段（projection）全在索引里；③**不返回 `_id`**（除非 `_id` 在索引里）——这是最易漏的一条：不写 `{_id: 0}` 就会 FETCH。覆盖查询的价值是省掉回表 IO，高频小字段查询（如列表页只查 id+标题）提升明显。",
+    "tags": [
+      "覆盖查询",
+      "索引",
+      "优化"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2027,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "数据迁移时怎么从 MySQL 同步到 MongoDB？有哪些坑？",
+    "answer": "**主流方案**：\n\n| 方案 | 工具 | 特点 |\n|---|---|---|\n| 一次性迁移 | `mongoimport`（先导出 CSV/JSON） | 简单，只适合停机迁移 |\n| 增量同步 | **Debezium + Kafka**（读 MySQL binlog） | 最可靠，可不停机 |\n| 增量同步 | **MongoDB Kafka Connector** | 官方支持 |\n| 双写 | 应用层双写 + 异步补偿 | 需改造代码，容易不一致 |\n| ETL | DataX / Flink CDC | 适合批量 + 定时 |\n\n**推荐的 Kubernetes-era 组合**：MySQL → Debezium（binlog）→ Kafka → Sink 到 MongoDB。\n\n**必须注意的坑**：\n\n1. **数据类型映射**\n   - MySQL `DECIMAL` → MongoDB **Double 会丢精度**！金额必须用 `Decimal128` 或存整数分\n   - `DATETIME` → 存 `Date` 类型（不是字符串），否则 TTL 索引与范围查询都失效\n   - `BIGINT` 超过 2^53 会丢精度，要存字符串或 Long\n2. **Schema 设计差异**：MySQL 的 JOIN 关系要在 Mongo 里决定是「内嵌」还是「引用」，迁移前必须先设计好，否则后期改造成本极高\n3. **主键**：迁移时保留原主键（不要用新 ObjectId），便于回溯和对账\n4. **索引要在数据导入之后再建**（先建索引再导数据会慢几十倍）\n5. **字符集**：确认 utf8mb4 的 emoji 等四字节字符能正确迁移\n6. **对账**：迁移后按「行数 + 关键字段校验和 + 抽样比对」三层验证\n7. **回滚方案**：保留双写一段时间，能切回去\n\n**容量评估**：MongoDB 文档内嵌会让单文档变大，注意 16MB 限制；粗略换算 MySQL 1GB 数据 ≈ Mongo 1.2-1.5GB（BSON 有字段名开销，压缩后可能反而更小）。",
+    "tags": [
+      "迁移",
+      "Debezium",
+      "类型映射"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2028,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "困难",
+    "question": "MongoDB 突然不可写，报 `NotWritablePrimary`，怎么排查？",
+    "answer": "**这个错误的意思是「连的这个节点不是主」**，不一定是数据库坏了。\n\n**排查顺序**：\n\n**1. 确认当前是不是主**\n```\nrs.status()          # 看 myState，1=PRIMARY 2=SECONDARY\nrs.isMaster()        # ismaster: true?\ndb.hello()\n```\n\n**2. 是不是发生了切换**\n```\nrs.status().members[]   # 看各成员 stateStr 与 optimeDate\n```\n- 原主重启/网络抖动 → 自动选主\n- 检查 `rs.status().members[i].stateStr` 从 `SECONDARY` 变 `PRIMARY` 的时间\n\n**3. 客户端连接串问题（最常见）**\n```\n# 错：只写一个地址\nmongodb://10.0.0.1:27017/db\n# 对：带上 replicaSet 与多个 seed\nmongodb://10.0.0.1:27017,10.0.0.2:27017,10.0.0.3:27017/db?replicaSet=rs0\n```\n只写单地址时，客户端**无法感知拓扑变化**，主挂了就一直连旧的。\n\n**4. 主节点为什么降级**\n```\ndb.adminCommand({getLog: \"global\"})\n```\n常见原因：\n- `stepDown` 被手动执行或 `priority` 竞争中放弃\n- **主节点与多数派失联超过 `electionTimeoutMillis`（默认 10s）** → 主动降级避免脑裂\n- oplog 写入失败 / 磁盘满 → `rs.status()` 里有 `lastWriteError`\n\n**5. 集群整体不可写（无主）**\n```\nrs.status().ok 与 members 状态全部 SECONDARY\n```\n说明**多数派不可用**（挂了 2 个只剩 1 个），需要人干预：\n```\ncfg = rs.conf()\ncfg.members = [cfg.members[0]]     # 只保留存活节点\nrs.reconfig(cfg, {force: true})    # 强制单节点，会丢数据风险\n```\n**这是最后手段**，必须有备份。\n\n**6. 分片集群的特殊情况**\n- `mongos` 缓存的路由表过期 → 重启 mongos 或 `db.adminCommand({flushRouterConfig: 1})`\n- config 副本集不可用 → 整个集群写不了\n\n**预防**：连接串写全 3 个 seed + `replicaSet` + `retryWrites=true`（驱动自动重试一次）。",
+    "tags": [
+      "故障",
+      "副本集",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2029,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "以下哪些操作会**阻塞** MongoDB 主节点？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "在大集合上创建索引（4.2+ 之前使用 background 仍影响）"
+      },
+      {
+        "key": "B",
+        "text": "db.collection.compact() 整理碎片"
+      },
+      {
+        "key": "C",
+        "text": "在副本集从节点上执行 mongodump"
+      },
+      {
+        "key": "D",
+        "text": "collection.drop()"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "D"
+    ],
+    "explanation": "C 不阻塞主节点——这正是「备份走从节点」的意义。注意 A：4.2 起 MongoDB 的索引构建改用**混合索引构建**，只在开始和结束短暂持有排他锁，中间让出，影响大幅降低；但超大集合仍会消耗大量 IO 与 cache。B 的 `compact` 会对集合加写锁，且需要约等量的额外磁盘空间。D 的 `drop` 会短暂阻塞该库的所有操作。",
+    "tags": [
+      "阻塞",
+      "compact",
+      "索引构建"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2030,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的固定集合（capped collection）是什么？适合什么场景？",
+    "answer": "**固定集合**：创建时指定固定大小，写入是**循环覆盖最旧数据**（类似环形缓冲区）。\n\n```javascript\ndb.createCollection(\"logs\", { capped: true, size: 10485760, max: 10000 })\n```\n\n**特性**：\n- 插入**顺序写入**，非常快（WiredTiger 下有专门优化）\n- **不能删除单个文档**（`delete` 无效，只能 `drop` 整个集合）\n- **不能更新导致文档变大的操作**（会报错）\n- 天然按插入顺序，无需额外排序索引\n\n**适合场景**：\n1. **日志/事件流**：只留最近 N 条\n2. **环形缓冲区**：如最近 1000 条告警\n3. **oplog 本身**：MongoDB 内部就用 capped collection 实现 oplog\n\n**不适合**：需要删除、需要更新、需要长期归档的集合。\n\n**注意**：有 TTL 索引就不需要 capped collection——TTL 更灵活且能按时间精确过期。capped collection 的「按时间」很难控制，因为写入速率不固定。",
+    "tags": [
+      "固定集合",
+      "capped",
+      "日志"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 2031,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "TTL 索引删除过期文档的机制是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "到期瞬间立即删除"
+      },
+      {
+        "key": "B",
+        "text": "后台线程每 60 秒扫描一次，删除已过期的文档"
+      },
+      {
+        "key": "C",
+        "text": "查询时才删除"
+      },
+      {
+        "key": "D",
+        "text": "需要手动执行清理命令"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "TTL 线程默认每 60 秒（`ttlMonitorSleepSecs`）跑一次，所以过期后最多 60 秒才会被删。且它是**单线程**的，大量文档同时过期时清理会很慢。要点：①字段必须是 `Date` 类型或包含 Date 的数组；②`expireAfterSeconds: 0` 表示「到期时间由字段值本身决定」，可用业务字段；③副本集上 TTL 只在**主节点**执行；④TTL 索引不能是复合索引的唯一字段。",
+    "tags": [
+      "TTL",
+      "过期",
+      "清理"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2032,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 水平扩容时，chunk 迁移的原理和风险是什么？",
+    "answer": "**迁移触发**：balancer 检测到 shard 间的 chunk 数量差异超过阈值 → 从多的 shard 迁到少的。\n\n**迁移过程（`moveChunk`）**：\n1. 源 shard 对目标 chunk **加锁**，不再接受该范围的写\n2. 拷数据到目标 shard\n3. 拷贝期间新写入记录到 **oplog 落后者队列**，等拷贝完成后补发\n4. 目标 shard 应用这些增量，确认一致\n5. 更新 config 服务器的元数据 → 新 shard 接管，源 shard 删除本地数据\n\n**风险与坑**：\n\n| 风险 | 说明 | 缓解 |\n|---|---|---|\n| **IO 与带宽峰值** | 迁移是全量拷贝 + 大量小写 | 配 `_secondaryThrottle` 让迁移走从节点；限制 `chunkSize` |\n| **cache 压力** | 目标 shard 需要缓存新数据 | 避免在业务高峰迁移 |\n| **孤儿文档** | 迁移失败可能残留 | `cleanupOrphaned` 清理 |\n| **锁阻塞** | 迁移期间该 chunk 范围的写被阻塞几十毫秒到秒级 | 应用要有重试 |\n| **迁移风暴** | 大 chunk 反复迁移 | 调 `chunkSize`，或用 zone 固定数据位置 |\n\n**重要参数**：\n```\nsh.setBalancerState(true/false)     # 手动关停 balancer（改架构时必做）\nsh.isBalancerRunning()\ndb.settings.chunksize               # 默认 128MB（4.4+ 可 64MB）\n```\n\n**运维经验**：\n- 做架构变更 / 大批量导入时**先关 balancer**，否则会和你的操作抢资源\n- 迁移期间监控 `mongos` 的延迟与 `sh.getBalancerState()`\n- 加了新 shard 后，`sh.moveChunk` 可手动预约迁移，比等自动均衡更快\n- `sh.status()` 里有 `lastCommittedOpTime`，迁移慢时可查 `sh.isBalancerRunning()` 卡在哪",
+    "tags": [
+      "chunk",
+      "balancer",
+      "迁移"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2033,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "困难",
+    "question": "从零搭建一套生产可用的 MongoDB 副本集，关键步骤和配置有哪些？",
+    "answer": "**Step 1：系统层准备（所有节点）**\n```\n# 1. 关闭透明大页（THP）—— 官方强制要求，否则性能严重下降\necho never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag\n# 2. 调 ulimit（连接数）\n* soft nofile 64000\n* hard nofile 64000\n* soft nproc 64000\n# 3. 文件系统：xfs（官方推荐），mount 加 noatime\n# 4. 关闭 NUMA 或配 interleave（否则 cache 分配不均）\n```\n\n**Step 2：mongod 关键配置**\n```yaml\nstorage:\n  dbPath: /data/mongodb\n  wiredTiger:\n    engineConfig:\n      cacheSizeGB: 8           # 显式指定！(RAM-1)/2 或留 30% 给系统\n    collectionConfig:\n      blockCompressor: zstd    # 比 snappy 压得好，CPU 稍高\nnet:\n  port: 27017\n  bindIp: 10.0.0.1          # 只绑内网\n  maxIncomingConnections: 3000\nreplication:\n  replSetName: rs0\n  oplogSizeMB: 20480         # 至少能覆盖 24 小时写入\nsecurity:\n  keyFile: /etc/mongo/keyfile # 400 权限，内容 base64 随机 756 字节\n  authorization: enabled\noperationProfiling:\n  mode: slowOp\n  slowOpThresholdMs: 100\n```\n\n**Step 3：初始化副本集**\n```javascript\nrs.initiate({\n  _id: \"rs0\",\n  members: [\n    { _id: 0, host: \"10.0.0.1:27017\", priority: 2 },   // 优先主\n    { _id: 1, host: \"10.0.0.2:27017\", priority: 1 },\n    { _id: 2, host: \"10.0.0.3:27017\", priority: 1, secondaryDelaySecs: 3600, hidden: true }\n  ],\n  settings: { chainingAllowed: true, heartbeatIntervalMillis: 2000 }\n})\n```\n第 3 个成员配 **hidden + 延迟 1 小时**，做误删保护。\n\n**Step 4：创建账号**\n```javascript\nuse admin\ndb.createUser({user: \"admin\", pwd: \"***\", roles: [{role: \"userAdminAnyDatabase\", db: \"admin\"}, \"clusterAdmin\"]})\nuse appdb\ndb.createUser({user: \"app\", pwd: \"***\", roles: [{role: \"readWrite\", db: \"appdb\"}]})\n```\n\n**Step 5：验证与压测**\n```\nrs.status()\nrs.printReplicationInfo()          # oplog 窗口 ≥ 24h\nrs.printSecondaryReplicationInfo()\nrs.stepDown(60)                    # 演练切换\n```\n\n**Step 6：监控与备份**\n- exporter：`percona/mongodb_exporter` 或 MongoDB Connector\n- 关键指标：`oplog 窗口`、`replication lag`、`cache dirty ratio`、`connections`、`slow query`\n- 备份：从 hidden 节点 `mongodump --oplog` 每日 + 每周文件系统快照",
+    "tags": [
+      "部署",
+      "副本集",
+      "配置"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2034,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 副本集需要监控的关键指标，以下哪些是必须的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "复制延迟（replication lag）与 oplog 窗口"
+      },
+      {
+        "key": "B",
+        "text": "WiredTiger cache 使用率与 eviction 情况"
+      },
+      {
+        "key": "C",
+        "text": "连接数 current/available、慢查询数量"
+      },
+      {
+        "key": "D",
+        "text": "副本集成员状态（是否有主、成员是否 healthy）"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "四项都是核心。再加几项常被忽略的：⑤`asserts`（尤其 `regular` 与 `warning`，非 0 要查）；⑥`queues`（读/写排队数，持续 >0 说明到瓶颈）；⑦磁盘空间与 `dbPath` 增长趋势；⑧分片集群还要监控 `sharding.chunks imbalance`、`balancer` 状态、mongos 数量。",
+    "tags": [
+      "监控",
+      "指标",
+      "告警"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2035,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 的 ObjectId 和 MySQL 的自增 ID 在「索引插入」上有什么本质差异？",
+    "answer": "**根本差异在「插入顺序 vs 索引 B-Tree 的尾部」**。\n\n**MySQL 自增 ID（InnoDB 聚簇索引）**：\n- 主键单调递增 → 每次插入都落在 B+Tree **最右叶子节点** → 顺序写入，几乎不分裂\n- **这是 InnoDB 用自增主键性能好的根本原因**\n- 反例：用 UUID 作主键 → 随机插入 → 频繁页分裂、页利用率下降、缓存命中变差（但 MySQL 8.0 的 `innodb_autoinc_lock_mode` 与 B+Tree 优化缓解了部分问题）\n\n**MongoDB ObjectId**：\n- 前 4 字节是时间戳 → **趋势递增但不严格单调**（同一秒内随机部分不同）\n- 相比完全随机的 UUID 好很多，但**不如纯自增**\n- 更关键的是：MongoDB 的索引是**独立的 B-Tree**，不像 InnoDB 的聚簇索引（数据即索引）。所以索引随机插入的影响在 MongoDB 中相对更小——数据区按插入顺序排列，但索引仍会分裂\n\n**实践结论**：\n- MongoDB 用 ObjectId 完全可以，不要为了「插入性能」改成自增（自增反而造成**中心化热点**名次更严重，在分片下变成写热点）\n- 需要「单调」的场景（如时序数据按时间范围查询）：用 `{timestamp: 1}` 单独建索引，不要指望 `_id`\n- **分片场景下千万别用单调键做片键**，这是比 B-Tree 分裂更严重的性能问题",
+    "tags": [
+      "索引",
+      "插入",
+      "B-Tree"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2036,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "`db.collection.explain(\"executionStats\")` 中 `totalDocsExamined: 10000, nReturned: 10` 说明？",
+    "options": [
+      {
+        "key": "A",
+        "text": "索引利用极好"
+      },
+      {
+        "key": "B",
+        "text": "扫描了大量文档才返回少量结果，索引效率差"
+      },
+      {
+        "key": "C",
+        "text": "查询走了覆盖索引"
+      },
+      {
+        "key": "D",
+        "text": "这是一个正常的全表扫描"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "理想情况是 `totalDocsExamined ≈ nReturned`（甚至为 0，即覆盖查询）。差值巨大说明索引只做了粗筛，大量文档需要逐个 FETCH 判断，常见原因：①索引字段选择性差；②复合索引顺序不符合 ESR；③用 `$regex` 非前缀匹配；④索引不存在。同时看 `totalKeysExamined`——它也很高说明索引扫描范围过大。",
+    "tags": [
+      "explain",
+      "索引效率",
+      "优化"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2037,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 常用的运维命令有哪些？（至少说出 8 个）",
+    "answer": "**按用途分组**：\n\n**状态查看**\n```\ndb.stats()                          # 当前库大小、集合数、indexSize\ndb.serverStatus()                   # 全局状态（连接、内存、opcounters）\ndb.currentOp()                      # 正在执行的操作\nrs.status()                         # 副本集状态\ndb.coll.stats()                     # 单集合详情（含 storageSize、碎片）\n```\n\n**性能诊断**\n```\ndb.coll.find(...).explain(\"executionStats\")   # 执行计划\ndb.setProfilingLevel(1, {slowms: 100})        # 开慢查询\ndb.system.profile.find({millis:{$gt:100}})    # 查慢查询\ndb.coll.aggregate([{$indexStats:{}}])         # 索引使用统计\n```\n\n**运维操作**\n```\ndb.fsyncLock() / db.fsyncUnlock()             # 备份用\nrs.stepDown(60)                               # 主动切换\nrs.printReplicationInfo()                     # oplog 窗口\ndb.adminCommand({replSetResizeOplog:1,size:20480})  # 改 oplog\nsh.status()                                   # 分片状态\nsh.setBalancerState(false)                    # 关均衡器\ndb.killOp(opid)                               # 杀操作\n```\n\n**备份恢复**\n```\nmongodump --uri=... --oplog -o /backup/\nmongorestore --oplogReplay /backup/\n```\n\n**注意**：4.4+ 很多 `db.xxx()` 有替代写法（如 `db.adminCommand({currentOp:1})`），脚本化时用 `db.adminCommand` 更稳。",
+    "tags": [
+      "命令",
+      "运维",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2038,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 4.4/5.0/6.0/7.0 各有哪些重要特性？（至少说 6 个）",
+    "answer": "**4.0**：多文档事务（副本集）、`$convert` 类型转换。\n\n**4.2**：\n- **通配符索引** `$**`\n- 分布式事务扩展到**分片集群**\n- 移除 MMAPv1，WiredTiger 唯一引擎\n\n**4.4**：\n- **Hedged Reads**（对冲读，向两个节点发请求取先返回的，降尾延迟）\n- **隐藏索引**（`hidden: true`，可先隐藏观察再删除，安全删索引）\n- `$unionWith`（管道里做 UNION）\n- 在线 `compact` / 在线改 oplog 大小\n- 移除 `db.collection.ensureIndex()` 等老 API\n\n**5.0**：\n- **原生时间序列集合**（`timeseries`，压缩率极高，替代手写分桶）\n- **版本化 API**（`apiVersion: 1`，让驱动行为稳定，跨版本升级更平滑）\n- **实时重分片**（reshardCollection，不用重建集合就能换片键）\n- 客户端字段级加密完善\n- `$expr` 支持 `$lookup` 索引优化\n\n**6.0**：\n- **集群同步（Cluster-to-Cluster Sync）**（`mongosync`，跨集群/跨云迁移）\n- **查询可终止**（`maxTimeMS` 可中断，治理慢查询）\n- 时间序列增强（二级索引、`$densify`/`$fill`）\n- 移除 `$where` 部分场景 + 更严格的安全默认\n\n**7.0**：\n- **分片集群复合片键 + 时间段分片**提升\n- **可查询加密（Queryable Encryption）** GA —— 能对加密字段做等值查询\n- 性能：聚合管道和 `$lookup` 大幅优化（官方称 5-10 倍）\n\n**运维关注点**：升级前必查「废弃 API 清单」，尤其 5.0 移除 `$where` 部分能力、6.0 强化认证；时间序列集合是 5.0 后的大杀器，日志/监控数据从 capped + 手工分桶迁移过来能省大量空间。",
+    "tags": [
+      "版本",
+      "特性",
+      "升级"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2039,
+    "type": "multiple",
+    "category": "MongoDB",
+    "difficulty": "中等",
+    "question": "MongoDB 文档设计（schema design）的常见模式，以下哪些是合理的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "内嵌（embedding）：一对少、总是一起读的子文档内嵌到父文档"
+      },
+      {
+        "key": "B",
+        "text": "引用（referencing）：一对多且子文档数量无上限时，存子文档 ID 数组"
+      },
+      {
+        "key": "C",
+        "text": "「扩展引用」：内嵌少量常用字段 + 引用全量数据，避免每次 JOIN"
+      },
+      {
+        "key": "D",
+        "text": "把所有关联数据都内嵌到一个文档，避免任何 $lookup"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 会导致：单文档逼近 16MB 上限、更新时整文档重写（大文档更新极慢）、并发写冲突（同一文档只能有一个写者）。设计原则：①**访问模式优先**——先列出所有查询，再决定结构；②内嵌的判定标准是「一起读 + 数量有界」；③数组无界就不内嵌（用引用或分桶）；④注意「16MB 限制」与「更新范围」。还有 **bucket pattern（分桶模式）**：时序数据按时间窗聚成一批，是 5.0 时间序列集合出现前的经典手法。",
+    "tags": [
+      "文档设计",
+      "内嵌",
+      "引用"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2040,
+    "type": "short",
+    "category": "MongoDB",
+    "difficulty": "困难",
+    "question": "数据库连接字符串（connection string）里 replicaSet、retryWrites、readPreference 分别起什么作用？",
+    "answer": "**连接串示例**：\n```\nmongodb://user:pwd@10.0.0.1:27017,10.0.0.2:27017,10.0.0.3:27017/appdb\n  ?replicaSet=rs0\n  &retryWrites=true\n  &readPreference=secondaryPreferred\n  &w=majority\n  &maxPoolSize=50\n```\n\n**`replicaSet=rs0`（最关键）**\n- 让驱动做**拓扑发现**：连上任意一个节点就能知道全部成员与主从\n- 不加这个参数 → 驱动按「单机模式」工作 → 主节点切换后**永远连不上新的主**\n- 这是 90% 的「切换后应用报 NotWritablePrimary」事故的根因\n\n**`retryWrites=true`（4.2+ 驱动默认）**\n- 遇到**可重试错误**（网络抖动、主节点切换、`NotWritablePrimary`）时，驱动自动重试一次\n- 前提：写操作必须**幂等**（`$set`、`$inc` 幂等；`$push` 不幂等可能重复）\n- 大幅减少切换期间的报错，**建议开启**\n\n**`readPreference`**\n| 值 | 行为 |\n|---|---|\n| `primary`（默认） | 只读主，强一致 |\n| `primaryPreferred` | 主可用读主，否则读从 |\n| `secondary` | 只读从，可能读到旧数据 |\n| `secondaryPreferred` | 从优先，都不可用才读主 |\n| `nearest` | 延迟最低 |\n- 配合 `maxStalenessSeconds` 可限制「最多容忍多少秒的旧数据」\n\n**其他重要参数**：\n- `w=majority` / `journal=true`：写关注\n- `maxPoolSize`（默认 100）/ `minPoolSize`\n- `serverSelectionTimeoutMS`（默认 30000）：选不到可用节点时等多久，**建议调小到 5000**，让故障快速失败而不是挂 30 秒\n- `connectTimeoutMS`、`socketTimeoutMS`\n- `readConcern=majority`：配合 `w=majority` 保证不读脏数据\n\n**一句话**：`replicaSet` 决定能不能切换，`retryWrites` 决定切换时是否报错，`readPreference` 决定读负载与一致性。",
+    "tags": [
+      "连接串",
+      "replicaSet",
+      "retryWrites"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2200,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka、RabbitMQ、RocketMQ 三者有什么区别？如何选型？",
+    "answer": "**核心差异在「设计目标」**：\n\n| | Kafka | RabbitMQ | RocketMQ |\n|---|---|---|---|\n| 模型 | 分布式提交日志（分区+副本） | AMQP 交换机 + 队列 | 类 Kafka 的 CommitLog + 索引 |\n| 吞吐 | **极高**（百万级/秒） | 中等（万级） | 高（十万级） |\n| 延迟 | 毫秒（批量化后几十 ms） | **微秒级（最低）** | 毫秒 |\n| 路由 | 弱（Topic + Partition） | **强**（direct/topic/fanout/headers） | 中等（Tag 过滤） |\n| 顺序 | 分区内有序 | 单队列有序 | 队列内严格有序 |\n| 事务 | 支持（幂等 + 事务） | 支持（AMQP 事务，性能差） | **事务消息**（半消息 + 回查） |\n| 延迟消息 | 无原生支持（需外部方案） | 插件 | **原生支持**（18 个级别） |\n| 运维 | 依赖 ZK/KRaft，重 | **轻，单机即可** | 中等，Java 栈友好 |\n\n**选型建议**：\n- **日志/埋点/大数据管道**（高吞吐、顺序、可重放）→ **Kafka**，生态最成熟（对接 Flink/Spark/ELK）\n- **业务消息**（订单、支付，要事务消息、延迟消息、严格顺序）→ **RocketMQ**，国内电商事实标准\n- **复杂路由**（按 header 分发、优先级队列、短延迟 RPC）→ **RabbitMQ**\n- **轻量、不想维护** → RabbitMQ 或云托管（阿里云 MQ / OSS）\n\n**共通的坑**：三者都**不保证「只消费一次」**——要么至少一次（at-least-once）+ 消费端幂等，要么用事务消息/去重表。**幂等是业务侧必须自己做的**。",
+    "tags": [
+      "选型",
+      "Kafka",
+      "RocketMQ"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2201,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 保证「分区内消息有序」的前提条件是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "消费者多线程并发处理"
+      },
+      {
+        "key": "B",
+        "text": "生产者按 key 分区 + 单分区单消费者 + 不重试乱序"
+      },
+      {
+        "key": "C",
+        "text": "开启压缩"
+      },
+      {
+        "key": "D",
+        "text": "使用多个 partition"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "三个条件缺一不可：①同 key 的消息进同一分区（`key` 做 hash 取模）；②一个分区同一时刻只被一个消费者（同一消费者组内）消费；③生产端 `max.in.flight.requests.per.connection=1`（或 ≥5.0 且 `enable.idempotence=true`）否则重试会乱序。想提高并行度就**增加分区数**，但分区数只能增不能减。",
+    "tags": [
+      "顺序",
+      "分区",
+      "消费者"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2202,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 的 Topic、Partition、Replica、Consumer Group 分别是什么？",
+    "answer": "**四层结构，逐级理解**：\n\n```\nTopic（逻辑主题）\n  └─ Partition 0/1/2…（物理分片，是并行与顺序的单位）\n       └─ Replica（每个分区的副本，1 Leader + N Follower）\nConsumer Group（消费组，组内瓜分分区）\n```\n\n| 概念 | 作用 | 关键点 |\n|---|---|---|\n| **Topic** | 消息分类 | 逻辑概念，实际存储按分区 |\n| **Partition** | 并行与有序的单位 | 每个分区是**追加写的日志文件**；分区数决定最大并行度，**只能增不能减** |\n| **Replica** | 高可用 | `replication.factor` 通常设 3；ISR = 与 Leader 保持同步的副本集合 |\n| **Consumer Group** | 负载均衡 | **一个分区只能被组内一个消费者消费**；组内消费者数 > 分区数时多出的空闲 |\n\n**关键推论**：\n1. **消费并行度上限 = 分区数**，想提高消费速度只能加分区（或加消费者但别超过分区数）\n2. **有序性只在分区内保证**，跨分区无序\n3. 多条消费者组可以各自独立消费同一 Topic（相当于广播）\n4. `replication.factor=3` + `min.insync.replicas=2` + `acks=all` 才是「不丢消息」的完整配置",
+    "tags": [
+      "Topic",
+      "Partition",
+      "消费组"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2203,
+    "type": "multiple",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 生产端如何保证消息不丢？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "acks=all（-1），等 ISR 中所有副本确认"
+      },
+      {
+        "key": "B",
+        "text": "设置 retries > 0 且 enable.idempotence=true 避免重试丢序与重复"
+      },
+      {
+        "key": "C",
+        "text": "服务端 min.insync.replicas=2 配合 replication.factor=3"
+      },
+      {
+        "key": "D",
+        "text": "acks=0 可以降低延迟，同时保证可靠"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 相反：`acks=0` 发出去就不管，网络抖动直接丢。`acks=1` 只等 Leader 写入本地日志，Leader 挂了且未同步到 Follower 就会丢。**`acks=all` + `min.insync.replicas=2` 是黄金组合**：即使 Leader 挂了，数据至少在一个 Follower 上。注意 `min.insync.replicas` 是服务端 Topic 配置，两者必须配对使用，否则 acks=all 在 ISR 只剩 1 个时仍可能丢。",
+    "tags": [
+      "可靠性",
+      "acks",
+      "不丢消息"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2204,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 的 ISR 是什么？为什么要有 ISR 机制？",
+    "answer": "**ISR（In-Sync Replicas）= 与 Leader 保持「足够同步」的副本集合**（包括 Leader 自己）。\n\n**为什么需要**：Kafka 的 `acks=all` 到底等谁确认？如果等「所有副本」但某个 Follower 机器挂了/磁盘慢，写入就会一直卡住。ISR 用一个「同步进度」门槛把「跟不上的副本」踢出去，让写入不被慢节点拖死。\n\n**进入/踢出 ISR 的条件**：\n- `replica.lag.time.max.ms`（默认 30s）：Follower 超过这个时间没追到 Leader 的 LEO 就被踢出 ISR\n- 注意是**时间维度**而非「落后多少条数」（老版本的 `replica.lag.max.messages` 已废弃）\n\n**核心关系**：\n```\nacks=all → 等 ISR 中所有副本确认\nmin.insync.replicas → ISR 少于该值时，生产直接报 NotEnoughReplicas（拒绝写入）\n```\n**这是「宁可不可写，也不丢数据」的设计**。\n\n**HW（High Watermark）**：ISR 中所有副本都同步到的位置，**消费者只能读到 HW 之前的数据**——这样切换 Leader 时消费者不会读到「后来被截断」的数据。\n\n**运维视角**：\n- ISR 频繁抖动（`kafka.server:type=ReplicaManager,name=IsrShrinksPerSec`）说明网络/磁盘有问题\n- ISR 长期只有 1 个 → 高可用形同虚设，必须告警\n- `unclean.leader.election.enable=false`（默认）：不允许非 ISR 副本当 Leader，**保住数据但牺牲可用性**",
+    "tags": [
+      "ISR",
+      "副本",
+      "一致性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2205,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 的零拷贝（zero-copy）依赖哪个系统调用？",
+    "options": [
+      {
+        "key": "A",
+        "text": "read + write"
+      },
+      {
+        "key": "B",
+        "text": "sendfile（或 mmap + write）"
+      },
+      {
+        "key": "C",
+        "text": "select/poll"
+      },
+      {
+        "key": "D",
+        "text": "fork"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "传统 read+write 要 4 次上下文切换、4 次拷贝（磁盘→内核页缓存→用户缓冲→socket 缓冲→网卡）。`sendfile` 让数据从页缓存直接到网卡（DMA），只需 2 次切换、2 次拷贝。这就是 Kafka 高吞吐的核心之一。配套还有：①**顺序写磁盘**（追加日志，接近内存随机写速度）；②**批量 + 压缩**（`batch.size`、`linger.ms`、lz4/zstd）；③**页缓存**（读走 OS cache，不占 JVM 堆）。",
+    "tags": [
+      "零拷贝",
+      "sendfile",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2206,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 消费者组的 Rebalance 是什么？为什么会造成问题？如何减少？",
+    "answer": "**Rebalance**：消费组内**重新分配分区归属**的过程。\n\n**触发条件**：\n1. 消费者加入/离开（发布、扩容、宕机）\n2. 订阅的 Topic 分区数变化\n3. 心跳超时（`session.timeout.ms` 内没心跳，或 `max.poll.interval.ms` 内没 poll）\n\n**为什么是问题**：\n- Rebalance 期间 **STW（所有消费者停止消费）**，业务侧表现为延迟飙升\n- 分区可能被「搬走」，导致**重复消费**（offset 已提交但处理未完成）\n- 频繁 Rebalance 会让吞吐雪崩\n\n**减少的手段**：\n\n**1. 用增量协作式 Rebalance（2.4+）**\n```\npartition.assignment.strategy=CooperativeStickyAssignor\n```\n对比老的 `RangeAssignor`/`StickyAssignor`（eager 模式会「全部撤销再全部分配」），协作式只迁移需要变的分区，**其他分区不中断**。\n\n**2. 静态成员（2.3+，KIP-345）**\n```\ngroup.instance.id=consumer-1\nsession.timeout.ms=45000\n```\n滚动发布时成员不「退出」再「加入」，**避免发布引发的 Rebalance**。这是最重要的优化。\n\n**3. 调大超时**\n- `session.timeout.ms`（默认 45s）——心跳线程控制，别太小\n- `max.poll.interval.ms`（默认 5min）——**必须大于单批处理的最长耗时**，否则会被踢出组。这是「消费慢导致不断 Rebalance」的元凶\n\n**4. 减少单次 poll 数据量**：`max.poll.records` 减小，避免处理超时\n\n**监控**：`kafka.consumer:type=consumer-coordinator-metrics,client-id=*,name=rebalance-rate-per-hour`，超过 3 次/小时要查。",
+    "tags": [
+      "Rebalance",
+      "消费者组",
+      "优化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2207,
+    "type": "multiple",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 消费端 offset 提交，以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "自动提交（enable.auto.commit=true）可能在处理完成前提交，导致丢消息"
+      },
+      {
+        "key": "B",
+        "text": "手动提交分同步（commitSync）与异步（commitAsync）两种"
+      },
+      {
+        "key": "C",
+        "text": "先处理业务再提交 offset，可实现「至少一次」语义"
+      },
+      {
+        "key": "D",
+        "text": "先提交 offset 再处理业务，可保证不重复消费"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 的后果是**丢消息**（提交后处理失败，重启就从提交点之后继续，那条消息永远丢了），不是「不重复」。要「不重复」必须靠**业务幂等**（唯一键 + 去重表/Redis SETNX），MQ 本身只能做到「至少一次」或「至多一次」，无法做到「恰好一次」端到端。Kafka 的「精确一次」只覆盖 Kafka 内部（读-处理-写回 Kafka）。",
+    "tags": [
+      "offset",
+      "提交",
+      "语义"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2208,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "消息堆积（消费积压）怎么排查和处理？",
+    "answer": "**先看 lag（积压量）**\n```\nkafka-consumer-groups.sh --bootstrap-server broker:9092 \\\n  --describe --group my-group\n```\n关注 `LAG` 列与 `CONSUMER-ID`。\n\n**判断是「消费慢」还是「生产暴涨」**\n- 看 `kafka.topic:type=BrokerTopicMetrics,name=MessagesInPerSec`\n- 若生产速率正常而 lag 线性增长 → **消费端问题**\n\n**消费端排查顺序**：\n\n1. **消费者是否还活着**\n   - `CONSUMER-ID` 为空或 `-` → 消费者已离线（进程挂了/Pod 重启）\n   - 频繁 Rebalance → 看 `max.poll.interval.ms` 是否小于业务耗时\n2. **并行度是否够**\n   - **消费者数 ≤ 分区数**，多出的消费者完全空闲 → 加分区（不可逆）或加消费者\n3. **单条处理是否变慢**\n   - 下游依赖（DB、HTTP 接口）超时？加日志埋点看各阶段耗时\n   - 是否有大消息/异常消息反复重试卡住整个分区（**毒消息**）\n4. **GC / 线程池**：JVM 频繁 Full GC 会让 poll 变慢\n\n**紧急处置（按优先级）**：\n\n| 手段 | 代价 |\n|---|---|\n| 增加消费者实例（≤ 分区数） | 无，最快 |\n| 提高单批处理并行（线程池 + 手动提交） | 需改代码，注意 offset 顺序 |\n| 跳过毒消息（记录到死信 Topic 后提交 offset） | 丢一条数据 |\n| **重置 offset 到最新**（跳过积压） | 丢大量数据，只用于可丢场景 |\n| 临时扩容分区（不可逆，且会触发 Rebalance） | 需评估 |\n\n**兜底**：用 `--reset-offsets --to-latest --execute` 快速止血；长期靠容量规划 + lag 告警（如 lag > 10 万持续 5 分钟）。",
+    "tags": [
+      "积压",
+      "lag",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2209,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 的 `linger.ms` 和 `batch.size` 是做什么的？",
+    "options": [
+      {
+        "key": "A",
+        "text": "控制消息保留时长"
+      },
+      {
+        "key": "B",
+        "text": "控制生产端批处理：等多久发、攒多大发，以提高吞吐"
+      },
+      {
+        "key": "C",
+        "text": "控制消费者拉取频率"
+      },
+      {
+        "key": "D",
+        "text": "控制副本同步"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "两者共同决定「攒批」行为：`batch.size`（默认 16KB）是单批上限，`linger.ms`（默认 0，建议 5-100）是「最多再等多久」。**这是吞吐与延迟的经典权衡**：`linger.ms=0` 追求低延迟但批量小；调到 20-50ms 吞吐可提升数倍，代价是延迟增加。配合 `compression.type=lz4` 和 `acks=all` 是生产常用组合。",
+    "tags": [
+      "批处理",
+      "linger.ms",
+      "吞吐"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2210,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "什么是消息的「幂等消费」？有哪些实现方式？",
+    "answer": "**幂等消费 = 同一条消息被消费多次，业务结果与消费一次相同**。这是 at-least-once 语义下**业务侧必须自己承担的责任**。\n\n**实现方式（按可靠性排序）**：\n\n| 方式 | 做法 | 适用 |\n|---|---|---|\n| **唯一键去重表** | 消费前用消息 ID/bizId 插入唯一索引表，冲突则跳过 | 通用，最可靠 |\n| **Redis SETNX** | `SET msgid 1 NX EX 86400`，返回 false 则跳过 | 高性能，需注意过期时间要覆盖重试窗口 |\n| **状态机/版本号** | 只允许「待支付→已支付」单向流转，重复执行无效 | 订单等有状态业务 |\n| **数据库唯一约束** | 业务表上建唯一索引，重复插入报错后忽略 | 简单直接 |\n| **乐观锁版本号** | `UPDATE ... SET version=version+1 WHERE version=?` | 更新类操作 |\n| **天然幂等操作** | `SET k v`（覆盖写）、`DELETE`、查询 | 天然满足 |\n\n**必须注意的坑**：\n1. **去重 key 的选取**：用消息自带的业务 ID（如订单号），不要用 offset（Rebalance 后 offset 意义会变）\n2. **去重表的清理**：长期保留会撑爆，需定期归档（保留时间要覆盖最长重试周期）\n3. **先落库还是先校验**：正确顺序是「业务处理 + 记录去重标记」**在同一个本地事务里**，否则中间失败仍会重复\n4. **消费失败重试**：立即重试 often 无效，应用**指数退避 + 死信队列**（`retry` Topic / RabbitMQ DLX）\n\n**一句话**：MQ 的「精确一次」只在其内部成立，落到数据库的端到端幂等必须业务自己实现。",
+    "tags": [
+      "幂等",
+      "去重",
+      "重复消费"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2211,
+    "type": "multiple",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "关于 Kafka 分区数，以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "分区数决定消费并行度的上限"
+      },
+      {
+        "key": "B",
+        "text": "分区数只能增加不能减少（官方不支持 shrink）"
+      },
+      {
+        "key": "C",
+        "text": "分区过多会增加 Broker 的元数据与文件句柄开销，也会拉长 Leader 选举时间"
+      },
+      {
+        "key": "D",
+        "text": "增加分区数不会影响基于 key 的消息分布"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 错误：分区数变化后 `hash(key) % partitions` 的结果会变，**同一 key 的消息会落到不同分区**，破坏顺序性。所以分区数应在建 Topic 时一次规划好（按「峰值吞吐 / 单分区能力」估，留 2-3 倍余量）。经验上限：单 Broker 2000-4000 分区，单集群不超过 20 万分区。",
+    "tags": [
+      "分区数",
+      "规划",
+      "扩容"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2212,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 的消息保留策略有哪些？日志清理（log compaction）是什么？",
+    "answer": "**两种清理策略可同时生效**（`cleanup.policy=delete,compact`）：\n\n**1. delete（默认）**\n```\nlog.retention.hours=168       # 保留 7 天\nlog.retention.bytes=1073741824  # 或按大小\n```\n按时间或大小删除**整段 segment**（不是逐条删）。注意 Kafka 删除的最小单位是 segment（`log.segment.bytes` 默认 1GB），所以实际保留量会大于配置。\n\n**2. compact（日志压缩，用于 changelog / CDC）**\n保留**每个 key 的最新值**，旧的被清理。特点：\n- 适用于「快照类」数据：用户资料、配置、Kafka Streams 的状态存储\n- **不保证消息顺序之外的语义**，且清理是异步的（可能同时存在新旧值）\n- 必须有 key（无 key 的消息不被压缩）\n- 相关配置：`min.cleanable.dirty.ratio`（0.5）、`delete.retention.ms`（墓碑保留时间）\n- **`null` 值表示墓碑（tombstone）**，可以真正删除某个 key\n\n**其他策略**：\n- `compact,delete`：既压缩又按时间删除\n- `--config cleanup.policy=compact` 只能在创建时或 `kafka-configs --alter` 动态改\n\n**运维要点**：\n- 保留时间要覆盖「消费者最长停机时间」，否则消费者回来数据已删\n- 磁盘算容量：`日写入量 × 保留天数 × 副本数 × 1.1`\n- `log.retention.check.interval.ms`（默认 5min）是检查周期，不是精确删除时间",
+    "tags": [
+      "保留策略",
+      "compact",
+      "日志"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2213,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 依赖 ZooKeeper 做什么？KRaft 模式改变了什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "ZK 存消息数据"
+      },
+      {
+        "key": "B",
+        "text": "ZK 存集群元数据（Broker 注册、Topic、分区 Leader 选举、ACL、配额）；KRaft 用内置 Raft 替代 ZK"
+      },
+      {
+        "key": "C",
+        "text": "ZK 负责消息复制"
+      },
+      {
+        "key": "D",
+        "text": "KRaft 只是改名，功能相同"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "ZooKeeper 只存元数据，**不存消息**（消息在 Broker 的日志文件中）。KRaft（2.8 预览、3.3 生产可用、**4.0 完全移除 ZK**）用 controller quorum 替代 ZK：①运维少一套集群；②元数据变更走事件日志，**Leader 选举秒级**（ZK 模式故障恢复可能数十秒到分钟）；③支持百万分区规模。迁移工具：`kafka-storage.sh` + `kafka-metadata-quorum.sh`。",
+    "tags": [
+      "ZooKeeper",
+      "KRaft",
+      "架构"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2214,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 的交换机类型有哪几种？分别怎么路由？",
+    "answer": "**四种标准 exchange**：\n\n| 类型 | 路由规则 | 典型场景 |\n|---|---|---|\n| **direct** | routing key **完全匹配** | 按精确类型分发（error/warn） |\n| **topic** | 按模式匹配：`*` 匹配一个词、`#` 匹配零到多个词 | 灵活订阅，如 `order.*.created` |\n| **fanout** | **忽略 routing key**，广播到所有绑定队列 | 广播通知、缓存刷新 |\n| **headers** | 按消息 **headers** 匹配（`x-match: all/any`） | 多维度路由，性能差，少用 |\n\n**还有两个特殊 exchange**：\n- `amq.direct`/`amq.topic`/`amq.fanout`：内置默认\n- `(AMQP default)`：空名 exchange，自动按**队列名**作为 routing key 投递（`routing_key=queue_name` 即可直投）\n\n**关键概念：Binding**\n交换机和队列之间是「绑定」关系，绑定可带 `routing_key` 与 arguments。**没有绑定的交换机收到消息会直接丢弃**（这是新手最常踩的坑）。\n\n**可靠性三件套**：\n1. 生产者确认 `confirm`（`channel.confirm_delivery`）\n2. 队列持久化 `durable=true` + 消息 `delivery_mode=2`\n3. 消费端手动 ack（`basic_ack` / `basic_nack` + requeue）",
+    "tags": [
+      "RabbitMQ",
+      "exchange",
+      "路由"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2215,
+    "type": "multiple",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 消息丢失可能发生在哪些环节？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "生产者到 Broker：网络中断且未开 confirm"
+      },
+      {
+        "key": "B",
+        "text": "Broker 内存：队列未持久化，重启后消息丢失"
+      },
+      {
+        "key": "C",
+        "text": "Broker 到消费者：自动 ack 模式下消费者崩溃"
+      },
+      {
+        "key": "D",
+        "text": "交换机收到消息但没有绑定任何队列"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "四个环节都能丢，D 尤其隐蔽：RabbitMQ 不会因为「没队列」而报错，消息静默丢弃。防御：①开 `publisher confirms`；②队列 `durable=true` + 消息 `delivery_mode=2`；③消费端**手动 ack**（处理完才 ack）；④配置 **mandatory + alternate-exchange（备份交换机）** 兜住无路由的消息。全部做完才接近「不丢」，但仍需业务幂等。",
+    "tags": [
+      "RabbitMQ",
+      "可靠性",
+      "丢消息"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2216,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 的死信队列（DLX）怎么用？什么情况会进入死信？",
+    "answer": "**三种情况进死信**：\n1. 消息被 `basic_reject` / `basic_nack` 且 `requeue=false`\n2. 消息 **TTL 过期**（队列或消息级）\n3. 队列达到 **max-length** 被挤出\n\n**配置方式**（绑在业务队列上）：\n```\n# 业务队列声明时指定死信交换机\nx-dead-letter-exchange: dlx\nx-dead-letter-routing-key: order.failed   # 可选，不改就用原 routing key\n```\n需要先声明 `dlx` exchange 与死信队列并绑定。\n\n**典型用途**：\n- **失败重试**：消费失败 nack 进死信，由消费者延迟重投（也可以用 `x-message-ttl` + 死信实现**延迟队列**）\n- **延迟消息**：声明一个「无消费者的队列 + TTL + 死信交换机」，消息到期后自动转到目标队列。**这是 RabbitMQ 实现延迟队列的经典手法**，但有时序问题（队列是 FIFO，TTL 短的会等前面长的）\n- **人工排查**：把毒消息集中到一个队列，人工处理\n\n**运维要点**：\n- 死信队列要**配监控告警**，否则消息进去了没人管等于丢了\n- 死信队列也要设 max-length，否则无限堆积\n- 3.8+ 有 `x-queue-type: quorum`（仲裁队列）比经典镜像队列更可靠\n- **延迟插件 `rabbitmq_delayed_message_exchange`** 是更好的延迟方案（精确、无队头阻塞）",
+    "tags": [
+      "死信队列",
+      "DLX",
+      "延迟"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2217,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 经典镜像队列（mirrored queue）的性能问题主要是什么？3.8+ 的替代方案是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "无法持久化"
+      },
+      {
+        "key": "B",
+        "text": "同步到所有镜像开销大、网络分区时易脑裂；替代是 Quorum Queue（Raft）"
+      },
+      {
+        "key": "C",
+        "text": "不支持 exchange"
+      },
+      {
+        "key": "D",
+        "text": "只能单机运行"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "镜像队列是「每个镜像都存全量」，写放大严重、内存占用高，且 `ha-sync-mode: automatic` 会阻塞。Quorum Queue 基于 Raft，只需多数派确认，内存与网络开销小得多，且不会因网络分区丢数据。**3.8+ 新项目应直接用 Quorum Queue**（`x-queue-type: quorum`），注意它不支持优先级队列、不支持 `exclusive`。",
+    "tags": [
+      "镜像队列",
+      "Quorum Queue",
+      "Raft"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2218,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "RabbitMQ 内存或磁盘告警（alarm）时会怎样？如何排查和处置？",
+    "answer": "**告警时的行为**：**阻塞所有生产者连接**（不是拒绝，是让 `basic.publish` 挂住），消费仍正常。这是「保护 Broker 不被打死」的设计，但会让上游大量超时。\n\n**两种告警**：\n\n| 告警 | 触发条件（默认） |\n|---|---|\n| **memory alarm** | 内存使用 > `vm_memory_high_watermark`（默认 0.4，即 40%） |\n| **disk free alarm** | 剩余磁盘 < `disk_free_limit`（默认 50MB） |\n\n**排查**：\n```\nrabbitmqctl status                  # 看 memory、disk_free、alarms\nrabbitmqctl list_queues name messages messages_ready messages_unacknowledged durable\nrabbitmqctl list_connections name state client_properties\n```\n\n**高频原因**：\n1. **队列堆积**：消费者挂了或消费慢 → 内存被消息占满\n2. **未 ack 消息太多**：消费者卡死但连接还在（`messages_unacknowledged` 巨大）\n3. **连接/Channel 泄漏**：`rabbitmqctl list_connections` 数量异常\n4. **消息体积过大**：单条 > `max_message_size`（默认 128MB），或大量大消息\n5. **磁盘写满**：日志、`mnesia` 目录、旧消息\n\n**处置**：\n```\n# 1. 先看谁在堆积\nrabbitmqctl list_queues name messages | sort -k2 -n -r | head\n# 2. 扩容/加消费者，或清理无用队列\nrabbitmqctl purge_queue <queue>          # 危险，清空队列\nrabbitmqctl delete_queue <queue>\n# 3. 临时调阈值（缓解，非根治）\nrabbitmqctl set_vm_memory_high_watermark 0.6\nrabbitmqctl set_disk_free_limit 1GB\n# 4. 抓取内存快照定位\nrabbitmqctl force_gc\nrabbitmq-dump-queue\n```\n\n**根治**：\n- 所有业务队列设 `x-max-length` + `x-overflow: reject-publish`（或 `drop-head`），避免无限堆积\n- 消费者做好 ack 与 prefetch（`basic_qos(prefetch_count)` 合理值 10-100）\n- 监控 `rabbitmq_alarms_memory_used_watermark`、`queue_messages`、`disk_free`\n- 消息体过大时改用「消息体放对象存储 + 传 URL / ID」的指针模式",
+    "tags": [
+      "RabbitMQ",
+      "告警",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2219,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RocketMQ 的事务消息是怎么实现的？解决了什么问题？",
+    "answer": "**解决的问题**：「本地事务成功但消息发送失败」或「消息发了但本地事务回滚」导致的数据不一致——即**分布式事务的最终一致性**。\n\n**三阶段流程**：\n\n**1. 发送半消息（Half Message）**\n- 生产者先发一条「对消费者不可见」的半消息到 Broker\n- Broker 返回成功 → 才执行本地事务\n\n**2. 执行本地事务**\n- 业务代码执行 DB 操作\n- 返回三种状态：`COMMIT` / `ROLLBACK` / `UNKNOWN`\n\n**3. 事务回查（关键）**\n- 若返回 `UNKNOWN`（或生产者宕机），Broker 会**定时回查**生产者的 `checkLocalTransaction`\n- 默认回查 15 次，间隔递增；仍不确定则丢弃并告警\n\n**代码要点**（`TransactionListener`）\n```java\nexecuteLocalTransaction()   // 执行本地事务，返回状态\ncheckLocalTransaction()     // Broker 回查时告诉它提交还是回滚\n```\n\n**对比其他方案**：\n\n| 方案 | 一致性 | 侵入 | 说明 |\n|---|---|---|---|\n| **事务消息** | 最终一致 | 中 | RocketMQ 原生，业务要实现回查 |\n| 本地消息表 | 最终一致 | 低 | 消息落库 + 定时任务补偿，**最通用** |\n| 最大努力通知 | 最终一致 | 低 | 重试 + 对账 |\n| TCC | 强（最终） | 高 | 需写反向补偿逻辑 |\n| 2PC/XA | 强 | 高 | 性能差，少用 |\n\n**注意**：「事务消息」保证的是「**本地事务与消息发送的一致性**」，不是「消息消费成功」。消费端仍需幂等。",
+    "tags": [
+      "事务消息",
+      "RocketMQ",
+      "最终一致"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2220,
+    "type": "multiple",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "选择消息队列时需要考虑的因素，以下哪些是关键？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "吞吐量与延迟要求"
+      },
+      {
+        "key": "B",
+        "text": "可靠性语义（是否允许丢消息）、顺序性要求"
+      },
+      {
+        "key": "C",
+        "text": "运维成本、团队技术栈熟悉度、社区活跃度"
+      },
+      {
+        "key": "D",
+        "text": "消息大小与保留时长（是否需要重放历史消息）"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "四项都是必要的。补充还应评估：⑤**是否需要事务消息/延迟消息**（RocketMQ 原生支持，Kafka 要外部实现）；⑥**是否需要广播**（Kafka 靠不同 consumer group，RabbitMQ 靠 fanout）；⑦**多租户与权限**；⑧**监控告警生态**；⑨**云托管可用性**（能用托管就别自建）。原则：优先选团队最熟的、有成熟运维经验的，而不是纸面性能最好的。",
+    "tags": [
+      "选型",
+      "评估",
+      "决策"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2221,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "什么是消息的「顺序消费」？Kafka 和 RocketMQ 分别怎么保证？",
+    "answer": "**顺序消费 = 消息按发送顺序被消费**。分两档：\n- **分区/队列内有序**（绝大多数场景够用）\n- **全局有序**（性能极差，需单分区单线程）\n\n**Kafka**：\n1. 生产端：同 key 消息进同一分区（`partitioner` 按 key hash），且 `max.in.flight.requests.per.connection=1`（或开幂等）\n2. 消费端：**一个分区只能被一个消费者线程处理**，该线程内串行\n3. 要并行又要顺序 → **按 key 分发到不同线程**（hash(key) % N 选线程），不同 key 之间无序也无妨\n\n**RocketMQ**：\n- 普通消息用 **MessageQueueSelector** 选队列，保证同 key 进同一队列\n- **顺序消息**用 `MessageQueueSelector` + 消费端 `MessageListenerOrderly`（Broker 对队列加锁，保证同一队列同时只被一个消费者消费，且有本地队列缓存与失败重试）\n- 代价：**顺序消费时一台 Broker 故障会阻塞该队列**，可用性下降\n\n**通用坑**：\n1. **重试会破坏顺序**：失败重试时如果直接重投到队尾，顺序就乱了。正确做法是**阻塞当前分区/本地重试**（RocketMQ 的 Orderly 就是这么做的）\n2. **扩容会破坏顺序**：分区数变化 → key 的分区映射变了\n3. **多线程消费天然无序**：要顺序就别在分区内开线程池\n\n**实践建议**：90% 场景只需「局部顺序」（同一订单/同一用户有序），用 key 分区即可；全局有序基本要单分区，吞吐受限，慎用。",
+    "tags": [
+      "顺序消费",
+      "Kafka",
+      "RocketMQ"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2222,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "消息队列「削峰填谷」的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "降低消息体积"
+      },
+      {
+        "key": "B",
+        "text": "把突发的请求高峰暂存到队列，让后端按自身能力匀速消费"
+      },
+      {
+        "key": "C",
+        "text": "减少队列数量"
+      },
+      {
+        "key": "D",
+        "text": "提高消息优先级"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "典型场景：秒杀时 10 万 QPS 涌进来，后端只能处理 1 千。直接打会打崩；用 MQ 缓冲后，后端始终保持 1 千的稳定处理速率，积压在队列里慢慢消化，前端立即返回「排队中」。**前提**：业务能接受异步（不是所有场景都行，比如需要即时返回库存结果的）；**风险**：队列积压过久会导致消息过期丢失。",
+    "tags": [
+      "削峰",
+      "异步",
+      "场景"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2223,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 集群扩容 Broker 后，需要做什么才能让新节点分担负载？",
+    "answer": "**新增 Broker 不会自动迁移已有数据**——这是最常见的误解。新 Broker 只会在**新建 Topic 或新分区**时被使用。\n\n**必须手动做分区迁移**：\n\n**1. 生成迁移计划**\n```\nkafka-reassign-partitions.sh --bootstrap-server broker:9092 \\\n  --topics-to-move-json-file topics.json \\\n  --broker-list \"1,2,3,4\" --generate\n```\n输出两份 JSON：当前分配 + 建议分配。\n\n**2. 执行迁移**\n```\nkafka-reassign-partitions.sh --bootstrap-server broker:9092 \\\n  --reassignment-json-file reassign.json --execute --throttle 104857600\n```\n**必须加 `--throttle`**（字节/秒），否则迁移会打满磁盘与网络，严重影响业务。\n\n**3. 监控进度**\n```\nkafka-reassign-partitions.sh ... --verify\nkafka-consumer-groups.sh --describe --group xxx    # 看 lag 是否飙升\n```\n\n**4. 取消/回滚**：`--cancel` 或执行原分配 JSON\n\n**其他方式**：\n- **自动扩缩**：Cruise Control（LinkedIn 开源）能做自动均衡，推荐大规模集群使用\n- 加分区（`kafka-topics.sh --alter --partitions N`）也能分散到新 Broker，但**改分区会破坏 key 的顺序映射**，慎用\n\n**迁移期间的监控重点**：\n- 磁盘 IO util、网络带宽是否超过 `--throttle`\n- ISR 是否缩减（`IsrShrinksPerSec`）\n- 消费 lag 是否增长\n\n**建议**：低峰期执行、分批次迁移、throttle 从 50MB/s 起调。",
+    "tags": [
+      "扩容",
+      "迁移",
+      "reassign"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2224,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "Kafka 出现「大量 Leader 选举」或「分区不可用」，怎么排查？",
+    "answer": "**先确认现象**\n```\nkafka-topics.sh --describe --under-replicated-partitions\nkafka-topics.sh --describe --unavailable-partitions\n```\n\n**日志线索**（`server.log`，重点 grep）：\n- `Leader election` / `Partition ... becoming leader`\n- `Error while writing to ...`\n- `NotLeaderForPartitionException`\n\n**常见原因分类**：\n\n**1. Broker 与 Controller/ZK 失联**\n- 网络抖动、GC 停顿（`jstat -gcutil`）、`request.timeout.ms` 过小\n- ZK 会话超时（`zookeeper.session.timeout.ms` 默认 6s）→ 频繁 re-register → 反复选主\n- KRaft 模式看 `kafka-metadata-quorum.sh --describe`\n\n**2. Broker 自身问题**\n- **磁盘满**：`log.retention` 配错、日志暴涨 → 无法写入 → 副本掉出 ISR\n- **磁盘慢**：`iostat -x` 看 `await`，机械盘/云盘 IOPS 瓶颈 → 追不上 Leader → 掉 ISR → 反复选举\n- **文件句柄耗尽**：`ulimit -n` 太小\n- **JVM 频繁 Full GC**：堆太大（> 32G 压缩指针失效）或堆太小\n\n**3. 配置不当**\n- `unclean.leader.election.enable=true` → 允许非 ISR 副本当 Leader，会丢数据且易抖动\n- `replica.lag.time.max.ms` 太小（如 < 10s）→ 网络稍抖就频繁踢出 ISR\n- `min.insync.replicas` 与副本数不匹配 → 无法写入\n\n**4. 集群压力**\n- 分区数过多（单 Broker > 4000）→ 元数据与选举开销大\n- 批量迁移（reassign）与业务抢 IO\n\n**处置**：\n1. `kafka-topics.sh --describe` 找出 `Isr` 只剩下 1 的分区，重点看这些分区所在 Broker\n2. 修复根因（扩磁盘/换盘/调 GC/加网络带宽）\n3. 恢复后确认 `UnderReplicatedPartitions` 归零\n4. 若分区已不可用，用 `kafka-reassign-partitions --execute` 人为指定 Leader 与副本\n\n**监控必配**：`UnderReplicatedPartitions`（>0 告警）、`IsrShrinksPerSec`、`ActiveControllerCount`（必须恰好 1 个 Broker 为 1）、`OfflinePartitionsCount`（必须 0）。",
+    "tags": [
+      "故障",
+      "选主",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2225,
+    "type": "multiple",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 需要监控的核心指标，以下哪些是必须关注的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "UnderReplicatedPartitions 与 OfflinePartitionsCount"
+      },
+      {
+        "key": "B",
+        "text": "消费组 lag（每个 group / topic）"
+      },
+      {
+        "key": "C",
+        "text": "Broker 磁盘使用率、请求延迟（request latency）、ActiveControllerCount"
+      },
+      {
+        "key": "D",
+        "text": "JVM 堆与 Full GC 次数"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "四项都是标配。补充几个高频项：⑤`BytesIn/OutPerSec`（容量趋势判断）；⑥`MessagesInPerSec`；⑦`FailedProduceRequestsPerSec`、`FailedFetchRequestsPerSec`；⑧`RequestHandlerAvgIdlePercent`（< 30% 说明线程池吃紧）；⑨`IsrShrinksPerSec`。工具：`kafka-exporter` + Prometheus + Grafana 官方看板（ID 7589）。",
+    "tags": [
+      "监控",
+      "指标",
+      "告警"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2226,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "什么是「消息重复」的常见原因？为什么 MQ 普遍只能做到至少一次？",
+    "answer": "**重复的三个来源**：\n\n1. **生产端重试**：网络超时但消息其实已写入，客户端重发 → Broker 收到两条\n2. **Broker 端副本切换**：Leader 已写入但未同步就挂了，新 Leader 没有 → 生产者重发；或旧数据回放\n3. **消费端**：处理成功但 ack 失败/超时 → 重新投递；或 Rebalance 导致 offset 回退\n\n**为什么难做到「恰好一次」**：\n- 发送方收到「失败」时**无法区分**「没送到」和「送到了但响应丢了」——这是分布式系统的**根本不确定性**（两将军问题）\n- 想消除它，必须让接收方做**去重**（即接收端幂等），而通用去重需要「知道每条消息的唯一 ID 且状态持久化」，MQ 层做代价太高\n\n**Kafka 的「精确一次」（EOS）**：\n- 靠 `enable.idempotence=true`（生产端 PID + sequence number 去重）+ **事务**（`transactional.id`）\n- **只覆盖「Kafka → 处理 → Kafka」的链路**（如 Kafka Streams）\n- **一旦落库到 MySQL 就失效**，端到端幂等仍要业务自己做\n\n**实践**：\n- 生产端：开幂等 + `retries` + `acks=all`，减少重复\n- 消费端：**必须幂等**（唯一键去重表 / Redis SETNX / 状态机）\n- 记住一句话：**MQ 负责「不丢」，「不重」是业务的责任**",
+    "tags": [
+      "重复消费",
+      "幂等",
+      "语义"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2227,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 中同一个 Consumer Group 内，两个消费者订阅同一个 Topic，会怎样？",
+    "options": [
+      {
+        "key": "A",
+        "text": "两个消费者都收到全部消息（广播）"
+      },
+      {
+        "key": "B",
+        "text": "分区被分配给两个消费者，每条消息只被其中一个消费"
+      },
+      {
+        "key": "C",
+        "text": "后启动的消费者不工作"
+      },
+      {
+        "key": "D",
+        "text": "报错，不允许"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "这就是 Consumer Group 的意义——**组内负载均衡（每条消息只消费一次）**，组间互不影响（不同 group 各自消费全量，相当于广播）。如果消费者数 > 分区数，多出来的消费者空闲不报错（这也是扩容无效的常见原因）。要广播给多个消费者：用不同 group id。",
+    "tags": [
+      "消费组",
+      "负载均衡",
+      "广播"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2228,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "如何设计一个「延迟 30 分钟自动取消未支付订单」的功能？MQ 能怎么做？",
+    "answer": "**四种方案对比**：\n\n| 方案 | 精度 | 成本 | 评价 |\n|---|---|---|---|\n| **定时任务扫表**（每分钟扫 `status=unpaid AND created_at < now-30m`） | 分钟级 | 低，但全表扫压力大 | 简单可靠，量小时首选（配合索引） |\n| **Redis ZSet 延时队列** | 秒级 | 低 | `ZADD key score=到期时间戳 member=orderId`，定时 `ZRANGEBYSCORE` 取到期项 |\n| **RocketMQ 延迟消息**（原生 18 级延迟，最大 2h；5.0 支持任意时间） | 秒级 | 中 | 最省事，但要上 RocketMQ |\n| **RabbitMQ TTL + DLX** 或延迟插件 | 秒级 | 中 | TTL+DLX 有队头阻塞问题，插件更准 |\n| **Kafka** | —— | —— | **无原生延迟消息**，需自建「按时间分 Topic」或外部调度 |\n\n**推荐组合（最实用）**：\n1. **Redis ZSet** 做主力：`ZADD delay:order <到期时间戳> <orderId>`\n2. 后台轮询（`ZRANGEBYSCORE delay:order 0 <now> LIMIT 0 100`）+ Lua 原子取出\n3. 取到后查库确认仍未支付 → 取消 → 发 MQ 通知下游（库存回补、优惠券退还）\n4. **定时任务兜底**（如每 5 分钟扫库），防止 Redis 丢数据\n\n**必须注意的坑**：\n- **必须做状态机校验**：取到消息时订单可能已支付，取消前要 `UPDATE ... WHERE status='unpaid'`（用条件更新保证原子）\n- **幂等**：同一条延迟消息可能被处理多次\n- **不要用「消息 TTL」做精确延迟**：RabbitMQ 的队列 FIFO 特性会导致 TTL 短的排在长后面\n- **订单量大时**：ZSet 的 member 会占用内存，可用分桶（按小时分 key）",
+    "tags": [
+      "延迟队列",
+      "订单",
+      "场景设计"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2229,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "消息队列的「广播」和「集群消费」有什么区别？各用什么实现？",
+    "answer": "| | 集群消费（默认） | 广播消费 |\n|---|---|---|\n| 语义 | 一条消息**只被组内一个**消费者处理 | 一条消息**被所有**消费者处理 |\n| 用途 | 分担负载、削峰 | 通知所有节点（缓存刷新、配置推送） |\n| 状态 | 组内共享 offset | 每个消费者独立 offset |\n\n**Kafka**：\n- **不同 consumer group** = 广播（每个 group 各自从头消费）\n- 同一 group = 集群消费\n- 没有「真正的广播模式」开关，靠 group 隔离实现\n\n**RocketMQ**：\n- `MessageModel.CLUSTERING`（默认，集群消费）\n- `MessageModel.BROADCASTING`（广播消费，**每个消费者维护自己的 offset**，存在本地）\n- 广播模式下**不支持顺序消费**与消息重试\n\n**RabbitMQ**：\n- **fanout exchange** + 每个消费者一个独立队列 = 广播\n- 同一个队列被多个消费者消费 = 集群消费\n\n**关键坑（Kafka 广播）**：新加入的 group 默认从哪开始读由 `auto.offset.reset`（`earliest`/`latest`）决定。做广播通知必须配 `earliest` 或手动 seek，否则会漏历史消息。",
+    "tags": [
+      "广播消费",
+      "集群消费",
+      "语义"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2230,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 的 `auto.offset.reset` 设为 `earliest` 但消费者仍然从最新开始读，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "配置写错了"
+      },
+      {
+        "key": "B",
+        "text": "该 group 在 Kafka 中已有提交的 offset，reset 只在无 offset 时生效"
+      },
+      {
+        "key": "C",
+        "text": "Topic 数据已过期"
+      },
+      {
+        "key": "D",
+        "text": "分区数太少"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "`auto.offset.reset` 只在该 consumer group **找不到已提交 offset** 时生效（新 group / offset 被删 / offset 越界）。已有 offset 时永远从那里继续。想重读：①换新 group id；②`kafka-consumer-groups.sh --reset-offsets --to-earliest --execute`（**必须停掉消费者**）；③代码里 `seekToBeginning`。",
+    "tags": [
+      "offset",
+      "reset",
+      "坑"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2231,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 的 Topic 命名与分区数规划应该怎么做？",
+    "answer": "**命名规范**：\n```\n<env>.<domain>.<entity>.<event>\n例：prod.order.payment.created\n    prod.user.profile.updated\n```\n- 用点或下划线分层，便于 ACL 与前缀匹配\n- 带环境前缀，**禁止生产与测试共用 Topic**\n- 不要带版本号（版本用 schema 演进解决，见 Schema Registry）\n- 禁止用中文和特殊字符（会引发 shell 与监控兼容问题）\n\n**分区数规划**（`分区数 = ceil(峰值吞吐 / 单分区吞吐)` × 冗余系数）：\n\n1. **单分区能力参考**：生产约 10-50MB/s，消费约 5-20MB/s（取决于消息大小与处理逻辑）\n2. **冗余系数取 2-3 倍**，给未来增长留空间（因为**只能增不能减**）\n3. **对消费能力受限的服务**：分区数还应 ≥ 消费者实例数的预期峰值\n4. **别拍脑袋设巨大值**：单 Broker 分区数超 4000 就会明显影响元数据与故障恢复时间\n\n**经验值**：\n| 场景 | 分区数 |\n|---|---|\n| 内部小流量业务消息 | 3-6 |\n| 一般业务（日均千万级） | 6-12 |\n| 日志/埋点（高吞吐） | 12-48 |\n| 超大流量（亿级/天） | 48-128，配合多集群 |\n\n**副本数**：生产必须 **3**（配合 `min.insync.replicas=2`）。2 副本在单节点维护时就无法写入。\n\n**其他建 Topic 时该定的**：`retention.ms`、`cleanup.policy`、`max.message.bytes`、`segment.bytes`。用 IaC（Terraform / kafka-topics.sh 脚本）管理，**禁止在生产用控制台手点**。",
+    "tags": [
+      "Topic",
+      "命名规范",
+      "分区规划"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2232,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "Kafka 单条消息过大导致报错，怎么处理？",
+    "answer": "**报错特征**：\n```\nRecordTooLargeException: The message is xxx bytes when serialized\nwhich is larger than the configured max.request.size\n```\n\n**涉及的三个配置**（必须同时满足）：\n\n| 位置 | 配置 | 默认 |\n|---|---|---|\n| 生产端 | `max.request.size` | 1MB |\n| Broker | `message.max.bytes`（Topic 级 `max.message.bytes`） | 1MB |\n| 消费端 | `fetch.max.bytes`（单次拉取）/ `max.partition.fetch.bytes` | 50MB / 1MB |\n\n**注意**：`max.partition.fetch.bytes` 必须 ≥ 消息大小，否则消费端拉不下来。\n\n**处理方式（按推荐度）**：\n\n**1. 改配置（短期可行，长期有风险）**\n```\nkafka-configs.sh --alter --entity-type topics --entity-name t \\\n  --add-config max.message.bytes=10485760\n```\n代价：**大消息会拖慢整个分区的处理**（单条 10MB 的消息占用 broker 内存与网络，且拉取批次变小，吞吐下降）、增加 GC 压力。\n\n**2. 拆消息（推荐）**\n超过 1MB 的数据本身就该质疑：\n- 图片/文件 → 传对象存储（OSS/S3），消息里只放 **URL 或 ID**\n- 大 JSON → 精简字段、只传变更部分（CDC 增量）\n- 大批量数据 → **拆成 N 条小消息**，用批次 ID 串联，消费端按批次聚合\n\n**3. 压缩**\n```\ncompression.type=lz4      # 或 zstd，压缩率高\n```\n注意压缩是**整批压缩**，单条超大仍超限。\n\n**4. 用外部存储的大消息模式（Claim-Check 模式）**\n消息体写 S3/OSS，消息里只放指针（key），消费端再取。这是云厂商推荐的解法。\n\n**实践结论**：把「单消息 ≤ 100KB」写进规范。超过就说明设计有问题，改设计而不是改配置。",
+    "tags": [
+      "大消息",
+      "max.request.size",
+      "优化"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2233,
+    "type": "multiple",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "消息队列与「直接 RPC 调用」相比，带来了哪些额外复杂度？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "需要保证消息不丢、不重、有序，都要额外设计与验证"
+      },
+      {
+        "key": "B",
+        "text": "链路变长，问题定位需要跨 MQ 排查（生产是否成功、是否积压）"
+      },
+      {
+        "key": "C",
+        "text": "引入最终一致性，业务要处理「中间状态」的展示与补偿"
+      },
+      {
+        "key": "D",
+        "text": "MQ 天然比 RPC 更简单，没有额外复杂度"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 完全相反。还有：⑤**运维成本**（MQ 集群本身要运维、监控、扩缩容）；⑥**消息堆积与过期**的风险；⑦**schema 演进**（生产者改了结构，老消费者会崩）；⑧**调试困难**（异步链路难复现）。所以引入 MQ 前先问：真的需要异步吗？能用同步 RPC 解决就别上 MQ。",
+    "tags": [
+      "架构",
+      "复杂度",
+      "权衡"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2234,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 3.x 相比 2.x 有哪些重要变化？4.0 有什么颠覆性的？",
+    "answer": "**3.x 主要变化**：\n\n| 版本 | 关键特性 |\n|---|---|\n| **3.0** | 弃用 Java 8 部分 API；KRaft 预览；移除对 ZK 的部分依赖 |\n| **3.1** | KRaft 生产可用（部分场景） |\n| **3.2** | KRaft 支持更多特性；`auto.include.jmx.reporter` 默认关闭 |\n| **3.3** | **KRaft 完全生产就绪**（推荐用于新集群）；`kafka-metadata-quorum.sh` 完善 |\n| **3.4** | 分层存储（Tiered Storage, KIP-405）正式 GA |\n| **3.5** | 迁移工具增强（ZK → KRaft 支持滚动迁移） |\n| **3.6** | KRaft 迁移工具成熟，官方推荐迁移；**3.7 / 3.8 继续强化** |\n\n**4.0（重大版本）**：\n1. **完全移除 ZooKeeper** —— 只能跑 KRaft，运维栈简化\n2. **移除旧的消费者组协议**（经典 rebalance 协议），只留 KIP-848 新协议（更快、减少 STW）\n3. **默认 `min.insync.replicas` 提升为 2**（更安全，但可用性门槛提高）\n4. **默认不再允许 `unclean.leader.election`**\n5. 一些老 API 与配置被删（升级前必须查废弃清单）\n\n**升级注意**：\n- 大版本升级**不能跳版本**，通常要求相邻大版本（如 2.8 → 3.0 → 3.4）\n- **先升客户端再升服务端**，还是反过来？官方推荐：**先升 Broker（向下兼容），再升客户端**\n- 必须先在测试环境跑过 `kafka-topics --describe` 的数据完整性与消费验证\n- 备份 `server.properties`、Topic 与 ACL 导出",
+    "tags": [
+      "版本",
+      "KRaft",
+      "升级"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2235,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 的 prefetch（basic_qos）设得过大或过小分别有什么影响？",
+    "options": [
+      {
+        "key": "A",
+        "text": "没有影响"
+      },
+      {
+        "key": "B",
+        "text": "过大会导致单个消费者霸占消息、负载不均；过小会导致吞吐低下"
+      },
+      {
+        "key": "C",
+        "text": "过小会丢消息"
+      },
+      {
+        "key": "D",
+        "text": "过大能提高可靠性"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "`prefetch_count` 是「未 ack 消息的上限」。设太大（如 1000）：一个慢消费者会占住大量消息不 ack，其他消费者饿死，且消费者崩溃时大量消息重投。设太小（如 1）：每次只能拿一条，网络往返成为瓶颈，吞吐极低。经验值：**10-100**，按「单条处理耗时 × 每消费者期望 QPS」估算。注意 prefetch 只对 `basic.consume` 生效，`basic.get` 每次只取一条。",
+    "tags": [
+      "prefetch",
+      "RabbitMQ",
+      "消费者"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2236,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "如何做 MQ 的容量规划与压测？",
+    "answer": "**容量规划公式**：\n\n```\n磁盘 = 日写入量 × 保留天数 × 副本数 × 1.1（索引与冗余）\n日写入量 = 日均消息数 × 平均消息大小 × 压缩比倒数\n```\n例：日均 1 亿条 × 1KB × 3 副本 × 7 天 ≈ 2.1 TB\n\n**带宽**：峰值消息速率 × 消息大小 × 副本数。Kafka 的**跨机房复制流量**常被忽略（3 副本跨 AZ 时是 2 倍出口流量）。\n\n**压测方法（Kafka）**：\n```\n# 1. 生产压测\nkafka-producer-perf-test.sh --topic perf-test \\\n  --num-records 10000000 --record-size 1024 \\\n  --throughput -1 --producer-props bootstrap.servers=b:9092 acks=all\n# 2. 消费压测\nkafka-consumer-perf-test.sh --topic perf-test \\\n  --messages 10000000 --bootstrap-server b:9092\n```\n\n**压测关注点**：\n1. **吞吐上限**（MB/s 与 msg/s）\n2. **端到端延迟**（p99，不只是平均值）\n3. **资源瓶颈**：磁盘 IO util（> 80% 就是瓶颈）、网络、CPU\n4. **ISR 是否抖动**（压力下 Follower 跟不上）\n5. **Producer 端的 `record-queue-time`**（说明 Broker 处理不过来）\n\n**必须测的场景**：\n- 单 Broker 故障（`kill -9` 一个节点），观察 ISR 与延迟恢复时间\n- Controller 切换\n- 磁盘写满后的行为\n\n**结论要落到**：单分区吞吐能力、单 Broker 上限、扩容阈值（如磁盘 > 70% 就扩）。**压测结论要写进容量文档，不能凭经验拍**。",
+    "tags": [
+      "容量规划",
+      "压测",
+      "性能"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2237,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "消费者如何处理「毒消息」（一直处理失败的消息）？",
+    "answer": "**毒消息的危害**：某条消息处理永远失败，如果不断重试，会**阻塞整个分区**（顺序消费场景）或反复占用资源（并发消费场景，lag 不降）。\n\n**处理策略**：\n\n**1. 有限重试 + 死信队列（标准做法）**\n- 记录 `retryCount`（消息头或 Redis 计数）\n- 达到上限（如 3-5 次）→ 转投 **DLQ（死信 Topic）** → **提交 offset 继续**\n- DLQ 独立消费，人工介入或自动告警\n- RocketMQ：原生 `%DLQ%<consumergroup>`；RabbitMQ：DLX；Kafka：需自己建死信 Topic\n\n**2. 分级重试（延迟重试）**\n```\n立即失败 → retry-5s → retry-30s → retry-5m → DLQ\n```\n避免立即重试打爆下游。\n\n**3. 指数退避 + 抖动**：避免大量消息同时重试造成雪崩。\n\n**4. 区分「可重试」与「不可重试」错误**\n- 网络超时、下游 503 → 可重试\n- 数据格式错误、反序列化失败、业务校验不通过（如订单不存在）→ **不可重试，直接进 DLQ**\n- 这一条最重要：**别对永久性错误反复重试**\n\n**Kafka 的注意点**：Kafka **没有原生重试队列**，只能在消费端实现（处理失败时 `seek` 回原位 + 退避，或转投 retry topic）。注意 `seek` 会阻塞该分区。\n\n**监控**：DLQ 的消息数量必须告警，否则「消息进了死信没人看」等于丢了。",
+    "tags": [
+      "毒消息",
+      "死信",
+      "重试"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2238,
+    "type": "multiple",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "Kafka 集群故障恢复时，以下哪些操作是正确或必要的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "Broker 意外退出后重启，先确认它上面的分区能否作为 Follower 重新加入，避免直接抢 Leader"
+      },
+      {
+        "key": "B",
+        "text": "多个 Broker 同时宕机时，先恢复持有 Controller 角色的节点"
+      },
+      {
+        "key": "C",
+        "text": "若分区不可用，用 kafka-reassign-partitions 指定可用副本做 Leader"
+      },
+      {
+        "key": "D",
+        "text": "恢复前先删除 server.log 以免干扰"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 严重错误：删日志会丢失诊断信息，还可能影响 Kafka 的恢复逻辑（`meta.properties`、clean shutdown 标记）。补充正确操作：④**不要同时重启多个 Broker**（会失去 quorum）；⑤恢复后检查 `UnderReplicatedPartitions` 归零、`OfflinePartitionsCount=0`；⑥若用了 `unclean.leader.election.enable=true`，恢复后要**核对数据一致性**（可能已丢消息）；⑦**先恢复 ZK/Controller，再恢复 Broker**。",
+    "tags": [
+      "故障恢复",
+      "运维",
+      "Broker"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2239,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 的 ACL 和 SASL 认证怎么做？常见的安全配置有哪些？",
+    "answer": "**两个维度**：**认证（SASL，你是谁）** + **授权（ACL，你能做什么）**。\n\n**认证方式**：\n| 方式 | 说明 |\n|---|---|\n| `SASL/PLAIN` | 用户名密码，**必须配 SSL** 否则明文 |\n| `SASL/SCRAM-SHA-256/512` | 用户名密码存 ZK/KRaft，比 PLAIN 安全 |\n| `SASL/GSSAPI` | Kerberos，企业环境 |\n| `SASL/OAUTHBEARER` | OAuth2 |\n| **mTLS** | 双向证书，最严格 |\n\n**Broker 端配置**：\n```\nlisteners=SASL_SSL://0.0.0.0:9093\nsasl.enabled.mechanisms=SCRAM-SHA-512\nssl.keystore.location=/etc/kafka/server.keystore.jks\n```\n\n**ACL 管理**：\n```\n# 给用户 alice 对 topic orders 的读权限\nkafka-acls.sh --bootstrap-server b:9092 --add \\\n  --allow-principal User:alice \\\n  --operation Read --topic orders\n# 给组权限（消费必须同时有 group 权限）\n--operation Read --group my-group\n--consumer --topic orders --group my-group   # 一行搞定\n```\n\n**ACL 粒度**：`--topic`、`--group`、`--cluster`、`--transactional-id`。操作类型：Read/Write/Create/Delete/Alter/Describe/All。\n\n**安全加固清单**：\n1. **关闭 `auto.create.topics.enable`**（默认 true，会允许任何人生成 Topic）\n2. **`allow.everyone.if.no.acl.found=false`**（默认 false，即无 ACL 就拒绝）\n3. Broker 间也用 SASL/SSL（`security.inter.broker.protocol`）\n4. 开启 **SSL 主机名校验** 与证书有效期监控\n5. **不要用 `User:ANONYMOUS`**，不要把 cluster-admin 权限给业务账号\n6. 审计日志 + 定期 review ACL",
+    "tags": [
+      "认证",
+      "ACL",
+      "SASL"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2240,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 中 `__consumer_offsets` 这个 Topic 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "存业务消息"
+      },
+      {
+        "key": "B",
+        "text": "存各消费组的 offset 提交记录（内部 Topic，压缩策略）"
+      },
+      {
+        "key": "C",
+        "text": "存 Topic 元数据"
+      },
+      {
+        "key": "D",
+        "text": "存 Broker 配置"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "Kafka 0.9 起把 offset 从 ZK 移到内部 Topic `__consumer_offsets`（默认 50 分区，`offsets.topic.replication.factor=3`），用 **compact 策略**保留每个 `(group, topic, partition)` 的最新 offset。这也是 `kafka-consumer-groups.sh` 的数据来源。改分区数要小心（`offsets.topic.num.partitions` 只在首次创建时生效）。",
+    "tags": [
+      "内部Topic",
+      "offset",
+      "基础"
+    ],
+    "frequency": "中频"
   },
   {
     "id": 3601,
@@ -7874,6 +9880,1185 @@
       "quicklist",
       "List",
       "底层结构"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4600,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Deployment、StatefulSet、DaemonSet 三者有什么区别？各自适合什么场景？",
+    "answer": "三者都管理 Pod，但「Pod 的身份」不同。\n\n| 控制器 | Pod 身份 | 调度 | 适用 |\n|---|---|---|---|\n| **Deployment** | 无状态、可互换，名字带随机后缀 | 任意节点 | Web 服务、无状态 API |\n| **StatefulSet** | 有状态、名字固定有序（`mysql-0/1/2`）、有稳定网络标识与独立存储 | 按序创建删除 | 数据库、ZK、Kafka、ES |\n| **DaemonSet** | 每节点一个（或指定节点） | 每节点必跑 | 日志采集、监控 agent、CNI |\n\n**关键差异点**：\n- **网络标识**：StatefulSet 配 Headless Service，`mysql-0.mysql-svc` 是稳定域名；Deployment 的 Pod IP 会变，域名指向 Service 而非 Pod\n- **存储**：StatefulSet 用 volumeClaimTemplates，每个副本独立 PVC 且随 Pod 重建绑定回原 PVC\n- **顺序**：StatefulSet 默认 `OrderedReady`，pod-0 Ready 才起 pod-1（可配 `podManagementPolicy: Parallel`）\n- **滚动更新**：StatefulSet 默认**倒序**（从最大序号开始）\n\n**一句话选型**：能无状态就用 Deployment；需要「每个实例有自己的数据」用 StatefulSet；需要「每个节点都有一份」用 DaemonSet。",
+    "tags": [
+      "控制器",
+      "StatefulSet",
+      "DaemonSet"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4601,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "同一个 Pod 内的多个容器，以下哪项是**不**共享的？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Network Namespace（网络栈、IP、端口）"
+      },
+      {
+        "key": "B",
+        "text": "IPC Namespace"
+      },
+      {
+        "key": "C",
+        "text": "文件系统（根目录）"
+      },
+      {
+        "key": "D",
+        "text": "挂载的 Volume"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "Pod 内各容器共享 Network / IPC / UTS 命名空间和 Volume，但**文件系统是各自镜像的独立根目录**（这也是为什么共享文件必须走 emptyDir 之类的卷）。因此同一 Pod 内两个容器不能都监听 80 端口。",
+    "tags": [
+      "Pod",
+      "命名空间",
+      "共享"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4602,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "从执行 `kubectl apply -f pod.yaml` 到容器真正跑起来，中间经历了哪些环节？",
+    "answer": "**一条完整链路，六个环节**：\n\n```\nkubectl apply\n   │  (HTTP POST，携带 kubeconfig 里的证书/token)\n   ▼\n① kube-apiserver\n   │  认证(Authentication) → 鉴权(RBAC) → 准入(Admission: PSA/MutatingWebhook)\n   │  → 字段校验 → 写入 etcd\n   ▼\n② etcd（唯一持久化，state 落地）\n   ▼\n③ kube-scheduler（Watch 到未绑定的 Pod）\n   │  Filter（预选：资源够不够、污点、亲和性、污点容忍）\n   │  Score（优选：均衡打分）\n   │  Bind → 写回 etcd，标记 nodeName\n   ▼\n④ kubelet（Watch 到分配给自己的 Pod）\n   │  调 CRI 创建沙箱(Pause 容器)：建 netns、配 CNI、分配 Pod IP\n   │  调 CRI 拉镜像、创建业务容器（挂 volume、注入 env/secrets）\n   ▼\n⑤ containerd → runc\n   │  runc 按 OCI 规范 clone 出进程、setns 进命名空间、设 cgroups\n   ▼\n⑥ 容器启动 → 探针通过 → Pod Ready → 从 Endpoints 接管流量\n```\n\n**每一步失败时的典型现象**（排查时按阶段定位）：\n\n| 阶段 | 失败现象 |\n|---|---|\n| apiserver 拒绝 | `kubectl apply` 直接报错（schema/权限/准入拒绝） |\n| Scheduler 未绑定 | Pod **Pending**（Events: Insufficient cpu / taint / no match） |\n| kubelet 拉镜像失败 | **ImagePullBackOff** |\n| 容器启动即退出 | **CrashLoopBackOff**（配合 `--previous` 看日志） |\n| 探针不过 | Pod Running 但 **0/1 Ready**，Endpoints 为空 |\n\n**加分理解**：\n- 各组件之间**不是串行调用**，而是围绕 etcd 的 **Watch 机制**异步协作（声明式 + 最终一致）\n- 这就是为什么 `kubectl apply` 返回成功不代表 Pod 起来了，要 `kubectl rollout status` / `kubectl wait` 才等到真实状态",
+    "tags": [
+      "调度",
+      "apiserver",
+      "原理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4603,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 一直处于 Pending 状态，可能的原因有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "节点资源不足（CPU/内存 requests 大于节点可分配）"
+      },
+      {
+        "key": "B",
+        "text": "节点有污点而 Pod 没有对应容忍"
+      },
+      {
+        "key": "C",
+        "text": "nodeSelector / affinity 规则没有匹配到任何节点"
+      },
+      {
+        "key": "D",
+        "text": "镜像拉取失败"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 的错误：Pending 表示「还没被调度或还没开始启动」，镜像拉取发生在调度成功之后，此时状态通常是 `ContainerCreating` 或 `ImagePullBackOff`，不会是 Pending。排查 Pending 首看 `kubectl describe pod` 最后一行 Events，常见就是「Insufficient cpu」「node(s) had taint」「didn't match node selector」「0/N nodes are available」几种。",
+    "tags": [
+      "Pending",
+      "调度",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4604,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "ConfigMap 和 Secret 有什么区别？Secret 是加密存储的吗？",
+    "answer": "**区别**：\n\n| | ConfigMap | Secret |\n|---|---|---|\n| 用途 | 普通配置 | 密码、Token、证书 |\n| 存储 | 明文 | **Base64 编码**（不是加密） |\n| 内存 | 普通 | 挂载到 tmpfs，不落盘 |\n| 权限 | 常规 | 可配 RBAC 限制读取 |\n\n**关键结论：Secret 默认不是加密的**。Base64 只是编码，`kubectl get secret -o yaml` 后一行 `base64 -d` 就还原了。\n\n**真正的防护手段**：\n1. **开启 etcd 静态加密**（`EncryptionConfiguration`，AES-GCM 或 KMS）\n2. **RBAC 收紧**：不给普通用户 `get/list secrets` 权限\n3. **不要提交到 Git**：用 SealedSecrets / External Secrets / Vault 注入\n\n**使用注意**：\n- Secret 的 value 必须是 base64，直接写明文会创建失败\n- 挂载为文件时更新不会自动重启进程（需应用自己 watch 或配 checksum 注解触发滚动）\n- 环境变量方式注入的 Secret **不会热更新**，只有挂载卷方式才会（延迟约 1 分钟）",
+    "tags": [
+      "ConfigMap",
+      "Secret",
+      "安全"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4605,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "查看某个 Pod 中**指定容器**的实时日志，正确的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "kubectl logs mypod -c mycontainer -f"
+      },
+      {
+        "key": "B",
+        "text": "kubectl log mypod --container=mycontainer"
+      },
+      {
+        "key": "C",
+        "text": "kubectl exec mypod -c mycontainer -- logs"
+      },
+      {
+        "key": "D",
+        "text": "kubectl describe pod mypod -c mycontainer"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "多容器 Pod 必须用 `-c` 指定容器，多副本 Pod 要用 `deploy/xxx` 或 `-l app=xxx` 指定。常用组合：`kubectl logs -f --tail=100 --since=10m`、`--previous` 看崩溃前的日志（排查 CrashLoopBackOff 的必备）。",
+    "tags": [
+      "日志",
+      "kubectl",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4606,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "什么是 Init Container？它解决什么问题？",
+    "answer": "Init Container 是**在主容器启动前按序执行、必须全部成功退出**的特殊容器。\n\n**特点**：\n- 串行执行，一个失败则 Pod 重启重试（除非 `restartPolicy: Never`）\n- 共享 Pod 的 Volume 和网络，但有自己的镜像\n- 不参与 readiness，跑完就终止\n\n**典型用途**：\n\n| 场景 | 做法 |\n|---|---|\n| **等待依赖就绪** | 循环探测 MySQL/Redis 能否连通，避免主容器启动即崩 |\n| **初始化数据/目录** | 下载配置、`chown` 数据目录权限（修 volume 权限的经典手法） |\n| **拉取代码/密钥** | git clone、从 Vault 取凭据写入 emptyDir |\n| **数据库迁移** | 启动前跑 `flyway migrate` |\n\n**和 postStart 的区别**：\n- Init Container 在**主容器之前**，是独立容器，有完整镜像\n- `postStart` 是主容器的生命周期钩子，和主容器 ENTRYPOINT **并发**执行，不保证顺序\n\n**注意**：Init Container 的 `resources.requests` 会计入 Pod 调度总量，用最大的一项（`max`），不是求和。",
+    "tags": [
+      "Init Container",
+      "初始化",
+      "依赖"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4607,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "节点状态变成 NotReady，请给出排查步骤。",
+    "answer": "按「节点 → kubelet → 容器运行时 → 网络」四层查。\n\n**1. 看节点详情与事件**\n```\nkubectl describe node <node> | tail -30   # 看 Conditions 与 Events\n```\n常见 Condition 原因：`KubeletNotReady`、`MemoryPressure`、`DiskPressure`、`NetworkUnavailable`。\n\n**2. 登上节点看 kubelet**\n```\nsystemctl status kubelet\njournalctl -u kubelet -n 200 --no-pager | grep -i error\n```\n高频原因：证书过期（`kubelet-client-certificate` 到期）、`kubelet` 连不上 apiserver、cgroup 驱动不一致。\n\n**3. 看容器运行时**\n```\nsystemctl status containerd\ncrictl ps -a | head           # 看是否有容器卡死\ncrictl info | grep -i runtime\n```\n运行时挂了 → kubelet 报 `runtime not ready`。\n\n**4. 看资源与内核**\n```\ndf -h                          # 磁盘满 → DiskPressure，镜像无法写入\ndmesg -T | tail -50            # 内核 panic、OOM、网卡 down\nfree -h; top\n```\n\n**5. 网络与 CNI**\n```\nls /etc/cni/net.d/\nkubectl get pods -n kube-system -o wide | grep <node>   # CNI Pod 是否正常\n```\n\n**6. 节点整体卡死**\n- `uptime` 负载极高、`ping` 不通 → 可能内核 hang 或硬件问题\n- 需要 `kubectl cordon` 摘流量，再考虑重启或迁移\n\n**处置原则**：先 `kubectl cordon <node>` 停止调度，再看是否要 `drain`（注意 DaemonSet 用 `--ignore-daemonsets`，有本地存储用 `--delete-emptydir-data`）。",
+    "tags": [
+      "NotReady",
+      "kubelet",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4608,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "以下哪些 Kubernetes 资源是**命名空间级**（namespace-scoped）的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "Deployment"
+      },
+      {
+        "key": "B",
+        "text": "Service"
+      },
+      {
+        "key": "C",
+        "text": "PersistentVolume（PV）"
+      },
+      {
+        "key": "D",
+        "text": "ConfigMap"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "D"
+    ],
+    "explanation": "C 是集群级（cluster-scoped）：PV 不归属任何命名空间，只有 PVC 是命名空间级。其他集群级资源还有 Node、Namespace、ClusterRole/ClusterRoleBinding、StorageClass、IngressClass、CRD、PriorityClass 等。判断方法：`kubectl api-resources --namespaced=false` 一眼列全。",
+    "tags": [
+      "资源",
+      "命名空间",
+      "RBAC"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4609,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "HPA（Horizontal Pod Autoscaler）是怎么工作的？为什么经常「不扩缩容」？",
+    "answer": "**原理**：HPA 控制器每 15 秒（`--horizontal-pod-autoscaler-sync-period`）从 metrics-server 拉指标，按公式算期望副本数。\n\n```\n期望副本 = 当前副本 × (当前指标值 / 目标指标值)\n```\n\n例：目标 CPU 60%，当前 3 副本平均 90% → `3 × 90/60 = 4.5` → 向上取整 5 副本。\n\n**前提条件（缺一不可）**：\n1. 装了 **metrics-server**（或 Prometheus Adapter 做自定义指标）\n2. 所有相关容器**必须设置 requests**——HPA 的 CPU 使用率是「相对 requests 的百分比」，没设 requests 就永远是 `<unknown>`\n3. `kubectl top pods` 能出数据\n\n**「不扩缩容」的常见原因**：\n\n| 现象 | 原因 |\n|---|---|\n| `TARGETS: <unknown>/60%` | metrics-server 没装 / requests 没设 |\n| 指标抖动频繁扩缩 | 需要 `behavior` 配置稳定窗口（默认扩容 0s、缩容 5min） |\n| 扩了但没效果 | 扩出来的是新 Pod，指标被稀释（新 Pod 刚启动 CPU 低） |\n| 卡在 maxReplicas | 上限设小了 |\n| 缩容迟迟不动 | 缩容默认有 5 分钟 stabilization 窗口 |\n\n**实践**：CPU 扩容适合「计算密集且能快速扩容」的服务；有长启动时间的服务应配 **VPA 或提前扩容**，HPA 来不及。\n\n**HPA / VPA / Cluster Autoscaler 区别**：HPA 改副本数，VPA 改单 Pod 的 requests，CA 加节点。",
+    "tags": [
+      "HPA",
+      "弹性伸缩",
+      "metrics"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4610,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Deployment 默认的滚动更新参数 `maxSurge` 和 `maxUnavailable` 分别是多少？",
+    "options": [
+      {
+        "key": "A",
+        "text": "25% 和 25%"
+      },
+      {
+        "key": "B",
+        "text": "1 和 0"
+      },
+      {
+        "key": "C",
+        "text": "0 和 25%"
+      },
+      {
+        "key": "D",
+        "text": "25% 和 0"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "两者的默认值都是 `25%`，即允许「超出期望副本 25%」和「不可用 25%」。两者不能同时为 0。想零中断快速更新常用 `maxSurge: 1, maxUnavailable: 0`（慢但稳）或 `maxSurge: 25%, maxUnavailable: 0`。注意百分比是**向上取整**计算的。",
+    "tags": [
+      "滚动更新",
+      "maxSurge",
+      "发布"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4611,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "PV、PVC、StorageClass 三者的关系是什么？什么是动态供给？",
+    "answer": "类比「买存储」：\n\n| 概念 | 类比 | 说明 |\n|---|---|---|\n| **PV** | 一块已备好的磁盘 | 集群级资源，描述真实存储（NFS、云盘、Ceph） |\n| **PVC** | 用户的申请单 | 命名空间级，声明「我要 10Gi 读写」 |\n| **StorageClass** | 存储类型目录 | 描述「哪种存储、由哪个 provisioner 创建」 |\n\n**绑定流程（静态）**：管理员先建 PV → 用户建 PVC → 控制器按 size + accessModes + storageClassName 匹配绑定。\n\n**动态供给（更常用）**：PVC 里写 `storageClassName: ssd` → 集群用该 SC 的 provisioner **自动创建 PV** → 自动绑定。删 PVC 时是否删 PV 由 `reclaimPolicy` 决定：\n- `Delete`：默认，PVC 删除则 PV 与后端存储一起删（云盘场景注意数据丢失）\n- `Retain`：保留 PV，需手动清理——**重要数据必须设 Retain**\n\n**accessModes 含义**（易混）：\n- `ReadWriteOnce`（RWO）：**单节点**读写，不是单 Pod！同节点多 Pod 可同时挂\n- `ReadOnlyMany`（ROX）：多节点只读\n- `ReadWriteMany`（RWX）：多节点读写，需要 NFS/CephFS 这类共享存储\n\n**常见坑**：\n- PVC 处于 Pending，`kubectl describe pvc` 看是否「no persistent volumes available」或 SC 不存在\n- 一个 PVC 只能绑一个 PV，绑错了必须删了重建（不能改绑）\n- StatefulSet 用 `volumeClaimTemplates`，删 StatefulSet 不会删 PVC，要手动清",
+    "tags": [
+      "PV",
+      "PVC",
+      "StorageClass"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4612,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "关于 Kubernetes 网络，以下说法正确的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "CNI 插件负责给 Pod 分配 IP 并配置节点间路由/overlay"
+      },
+      {
+        "key": "B",
+        "text": "K8s 网络模型要求任意 Pod 之间可直连，无需 NAT"
+      },
+      {
+        "key": "C",
+        "text": "kube-proxy 的 ipvs 模式比 iptables 模式在大规模 Service 下性能更好"
+      },
+      {
+        "key": "D",
+        "text": "Pod 的 IP 在 Pod 重启后会保持不变"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 错误：Pod 是「一次性」的，重建后 IP 会重新分配（StatefulSet 也只是域名稳定，IP 不稳定）。这也是必须用 Service/DNS 而不是写死 Pod IP 的原因。ipvs 模式用哈希表查找 O(1)，iptables 是线性链表逐条匹配，Service 数量上千时差异明显。",
+    "tags": [
+      "CNI",
+      "网络模型",
+      "kube-proxy"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4613,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Service 的负载均衡是怎么实现的？iptables 模式和 ipvs 模式有什么区别？",
+    "answer": "**核心：Service 只是规则，不是进程**。流量转发由每个节点上的 **kube-proxy** 写入内核规则完成。\n\n**iptables 模式**：\n- 为每个 Service 生成一组 `KUBE-SVC-xxx` 链，每个 Endpoint 一条 `DNAT` 规则\n- 用 `statistic mode random` 做随机负载均衡\n- 问题：规则是**链表**，Service/Endpoint 越多，匹配越长；每次变更要**全量重写** iptables，几千个 Service 时同步耗时可达秒级\n\n**ipvs 模式**：\n- 基于 LVS 的 IPVS，内核哈希表，查找 O(1)\n- 支持多种调度算法：`rr`（轮询）、`wrr`、`lc`（最小连接）、`sh`（源地址哈希）\n- 变更只增量更新，规则规模大也不掉性能\n- 前提：内核有 `ip_vs` 模块，且节点上要有 `kube-ipvs0` 网卡\n\n**两者共同的坑**：\n```\nkubectl get svc       # 有 ClusterIP\ncurl <ClusterIP>      # 超时？\n```\n排查顺序：\n1. `kubectl get endpoints <svc>` —— **Endpoints 为空是最常见原因**（selector 不匹配、Pod 没 Ready）\n2. `kubectl get pods` 看 readinessProbe 是否通过\n3. 节点上 `iptables -t nat -L KUBE-SERVICES -n | grep <ip>` 或 `ipvsadm -Ln`\n4. `conntrack -L | grep <ip>` 是否有残留连接\n\n**Session 保持**：`sessionAffinity: ClientIP` + `sessionAffinityConfig.clientIP.timeoutSeconds`。\n\n**Headless Service**（`clusterIP: None`）：不分配 VIP、不做负载均衡，DNS 直接返回所有 Pod IP——StatefulSet 靠它做稳定域名。",
+    "tags": [
+      "Service",
+      "ipvs",
+      "iptables"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4614,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "StatefulSet 为什么要配合 Headless Service 使用？",
+    "options": [
+      {
+        "key": "A",
+        "text": "为了节省 ClusterIP 地址"
+      },
+      {
+        "key": "B",
+        "text": "为了给每个 Pod 提供稳定的 DNS 名称，供集群成员互相发现"
+      },
+      {
+        "key": "C",
+        "text": "Headless Service 才能做负载均衡"
+      },
+      {
+        "key": "D",
+        "text": "为了支持 NodePort 暴露"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "Headless Service 的 DNS 会为每个 Pod 返回独立 A 记录（`pod-name.svc-name.namespace.svc.cluster.local`），这正是 ZK/Kafka/MySQL 主从「各自知道其他成员地址」所需要的。C 说反了：Headless 不做负载均衡。",
+    "tags": [
+      "StatefulSet",
+      "Headless",
+      "DNS"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4615,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如何让 Pod 实现优雅停机，避免滚动更新时请求报错？",
+    "answer": "**问题根源**：Pod 删除是**并发**发生的——kubelet 发 SIGTERM 的同时才从 Endpoints 摘除，而摘除要经过 kube-proxy/Ingress 异步生效。中间存在窗口：Pod 已经在关闭，但流量还在进来。\n\n**三要素**：\n\n**1. preStop 钩子（关键）——先「等」再「关」**\n```\nlifecycle:\n  preStop:\n    exec:\n      command: [\"sh\", \"-c\", \"sleep 10\"]\n```\n这 10 秒用来让 Endpoints 摘除生效，期间 Pod 仍正常服务。\n\n**2. terminationGracePeriodSeconds 要够大**\n```\nterminationGracePeriodSeconds: 60   # 默认 30，必须 > preStop睡眠 + 应用排水时间\n```\n超时未退出会被 `SIGKILL` 强杀。\n\n**3. 应用响应 SIGTERM**\n- 收到信号后：**先从注册中心/健康检查摘掉** → 处理完在途请求 → 关闭线程池 → 退出\n- 顺序错了（先关线程池）就会出现 502\n- Java 应用常见问题：`Runtime.addShutdownHook` 里做优雅关闭；Spring Boot 2.3+ 开 `server.shutdown=graceful`\n\n**readinessProbe 也要配**：更新期间新 Pod 未 Ready 不接流量，靠它把关。\n\n**验证方法**：滚动更新时用 `while true; do curl ...; done` 观察是否有非 200；或看 Ingress 访问日志有没有 502。",
+    "tags": [
+      "优雅停机",
+      "preStop",
+      "滚动更新"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4616,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 报 ImagePullBackOff，可能的原因有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "镜像名或 tag 写错，仓库中不存在"
+      },
+      {
+        "key": "B",
+        "text": "私有仓库未配置 imagePullSecrets"
+      },
+      {
+        "key": "C",
+        "text": "节点无法访问镜像仓库（网络或 DNS 问题）"
+      },
+      {
+        "key": "D",
+        "text": "节点磁盘空间不足"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "四项都会导致拉取失败，其中 D 常被忽略：kubelet 报 `no space left on device` 或 `failed to register layer`，此时需清理 `/var/lib/containerd` 或配 kubelet 镜像回收阈值。排查先看 `kubectl describe pod` 的 Events 原文，里面通常直接给出 `401 Unauthorized` / `not found` / `i/o timeout` / `no space`。另外 `:latest` 配 `imagePullPolicy: Always` 会反复拉取，建议用固定 tag 或 digest。",
+    "tags": [
+      "镜像",
+      "拉取失败",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4617,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "resources 里 requests 和 limits 对 CPU 和内存的行为有什么不同？",
+    "answer": "**同一个字段，CPU 和内存的语义完全不同**——这是最容易踩的坑。\n\n| | CPU | 内存 |\n|---|---|---|\n| **requests** | 调度依据；保证的核数 | 调度依据 |\n| **超过 requests** | 正常，可抢占空闲 CPU | 正常 |\n| **超过 limits** | **被限流（throttle）**，不杀 | **被 OOMKilled** |\n| 单位 | 可小数（`500m`） | 只能是整数 |\n\n**结论**：\n- CPU 是「可压缩资源」，超了只是变慢，进程还活着\n- 内存是「不可压缩资源」，超了内核直接杀进程\n\n**引发的典型问题**：\n1. **CPU limits 设太小 → 莫名变慢**：Go/Java 应用在低 limits 下频繁被 throttle（`container_cpu_cfs_throttled_periods_total` 飙升）。很多团队干脆**不设 CPU limits**，只设 requests\n2. **内存 limits 设太小 → OOMKilled 循环**：同时要注意 `limits` 是**容器总内存**，JVM 堆外（Metaspace、直接内存、线程栈、native）都算在内。Java 容器需开 `-XX:MaxRAMPercentage`，别写死 `-Xmx` 过大\n3. **requests 设过大 → 调度不上**：Pod Pending\n\n**Guaranteed / Burstable / BestEffort QoS**：\n- 三者都设且相等 → Guaranteed（最不易被杀）\n- 只设一部分 → Burstable\n- 都没设 → BestEffort（优先被驱逐）\n\n节点内存压力时，kubelet 按 QoS 顺序驱逐：BestEffort → Burstable → Guaranteed。",
+    "tags": [
+      "requests",
+      "limits",
+      "QoS"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4618,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Pod 的 QoS 有哪几类？节点内存不足时如何驱逐？",
+    "answer": "三类，按「有没有设 requests/limits」划分：\n\n| QoS | 条件 | 被驱逐优先级 |\n|---|---|---|\n| **Guaranteed** | 每个容器的 CPU/内存都设了 requests **且等于** limits | 最低（最后杀） |\n| **Burstable** | 至少一个容器设了 requests，但不满足 Guaranteed | 中间 |\n| **BestEffort** | 所有容器都没设 requests/limits | 最高（最先杀） |\n\n**驱逐机制**：\n- kubelet 监测到 `memory.available` / `nodefs.available` 低于阈值（如 `memory.available<100Mi`）触发驱逐\n- 按 QoS 从低到高排序，同 QoS 内按「用量超出 requests 的多少」排序\n- 有 `PodDisruptionBudget` 保护的也照样驱逐——PDB 只管 `drain`，不管资源驱逐\n\n**驱逐 vs OOMKilled**：\n- 驱逐（Evicted）是 kubelet 主动删 Pod，Pod 会重建到其他节点\n- OOMKilled 是内核 OOM Killer 杀进程，容器内重启\n\n**实践**：关键服务设成 Guaranteed；至少给所有 Pod 设 requests，否则容易被最先赶走。",
+    "tags": [
+      "QoS",
+      "驱逐",
+      "BestEffort"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4619,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "想让一批 Pod 只在带 `disk=ssd` 标签的节点上运行，最直接的做法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "为 Pod 设置 nodeSelector: disk: ssd"
+      },
+      {
+        "key": "B",
+        "text": "为节点设置 annotation"
+      },
+      {
+        "key": "C",
+        "text": "用 NetworkPolicy 限制"
+      },
+      {
+        "key": "D",
+        "text": "给 Pod 加 tolerations"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "nodeSelector 是硬匹配，最简单直接。需要更灵活的表达（拓扑、权重、多条件）用 `nodeAffinity`；需要「尽量去」用 `preferredDuringSchedulingIgnoredDuringExecution`。tolerations 是「容忍污点」，不是选择节点。",
+    "tags": [
+      "调度",
+      "nodeSelector",
+      "亲和性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4620,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "什么是污点（Taint）和容忍（Toleration）？用于什么场景？",
+    "answer": "**污点打在节点上，容忍打在 Pod 上**——方向与 nodeSelector 相反，是「节点排斥 Pod」。\n\n**三种效果（effect）**：\n\n| effect | 含义 |\n|---|---|\n| `NoSchedule` | 新 Pod 不调度上来，已跑的不动 |\n| `PreferNoSchedule` | 尽量不调度（软） |\n| `NoExecute` | 新 Pod 不调度，**已在跑的也驱逐**（可配 tolerationSeconds） |\n\n**典型场景**：\n1. **专用节点**：GPU 节点打 `nvidia.com/gpu=true:NoSchedule`，只有带 toleration 的 Pod 能上\n2. **故障隔离**：节点 NotReady 时自动打 `node.kubernetes.io/not-ready:NoExecute`，Pod 被驱逐走\n3. **预发/生产混部**：互相打污点隔离\n\n**自带的系统污点**：\n- `node.kubernetes.io/not-ready`\n- `node.kubernetes.io/unreachable`\n- `node.kubernetes.io/memory-pressure` / `disk-pressure`\n- `node.kubernetes.io/unschedulable`（cordon 后加的）\n\n**注意**：DaemonSet 默认会自动加对这些系统污点的容忍，所以节点 cordon 后 Fluent-bit 等仍能跑。\n\n**管理命令**：\n```\nkubectl taint node n1 gpu=true:NoSchedule      # 加\nkubectl taint node n1 gpu=true:NoSchedule-     # 删（末尾减号）\n```",
+    "tags": [
+      "污点",
+      "容忍",
+      "调度"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4621,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "kubectl cordon、drain、delete node 有什么区别？节点维护的正确流程是什么？",
+    "answer": "**三者是递进关系**：\n\n| 命令 | 作用 | 影响 |\n|---|---|---|\n| `cordon` | 标记不可调度 | 新 Pod 不来，**旧 Pod 继续跑** |\n| `drain` | 驱逐节点上所有 Pod | 内部先 cordon，再驱逐；Pod 重建到别的节点 |\n| `delete node` | 从集群删除节点对象 | Pod 全部变成 Unknown/Terminating，**不做优雅迁移** |\n\n**drain 的常用参数**：\n```\nkubectl drain <node> --ignore-daemonsets --delete-emptydir-data --force\n```\n- `--ignore-daemonsets`：DaemonSet 的 Pod 驱逐不掉，不加会报错\n- `--delete-emptydir-data`：确认丢弃 emptyDir 数据\n- `--force`：删除没有控制器管理的裸 Pod\n- `--grace-period` / `--timeout`：控制等待\n\n**节点维护标准流程**：\n1. `kubectl cordon <node>` —— 先止血（PVC/PV 在本地存储的尤其要先摘调度）\n2. `kubectl drain <node> --ignore-daemonsets --delete-emptydir-data` —— 迁移业务\n3. 确认 Pod 都在别的节点 Ready\n4. 做维护（升级内核/换盘/重启）\n5. `kubectl uncordon <node>` —— 恢复调度\n6. 观察新 Pod 是否正常落回来\n\n**注意**：`drain` 卡住多半是 **PDB**（`minAvailable` 太高）或**本地存储 PV**（`local` PV 的 Pod 无法迁移，会一直 pending）。",
+    "tags": [
+      "drain",
+      "cordon",
+      "维护"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4622,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "以下哪些属于 Kubernetes 的「工作负载控制器」？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "Deployment"
+      },
+      {
+        "key": "B",
+        "text": "StatefulSet"
+      },
+      {
+        "key": "C",
+        "text": "Job / CronJob"
+      },
+      {
+        "key": "D",
+        "text": "Ingress"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "Ingress 是「服务暴露/七层路由」资源，不是工作负载。还有 ReplicaSet（Deployment 底层）、DaemonSet、ReplicationController（已废弃）。Job 用于一次性任务，CronJob 按 cron 表达式周期创建 Job。",
+    "tags": [
+      "控制器",
+      "Job",
+      "Ingress"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4623,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "CronJob 和 Job 有什么区别？CronJob 有哪些容易踩的坑？",
+    "answer": "**Job**：跑一次直到成功（`completions` 决定要成功几次，`parallelism` 决定并发几个）。\n\n**CronJob**：按 cron 表达式周期创建 Job。\n\n**CronJob 的坑（面试高频）**：\n\n1. **时区**：K8s 默认按 **UTC** 解释 cron（`kube-controller-manager` 的时区）。国内「每天凌晨 2 点」要写成 `0 2 * * *` 配 `timeZone: Asia/Shanghai`（1.27+ 支持），否则实际是北京时间 10 点\n2. **并发策略** `concurrencyPolicy`：\n   - `Allow`（默认）：上一次没跑完还会起新的 → 容易堆积\n   - `Forbid`：上一次没跑完就跳过本次（**推荐**）\n   - `Replace`：杀掉上一次，起新的\n3. **错过调度** `startingDeadlineSeconds`：控制器挂了很久，错过很多次时（超过 100 次）会**不再补跑**。设 `startingDeadlineSeconds` 可限制补跑窗口\n4. **历史保留**：`successfulJobsHistoryLimit`（默认 3）、`failedJobsHistoryLimit`（默认 1），不清理会把 etcd 撑大\n5. **Job 不结束**：容器进程退出码 0 才算成功；脚本里 `set -e` 没加、后台进程没 wait，会导致 Job 一直 Running\n6. **权限**：Job 的 Pod 需要 `serviceAccountName`，默认 default SA 权限很小\n\n**排查**：\n```\nkubectl get cronjob\nkubectl get jobs --sort-by=.metadata.creationTimestamp\nkubectl describe job <job>\nkubectl logs job/<job>\n```",
+    "tags": [
+      "CronJob",
+      "Job",
+      "时区"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4624,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`kubectl rollout undo deployment/web` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "删除 Deployment"
+      },
+      {
+        "key": "B",
+        "text": "回滚到上一个版本（默认 revision-1）"
+      },
+      {
+        "key": "C",
+        "text": "重新拉取镜像"
+      },
+      {
+        "key": "D",
+        "text": "重启所有 Pod"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "默认回滚到上一版；指定版本用 `--to-revision=3`。配套命令：`kubectl rollout history deployment/web` 查看历史（需在 Deployment 上加 `kubernetes.io/change-cause` 注解才有可读的 CHANGE-CAUSE），`kubectl rollout status` 观察进度。回滚本身也是一次滚动更新，同样走 maxSurge/maxUnavailable。",
+    "tags": [
+      "回滚",
+      "Deployment",
+      "发布"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4625,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "RBAC 里 Role、ClusterRole、RoleBinding、ClusterRoleBinding 怎么组合？",
+    "answer": "**Role/ClusterRole 定义「能做什么」，Binding 定义「谁来做」**。\n\n| | 作用域 | 能绑定的对象 |\n|---|---|---|\n| Role | 单个 namespace | RoleBinding |\n| ClusterRole | 集群级（也可被 RoleBinding 引用） | ClusterRoleBinding 或 RoleBinding |\n| RoleBinding | 单个 namespace | Role 或 ClusterRole |\n| ClusterRoleBinding | 集群级 | 只能绑 ClusterRole |\n\n**关键技巧：ClusterRole + RoleBinding = 复用权限模板**。比如内置的 `view`、`edit`、`admin` ClusterRole，通过 RoleBinding 绑到某 namespace，用户就只在该 ns 有权限。这是最常用的授权方式。\n\n**例子：让 alice 只能读写 dev 命名空间**\n```yaml\nkind: RoleBinding\nmetadata:\n  name: alice-dev\n  namespace: dev\nsubjects:\n- kind: User\n  name: alice\nroleRef:\n  kind: ClusterRole\n  name: edit\n```\n\n**排查权限问题**：\n```\nkubectl auth can-i get pods --as=alice -n dev\nkubectl auth can-i --list --as=alice -n dev\n```\n这是最快的手段，比读 YAML 快得多。\n\n**常见坑**：\n- `roleRef` **不可修改**，要换权限必须删了重建 Binding\n- ServiceAccount 的 subject 要写 `kind: ServiceAccount, name: xxx, namespace: yyy`，漏 namespace 会绑到错的地方\n- ClusterRoleBinding **不要**随便绑 `cluster-admin` 给 SA，等于给了集群 root",
+    "tags": [
+      "RBAC",
+      "RoleBinding",
+      "权限"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4626,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "以下哪些是排查 K8s 网络问题的有效手段？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "kubectl exec 进 Pod 执行 curl / nslookup / ss"
+      },
+      {
+        "key": "B",
+        "text": "kubectl get endpoints 确认 Service 有后端"
+      },
+      {
+        "key": "C",
+        "text": "在节点上 ipvsadm -Ln 或 iptables -t nat -L 查看转发规则"
+      },
+      {
+        "key": "D",
+        "text": "用临时调试容器，如 kubectl debug 附加到目标 Pod 的 netns"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "四个都是标准手段。最推荐的组合是「先看 Endpoints 是否为空 → 再在 Pod 内验证 DNS 解析 → 再在节点看转发规则」。`kubectl debug`（1.25+ GA）可以起临时容器共享目标 Pod 的网络命名空间，非常适合极简镜像（没有 curl/bash）的场景。另一个利器是 `kubectl run tmp --rm -it --image=nicolaka/netshoot -- bash`。",
+    "tags": [
+      "网络",
+      "排查",
+      "kubectl debug"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4627,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 之间和 Pod 与 Service 之间的 DNS 域名格式分别是什么？",
+    "answer": "**Service 域名**（最常用）：\n```\n<service>.<namespace>.svc.cluster.local\n```\n同命名空间内可以简写为 `<service>`（靠 `/etc/resolv.conf` 的 search 域补全）。\n\n**Pod 域名**（仅 Headless Service 有）：\n```\n<pod-name>.<service>.<namespace>.svc.cluster.local\n```\n\n**StatefulSet 的典型写法**：`mysql-0.mysql-headless.default.svc.cluster.local`\n\n**resolv.conf 长这样**：\n```\nnameserver 10.96.0.10\nsearch default.svc.cluster.local svc.cluster.local cluster.local\noptions ndots:5\n```\n\n**关键坑：`ndots:5`**。这意味如果域名中点的数量 < 5，DNS 解析会**先尝试所有 search 域**再试原始域名。访问外部域名（如 `api.github.com` 只有 2 个点）时会依次查询 `api.github.com.default.svc.cluster.local.` 等 4 个无效域名，**每次失败都增加延迟**。\n\n解决办法：\n- 域名末尾加 `.`（`api.github.com.`）跳过 search\n- 或用 FQDN\n- 或在 Pod 的 `dnsConfig.options` 里调低 `ndots`（如 2）\n\n**其他**：`hostNetwork: true` 的 Pod 用节点 DNS（`/etc/resolv.conf` 被节点配置覆盖），不走 CoreDNS。",
+    "tags": [
+      "DNS",
+      "ndots",
+      "域名"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4628,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "CoreDNS 是做什么的？它挂了会有什么表现？",
+    "answer": "**作用**：集群内的 DNS 服务，把 Service 名解析成 ClusterIP，把 Headless Service 解析成 Pod IP 列表。\n\n**它挂了的典型表现**（这是排查的关键特征）：\n- 所有 `curl <service-name>` 报 **`Could not resolve host`**\n- 但用 **ClusterIP 直接访问正常**\n- 大量应用日志出现 DNS 超时\n- `nslookup kubernetes.default` 失败\n\n**排查顺序**：\n```\nkubectl get pods -n kube-system -l k8s-app=kube-dns\nkubectl logs -n kube-system -l k8s-app=kube-dns\nkubectl get svc -n kube-system kube-dns          # ClusterIP 是否变过\nkubectl exec -it <pod> -- cat /etc/resolv.conf   # nameserver 是否指向该 IP\n```\n\n**高频原因**：\n1. **CoreDNS Pod 没 Ready** → 节点资源不足或 NetworkPolicy 拦截了 53 端口\n2. **`kube-dns` Service 的 ClusterIP 变了** → 老 Pod 的 resolv.conf 里还是旧 IP（重建 Pod 可解）\n3. **conntrack 表满** → `nf_conntrack: table full, dropping packet`，DNS 的 UDP 短连接最容易被丢\n4. **CoreDNS 转发上游慢** → 外网 DNS 不通导致连锁超时（配 `forward . /etc/resolv.conf` 时要确认节点 DNS 可用）\n\n**加固**：CoreDNS 至少 2 副本 + `podAntiAffinity` 分散到不同节点；调大节点 `nf_conntrack_max`。",
+    "tags": [
+      "CoreDNS",
+      "DNS",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4629,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "NetworkPolicy 中 `podSelector: {}`（空对象）表示？",
+    "options": [
+      {
+        "key": "A",
+        "text": "不匹配任何 Pod"
+      },
+      {
+        "key": "B",
+        "text": "匹配该命名空间内所有 Pod"
+      },
+      {
+        "key": "C",
+        "text": "匹配所有命名空间的 Pod"
+      },
+      {
+        "key": "D",
+        "text": "语法错误，无法应用"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "空 selector 匹配「全部」。要跨命名空间匹配用 `namespaceSelector: {}`（匹配所有 ns）。特别注意：`podSelector` 与 `namespaceSelector` 写在**同一个 from 元素**里是「且」关系（同 ns 且该 ns 内某 Pod），分开写成两个 from 元素才是「或」关系——这是 NetworkPolicy 最经典的语法陷阱。",
+    "tags": [
+      "NetworkPolicy",
+      "选择器",
+      "网络"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4630,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "etcd 在 K8s 中的作用是什么？运维上要注意哪些点？",
+    "answer": "**作用**：K8s 唯一的持久化存储，存所有对象状态（Pod 定义、Service、Secret、ConfigMap……）。**etcd 挂 = 集群脑死亡**，kubelet 还在跑但无法感知任何变更。\n\n**运维要点**：\n\n1. **必须奇数节点**：3 或 5。2 节点反而比 1 节点更脆弱（quorum 需 2，任一挂掉就失去写能力）\n2. **磁盘是生命线**：etcd 对磁盘 fsync 延迟极其敏感，官方要求 **< 10ms**。用 SSD，别和日志盘混用\n3. **定期快照备份**（最重要的运维动作）：\n```\nETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \\\n  --cacert=/etc/kubernetes/pki/etcd/ca.crt \\\n  --cert=/etc/kubernetes/pki/etcd/server.crt \\\n  --key=/etc/kubernetes/pki/etcd/server.key \\\n  snapshot save /backup/etcd-$(date +%F).db\netcdctl snapshot status /backup/xxx.db -w table   # 校验\n```\n4. **控制对象数量**：太多 ConfigMap/Secret/Event 会让 etcd 膨胀。定期清理 Event（`kubectl delete events --all`），设 `--event-ttl`\n5. **监控指标**：`etcd_server_has_leader`、`etcd_disk_wal_fsync_duration_seconds`（p99）、`etcd_server_proposals_failed_total`、db size（默认配额 2GB，超了会 `NOSPACE` 拒绝写入）\n6. **不要直连 etcd 改数据**，绕过 apiserver 会破坏一致性\n7. **恢复流程**（灾难场景）：停 kube-apiserver → `etcdctl snapshot restore` 到新 data-dir → 改 `etcd.yaml` 的 data-dir 与 `--initial-cluster` → 各 master 依次启动 → 恢复 apiserver",
+    "tags": [
+      "etcd",
+      "备份",
+      "高可用"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4631,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "什么是 PodDisruptionBudget？它保护什么、不保护什么？",
+    "answer": "PDB 用来保证「**自愿中断**」时至少有多少 Pod 可用。\n\n```yaml\nkind: PodDisruptionBudget\nspec:\n  minAvailable: 2        # 或 maxUnavailable: 1\n  selector:\n    matchLabels: {app: web}\n```\n\n**保护的中断**（voluntary）：\n- `kubectl drain` 节点维护\n- 集群升级、节点缩容（Cluster Autoscaler）\n\n**不保护的中断**（involuntary）：\n- 节点宕机、OOM、资源驱逐（Evicted）\n- 滚动更新（Deployment 自己按 maxUnavailable 控制，与 PDB 无关）\n- `kubectl delete pod`（直接删不受 PDB 限制，除非经 eviction API）\n\n**最常见事故**：`minAvailable: 2` 但副本数只有 2 → `drain` 永远卡住（一个都不能驱逐），只能 `--disable-eviction` 或改 PDB。**PDB 的 minAvailable 必须小于副本数**，留出至少 1 个可驱逐。\n\n**实践**：`minAvailable` 一般取 `副本数 - 1`，或 `maxUnavailable: 1`；单副本服务别设 PDB。",
+    "tags": [
+      "PDB",
+      "drain",
+      "可用性"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4632,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "K8s 集群要升级大版本，以下哪些是必须提前检查的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "API 废弃清单（如 1.25 移除 PSP、1.26 移除 HPA v2beta2）"
+      },
+      {
+        "key": "B",
+        "text": "kubelet / apiserver / kube-proxy 版本偏差限制（一年内小版本）"
+      },
+      {
+        "key": "C",
+        "text": "CNI、CSI、Ingress Controller、metrics-server 的兼容版本"
+      },
+      {
+        "key": "D",
+        "text": "etcd 快照备份 + 应用 YAML 备份"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "四项都是必做项。补充两个实操细节：①升级顺序是「先 master 后 worker」，且 master 之间逐个升级；②kubelet 只能升到不高于 apiserver 的版本，不能领先。工具：`kubectl-convert`、`pluto`（扫废弃 API）、`kube-no-trouble`。",
+    "tags": [
+      "升级",
+      "废弃API",
+      "兼容性"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4633,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "containerd 和 Docker 是什么关系？为什么 K8s 从 1.24 起移除了 dockershim？",
+    "answer": "**关系**：containerd 原本是 Docker 的内部组件，2017 年捐给 CNCF 独立发展。Docker = containerd + dockerd + 镜像构建/CLI 等上层功能。\n\n**架构层次**：\n```\nkubelet → CRI → containerd → runc → 容器进程\n                (Docker 时代多一层：kubelet → dockershim → dockerd → containerd → runc)\n```\n\n**为什么移除 dockershim**：\n1. dockershim 是 kubelet 里专为 Docker 写的**适配层**，一直是个技术债（dockerd 不实现 CRI 接口）\n2. Docker 不符合 CRI 标准，维护双份代码\n3. containerd 直接支持 CRI，链路更短、更稳定\n\n**重要澄清**：移除 dockershim **不等于不能运行 Docker 构建的镜像**。OCI 镜像标准没变，Docker 构建的镜像在 containerd 下照样跑。受影响的只是：\n- 节点上 `docker ps` / `docker logs` 不再反映 K8s 容器 → 用 `crictl` 替代\n- 依赖 docker.sock 的监控/日志采集工具需要改造\n\n**命令对照**：\n\n| Docker | crictl |\n|---|---|\n| docker ps | crictl ps |\n| docker logs | crictl logs |\n| docker exec | crictl exec |\n| docker images | crictl images |\n| docker inspect | crictl inspect |\n\n**注意**：crictl 需要配 `/etc/crictl.yaml` 指定 `runtime-endpoint: unix:///run/containerd/containerd.sock`。",
+    "tags": [
+      "containerd",
+      "CRI",
+      "Docker"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4634,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Dockerfile 里 ENTRYPOINT 用 exec 形式写 nginx，CMD 是 -g daemon off;，那么 `docker run image -v` 最终执行什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "nginx -g \"daemon off;\" -v"
+      },
+      {
+        "key": "B",
+        "text": "nginx -v（CMD 被覆盖）"
+      },
+      {
+        "key": "C",
+        "text": "nginx"
+      },
+      {
+        "key": "D",
+        "text": "-v"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "核心规则：**exec 形式的 ENTRYPOINT 会把 `docker run` 后面的参数整体追加进去，同时 CMD 被完全替换**。所以是 `nginx -v`。规则速记：exec 形式 ENTRYPOINT 保留、CMD 作默认参数被替换；shell 形式（`CMD nginx -g 'daemon off;'`）会被包成 `/bin/sh -c`，PID 1 是 shell，**收不到 SIGTERM**，这是容器停不掉的经典原因。",
+    "tags": [
+      "ENTRYPOINT",
+      "CMD",
+      "Dockerfile"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4635,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Docker 有哪些常用网络模式？各自适用场景是什么？",
+    "answer": "**五种**：\n\n| 模式 | 说明 | 场景 |\n|---|---|---|\n| **bridge**（默认） | 每容器独立 netns，通过 docker0 网桥 NAT 出网 | 绝大多数单机场景 |\n| **host** | 共享宿主机网络栈，无独立 IP | 高性能、需固定端口（如监控 agent） |\n| **none** | 只有 lo，无网络 | 纯计算、安全隔离 |\n| **container:<id>** | 共享另一个容器的网络栈 | sidecar 模式 |\n| **自定义 bridge** | 自己建的网桥，**自带 DNS 解析** | 推荐！容器名可互访 |\n\n**关键区别**：默认 bridge **不支持容器名互相解析**（只能 `--link`，已废弃），必须自建网络：\n```\ndocker network create mynet\ndocker run --network mynet --name db mysql\ndocker run --network mynet app   # 可直接 ping db\n```\n\n**host 模式的坑**：`-p` 参数在 host 模式下**无效且不报错**，端口直接占用宿主机的。\n\n**跨主机通信**：Docker 原生的 overlay（swarm 用）较少用；K8s 场景交给 CNI（Calico/Flannel/Cilium）。\n\n**端口映射原理**：`-p 8080:80` 是 iptables 的 DNAT 规则（`DOCKER` 链），不是代理进程。",
+    "tags": [
+      "Docker",
+      "网络模式",
+      "bridge"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4636,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Dockerfile 里 COPY 和 ADD 有什么区别？什么时候用哪个？",
+    "answer": "**ADD 是 COPY 的超集**，多了两个功能：\n1. **自动解压**本地 tar（`.tar`、`.tar.gz`、`.tgz`、`.bz2`、`.xz`）\n2. **支持远程 URL** 下载\n\n**但正因如此，官方推荐「优先用 COPY」**：\n\n| 场景 | 选择 |\n|---|---|\n| 复制本地文件/目录 | **COPY** |\n| 需要解压 tar 到镜像 | ADD（或 `COPY` + `RUN tar -xf`，更可控） |\n| 从 URL 下载 | **不推荐 ADD**：ADD 的远程下载不校验、不解压、还多一层缓存，应改用 `RUN curl -fsSL ...` 或 `ADD` 后 `RUN rm` 清理 |\n\n**ADD 的隐蔽坑**：\n- 远程 URL 的 ADD **不会**参与 layer 缓存失效判断（内容变了也复用旧缓存）\n- `ADD *.tar.gz /` 会把 tar 解开，如果不想解压会出乎意料\n- 从 URL ADD 的文件权限是 600，需要额外 `RUN chmod`\n\n**共同注意**：\n- `COPY --chown=user:group` 可指定属主（避免额外 `RUN chown` 多一层）\n- `COPY` 的源必须在**构建上下文**内，不能 `COPY ../xxx`\n- 用 `.dockerignore` 排除 `node_modules`、`.git` 能大幅加速构建",
+    "tags": [
+      "Dockerfile",
+      "COPY",
+      "ADD"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4637,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "securityContext 有哪些关键配置？为什么不建议容器以 root 运行？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "runAsNonRoot: true 让容器拒绝以 root 启动，配置错误时直接启动失败"
+      },
+      {
+        "key": "B",
+        "text": "readOnlyRootFilesystem: true 让根文件系统只读，需额外挂载可写卷"
+      },
+      {
+        "key": "C",
+        "text": "capabilities.drop: [ALL] 丢弃全部 Linux Capability"
+      },
+      {
+        "key": "D",
+        "text": "privileged: true 是安全加固的推荐做法"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "D 完全相反：privileged 会把容器几乎等同于宿主机 root（全 capability + 可访问所有设备），是最危险的配置，只用于特殊场景如需要 `modprobe`、跑 CNI 组件。容器 root 的风险在于：② uid 0 在某些内核漏洞下可直接逃逸；② 挂载了 hostPath 时能改宿主机文件；③ 默认 capability 仍包含 CAP_CHOWN、CAP_NET_RAW 等，能做 ARP 欺骗。实践做法：`runAsUser: 1000` + `allowPrivilegeEscalation: false` + `capabilities.drop: [ALL]` + 只加需要的（如 NET_BIND_SERVICE 绑定 80 端口）。",
+    "tags": [
+      "securityContext",
+      "安全",
+      "root"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4638,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Docker 的多阶段构建（multi-stage build）解决了什么问题？",
+    "answer": "**核心解决**：把「编译环境」和「运行环境」分开，最终镜像只含运行所需产物。\n\n**典型写法**：\n```dockerfile\n# 阶段 1：构建\nFROM golang:1.22 AS builder\nWORKDIR /src\nCOPY go.mod go.sum ./\nRUN go mod download          # 先拷依赖，利用缓存\nCOPY . .\nRUN CGO_ENABLED=0 go build -o /out/app\n\n# 阶段 2：运行\nFROM alpine:3.19\nCOPY --from=builder /out/app /app\nCMD [\"/app\"]\n```\n\n**收益**：\n- 镜像从 ~900MB（golang 全量）降到 ~15MB（alpine + 二进制）\n- 构建工具链（编译器、源码）不进入最终镜像，**减小攻击面**\n- 也适合前端：`node` 构建 → `nginx` 提供静态文件\n\n**进阶技巧**：\n- `COPY --from=builder` 可以引用任意前置阶段，甚至可以 `--from=0` 按序号\n- 可以只做构建不产出镜像：`docker build --target builder -t debug-img .`\n- 镜像层缓存优化：**把变化少的指令放前面**（先 `COPY package.json` + `npm ci`，再 `COPY . `）\n- `--from=nginx:latest` 可直接从外部镜像拷文件（如只拿 `nginx.conf`）",
+    "tags": [
+      "多阶段构建",
+      "镜像瘦身",
+      "Dockerfile"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4639,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "容器中 PID 1 进程收不到 SIGTERM，导致 `docker stop` 要等 10 秒超时才强杀，根本原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "docker stop 强制发 SIGKILL"
+      },
+      {
+        "key": "B",
+        "text": "入口命令用了 shell 形式，PID 1 是 /bin/sh 而非应用本身"
+      },
+      {
+        "key": "C",
+        "text": "容器没有 init 进程"
+      },
+      {
+        "key": "D",
+        "text": "宿主机 kernel 配置问题"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "shell 形式（`CMD ./start.sh`）会被包成 `/bin/sh -c ./start.sh`，PID 1 是 sh，它默认不转发信号给子进程，应用收不到 SIGTERM。解决：①用 exec 形式（JSON 数组写入口命令）；②或脚本内 `exec ./app`；③或装 `tini`/`dumb-init` 作为 PID 1（`--init` 参数自动装）。这是容器优雅停机的第一个必修课。",
+    "tags": [
+      "PID 1",
+      "信号",
+      "优雅停机"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4640,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "Pod 里运行 Java 应用，堆设了 -Xmx2g 但 limits 是 2Gi，结果频繁 OOMKilled，怎么分析和解决？",
+    "answer": "**根因**：limits 限制的是**整个容器进程的内存**，不只是 Java 堆。\n\n**容器内存构成**：\n```\n容器总内存 = Java 堆 (-Xmx)\n           + Metaspace（默认无上限，可达数百 MB）\n           + 线程栈（每线程 1MB × 线程数）\n           + 直接内存 DirectByteBuffer（Netty 常用，默认=堆大小！）\n           + CodeCache（JIT 编译产物）\n           + GC 自身结构（G1 的 card table 等，约堆的 10-20%）\n           + JVM 自身、glibc malloc arena、native 库\n```\n`-Xmx2g` 的进程实际 RSS 常常到 2.8-3.5Gi。\n\n**修复方案**：\n\n1. **用相对值代替固定值**（推荐）\n```\n-XX:MaxRAMPercentage=70.0 -XX:InitialRAMPercentage=70.0\n```\nJVM 会读容器 cgroup 的 memory limit 自动算堆。\n\n2. **给 limits 留出余量**：limits 至少是 `堆 / 0.7`。堆 2g → limits ≥ 3Gi。\n\n3. **限制堆外**：\n```\n-XX:MaxMetaspaceSize=256m\n-XX:MaxDirectMemorySize=256m\n-XX:ReservedCodeCacheSize=128m\n-XX:+UseContainerSupport            # JDK 8u191+ / 10+ 默认开启\n```\n\n4. **把 requests 设小、limits 设大**：避免调度按峰值算，同时给运行时余量。\n\n**排查手段**：\n```\nkubectl describe pod      # 看 Last State: OOMKilled, Exit Code: 137\nkubectl top pod\n# 进容器看细分（JDK8 需装 NMT）\njcmd <pid> VM.native_memory summary\ncat /sys/fs/cgroup/memory.max\ncat /sys/fs/cgroup/memory.current\ncat /sys/fs/cgroup/memory.events     # 看 oom_kill 次数\n```\n\n**Exit Code 137 = 128 + 9 (SIGKILL)**，就是被杀的标志，但也可能是 `docker stop` 超时强杀，要结合 Events 区分。",
+    "tags": [
+      "OOMKilled",
+      "JVM",
+      "内存"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4641,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如何跨命名空间访问另一个命名空间里的 Service？",
+    "answer": "**DNS 方式（推荐）**：\n```\n<service>.<namespace>.svc.cluster.local\n```\n例：`mysql.prod.svc.cluster.local`\n\n**前提**：目标命名空间的 Service 是 ClusterIP 类型（任何 Pod 都能访问，**NetworkPolicy 不拦的话**），不需要额外配置。\n\n**常见失败原因**：\n1. **NetworkPolicy 拦截**：目标 ns 的策略只允许同 ns 访问。需加：\n```yaml\nfrom:\n- namespaceSelector:\n    matchLabels: {name: dev}\n```\n2. **Service 是 ExternalName / Headless**：解析另一种形式\n3. **DNS 后缀写错**：注意是 `svc`，不是 `services`\n\n**其他访问方式**：\n- 用 ClusterIP 直接访问（不推荐，IP 会变）\n- 用 ExternalName Service 做跨 ns 别名（本质是 CNAME）\n- 通过 Ingress 走七层（需要域名）\n\n**反向问题：Pod 怎么访问集群外的服务？**\n- 直接写公网 IP/域名\n- 或用 **ExternalName Service**：`type: ExternalName, externalName: db.example.com`\n- 或用 **无 selector 的 Service + 手写 Endpoints**（把外部 IP 当后端，可做灰度迁移）",
+    "tags": [
+      "Service",
+      "命名空间",
+      "DNS"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4642,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "生产环境 K8s 集群加固，以下哪些是必要措施？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "禁用 ServiceAccount 自动挂载令牌（automountServiceAccountToken: false）"
+      },
+      {
+        "key": "B",
+        "text": "开启 Pod Security Admission，限制 privileged / hostPath"
+      },
+      {
+        "key": "C",
+        "text": "apiserver 开启审计日志（audit log）"
+      },
+      {
+        "key": "D",
+        "text": "开启 etcd 的静态加密（EncryptionConfiguration）"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "explanation": "四项都是 CIS Kubernetes Benchmark 的核心条目。补充：⑤control plane 节点不跑业务 Pod（打 taint）；⑥kubelet 关闭匿名访问与 `--anonymous-auth=false`；⑦镜像仓库做签名校验（cosign/Notary）；⑧限制 `hostNetwork`/`hostPID` 使用；⑨etcd 只监听 127.0.0.1 或内网；⑩用 OPA Gatekeeper / Kyverno 做策略强制。",
+    "tags": [
+      "安全加固",
+      "CIS",
+      "审计"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4643,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 卡在 Terminating 状态一直不消失，怎么处理？",
+    "answer": "**原因分类**：\n\n**1. 优雅终止没走完**\n- `terminationGracePeriodSeconds` 内进程不退出 → 等到超时被 SIGKILL\n- preStop 钩子卡住（比如 sleep 太长、或脚本里等待条件永远不满足）\n- **最终一定会消失**，只是慢。等待即可，或查 `kubectl describe pod` 看 Events\n\n**2. finalizer 未清理（最常见）**\n```\nkubectl get pod <pod> -o yaml | grep -A5 finalizers\n```\n有 `kubernetes.io/pv-protection` 之类时就卡住。**要搞清楚是谁加的 finalizer**，删掉相关资源（如 PVC）让控制器自己摘除；实在不行才 `kubectl patch pod <pod> -p '{\"metadata\":{\"finalizers\":null}}'` —— 但这是**危险操作**，会跳过清理逻辑，导致存储/网络资源泄漏。\n\n**3. kubelet 与 apiserver 失联**\n- 节点 NotReady → Pod 状态显示 Terminating 但实际容器还在跑\n- 需要登节点 `crictl ps` 确认，可能得手动 `crictl rm`\n- 节点恢复后会自己清理\n\n**4. 节点宕机删除不掉**\n- Pod 一直 Terminating，需 `kubectl delete pod --force --grace-period=0`\n- 或先删 node 对象（慎重，会影响 PV）\n\n**5. 有状态服务的坑**\nStatefulSet 的 Pod 会等前一个完全终止才起下一个，一个卡住会阻塞整个滚动更新。\n\n**排查顺序一句话**：先 `describe` 看 Events，再 `-o yaml` 看 finalizers，最后登节点看容器是否真还在。",
+    "tags": [
+      "Terminating",
+      "finalizer",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4644,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "一个 Deployment 有 3 副本，滚动更新时 `maxSurge: 1, maxUnavailable: 0`，更新过程中最多存在几个 Pod？",
+    "options": [
+      {
+        "key": "A",
+        "text": "3"
+      },
+      {
+        "key": "B",
+        "text": "4"
+      },
+      {
+        "key": "C",
+        "text": "5"
+      },
+      {
+        "key": "D",
+        "text": "6"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "上限 = 期望副本 + maxSurge = 3 + 1 = 4；下限 = 3 - maxUnavailable = 3。所以过程中先起 1 个新的（共 4 个），等它 Ready 再删 1 个旧的，始终保持至少 3 个可用。这是「零中断」的推荐配置，代价是要多一份资源。",
+    "tags": [
+      "滚动更新",
+      "maxSurge",
+      "副本数"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4645,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "集群中某个节点的 Pod 大量 Evicted，请给出排查思路。",
+    "answer": "**Evicted 的本质**：kubelet 检测到节点资源压力，主动驱逐 Pod。\n\n**第一步：确认是哪种压力**\n```\nkubectl describe node <node> | grep -A10 Conditions\nkubectl get events --field-selector involvedObject.name=<pod> -o yaml\n```\n三种压力：`MemoryPressure`、`DiskPressure`、`PIDPressure`。\n\n**MemoryPressure**：\n- 容器内存超 limits（OOMKilled 是容器内被杀，Evicted 是 Pod 被删，两者不同）\n- 节点上无数小 Pod 的 requests 之和超过实际内存\n- 检查 `sum(kube_pod_container_resource_limits)` 是否接近节点容量\n- 调低 `--eviction-hard=memory.available<100Mi` 的阈值，或加内存\n\n**DiskPressure**：\n```\ndf -h; du -sh /var/lib/containerd /var/log\n```\n高频原因：\n1. **镜像不回收**：kubelet 默认 `imageGCHighThresholdPercent: 85`，但被固定 tag 的镜像（`imagePullPolicy: Always`）频繁重建会堆积\n2. **日志不轮转**：containerd 日志默认 `max-size` 需在 `/etc/containerd/config.toml` 配，不配会无限增长\n3. **emptyDir 撑满**：需设 `sizeLimit`\n4. **`/var/log/pods` 堆积**\n\n**PIDPressure**：容器内 fork 炸弹或线程泄漏。\n\n**止血措施**：\n```\nkubectl cordon <node>\nkubectl drain <node> --ignore-daemonsets --delete-emptydir-data\ncrictl rmi --prune          # 清理无用镜像\nsystemctl restart kubelet\n```\n\n**长期治理**：\n- 所有 Pod 必须设 requests/limits\n- 配 kubelet 的 `evictionHard`、`imageGCHighThresholdPercent`/`LowThresholdPercent`、`--system-reserved`/`--kube-reserved`\n- 日志走 stdout + 采集，不落本地大文件\n- 监控 `kubelet_evictions_total`、节点 `node_filesystem_avail_bytes`",
+    "tags": [
+      "Evicted",
+      "驱逐",
+      "磁盘压力"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4646,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "ServiceAccount 是什么？Pod 如何通过它访问 apiserver？",
+    "answer": "**ServiceAccount（SA）** 是给**集群内进程**用的身份，类比「IAM Role」。\n\n**Pod 使用流程**：\n1. 创建 SA：`kubectl create sa my-operator`\n2. 用 RBAC 绑权限（ClusterRole + RoleBinding）\n3. Pod 里指定 `serviceAccountName: my-operator`\n4. kubelet 自动把 token 投射到 `/var/run/secrets/kubernetes.io/serviceaccount/`\n   - `token`（JWT）\n   - `ca.crt`\n   - `namespace`\n5. 应用用 token 作为 Bearer 调用 apiserver\n\n**新旧机制区别（重要）**：\n- **老方式**：静态 Secret 里的永久 token（永不过期，泄漏即永久失守）\n- **新方式（1.21+ 默认）**：`TokenRequest` 投射的**短期 token**（默认 1 小时，自动轮换），通过 projected volume 挂载。`kubectl get secret` 已经看不到 SA token 了\n\n**curl 验证**：\n```bash\nTOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\ncurl -k -H \"Authorization: Bearer $TOKEN\" \\\n  https://kubernetes.default.svc/api/v1/namespaces/default/pods\n```\n\n**安全要点**：\n- 不需要访问 apiserver 的 Pod 设 `automountServiceAccountToken: false`\n- 每个工作负载独立 SA，别都用 default\n- 用 `kubectl auth can-i --list --as=system:serviceaccount:ns:sa-name` 审计权限",
+    "tags": [
+      "ServiceAccount",
+      "RBAC",
+      "认证"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4647,
+    "type": "multiple",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "以下哪些是 Kubernetes 常见的 CNI 插件？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "Calico"
+      },
+      {
+        "key": "B",
+        "text": "Flannel"
+      },
+      {
+        "key": "C",
+        "text": "Cilium"
+      },
+      {
+        "key": "D",
+        "text": "kube-proxy"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C"
+    ],
+    "explanation": "kube-proxy 是 Service 转发组件，不是 CNI。CNI 插件特点对比：Flannel 最简单（VXLAN/host-gw），**不支持 NetworkPolicy**；Calico 支持 BGP 路由与完整 NetworkPolicy，大规模首选；Cilium 基于 eBPF，性能好、可做 L7 策略和可观测性，但要求内核 ≥ 4.19 左右。还有 Weave、Antrea、Kube-OVN、Multus（多网卡）。",
+    "tags": [
+      "CNI",
+      "Calico",
+      "Cilium"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4648,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Sidecar 模式是什么？举两三个典型应用场景。",
+    "answer": "**Sidecar**：在同一个 Pod 里跑一个辅助容器，共享网络和存储，把「非业务功能」从主容器剥离。\n\n**典型场景**：\n\n| 场景 | Sidecar 做什么 | 代表 |\n|---|---|---|\n| **服务网格** | 接管所有进出流量，做 mTLS、重试、限流、链路追踪 | Istio 的 Envoy、Linkerd |\n| **日志采集** | tail 主容器写出的日志文件并推送 | Fluent-bit、Filebeat |\n| **代理/隧道** | 连数据库、连内网，主容器只连 127.0.0.1 | 常见于安全要求高的环境 |\n| **配置热更新** | 监听 ConfigMap 变化并 reload 主应用 | nginx reloader |\n| **初始化数据** | 用独立镜像拉数据（这其实是 Init Container） | |\n\n**K8s 1.28+ 原生 Sidecar**：把 initContainer 的 `restartPolicy: Always` 打开即可，生命周期跟随 Pod（先于主容器启动、后于主容器退出），解决了老式 sidecar 在 Job 中导致 Pod 永不结束的问题。\n\n**注意**：Sidecar 共享网络 → **端口会冲突**；共享 Volume → 用 `emptyDir` 传递日志/文件最常用。",
+    "tags": [
+      "Sidecar",
+      "服务网格",
+      "Istio"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4649,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "持久化容器数据的正确方式是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "用 docker commit 保存容器为镜像"
+      },
+      {
+        "key": "B",
+        "text": "用 volume / bind mount 把数据目录挂到宿主机或网络存储"
+      },
+      {
+        "key": "C",
+        "text": "把数据写在容器可写层"
+      },
+      {
+        "key": "D",
+        "text": "定期 docker export 容器"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "容器可写层随容器删除而消失，且性能差（overlayfs 的 copy-up 开销）。A 把数据打进镜像会导致镜像臃肿、不可版本管理；D export 是全量快照，无法增量。正确做法：命名 volume（`docker volume create`）或 bind mount（`-v /host/path:/container/path`），生产用网络存储（NFS/Ceph/云盘）以便跨节点。",
+    "tags": [
+      "volume",
+      "持久化",
+      "存储"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4650,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "为什么 Pod 里的容器时间、时区经常不对？如何统一？",
+    "answer": "**根因**：容器默认使用 **UTC 时区**（镜像里 `/etc/localtime` 是 UTC），而业务日志/报表按北京时间理解，就错 8 小时。\n\n**注意区分两件事**：\n- **系统时间（内核时钟）**：所有容器共享宿主机内核，时间一定一致，**不需要也不能通过容器 NTP 修改**\n- **时区（`/etc/localtime` + `TZ` 环境变量）**：每容器独立\n\n**统一时区的几种做法**：\n\n1. **环境变量（最简单，推荐）**\n```yaml\nenv:\n- name: TZ\n  value: Asia/Shanghai\n```\n对 Java、Go、glibc 程序都有效。\n\n2. **挂载宿主机时区**\n```yaml\nvolumeMounts:\n- name: tz\n  mountPath: /etc/localtime\n  readOnly: true\nvolumes:\n- name: tz\n  hostPath: {path: /usr/share/zoneinfo/Asia/Shanghai}\n```\n\n3. **镜像内安装 tzdata**\n```dockerfile\nRUN apk add --no-cache tzdata && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime\nENV TZ=Asia/Shanghai\n```\n**alpine 默认没有 tzdata**，设 `TZ` 也不生效——这是最常见的坑。\n\n**Java 特例**：JVM 在启动时读时区并缓存，`TZ` 需在启动前设好；也可用 `-Duser.timezone=Asia/Shanghai`。JDK 也依赖镜像里有 tzdata。\n\n**宿主机 NTP**：容器共享内核时钟，只需保证**宿主机** chrony/ntpd 正常，容器内无需再跑。",
+    "tags": [
+      "时区",
+      "TZ",
+      "tzdata"
     ],
     "frequency": "中频"
   }
