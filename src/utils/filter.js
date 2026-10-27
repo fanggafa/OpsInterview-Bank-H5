@@ -35,14 +35,28 @@ export function filterByKeyword(questions, keyword) {
 }
 
 /**
- * 组合筛选：分类 → 频率 → 关键词。
+ * 按难度筛选。difficulty 为空表示「全部难度」。
+ * @param {Array} questions
+ * @param {string|null|undefined} difficulty
+ */
+export function filterByDifficulty(questions, difficulty) {
+  if (!difficulty) return questions.slice()
+  return questions.filter((q) => q.difficulty === difficulty)
+}
+
+/**
+ * 组合筛选：分类 → 频率 → 难度 → 关键词。
  * 顺序固定，保证行为可预测。
  * @param {Array} questions
- * @param {{category?: string, frequency?: string, keyword?: string}} filters
+ * @param {{category?: string, frequency?: string, difficulty?: string, keyword?: string}} filters
  */
-export function applyFilters(questions, { category = '', frequency = '', keyword = '' } = {}) {
+export function applyFilters(
+  questions,
+  { category = '', frequency = '', difficulty = '', keyword = '' } = {}
+) {
   let result = filterByCategory(questions, category)
   result = filterByFrequency(result, frequency)
+  result = filterByDifficulty(result, difficulty)
   result = filterByKeyword(result, keyword)
   return result
 }
@@ -65,12 +79,14 @@ export function countByCategory(questions) {
  * @param {Object} query
  * @param {string[]} categories 合法分类枚举
  * @param {string[]} frequencies 合法频率枚举
+ * @param {string[]} [difficulties] 合法难度枚举
  */
-export function parseQueryState(query = {}, categories = [], frequencies = []) {
+export function parseQueryState(query = {}, categories = [], frequencies = [], difficulties = []) {
   const category = categories.includes(query.category) ? query.category : ''
   const frequency = frequencies.includes(query.frequency) ? query.frequency : ''
+  const difficulty = difficulties.includes(query.difficulty) ? query.difficulty : ''
   const keyword = typeof query.q === 'string' ? query.q : ''
-  return { category, frequency, keyword }
+  return { category, frequency, difficulty, keyword }
 }
 
 /**
@@ -78,10 +94,11 @@ export function parseQueryState(query = {}, categories = [], frequencies = []) {
  * @param {Object} state
  * @param {number} [page] 页码，1 时省略
  */
-export function toQueryState({ category, frequency, keyword }, page = 1) {
+export function toQueryState({ category, frequency, difficulty, keyword }, page = 1) {
   const query = {}
   if (category) query.category = category
   if (frequency) query.frequency = frequency
+  if (difficulty) query.difficulty = difficulty
   if (keyword && keyword.trim()) query.q = keyword.trim()
   if (Number(page) > 1) query.page = String(page)
   return query

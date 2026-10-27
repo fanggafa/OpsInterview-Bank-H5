@@ -3,6 +3,7 @@ import {
   applyFilters,
   countByCategory,
   filterByCategory,
+  filterByDifficulty,
   filterByFrequency,
   filterByKeyword,
   parseQueryState,
@@ -70,6 +71,24 @@ describe('filterByKeyword', () => {
   })
 })
 
+describe('filterByDifficulty', () => {
+  it('空难度返回全部', () => {
+    expect(filterByDifficulty(QUESTIONS, '')).toHaveLength(4)
+    expect(filterByDifficulty(QUESTIONS, null)).toHaveLength(4)
+  })
+
+  it('按难度筛选', () => {
+    expect(filterByDifficulty(QUESTIONS, '中等').map((q) => q.id)).toEqual([2, 4])
+    expect(filterByDifficulty(QUESTIONS, '困难').map((q) => q.id)).toEqual([3])
+  })
+
+  it('不修改原数组', () => {
+    const copy = QUESTIONS.slice()
+    filterByDifficulty(QUESTIONS, '简单')
+    expect(QUESTIONS).toEqual(copy)
+  })
+})
+
 describe('applyFilters', () => {
   it('空条件返回全部', () => {
     expect(applyFilters(QUESTIONS, {})).toHaveLength(4)
@@ -83,8 +102,17 @@ describe('applyFilters', () => {
     expect(applyFilters(QUESTIONS, { category: 'B', frequency: '高频', keyword: 'mysql' }).map((q) => q.id)).toEqual([3])
   })
 
+  it('难度可与分类组合', () => {
+    expect(applyFilters(QUESTIONS, { category: 'B', difficulty: '中等' }).map((q) => q.id)).toEqual([4])
+  })
+
+  it('难度 + 关键词组合', () => {
+    expect(applyFilters(QUESTIONS, { difficulty: '困难', keyword: '索引' }).map((q) => q.id)).toEqual([3])
+  })
+
   it('组合无结果返回空数组', () => {
     expect(applyFilters(QUESTIONS, { category: 'A', keyword: 'k8s' })).toEqual([])
+    expect(applyFilters(QUESTIONS, { difficulty: '简单', category: 'B' })).toEqual([])
   })
 })
 
@@ -101,31 +129,52 @@ describe('countByCategory', () => {
 describe('parseQueryState', () => {
   const CATS = ['A', 'B']
   const FREQS = ['高频', '中频', '低频']
+  const DIFFS = ['简单', '中等', '困难']
 
   it('合法值原样采用', () => {
-    expect(parseQueryState({ category: 'A', frequency: '高频', q: 'tcp' }, CATS, FREQS)).toEqual({
+    expect(
+      parseQueryState({ category: 'A', frequency: '高频', difficulty: '中等', q: 'tcp' }, CATS, FREQS, DIFFS)
+    ).toEqual({
       category: 'A',
       frequency: '高频',
+      difficulty: '中等',
       keyword: 'tcp',
     })
   })
 
   it('非法值兜底为空（防止手改 URL 导致异常状态）', () => {
-    expect(parseQueryState({ category: 'ZZZ', frequency: '超高' }, CATS, FREQS)).toEqual({
+    expect(
+      parseQueryState({ category: 'ZZZ', frequency: '超高', difficulty: '超难' }, CATS, FREQS, DIFFS)
+    ).toEqual({
       category: '',
       frequency: '',
+      difficulty: '',
       keyword: '',
     })
   })
 
   it('缺省参数返回空状态', () => {
-    expect(parseQueryState({}, CATS, FREQS)).toEqual({ category: '', frequency: '', keyword: '' })
+    expect(parseQueryState({}, CATS, FREQS, DIFFS)).toEqual({
+      category: '',
+      frequency: '',
+      difficulty: '',
+      keyword: '',
+    })
+  })
+
+  it('不传难度枚举时不解析难度（向后兼容）', () => {
+    expect(parseQueryState({ difficulty: '中等' }, CATS, FREQS)).toEqual({
+      category: '',
+      frequency: '',
+      difficulty: '',
+      keyword: '',
+    })
   })
 })
 
 describe('toQueryState', () => {
   it('空值省略，URL 保持干净', () => {
-    expect(toQueryState({ category: '', frequency: '', keyword: '' })).toEqual({})
+    expect(toQueryState({ category: '', frequency: '', difficulty: '', keyword: '' })).toEqual({})
   })
 
   it('只保留有值的项', () => {
@@ -135,13 +184,19 @@ describe('toQueryState', () => {
     })
   })
 
+  it('难度写入 URL', () => {
+    expect(toQueryState({ difficulty: '困难' })).toEqual({ difficulty: '困难' })
+  })
+
   it('关键词去首尾空格，全空格视为空', () => {
     expect(toQueryState({ keyword: '  tcp  ' })).toEqual({ q: 'tcp' })
     expect(toQueryState({ keyword: '   ' })).toEqual({})
   })
 
   it('与 parseQueryState 可往返', () => {
-    const state = { category: 'A', frequency: '高频', keyword: 'tcp' }
-    expect(parseQueryState(toQueryState(state), ['A'], ['高频'])).toEqual(state)
+    const state = { category: 'A', frequency: '高频', difficulty: '中等', keyword: 'tcp' }
+    expect(
+      parseQueryState(toQueryState(state), ['A'], ['高频'], ['简单', '中等', '困难'])
+    ).toEqual(state)
   })
 })

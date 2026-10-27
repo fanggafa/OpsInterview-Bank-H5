@@ -195,8 +195,13 @@ export const SEARCH_DEBOUNCE_MS = 300
 /** 题干摘要截断长度 */
 export const SUMMARY_LENGTH = 50
 
-/** 列表每页条数（手机一屏约 5 张卡片，3 屏左右刚好，翻页不费力） */
-export const PAGE_SIZE = 15
+/**
+ * 列表每页条数。
+ *
+ * 10 条：手机一屏约看 2-3 张卡片，10 条约 3-4 屏，扫一遍就能到底；
+ * 15 条时要滚很久才见底，容易误以为「列表只有这些、没有下一页」。
+ */
+export const PAGE_SIZE = 10
 
 /** 分页快捷跳页的候选步长（「上一页/下一页」之外的首页末页） */
 export const PAGE_JUMP_EDGE = true
