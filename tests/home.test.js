@@ -226,16 +226,17 @@ describe('首页 · 继续上次', () => {
     expect(wrapper.find('.continue').exists()).toBe(false)
   })
 
-  it('有进度时显示并跳转到对应模式', async () => {
-    study.saveProgress({ mode: 'random', category: 'MySQL', index: 1 })
+  it('有进度时显示，点击跳刷题页（模式在刷题页的面板里选）', async () => {
+    study.saveProgress({ mode: 'random', studyMode: 'memorize', category: 'MySQL', index: 1 })
     const { wrapper, router } = await mountHome()
 
+    // 文案里带上练习模式，让用户知道上次在练什么
     expect(wrapper.find('.continue__desc').text()).toContain('MySQL')
-    expect(wrapper.find('.continue__desc').text()).toContain('随机')
+    expect(wrapper.find('.continue__desc').text()).toContain('背题')
 
     await wrapper.find('.continue').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.query.mode).toBe('random')
-    expect(router.currentRoute.value.query.category).toBe('MySQL')
+    // 统一进刷题页，不再把 mode/category 塞进 URL——由刷题页的模式面板决定
+    expect(router.currentRoute.value.path).toBe('/practice')
   })
 })

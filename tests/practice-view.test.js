@@ -344,8 +344,8 @@ describe('首页 · 继续上次刷题', () => {
     expect(wrapper.find('.continue').exists()).toBe(false)
   })
 
-  it('有进度时显示分类、模式与题号', async () => {
-    study.saveProgress({ mode: 'random', category: 'MySQL', index: 2 })
+  it('有进度时显示练习模式、分类与题号', async () => {
+    study.saveProgress({ mode: 'random', studyMode: 'memorize', category: 'MySQL', index: 2 })
     const router = makeRouter()
     await router.push('/')
     await router.isReady()
@@ -354,11 +354,11 @@ describe('首页 · 继续上次刷题', () => {
 
     const text = wrapper.find('.continue__desc').text()
     expect(text).toContain('MySQL')
-    expect(text).toContain('随机')
+    expect(text).toContain('背题')
     expect(text).toContain('第 3 题')
   })
 
-  it('点击后跳转到对应模式与分类', async () => {
+  it('点击后统一跳刷题页（模式在刷题页的面板里选）', async () => {
     study.saveProgress({ mode: 'random', category: 'MySQL', index: 1 })
     const router = makeRouter()
     await router.push('/')
@@ -369,7 +369,5 @@ describe('首页 · 继续上次刷题', () => {
     await wrapper.find('.continue').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/practice')
-    expect(router.currentRoute.value.query.mode).toBe('random')
-    expect(router.currentRoute.value.query.category).toBe('MySQL')
   })
 })

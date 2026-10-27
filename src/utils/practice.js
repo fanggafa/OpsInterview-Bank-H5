@@ -9,12 +9,18 @@
  * 队列只由「题库 + 筛选条件 + 模式」决定，与学习记录无关的快照；
  * 断点续刷由 index 定位，不重新构建队列，保证题序稳定。
  */
-import { PRACTICE_MODES } from '@/utils/constants'
+import { PRACTICE_MODES, STUDY_MODES } from '@/utils/constants'
 import { shuffle } from '@/utils/format'
+import { isShort } from '@/utils/question'
 
 /** 归一化模式，非法值回退 sequential */
 export function normalizeMode(mode) {
   return PRACTICE_MODES.includes(mode) ? mode : 'sequential'
+}
+
+/** 归一化练习模式，非法值回退 practice */
+export function normalizeStudyMode(studyMode) {
+  return STUDY_MODES.includes(studyMode) ? studyMode : 'practice'
 }
 
 /**
@@ -26,19 +32,33 @@ function byCategory(questions, category) {
 }
 
 /**
+ * 按练习模式过滤题目。
+ * memorize 只保留简答题；practice 全保留。
+ */
+function byStudyMode(questions, studyMode) {
+  if (normalizeStudyMode(studyMode) === 'memorize') return questions.filter((q) => isShort(q))
+  return questions.slice()
+}
+
+/**
  * 构建刷题队列。
  *
  * @param {Array} questions 题库全量
  * @param {Object} options
- * @param {string} [options.mode='sequential'] 刷题模式
+ * @param {string} [options.mode='sequential'] 队列模式（题从哪来）
+ * @param {string} [options.studyMode='practice'] 练习模式（怎么练）
  * @param {string} [options.category=''] 分类（空=全部）
  * @param {Set<number>|number[]} [options.wrongIds] 错题 id 集合（mode=wrong 时必传）
  * @param {() => number} [options.random] 注入随机源，便于测试
  * @returns {Array} 题目数组
  */
-export function buildQueue(questions, { mode = 'sequential', category = '', wrongIds = [], random } = {}) {
+export function buildQueue(
+  questions,
+  { mode = 'sequential', studyMode = 'practice', category = '', wrongIds = [], random } = {}
+) {
   const normalized = normalizeMode(mode)
-  const scoped = byCategory(questions, category)
+  // 先按练习模式收窄（背题模式只看简答），再按分类
+  const scoped = byCategory(byStudyMode(questions, studyMode), category)
 
   if (normalized === 'wrong') {
     const idSet = wrongIds instanceof Set ? wrongIds : new Set(wrongIds)
@@ -66,11 +86,11 @@ export function buildQueue(questions, { mode = 'sequential', category = '', wron
  *
  * 规则（PRD §二.2）：
  * - 无 progress → 从 0 开始，非续刷
- * - progress 的 mode/category 与本次一致 → 从 progress.index 续刷
- * - 不一致 → 从 0 开始
+ * - progress 的 mode/studyMode/category 与本次一致 → 从 progress.index 续刷
+ * - 不一致 → 从 0 开始（换了队列就不是同一批题了）
  *
  * @param {Object|null} progress
- * @param {{mode: string, category: string}} current
+ * @param {{mode: string, studyMode?: string, category: string}} current
  * @param {number} queueLength
  * @returns {{index: number, resumed: boolean}}
  */
@@ -78,6 +98,7 @@ export function resolveStartIndex(progress, current, queueLength) {
   const none = { index: 0, resumed: false }
   if (!progress || !queueLength) return none
   if (normalizeMode(progress.mode) !== normalizeMode(current.mode)) return none
+  if (normalizeStudyMode(progress.studyMode) !== normalizeStudyMode(current.studyMode)) return none
   if ((progress.category || '') !== (current.category || '')) return none
 
   const saved = Number(progress.index)
@@ -95,9 +116,13 @@ export function describeProgress(progress) {
   if (!progress) return null
   const modeLabel =
     progress.mode === 'random' ? '随机' : progress.mode === 'wrong' ? '错题' : '顺序'
+  const studyModeLabel = normalizeStudyMode(progress.studyMode) === 'memorize' ? '背题' : '刷题'
   return {
     category: progress.category || '全部题目',
     modeLabel,
+    studyModeLabel,
+    studyMode: normalizeStudyMode(progress.studyMode),
+    mode: normalizeMode(progress.mode),
     index: Number(progress.index) || 0,
     positionText: `第 ${(Number(progress.index) || 0) + 1} 题`,
   }

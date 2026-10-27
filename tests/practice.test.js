@@ -163,9 +163,18 @@ describe('describeProgress', () => {
     expect(describeProgress({ mode: 'sequential', category: 'MySQL', index: 2 })).toEqual({
       category: 'MySQL',
       modeLabel: '顺序',
+      studyModeLabel: '刷题',
+      studyMode: 'practice',
+      mode: 'sequential',
       index: 2,
       positionText: '第 3 题',
     })
+  })
+
+  it('背题模式会体现在文案里', () => {
+    const d = describeProgress({ mode: 'sequential', studyMode: 'memorize', index: 0 })
+    expect(d.studyModeLabel).toBe('背题')
+    expect(d.studyMode).toBe('memorize')
   })
 
   it('随机模式 + 无分类显示「全部题目」', () => {

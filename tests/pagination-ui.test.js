@@ -239,13 +239,14 @@ describe('收藏页 · 分页边界', () => {
     await wrapper.findAll('.pager__nav')[1].trigger('click')
     await wrapper.vm.$nextTick()
 
-    const spy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    // 点「全部取消」→ 页内确认条 → 点「确定取消」
     await wrapper.find('.head__clear').trigger('click')
+    await wrapper.vm.$nextTick()
+    await wrapper.find('.confirm .btn--danger').trigger('click')
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('还没有收藏')
     expect(wrapper.find('.pager').exists()).toBe(false)
-    spy.mockRestore()
   })
 
   it('收藏不足一页时不显示分页', async () => {

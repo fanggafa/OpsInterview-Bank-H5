@@ -18,7 +18,10 @@ const isValidRecord = (r) =>
 const isValidRecords = (v) =>
   isPlainObject(v) && Object.values(v).every((r) => isValidRecord(r))
 const isValidFavorites = (v) => Array.isArray(v) && v.every((id) => typeof id === 'number')
-const isValidProgress = (v) => isPlainObject(v) && typeof v.index === 'number'
+const isValidProgress = (v) =>
+  isPlainObject(v) &&
+  typeof v.index === 'number' &&
+  (v.studyMode === undefined || typeof v.studyMode === 'string')
 
 export const useStudyStore = defineStore('study', () => {
   const bank = useBankStore()
@@ -235,9 +238,11 @@ export const useStudyStore = defineStore('study', () => {
   }
 
   /** 保存刷题进度（「继续上次刷题」） */
-  function saveProgress({ mode, category = null, index = 0 }) {
+  function saveProgress({ mode, studyMode, category = null, index = 0 }) {
     progress.value = {
       mode: mode || 'sequential',
+      // 练习模式要一起存：否则「继续上次」无法恢复上次是在刷题还是背题
+      studyMode: studyMode || 'practice',
       category: category || null,
       index: Math.max(0, Number(index) || 0),
       updatedAt: Date.now(),

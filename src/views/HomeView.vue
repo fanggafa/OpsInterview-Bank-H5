@@ -28,11 +28,14 @@ onMounted(() => {
 /** 「继续上次刷题」的展示文案（PRD §二.2） */
 const progressInfo = computed(() => describeProgress(study.progress))
 
-function continueStudy() {
-  const p = study.progress
-  const query = { mode: p?.mode || 'sequential' }
-  if (p?.category) query.category = p.category
-  router.push({ path: '/practice', query })
+/**
+ * 「开始刷题」与「继续上次」都跳刷题页。
+ *
+ * 模式选择（刷题 / 背题）和「继续上次」都收口到刷题页的模式面板里：
+ * 首页只负责「进去」，具体怎么练、从哪继续，在刷题页一次决定。
+ */
+function goPractice() {
+  router.push('/practice')
 }
 
 /** 分类入口：按题库实际分类动态生成，带各自进度与专属颜色 */
@@ -123,7 +126,7 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
 
     <!-- 快捷入口 -->
     <div class="entries">
-      <button class="entry entry--practice" @click="router.push('/practice')">
+      <button class="entry entry--practice" @click="goPractice">
         <span class="entry__icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20">
             <path d="M13 3 5 14h5l-1 7 8-11h-5l1-7z" fill="currentColor" />
@@ -131,7 +134,7 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
         </span>
         <span class="entry__text">
           <span class="entry__title">开始刷题</span>
-          <span class="entry__desc">顺序 / 随机 / 按分类</span>
+          <span class="entry__desc">刷题 / 背题 · 顺序 / 随机</span>
         </span>
       </button>
 
@@ -155,13 +158,14 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
       </button>
     </div>
 
-    <!-- 继续上次 -->
-    <section v-if="progressInfo" class="continue" @click="continueStudy">
+    <!-- 继续上次：统一收口到刷题页的模式面板，这里只展示状态 -->
+    <section v-if="progressInfo" class="continue" @click="goPractice">
       <span class="continue__dot" aria-hidden="true" />
       <div class="continue__body">
         <p class="continue__title">继续上次刷题</p>
         <p class="continue__desc">
-          {{ progressInfo.category }} · {{ progressInfo.modeLabel }} · {{ progressInfo.positionText }}
+          {{ progressInfo.studyModeLabel }} · {{ progressInfo.category }} ·
+          {{ progressInfo.positionText }}
         </p>
       </div>
       <span class="continue__arrow" aria-hidden="true">→</span>

@@ -242,18 +242,29 @@ describe('收藏页', () => {
     expect(study.favorites).toHaveLength(1)
   })
 
-  it('「全部取消」需二次确认，取消则不执行', async () => {
+  it('「全部取消」用页内确认（不依赖 window.confirm），取消则不执行', async () => {
     study.toggleFavorite(1)
     const { wrapper } = await mountView(FavoritesView, '/favorites')
 
-    const spy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    // window.confirm 在微信/WebView 里可能静默失效，页面不应依赖它
+    const spy = vi.spyOn(window, 'confirm')
     await wrapper.find('.head__clear').trigger('click')
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+
+    // 弹页内确认条，此时还没删
+    expect(wrapper.find('.confirm').exists()).toBe(true)
     expect(study.favorites).toHaveLength(1)
 
-    spy.mockReturnValue(true)
+    // 取消 → 确认条收起，收藏保留
+    await wrapper.find('.confirm .btn--plain').trigger('click')
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+    expect(study.favorites).toHaveLength(1)
+
+    // 再来一次并确认 → 收藏清空
     await wrapper.find('.head__clear').trigger('click')
+    await wrapper.find('.confirm .btn--danger').trigger('click')
     expect(study.favorites).toHaveLength(0)
-    spy.mockRestore()
   })
 
   it('显示收藏数量', async () => {
