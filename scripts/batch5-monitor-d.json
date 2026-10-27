@@ -1,0 +1,69 @@
+[
+  {
+    "id": 5026,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "Prometheus 中 `sum(rate(http_requests_total[5m]))` 和 `rate(sum(http_requests_total)[5m])` 的区别？",
+    "options": [
+      { "key": "A", "text": "前者先对每个序列算速率再求和（正确）；后者先求和再算速率，计数器重启时会算出错误结果" },
+      { "key": "B", "text": "两者完全等价" },
+      { "key": "C", "text": "后者性能更好但结果不准" },
+      { "key": "D", "text": "前者语法错误" }
+    ],
+    "answer": ["A"],
+    "explanation": "**必须先 `rate` 再 `sum`**。原因是不同实例的 Counter 起点不同（A 已计数 1000，B 刚启动计数 10），直接相加得到的「总和」会随实例重启剧烈跳变，再算 `rate` 就会看到虚假的尖峰或断崖。正确做法是每个序列各自算速率（消除起点差异）后再聚合。这也是 PromQL 最经典的错误之一，shellcheck 没有对应工具，只能靠理解。"
+  },
+  {
+    "id": 5027,
+    "type": "multiple",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "以下哪些指标适合用来做**告警**（而不是只做看板）？（多选）",
+    "options": [
+      { "key": "A", "text": "`up` 为 0（服务不可达）" },
+      { "key": "B", "text": "磁盘可用空间 < 10%" },
+      { "key": "C", "text": "5xx 错误率 > 1% 持续 5 分钟" },
+      { "key": "D", "text": "CPU 使用率的每一次波动" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是典型的告警噪声：CPU 本来就会正常波动（编译、GC、定时任务），每次波动都告警会让人关掉通知。**告警的判断标准是「收到后能采取行动」**——CPU 波动 60%，你要做什么？什么都做不了；而「磁盘剩余 10%」意味着「要扩容了」，是可行动的。补充原则：⑤告警要有明确的**处理方案**（Runbook）；⑥阈值要留出「处理时间」（磁盘 10% 而非 1%）；⑦**趋势类告警**（如 `predict_linear < 0`）比瞬时阈值更有预警价值。"
+  },
+  {
+    "id": 5028,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "`histogram_quantile(0.99, ...)` 计算 P99 时，为什么必须用 `sum by (le)`？",
+    "options": [
+      { "key": "A", "text": "`le` 是直方图的桶边界标签，必须按它聚合才能得到全局分位数" },
+      { "key": "B", "text": "`le` 是可选的，不写也行" },
+      { "key": "C", "text": "`le` 表示 latency 的缩写" }
+    ],
+    "answer": ["A"],
+    "explanation": "Histogram 指标会生成多个 bucket，每个带 `le`（less-than-or-equal，小于等于）标签，表示「响应时间 ≤ 该值的请求数」。要算全局 P99，必须**按 `le` 聚合所有实例的桶计数**，然后 `histogram_quantile` 才能在这些累计桶上插值。若不 `sum by (le)`，它会为每个实例单独算分位数，返回值数量对不上你的预期（不会报错，只会算错）。C 是错的——`le` 是标签名，与 latency 无关。**完整正确写法**：`histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))`。"
+  },
+  {
+    "id": 5029,
+    "type": "multiple",
+    "category": "监控告警",
+    "difficulty": "困难",
+    "question": "关于「监控数据保留与降采样」，以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "Prometheus 默认保留 15 天，长期趋势需要降采样后存到对象存储" },
+      { "key": "B", "text": "降采样会丢失原始细节，因此只应用于「长期趋势分析」而不能用于排障" },
+      { "key": "C", "text": "顺序保留（raw 7 天 + 5 分钟粒度 90 天 + 1 小时粒度 2 年）能平衡成本与可用性" },
+      { "key": "D", "text": "保留时间越长越好，成本可以忽略" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：时序数据的成本主要来自**存储 + 查询扫描量**，长期全量保留会让查询变得极慢且昂贵。C 的「顺序保留（downsampling tiers）」是 Thanos / VictoriaMetrics 的标准做法：**近期保原始精度用于排障，远期只保留聚合值用于趋势与容量规划**。关键权衡：排障永远发生在「最近几天」，所以原始数据保留 7-15 天就够；而容量规划要看季度/年度趋势，那用小时级聚合即可。"
+  },
+  {
+    "id": 5030,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "Prometheus 的 `recording rule`（预聚合规则）用来做什么？什么时候需要它？",
+    "answer": "**把「复杂查询」预先算好存成新指标，让看板和告警查询变快。**\n\n**典型例子**：\n```yaml\ngroups:\n- name: agg\n  interval: 30s\n  rules:\n  - record: job:http_request_error_rate:5m\n    expr: |\n      sum by (job) (rate(http_requests_total{status=~\"5..\"}[5m]))\n      / sum by (job) (rate(http_requests_total[5m]))\n```\n之后看板/告警直接查 `job:http_request_error_rate:5m` 这个**单指标**，而不用每次重算。\n\n**什么时候需要**：\n\n| 场景 | 说明 |\n|---|---|\n| **看板加载慢** | 多个面板都在算同一个复杂表达式 |\n| **告警规则多** | 100 条规则每条都跑复杂聚合，Prometheus CPU 吃满 |\n| **跨实例聚合** | 每次都 `sum by` 几十万序列，很慢 |\n| **联邦场景** | 上级只拉聚合指标 |\n\n**命名规范（非常重要）**：\n```\nlevel:metric:operations\n例：job:http_request_error_rate:5m\n     instance:node_cpu_utilization:ratio\n```\n这是 Prometheus 社区的**约定**（来自官方文档），好处是：①一眼看出聚合层级；②**能自动发现无用规则**（如果某个 record 从来没被查询过，就能删）。\n\n**代价与坑**：\n1. **占用额外存储**：每条 recording rule 都会产生新序列，**规则写多了本身就成了基数问题**\n2. **评估有延迟**：`interval: 30s` 意味着数据最多滞后 30 秒，**告警不能用它做秒级判断**\n3. **评估耗时监控**：`prometheus_rule_group_last_duration_seconds` 接近 `interval` 就说明规则太重了\n4. **改动不回溯**：改了规则表达式，历史数据不会重算\n\n**实践建议**：**先有慢的问题，再加 recording rule**——不要一开始就为一堆查询建规则。"
+  }
+]

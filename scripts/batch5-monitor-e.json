@@ -1,0 +1,56 @@
+[
+  {
+    "id": 5031,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "什么是「指标基数」？如何排查和治理基数爆炸？",
+    "answer": "**基数（cardinality）= 时间序列数量 = 所有 label 取值的组合数。**\n\n**为什么是最大的问题**：\n```\n序列数 × 采集频率 × 保留时长 = 内存占用 + 磁盘\n```\n100 万序列在 Prometheus 里约需 2-4GB 内存。爆到 500 万就可能 OOM。\n\n**判断基数**：\n```\nprometheus_tsdb_head_series                          # 当前活跃序列数\ntopk(10, count by (__name__)({__name__=~\".+\"}))      # 哪个指标序列最多\nsum by (__name__) ({__name__=~\".+\"})                 # 按指标统计\ntopk(10, count by (job) ({__name__=~\".+\"}))          # 哪个 job 序列最多\n```\n\n**快速定位是哪个 label 爆的**：\n```\n# 看某个指标的 label 有多少不同取值\ncount(count by (path) (http_requests_total))\n```\n\n**三个高频爆点**：\n\n| 爆点 | 例子 | 修法 |\n|---|---|---|\n| **动态 URL** | `path=\"/api/user/12345\"` | 模板化 `path=\"/api/user/:id\"` |\n| **用户/订单 ID** | `user_id=\"u_8823\"` | **移出 label**，放日志 |\n| **错误消息** | `error=\"connection refused to 10.0.0.5:6379\"` | 归类 `error_type=\"redis_unreachable\"` |\n\n**治理手段（从轻到重）**：\n\n1. **改埋点**（根治）：模板化 label、把高基数信息放日志/trace\n2. **`metric_relabel_configs` 丢弃**：\n```yaml\nmetric_relabel_configs:\n- source_labels: [__name__]\n  regex: 'debug_.*'\n  action: drop\n- source_labels: [request_id]\n  regex: '.+'\n  action: labeldrop          # 删掉这个 label 但不删指标\n```\n3. **`relabel_configs` 不抓该目标**\n4. **用 `--storage.tsdb.max-block-chunk-segment-size` 等参数缓解**（治标）\n\n**监控基数本身**：\n```\nprometheus_tsdb_head_series > 5000000   → 告警\n```\n**序列数增长率**也要盯——缓慢增长最终也会爆。\n\n**一个反直觉的规则**：**宁可少几个有用的 label，也不要多一个没用的高基数 label**。label 的价值是「能用来过滤/聚合」，不能用于此的就不该是 label。"
+  },
+  {
+    "id": 5032,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "如何对「定时任务 / 批处理」做监控？和常驻服务有什么不同？",
+    "answer": "**核心差异：批处理「大部分时间是沉默的」，所以监控方式要反过来。**\n\n**常驻服务 vs 批处理**：\n\n| | 常驻服务 | 批处理/cron |\n|---|---|---|\n| 正常状态 | 有持续指标 | **大部分时间不存在** |\n| 怎么发现异常 | 指标偏离基线 | **「该来时没来」** |\n| 主要风险 | 性能退化、错误率 | **跑失败、没跑、跑太久** |\n\n**四个必须监控的维度**：\n\n**1. 是否执行了（最重要，也最容易被漏）**\n```\n# Pushgateway 方案：任务结束时 push 一次时间戳\nbatch_last_success_timestamp_seconds{job=\"daily_report\"}\n\n# 告警：距上次成功超过预期周期\n(time() - batch_last_success_timestamp_seconds) > 26 * 3600\n```\n**这是批处理监控的核心指标**——「上次成功多久之前」。\n\n**2. 是否成功**\n```\nbatch_exit_code{job=\"daily_report\"} != 0\n```\n\n**3. 耗时是否异常**\n```\nbatch_duration_seconds > 2 * 历史均值   # 变慢往往是失败的先兆\n```\n\n**4. 输出是否合理（业务层）**\n```\nbatch_records_processed{job=\"daily_report\"} == 0    # 跑成功但处理 0 条，同样是故障\n```\n**这条最能发现「静默失败」**——脚本 exit 0，但实际什么也没干成。\n\n**Pushgateway 的正确用法**（批处理的标准方案）：\n```bash\n# 任务结束时推送\ncat <<EOF | curl --data-binary @- http://pushgateway:9091/metrics/job/daily_report\n# HELP batch_last_success_timestamp_seconds 上次成功时间\n# TYPE batch_last_success_timestamp_seconds gauge\nbatch_last_success_timestamp_seconds $(date +%s)\nbatch_exit_code 0\nbatch_duration_seconds $DURATION\nEOF\n```\n**关键：`job` 和 `instance` 标签必须唯一标识这个任务**，且**失败时也要推**（推送 exit_code=1），否则「失败」和「没跑」无法区分。\n\n**不要用 Pushgateway 的场景**：\n- 常驻服务的指标（用 pull）\n- 高频短任务（每秒几十个）——Pushgateway 会成为瓶颈，应该让任务自己暴露 HTTP 端点由 Prometheus 抓\n\n**兜底手段**：**用「聚合计时」而不是单点判断**——如果任务是每小时一次，监控「最近 24 小时执行次数」比监控「上次执行时间」更稳健（能发现「跑了一半就停了」的情况）。"
+  },
+  {
+    "id": 5033,
+    "type": "multiple",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "关于监控数据的时间戳与时区，以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "Prometheus 内部统一用 UTC 时间戳存储" },
+      { "key": "B", "text": "Grafana 可以按浏览器时区或指定时区展示，不影响存储" },
+      { "key": "C", "text": "服务器时钟不同步会导致指标时间戳混乱、出现 out of order 错误" },
+      { "key": "D", "text": "Prometheus 会按服务器本地时区存储时间戳" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：时序数据库**一律用 UTC 时间戳**（Unix 秒），时区只影响展示层。C 是实际问题：抓取时用的是**目标服务器返回的时间**（或 Prometheus 本机时间，取决于实现），时钟偏差会导致乱序写入。补一个常见困惑：**告警通知里的时间是本地时区**，而 Grafana 图上是按设定时区显示，排查时要注意对齐。还有一个坑：**`@timestamp` 解析失败**（日志里的时间格式不规范）会导致日志时间错乱，采集端要配正确的 `time_key` 和格式。"
+  },
+  {
+    "id": 5034,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "中等",
+    "question": "告警规则写 `expr: up == 0`（没有 `for`），对一个 5 秒抓取间隔的目标，最可能的问题是什么？",
+    "options": [
+      { "key": "A", "text": "一次网络抖动就会触发告警，产生大量误报" },
+      { "key": "B", "text": "完全正确，这是最佳实践" },
+      { "key": "C", "text": "表达式语法错误" },
+      { "key": "D", "text": "会漏报" }
+    ],
+    "answer": ["A"],
+    "explanation": "`up == 0` 是**瞬时判断**，抓取偶尔超时（网络抖动、GC 停顿、目标短暂繁忙）就会让 `up` 为 0 一次。没有 `for` 的话，这一瞬间就会触发告警。**正确写法**：`for: 2m`（覆盖至少 20 次抓取），确保是持续性不可达而非瞬时抖动。但要注意一个权衡：**`for` 越长，真实故障的发现越慢**。对 P0 级服务，`for: 1m` 已是可接受的下限。**判断依据**：`for` 的时长至少要覆盖「多少个抓取周期」，业界经验是 **≥ 4 倍抓取间隔**。"
+  },
+  {
+    "id": 5035,
+    "type": "short",
+    "category": "监控告警",
+    "difficulty": "困难",
+    "question": "线上要做一次大促保障，监控方面需要提前做哪些准备？",
+    "answer": "**大促保障的核心是「提前发现问题 + 快速定位 + 不被噪声淹没」。**\n\n**一、容量与基线（提前 2-4 周）**\n\n1. **压测并记录基线**：每个核心接口的 QPS-延迟曲线、单机承载上限\n2. **验证扩容链路**：自动扩缩容是否真能在 5 分钟内起作用（**要演练，不能假设**）\n3. **算清依赖容量**：DB 连接数、Redis 内存、MQ 堆积上限、第三方接口配额\n\n**二、监控覆盖面（提前 2 周）**\n\n| 层 | 检查项 |\n|---|---|\n| **业务** | 订单量、支付成功率、下单转化率（**必须有，且按分钟粒度**） |\n| **入口** | LB/Ingress 的 QPS 与 5xx |\n| **服务** | 核心链路的 P99、错误率、饱和度 |\n| **依赖** | DB/Redis/MQ/第三方接口 |\n| **资源** | CPU/内存/磁盘/带宽峰值水位 |\n\n**关键：所有监控的采集间隔要临时调密**——平时 60s 的指标，大促调到 15s（否则 1 分钟的故障看不清）。\n\n**三、告警策略专项调整**\n\n```\n1. 关闭「非核心」告警（避免淹没关键告警）\n2. 核心告警阈值按「大促预期」重新设定（平时 80% 阈值会全程告警）\n3. 关键告警加「直接电话」通道，不依赖群消息\n4. 静默掉「计划内」的变更（发布、扩容）\n```\n**第 1 条最重要**：大促期间的告警信噪比必须高，否则关键时刻没人看。\n\n**四、看板与作战室**\n\n1. **做一张「大促总览」单页看板**：核心业务指标 + 各层水位，一屏看完\n2. **按业务线做分层看板**，让各自团队能独立排查\n3. **每个看板标注「异常阈值」和「负责人」**\n\n**五、演练（提前 1 周，不能省）**\n\n```\n1. 故障注入：随机杀掉核心服务实例，看告警是否按时触发\n2. 模拟流量峰值：确认扩容与限流生效\n3. 演练「从告警到定位」的完整链路，记录耗时\n4. 验证「回滚」是否真能在 X 分钟内完成\n```\n**演练要记录 RTO**，并根据结果调整预案。\n\n**六、大促当天**\n\n| 时间 | 动作 |\n|---|---|\n| 开始前 1h | 确认所有监控正常、值班到位、回滚预案就绪 |\n| 开始后 | 盯总览看板 + 业务指标 |\n| 高峰中 | **少动手**，只在明确异常时介入 |\n| 结束后 | 复盘，把这次的经验写成 Runbook |\n\n**最容易被忽略的一条**：**监控系统自身的容量**。大促时指标量和日志量都会暴涨，Prometheus 和日志平台可能先扛不住——**要提前评估并扩容监控系统本身**。"
+  }
+]

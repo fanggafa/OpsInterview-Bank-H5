@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**652 题**（423 简答 + 124 单选 + 105 多选），23 个分类
+- 题库：**758 题**（500 简答 + 137 单选 + 121 多选），23 个分类
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -57,7 +57,7 @@ npm run dev          # http://127.0.0.1:5273
 ```
 ops-interview-h5/
 ├── docs/ops-interview-bank-PRD.md   # 产品需求文档
-├── public/data/questions.json       # 题库（652 题）
+├── public/data/questions.json       # 题库（758 题）
 ├── scripts/
 │   ├── validate-data.mjs            # 题库结构校验
 │   └── measure.mjs                  # 移动端布局实测（CDP，需本地起 dev）
@@ -124,7 +124,7 @@ ops-interview-h5/
 
 ## 维护题库
 
-题库共 **652 题**：423 道简答题 + 124 道单选题 + 105 道多选题，分布在 23 个分类中。
+题库共 **758 题**：500 道简答题 + 137 道单选题 + 121 道多选题，分布在 23 个分类中。
 
 ### 当前进度
 
@@ -138,23 +138,23 @@ ops-interview-h5/
 | Linux基础 | **60** | 40 | 10 | 10 | 50 ✅ |
 | MySQL | 50 | 32 | 10 | 8 | 50 ✅ |
 | Redis | 50 | 32 | 10 | 8 | 50 ✅ |
+| 监控告警 | **50** | 35 | 8 | 7 | 50 ✅ |
+| CI/CD | **46** | 34 | 6 | 6 | 45 ✅ |
 | MongoDB | 41 | 24 | 9 | 8 | 40 ✅ |
 | 消息队列 | 41 | 23 | 10 | 8 | 40 ✅ |
+| 安全与跳板机 | **40** | 32 | 2 | 6 | 40 ✅ |
 | LVS/HAProxy | 40 | 24 | 9 | 7 | 40 ✅ |
 | DNS | 35 | 19 | 9 | 7 | 35 ✅ |
 | iptables/firewalld | 35 | 22 | 7 | 6 | 35 ✅ |
 | Nginx | 35 | 22 | 7 | 6 | 35 ✅ |
 | Tomcat/JVM | 35 | 21 | 8 | 6 | 35 ✅ |
-| 监控告警 | 12 | 9 | 2 | 1 | 50 |
 | 综合场景题 | 12 | 12 | 0 | 0 | 45 |
-| CI/CD | 11 | 9 | 1 | 1 | 45 |
-| 安全与跳板机 | 7 | 6 | 0 | 1 | 40 |
 
 **待填充**（登记在 `scripts/pending-categories.mjs`）：
 存储与备份、虚拟化、Git/GitLab、日志与ELK、自动化与配置管理、云与高可用。
 
 **待扩充**（已有基础但未达目标题量）：
-监控告警(12→50)、CI/CD(11→45)、安全与跳板机(7→40)、综合场景题(12→45)。
+综合场景题(12→45)。
 
 ### 分类与编号段
 
