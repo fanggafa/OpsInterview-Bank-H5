@@ -1,0 +1,443 @@
+[
+  {
+    "id": 1201,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables 的「四表五链」分别是什么？数据包经过链的顺序是怎样的？",
+    "answer": "五链（数据包走的路径）：\n- PREROUTING：进来先过这里，可改目标地址（DNAT）\n- INPUT：进入本机进程\n- FORWARD：经本机转发（做网关时）\n- OUTPUT：本机进程发出\n- POSTROUTING：出去前最后一关，可改源地址（SNAT）\n\n四表（按功能分）：\n- filter：最常用，做允许/拒绝（INPUT/FORWARD/OUTPUT）\n- nat：做地址转换（PREROUTING/POSTROUTING/OUTPUT）\n- mangle：改包头（TTL、TOS 等）\n- raw：绕过 conntrack 跟踪\n\n[[图:iptables-chain-flow]]\n\n一句话记顺序：进来先 PREROUTING，出去最后 POSTROUTING；给本机走 INPUT，转发走 FORWARD，自己发的走 OUTPUT。",
+    "tags": ["四表五链", "数据包流向", "基础"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1202,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "iptables 放行 8080 端口和放行来自某网段的 SSH，命令分别怎么写？",
+    "answer": "放行 8080（TCP 入向）：\niptables -A INPUT -p tcp --dport 8080 -j ACCEPT\n\n放行某网段访问 22：\niptables -A INPUT -s 10.0.0.0/24 -p tcp --dport 22 -j ACCEPT\n\n几个关键参数：\n- -A 追加到链末尾；-I 插到最前（想优先匹配时用 -I）\n- -p 协议（tcp/udp/icmp）\n- --dport 目标端口，--sport 源端口\n- -s 源地址，-d 目标地址\n- -j 动作：ACCEPT / DROP / REJECT / LOG\n\n注意：规则是有顺序的，靠前的先匹配。所以「拒绝某 IP」要放在「允许所有」之前才有效。",
+    "tags": ["规则写法", "放行端口", "常用命令"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1203,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables 规则保存后重启就丢了，怎么持久化？",
+    "answer": "iptables 的规则只在内存里，重启会恢复默认，必须显式保存。\n\nCentOS 7+ / RHEL：\n- 保存：iptables-save > /etc/sysconfig/iptables\n- 恢复：iptables-restore < /etc/sysconfig/iptables\n- 装 iptables-services 后 systemctl enable iptables 让它开机加载\n\nUbuntu / Debian：\n- 用 iptables-persistent：netfilter-persistent save\n- 规则存在 /etc/iptables/rules.v4\n\n通用做法（脚本化）：\n- 自己写一个 restore 脚本放进开机启动\n- 或用 firewalld（它本身就是持久化配置）\n\n验证：保存后 systemctl restart iptables，再 iptables -L -n 看规则还在不在。\n\n常见事故：改了规则但忘了保存，重启后防火墙全开或全关。",
+    "tags": ["持久化", "iptables-save", "开机"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1204,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables -L 输出里 policy ACCEPT 和规则里的 ACCEPT 有什么区别？",
+    "answer": "这是两个不同层次的东西：\n\n- 链的默认策略（policy）：所有规则都不匹配时怎么办。例如 Chain INPUT (policy ACCEPT) 表示没被任何规则命中就放行。\n- 规则里的 -j ACCEPT：某条具体规则命中后的动作。\n\n实际含义举例（INPUT 链）：\npolicy DROP + 只有 22、80 的 ACCEPT 规则\n→ 白名单模式，只放行这两个端口，其他全拒绝（更安全）\n\npolicy ACCEPT + 一条 DROP 规则\n→ 黑名单模式，只拒绝指定的，其余全放（容易漏）\n\n生产建议：用 policy DROP 的白名单思路，但要先放行 SSH 再改策略，否则会把自己锁在门外。\n\n配套：末尾加一条 -j LOG 便于排查被拒的包。",
+    "tags": ["默认策略", "白名单", "安全"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1205,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "困难",
+    "question": "conntrack 表满会有什么现象？如何排查和调优？",
+    "answer": "现象（非常容易被误判）：\n- 偶发、不规律的连接超时或失败，重试有时能成功\n- 已建立的连接能通，新连接建不上\n- 应用日志报连接超时，但网络看起来是通的\n- dmesg 里出现：nf_conntrack: table full, dropping packet\n\n排查：\n- cat /proc/sys/net/netfilter/nf_conntrack_count（当前数量）\n- cat /proc/sys/net/netfilter/nf_conntrack_max（上限）\n- dmesg -T | grep conntrack\n\n调优：\n- 调大上限：sysctl -w net.netfilter.nf_conntrack_max=1048576\n- 缩短超时（默认 ESTABLISHED 5 天太长）：\n  net.netfilter.nf_conntrack_tcp_timeout_established = 600\n- 减少不必要的跟踪：对不需要 nat 的流量在 raw 表 NOTRACK\n- 优化应用侧：用连接池，减少短连接\n\n特别注意：做 NAT/负载均衡的机器（LVS、K8s node）连接数大，最容易撞到这个上限。",
+    "tags": ["conntrack", "表满", "排障", "调优"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1206,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "iptables 中，想把规则插到链的最前面（优先匹配），应该用哪个参数？",
+    "options": [
+      { "key": "A", "text": "-A" },
+      { "key": "B", "text": "-I" },
+      { "key": "C", "text": "-D" },
+      { "key": "D", "text": "-F" }
+    ],
+    "answer": ["B"],
+    "explanation": "-A 追加到末尾（最后匹配），-I 插入到最前（最先匹配），-D 删除规则，-F 清空整条链。规则按顺序匹配，所以想优先生效必须用 -I。",
+    "tags": ["-I", "-A", "规则顺序"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1207,
+    "type": "multiple",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "修改 iptables 规则时，以下哪些做法能避免把自己锁在外面？（多选）",
+    "options": [
+      { "key": "A", "text": "先放行 SSH 端口，再改 INPUT 的默认策略" },
+      { "key": "B", "text": "用 at 或 crontab 设置「10 分钟后自动清空规则」作为保险" },
+      { "key": "C", "text": "在云上通过控制台的 VNC/串口登录保底" },
+      { "key": "D", "text": "直接 -F 清空所有规则再从头配" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "A 是正确顺序；B 是经典的「定时回滚保险」；C 是云上保底手段。D 会让你在清空后、新规则生效前处于无防护且可能断连的状态，是高危操作。",
+    "tags": ["防锁死", "安全操作", "运维经验"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1208,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables 里 DROP 和 REJECT 有什么区别？该用哪个？",
+    "answer": "区别在于「要不要告诉对方你拒绝了」：\n\n- DROP：直接丢弃，不回任何响应。对方只能干等超时。\n- REJECT：回一个拒绝响应（默认 icmp-port-unreachable），对方立刻知道失败。\n\n选择建议：\n- 对公网、不可信来源：用 DROP。让对方猜不出端口是否开放，减少扫描信息泄露。\n- 对内网、可控来源：用 REJECT。对方能快速失败、立即重试别的路径，排障更友好。\n\n注意：DROP 会让客户端表现为「连接超时」，而 REJECT 表现为「连接被拒绝」，排障时要会区分——很多人误把 DROP 引起的超时当成网络故障。",
+    "tags": ["DROP", "REJECT", "安全策略"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1209,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "firewalld 和 iptables 是什么关系？zone 是干什么的？",
+    "answer": "关系：\n- firewalld 是 iptables/nftables 的前端管理工具，底层最终还是生成 iptables 规则\n- 不建议两个同时用：CentOS 7+ 装 firewalld 后，手写的 iptables 规则会被它接管/覆盖，容易冲突\n\nzone（区域）的作用：按「信任程度」分组管理规则。网卡加入某个 zone，就套用该 zone 的规则集。\n\n常用 zone：\n- drop：全部丢弃\n- block：拒绝入向，允许出向\n- public：默认区，只放行选定服务\n- trusted：全部放行\n\n常用命令：\n- firewall-cmd --get-active-zones（看网卡在哪个区）\n- firewall-cmd --zone=public --add-port=8080/tcp --permanent\n- firewall-cmd --reload（--permanent 必须 reload 才生效）\n- firewall-cmd --list-all\n\n高频坑：加了 --permanent 但忘了 reload，规则「看起来配了却不生效」。",
+    "tags": ["firewalld", "zone", "reload"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1210,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "firewalld 用 --permanent 加了端口，但立即测试发现端口不通，最可能的原因是？",
+    "options": [
+      { "key": "A", "text": "端口被占用" },
+      { "key": "B", "text": "没有执行 firewall-cmd --reload，" },
+      { "key": "C", "text": "需要重启服务器" },
+      { "key": "D", "text": "iptables 没装" }
+    ],
+    "answer": ["B"],
+    "explanation": "--permanent 只写入持久化配置，必须 firewall-cmd --reload 才加载到运行时。不加 --permanent 则立即生效但重启后丢失。这是最高频的 firewalld 坑。",
+    "tags": ["firewalld", "reload", "permanent"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1211,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "困难",
+    "question": "如何用 iptables 做端口转发（把本机 80 转到 8080）？",
+    "answer": "需要同时配 DNAT（改目标）+ 放行（FORWARD/INPUT），缺一不可：\n\n1. 开启转发：\nsysctl -w net.ipv4.ip_forward=1\n持久化写 /etc/sysctl.conf\n\n2. DNAT 规则（PREROUTING）：\niptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:8080\n\n3. 放行：\niptables -A INPUT -p tcp --dport 8080 -j ACCEPT\niptables -A FORWARD -p tcp -d 127.0.0.1 --dport 8080 -j ACCEPT\n\n4. 本机回程如果源地址不对，还要 SNAT：\niptables -t nat -A POSTROUTING -j MASQUERADE\n\n常见只有 1 步或 2 步就停了，结果「规则配了但访问不通」，原因就是漏了 ip_forward 或 FORWARD 放行。\n\n更简单的替代：用 Nginx stream 或 firewalld 的 forward-port，配置更直观。",
+    "tags": ["DNAT", "端口转发", "ip_forward"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1212,
+    "type": "multiple",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "端口明明放行了，但从外部仍访问不通，可能的原因有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "服务只监听在 127.0.0.1，没监听 0.0.0.0" },
+      { "key": "B", "text": "云安全组/网络 ACL 未放行该端口" },
+      { "key": "C", "text": "规则加在错误的链或 zone（如加在 OUTPUT 而不是 INPUT）" },
+      { "key": "D", "text": "服务器 CPU 使用率较高" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "监听地址、云安全组、规则链放错位置是最常见的三个原因。CPU 高不会导致特定端口不通（只会变慢）。排查顺序建议：ss -lntp 看监听 → 本机 curl 测通 → 再查安全组与防火墙。",
+    "tags": ["端口不通", "排查", "监听地址"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1213,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables 规则太多导致性能下降，有什么优化思路？",
+    "answer": "为每个包逐条匹配规则是线性的，规则越多越慢。优化方向：\n\n1. 用 ipset 替代大量同类规则：\n   把几百条「拒绝某 IP」合并成一个 ipset，一条规则引用它\n   ipset create badlist hash:ip\niptables -A INPUT -m set --match-set badlist src -j DROP\n\n2. 调整顺序：把命中率高的规则（如已建立连接的 ESTABLISHED,RELATED）放最前面\n   经验做法：\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n   这样绝大多数包第一条就命中，不用走后面几百条\n\n3. 合并同类规则：用 multiport 一次放行多个端口，替代多条\n   -m multiport --dports 80,443,8080\n\n4. 改用 nftables：它用集合和更高效的匹配结构，规则多时性能明显更好\n\n5. 能上移的规则上移，能减少判断的先减少（如先按 -s 过滤再按端口）\n\n观测手段：iptables -L -n --line-numbers 看规则数，用 perf 或压测对比优化前后。",
+    "tags": ["性能优化", "ipset", "ESTABLISHED"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1214,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "查看 iptables 规则并显示端口号（不做域名解析）的命令是？",
+    "options": [
+      { "key": "A", "text": "iptables -L" },
+      { "key": "B", "text": "iptables -L -n" },
+      { "key": "C", "text": "iptables -F" },
+      { "key": "D", "text": "iptables -S --save" }
+    ],
+    "answer": ["B"],
+    "explanation": "-n 表示不解析 IP 和服务名，直接显示数字端口，速度快且准确。规则多时建议加 -n --line-numbers，方便按序号删除规则。",
+    "tags": ["查看规则", "-n", "命令"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1215,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "困难",
+    "question": "什么是 iptables 的 nat 表？SNAT 和 DNAT 分别用在什么场景？",
+    "answer": "nat 表负责地址转换，只在连接的第一个包生效（之后由 conntrack 直接匹配）。\n\nSNAT（改源地址）：让内网机器能上网或让回程走对路径\n- 典型：iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth0 -j MASQUERADE\n- MASQUERADE 是自动取出口网卡地址的 SNAT，适合出口 IP 不固定的场景\n- 用在哪：内网共享出口、容器访问外网、回程路由不对称时修正\n\nDNAT（改目标地址）：让外部访问转发到内网服务\n- 典型：iptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT --to-destination 192.168.1.10:8080\n- 用在哪：端口映射、反向代理前置、把流量导向后端\n\n成对理解：\n- DNAT 在 PREROUTING（进来就改目标）\n- SNAT 在 POSTROUTING（出去前改源）\n- 一趟完整的转发通常是「进来 DNAT + 出去 SNAT」\n\n排查要点：改了 nat 规则必须确认 ip_forward=1 且 FORWARD 链放行，否则包到了也过不去。",
+    "tags": ["nat", "SNAT", "DNAT"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1216,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "如何只查看某个链（比如 INPUT）的规则？如何删除第 3 条规则？",
+    "answer": "只看 INPUT 链：\niptables -L INPUT -n --line-numbers\n\n输出会带序号，例如：\n1  ACCEPT tcp -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:22\n2  DROP   all -- 1.2.3.4   0.0.0.0/0\n3  ACCEPT tcp -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:80\n\n删除第 3 条：\niptables -D INPUT 3\n\n要点：\n- 一定先加 --line-numbers 看序号，再用 -D 链 序号 删除\n- 删除后序号会重新排列，连续删除多条时要从大往小删\n- 想清空整条链用 -F INPUT（慎用，会全丢）\n- 按规则内容删除也可以：iptables -D INPUT -p tcp --dport 80 -j ACCEPT\n\n排障习惯：改之前先 iptables-save > /tmp/before.rules 备份。",
+    "tags": ["删除规则", "--line-numbers", "命令"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1217,
+    "type": "multiple",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables 相比 firewalld，以下说法正确的是？（多选）",
+    "options": [
+      { "key": "A", "text": "iptables 规则重启会丢失，需手动保存持久化" },
+      { "key": "B", "text": "firewalld 支持 zone（按信任程度分组管理）" },
+      { "key": "C", "text": "两者可以同时开启并各自独立生效，不会冲突" },
+      { "key": "D", "text": "firewalld 支持运行时与永久配置分离（reload 生效）" }
+    ],
+    "answer": ["A", "B", "D"],
+    "explanation": "C 是错的：两者底层都操作 netfilter，同时使用会互相覆盖规则，官方也不建议共存。A/B/D 都描述了各自的真实特点。",
+    "tags": ["iptables vs firewalld", "对比"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1218,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "如何只允许某个网段访问 SSH，但拒绝其他所有人？",
+    "answer": "三步，顺序很关键：\n\n1. 先放行指定网段（插到最前，优先匹配）：\niptables -I INPUT -s 10.0.0.0/24 -p tcp --dport 22 -j ACCEPT\n\n2. 允许已建立的连接（避免已连着的会话被后续规则断掉）：\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n3. 拒绝其他所有对 22 的访问，放在最后：\niptables -A INPUT -p tcp --dport 22 -j DROP\n\n要点：\n- 用 -I（插入最前）而不是 -A，否则可能被前面的规则抢先\n- 先加规则再改 policy，改完立刻新开一个窗口验证\n- 保险做法：用 at 设置 10 分钟后自动清空规则，防止误锁\n\n验证：新开终端 ssh 测试；从其他网段测试应超时（DROP）而不是被拒。\n\n生产建议：改用 firewalld rich rule 或直接在白名单网关/跳板机上控制更易维护。",
+    "tags": ["白名单", "SSH", "访问控制"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1219,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables 中，查看 nat 表规则的命令是？",
+    "options": [
+      { "key": "A", "text": "iptables -L -n" },
+      { "key": "B", "text": "iptables -t nat -L -n" },
+      { "key": "C", "text": "iptables -F -t nat" },
+      { "key": "D", "text": "iptables -A nat" }
+    ],
+    "answer": ["B"],
+    "explanation": "-t nat 指定查看 nat 表，缺省的 -L 只看 filter 表。这是很多人「看不到转发规则」的原因——没指定 -t。",
+    "tags": ["nat表", "-t", "查看规则"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1220,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "困难",
+    "question": "云服务器上安全组和 iptables 都配了，为什么还是不通？排查顺序是什么？",
+    "answer": "云上网络链条更长，要按「从外到里」逐层排除：\n\n1. 安全组（云控制台）\n   - 入向规则是否放行该端口与来源网段\n   - 注意安全组是有状态的，但有些云还需显式放行回程\n   - 检查是否绑错了实例/网卡\n\n2. 网络 ACL / 子网路由\n   - 如果用了网络 ACL（子网层面的无状态过滤），回程也要放行\n   - 路由表是否正确（尤其有对等连接/NAT 网关时）\n\n3. 本机防火墙\n   - iptables -L -n 或 firewall-cmd --list-all\n   - 注意 firewalld 与 iptables 不要同时用\n\n4. 服务监听地址\n   - ss -lntp | grep 端口\n   - 若监听 127.0.0.1，外部永远连不上（最常见！）\n\n5. 本机自测\n   - curl 127.0.0.1:端口 通不通，先把应用自身排除\n\n6. 抓包定位\n   - 服务端 tcpdump 看 SYN 有没有到\n   - 到了但不回 → 防火墙/监听问题\n   - 没到 → 安全组/路由/网络问题\n\n顺序口诀：安全组 → 网络 ACL/路由 → 本机防火墙 → 监听地址 → 应用本身 → 抓包定论。",
+    "tags": ["云安全组", "排查顺序", "网络链路"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1221,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "iptables 的 LOG 与 DROP 组合有什么用处？",
+    "answer": "作用：把被拒绝的包记录下来，便于排障和发现攻击。\n\n写法（放在 DROP 之前）：\niptables -A INPUT -j LOG --log-prefix \"[IPT-DROP]: \" --log-level 4\niptables -A INPUT -j DROP\n\n或针对特定流量：\niptables -A INPUT -p tcp --dport 22 -j LOG --log-prefix \"SSH试:\"\n\n要点：\n- LOG 是「非终结」动作，记录后继续走后面的规则，所以必须再跟一条 DROP/ACCEPT\n- 日志会写进系统日志（dmesg / /var/log/messages），量大时要用 --limit 限流：\n  -m limit --limit 5/min -j LOG\n- log-prefix 建议加统一前缀，方便 grep 过滤\n\n实际价值：排查「为什么这个 IP 连不上」时，看日志能立刻确认是不是被防火墙拦了；也能发现扫描行为。",
+    "tags": ["LOG", "日志", "排障"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1222,
+    "type": "multiple",
+    "category": "iptables/firewalld",
+    "difficulty": "困难",
+    "question": "以下哪些情况会导致 iptables 规则「看起来配了但不生效」？（多选）",
+    "options": [
+      { "key": "A", "text": "规则加在了错误的表（如该加 nat 却加到了 filter）" },
+      { "key": "B", "text": "规则位置靠后，被前面的 ACCEPT/DROP 抢先匹配" },
+      { "key": "C", "text": "规则只加在运行时，未持久化，重启后丢失" },
+      { "key": "D", "text": "iptables 版本较新" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "表选错、顺序靠后、没持久化是三大典型原因。D 与生效无关。建议排查时用 iptables -t 表 -L 链 -n -v，看 pkts 计数是否增长，能确认规则是否被命中。",
+    "tags": ["不生效", "排查", "常见错误"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1223,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables 里 ESTABLISHED,RELATED 这条规则为什么几乎必须加？",
+    "answer": "因为 iptables 默认对每个包逐条判断，而绝大多数包都是「已有连接」的后续包。\n\n作用：让已建立连接及其关联连接（如 FTP 的数据连接）直接放行，不用再走后面的规则。\n\n写法（放在链的最前面，优先级最高）：\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n不加会怎样：\n1. 性能差：每个包都要走过几百条规则\n2. 容易误杀：你放行了「入向 80」，但没放行「出向的回包」，导致能进不能出，连接建不起来\n\n用 conntrack 模块的新写法（等价）：\n-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT\n\n这是几乎所有生产 iptables 配置的第一条规则。",
+    "tags": ["ESTABLISHED", "conntrack", "最佳实践"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1224,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "清空 iptables 所有规则（慎用）的命令是？",
+    "options": [
+      { "key": "A", "text": "iptables -F" },
+      { "key": "B", "text": "iptables -L" },
+      { "key": "C", "text": "iptables -A" },
+      { "key": "D", "text": "iptables -D" }
+    ],
+    "answer": ["A"],
+    "explanation": "-F（flush）清空指定链的所有规则，不指定链则清空所有表的所有链。高危操作：清空后若默认策略是 DROP，会立即断开所有连接。操作前务必先 iptables-save 备份。",
+    "tags": ["-F", "清空规则", "高危"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1225,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "困难",
+    "question": "如何用 iptables 做简单的防暴力破解（限制 SSH 连接频率）？",
+    "answer": "用 recent 模块做「限速+封禁」，或更简单用 limit 模块。\n\n方案一：recent 模块（推荐，能真正封禁）\n\n1. 记录新连接：\niptables -A INPUT -p tcp --dport 22 -m state --state NEW -m recent --set --name SSH\n\n2. 1 分钟内超过 4 次的，加入黑名单并丢弃：\niptables -A INPUT -p tcp --dport 22 -m state --state NEW -m recent --update --seconds 60 --hitcount 4 --name SSH -j DROP\n\n方案二：limit 模块（只限速，不封禁）\niptables -A INPUT -p tcp --dport 22 -m limit --limit 4/minute -j ACCEPT\n\n方案三（最实用）：fail2ban\n- 监控 /var/log/secure 的失败登录\n- 达到阈值自动调用 iptables 封禁 IP，并设定封禁时长\n- 配置简单、有白名单、可管理，生产更推荐\n\n注意：iptables 层面的频率限制作用在「连接」而非「认证失败」，效果不如 fail2ban 精确；且临时封禁要考虑 NAT 环境下误伤（多人共用出口 IP）。",
+    "tags": ["防爆破", "recent", "fail2ban"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1226,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "iptables -L 输出中的 pkts 与 bytes 列有什么用？",
+    "answer": "它们是这条规则**累计匹配到的包数和字节数**，是判断规则是否真正生效的最直接证据。\n\n用法：\niptables -L INPUT -n -v --line-numbers\n\n典型判读：\n- pkts 一直为 0 → 这条规则从来没被命中，说明前面的规则抢先匹配了，或流量根本没走到这条链\n- pkts 在增长 → 规则生效中\n\n排查价值极高，举两个例子：\n1. 「我加了 DROP 规则但对方还能连」→ 看那条 DROP 的 pkts 是不是 0，若是，说明包没到这条链或前面已 ACCEPT\n2. 「这个端口应该被拦了怎么还有流量」→ 看哪条规则在命中，顺着 pkts 增长的规则找原因\n\n配套技巧：\n- 加 -v 才显示计数\n- 排查完想重新统计可 iptables -Z 清零\n- 用 iptables-save 看等效的规则写法更清晰",
+    "tags": ["pkts", "-v", "排障技巧"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1227,
+    "type": "multiple",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "做 iptables 变更前，哪些是应有的安全习惯？（多选）",
+    "options": [
+      { "key": "A", "text": "先 iptables-save 备份当前规则" },
+      { "key": "B", "text": "设置定时任务在 10 分钟后自动恢复备份（防止锁死）" },
+      { "key": "C", "text": "保留一个已登录的 SSH 会话不断开，作为验证窗口" },
+      { "key": "D", "text": "直接在生产高峰时段操作，人多能及时发现" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "A/B/C 都是防锁死与可回滚的标准做法。D 恰恰相反：变更应避开高峰，并在有回滚手段的前提下进行。",
+    "tags": ["安全操作", "备份", "回滚"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1228,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "如何限制某台机器只能访问特定的 3 个 IP 和 1 个端口？",
+    "answer": "用 OUTPUT 链做出口白名单，顺序是「先放行、后拒绝」。\n\n以只允许访问 10.0.0.1:443、10.0.0.2:3306、10.0.0.3:6379 为例：\n\n1. 放行本地回环与已建立连接（否则本机服务间通信会坏）：\niptables -A OUTPUT -o lo -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n2. 逐个放行目标：\niptables -A OUTPUT -d 10.0.0.1 -p tcp --dport 443 -j ACCEPT\niptables -A OUTPUT -d 10.0.0.2 -p tcp --dport 3306 -j ACCEPT\niptables -A OUTPUT -d 10.0.0.3 -p tcp --dport 6379 -j ACCEPT\n\n3. 域名解析必须放行，否则应用连域名都不通：\niptables -A OUTPUT -p udp --dport 53 -j ACCEPT\niptables -A OUTPUT -p tcp --dport 53 -j ACCEPT\n\n4. 最后拒绝其余：\niptables -A OUTPUT -j DROP\n\n易漏点：DNS（53）、NTP（123）、回环、已建立连接。少放行一个就会表现为「部分功能莫名不通」。\n\n生产更推荐用网络层的安全组/ACL 或专用出向代理来做，iptables 白名单维护成本高。",
+    "tags": ["出口限制", "白名单", "OUTPUT"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1229,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables 里做 DNAT 的规则应该加在哪条链？",
+    "options": [
+      { "key": "A", "text": "INPUT" },
+      { "key": "B", "text": "PREROUTING" },
+      { "key": "C", "text": "POSTROUTING" },
+      { "key": "D", "text": "OUTPUT" }
+    ],
+    "answer": ["B"],
+    "explanation": "DNAT 改的是目标地址，必须在路由决策之前完成，所以放在 nat 表的 PREROUTING 链。SNAT 改源地址，放在 POSTROUTING。",
+    "tags": ["DNAT", "PREROUTING", "nat"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1230,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "困难",
+    "question": "Kubernetes 节点上的 iptables 规则非常多，如何理解和排查？",
+    "answer": "K8s 依赖 iptables 实现 Service 转发，规则由 kube-proxy 自动生成。\n\n理解关键链：\n- KUBE-SERVICES：Service 总入口，按 ClusterIP:端口 分流\n- KUBE-SVC-xxx：某个 Service 的规则，负责按比例分流到后端\n- KUBE-SEP-xxx：单个后端 Pod 的规则，做 DNAT 到 Pod IP\n- KUBE-POSTROUTING：SNAT（让回程走对路径）\n\n一条请求的路径大致是：\nPREROUTING → KUBE-SERVICES → KUBE-SVC-xxx（按概率分流）→ KUBE-SEP-xxx（DNAT 到 Pod）→ POSTROUTING（可能 SNAT）\n\n排查方法：\n1. 顺着链查：iptables -t nat -L KUBE-SERVICES -n | grep <service-ip>\n2. 找到对应的 KUBE-SVC-xxx，再看它引用的 SEP 规则\n3. 对比 kubectl get endpoints，确认后端列表与规则是否一致（不一致通常是 kube-proxy 没同步）\n4. 看 kube-proxy 日志与 conntrack 表：规则对了但不通，常见是 conntrack 表满\n\n常见坑：\n- 节点 conntrack 上限过低（Service 多时极易撞到）\n- 用了 ipvs 模式但内核模块没装，回退 fivetables 行为不一致\n- 自己手写的 iptables 规则与 kube-proxy 的规则冲突（不要随意改 KUBE- 开头的链）",
+    "tags": ["K8s", "kube-proxy", "iptables", "Service"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1231,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "如何查看某条规则的命中次数并做清零重新统计？",
+    "answer": "查看计数（必须带 -v）：\niptables -L INPUT -n -v --line-numbers\n\n输出会多出 pkts/bytes 两列，表示累计匹配量。\n\n清零重新统计：\niptables -Z INPUT\n（-Z 把指定链的计数器归零，不指定链则清零全部）\n\n实用场景：\n1. 排查「规则到底有没有生效」：清零 → 发起一次访问 → 再看计数是否 +1\n2. 做变更前后对比：记录各规则的 pkts 增量，确认流量分布是否符合预期\n3. 找「谁在偷偷命中」：清零后观察哪条规则计数增长最快\n\n配合 -t 指定表：iptables -t nat -L -n -v\n\n小技巧：想看规则的原始写法（比 -L 更清晰、可复制），用 iptables -S，例如 iptables -S INPUT。",
+    "tags": ["计数器", "-Z", "-v"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1232,
+    "type": "multiple",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "以下哪些是 iptables 常用动作（-j 后面的值）？（多选）",
+    "options": [
+      { "key": "A", "text": "ACCEPT" },
+      { "key": "B", "text": "DROP" },
+      { "key": "C", "text": "LOG" },
+      { "key": "D", "text": "SAVE" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "常用动作有 ACCEPT、DROP、REJECT、LOG、DNAT、SNAT、MASQUERADE、RETURN 等。SAVE 不是动作，保存用的是 iptables-save 命令。",
+    "tags": ["动作", "-j", "常用"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1233,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "为什么说「iptables 规则顺序决定结果」？举例说明。",
+    "answer": "iptables 对每个包**从上往下逐条匹配，命中即停**（非终结动作除外），所以顺序错了结论就反了。\n\n典型反例：\n\n错误写法（先全放行，再拒绝某 IP）：\niptables -A INPUT -j ACCEPT\niptables -A INPUT -s 1.2.3.4 -j DROP\n结果：1.2.3.4 的包在第一条就被 ACCEPT 了，第二条永远不生效。\n\n正确写法（先拒绝特定，再全放行）：\niptables -A INPUT -s 1.2.3.4 -j DROP\niptables -A INPUT -j ACCEPT\n\n再看一个真实场景：\n放行 22 但不是白名单网段 → 若你在前面已有 -j ACCEPT 的通用规则，后面的白名单限制会失效。\n\n实践约定：\n1. 特例在前、通用在后\n2. ESTABLISHED,RELATED 放最前（性能）\n3. 变更后一定用 -v 看 pkts 确认哪条在命中\n4. 需要「插到最前」用 -I 而不是 -A\n\n记住一句话：iptables 是「第一个匹配说话」，不是「最后一条生效」。",
+    "tags": ["规则顺序", "匹配原理", "陷阱"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1234,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "中等",
+    "question": "iptables 规则的持久化配置，CentOS 7 及以上通常保存在哪个文件？",
+    "options": [
+      { "key": "A", "text": "/etc/sysconfig/iptables" },
+      { "key": "B", "text": "/etc/iptables.conf" },
+      { "key": "C", "text": "/etc/firewalld/iptables" },
+      { "key": "D", "text": "/var/lib/iptables" }
+    ],
+    "answer": ["A"],
+    "explanation": "CentOS/RHEL 用 iptables-services，规则存 /etc/sysconfig/iptables。Ubuntu/Debian 用 iptables-persistent，存 /etc/iptables/rules.v4。",
+    "tags": ["持久化", "路径", "CentOS"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1235,
+    "type": "short",
+    "category": "iptables/firewalld",
+    "difficulty": "困难",
+    "question": "生产环境上如何从 iptables 平滑迁移到 firewalld 或 nftables？",
+    "answer": "核心原则：不要一次性推倒重来，要能随时回退。\n\n迁移步骤：\n\n1. 先盘点现状\n   - iptables-save > /root/iptables.backup（必须）\n   - 统计规则数、链、涉及的表（nat/filter/mangle）\n   - 找出哪些是业务必需、哪些是历史遗留\n\n2. 转换为新配置\n   - firewalld：把规则映射为 service/port/rich rule/zone\n     firewall-cmd --zone=public --add-port=8080/tcp --permanent\n     复杂规则用 rich rule：--add-rich-rule='rule family=ipv4 source address=10.0.0.0/24 port port=22 protocol=tcp accept'\n   - nftables：iptables-translate 能自动转换单条规则\n     iptables-translate -A INPUT -p tcp --dport 22 -j ACCEPT\n\n3. 并行验证\n   - 在测试机先跑，用相同流量回放验证\n   - 保留原 iptables 备份与回滚脚本\n\n4. 灰度切换\n   - 先切非核心机器，观察 1-2 天\n   - 切换窗口预留回滚时间\n\n5. 关键注意\n   - firewalld 与 iptables 不能同时启用\n   - 切换会短暂断开现有连接（尤其默认策略改为 DROP 时）\n   - 云安全组不受影响，但本机规则变更仍需谨慎\n\n6. 回滚方案\n   - iptables-restore < /root/iptables.backup\n   - 立即验证 SSH 与核心端口\n\n经验：迁移最大的风险不是「新规则写错」，而是「漏掉某条历史规则」导致某个不起眼的对接不通。所以盘点阶段要拉上业务方一起确认。",
+    "tags": ["迁移", "firewalld", "nftables"],
+    "frequency": "中频"
+  }
+]

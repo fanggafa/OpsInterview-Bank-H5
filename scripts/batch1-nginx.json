@@ -1,0 +1,443 @@
+[
+  {
+    "id": 1401,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 的 location 匹配优先级是怎样的？请按从高到低排列。",
+    "answer": "从高到低共 5 档，命中即停：\n\n1. = 精确匹配（完全相同才命中）\n2. ^~ 前缀匹配（命中后不再尝试正则）\n3. ~ 或 ~* 正则匹配（按书写顺序，第一个命中即停；~* 不区分大小写）\n4. 普通前缀匹配（取最长匹配）\n5. / 兜底\n\n[[图:nginx-location-match]]\n\n一句话记：= → ^~ → 正则 → 普通前缀 → /。\n\n两个易错点：\n- ^~ 的意义是「命中前缀后就跳过正则」，用于静态资源，避免被正则规则抢走\n- 正则按配置里出现的顺序匹配，写在前面的优先，这个顺序很容易和直觉相反",
+    "tags": ["location", "匹配优先级", "核心"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1402,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "困难",
+    "question": "proxy_pass 后面带斜杠和不带斜杠有什么区别？",
+    "answer": "关键差异是**是否剥掉 location 的前缀**。\n\n不带斜杠：proxy_pass http://backend;\n   请求 /api/user → 转发到 /api/user（完整路径原样透传）\n\n带斜杠：proxy_pass http://backend/;\n   请求 /api/user → 转发到 /user（把 /api/ 替换成 /，前缀被剥掉）\n\n[[图:nginx-proxy-pass]]\n\n口诀：带斜杠 = 截断前缀，不带斜杠 = 原样透传。\n\n实战判断：\n- 后端接口本身就带 /api 前缀 → 用不带斜杠\n- 后端不带前缀（如 SpringBoot 直接 /user）→ 用带斜杠\n\n高频事故：多写或少写一个斜杠，前端报 404，后端日志里根本看不到请求。排查方法是对比浏览器请求路径和后端 access log 的路径。",
+    "tags": ["proxy_pass", "路径拼接", "反向代理"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1403,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 返回 502 和 504 分别是什么原因？怎么排查？",
+    "answer": "两句话区分：**502 是上游坏了，504 是上游太慢**。\n\n502 Bad Gateway：Nginx 从上游收到了无效响应\n- 上游进程没起 / 崩了 / 端口没监听 → ss -lntp 看后端\n- 上游返回了非法响应（空响应、协议不匹配，如 http 打到了 https 端口）\n- 后端重启中、被 OOM kill、worker 崩溃\n- 连接上游被拒（backend 地址/端口配错）\n\n504 Gateway Timeout：Nginx 等上游超时\n- 后端处理慢（慢 SQL、下游依赖慢、GC 停顿）\n- proxy_read_timeout 设置过短（默认 60s）\n- 数据量大、上游线程池打满\n\n排查顺序：\n1. 看 error.log，关键字 upstream timed out（504）或 connect() failed /上游 prematurely closed（502）\n2. 从 Nginx 机器 curl 后端端口，确认网络通\n3. 看后端自己的日志与耗时（有没有慢请求）\n4. 用 upstream_response_time 和 request_time 对比，判断耗时在 Nginx 还是后端\n\n关键配置项：proxy_connect_timeout、proxy_read_timeout、proxy_send_timeout。",
+    "tags": ["502", "504", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1404,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 的 master 和 worker 进程分别负责什么？worker 数怎么定？",
+    "answer": "分工：\n\n- master 进程（1 个）：\n  - 读取/校验配置、绑定端口\n  - 管理 worker（启动、平滑重启、退出）\n  - 处理信号（reload、quit、reopen）\n  - 以 root 启动以便绑定 80 等低端口，worker 通常降权运行\n\n- worker 进程（多个）：\n  - 实际处理请求：收发网络数据、执行 location 逻辑、与上游通信\n  - 每个 worker 是单线程 + epoll 事件驱动，所以一个 worker 能扛大量并发连接\n\nworker 数量经验值：\n- 默认配置 worker_processes auto（跟随 CPU 核数），这是最佳起点\n- 不要盲目调大：worker 多了反而增加上下文切换与内存占用\n- 关键是 worker_connections（单 worker 的最大连接数）与系统 ulimit 要配套调大\n\n排查相关：\n- ps -ef | grep nginx 看进程结构\n- 若只有一个 worker 在跑而配置写了 8，说明配置没 reload 或启动参数覆盖\n- worker 数突然增多多为正常（优雅退出期间新老并存）",
+    "tags": ["master", "worker", "架构"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1405,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 的负载均衡算法有哪些？各自适合什么场景？",
+    "answer": "常用四种：\n\n1. round-robin（默认）：轮询，按顺序分给后端\n   适合：后端性能相近、无状态服务\n\n2. least_conn：最少连接数优先\n   适合：后端处理耗时差异大（长连接、请求耗时不均）\n\n3. ip_hash：按客户端 IP 哈希固定后端\n   适合：需要会话粘性的老应用（没有共享 session）\n   缺点：NAT 环境下大量用户共用出口 IP，会导致严重倾斜\n\n4. hash $key：按任意变量哈希（如 hash $request_uri 做缓存分片）\n\n商业版还有 random（随机，可选 two 选二）；开源版可用变量组合近似实现。\n\n配置示例：\nupstream backend {\n    least_conn;\n    server 10.0.0.1:8080 weight=2;\n    server 10.0.0.2:8080 weight=1;\n    server 10.0.0.3:8080 backup;\n}\n\n选型建议：无状态优先 least_conn 或默认轮询；有会话粘性需求先用共享 session（Redis），实在不行才 ip_hash。",
+    "tags": ["upstream", "负载均衡", "算法"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1406,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 中想要「命中某前缀后就不再尝试正则匹配」，应该用哪个 location 修饰符？",
+    "options": [
+      { "key": "A", "text": "=" },
+      { "key": "B", "text": "^~" },
+      { "key": "C", "text": "~" },
+      { "key": "D", "text": "~*" }
+    ],
+    "answer": ["B"],
+    "explanation": "^~ 表示前缀匹配且命中后跳过后续正则检查，常用于静态资源，避免被正则规则抢走。= 是精确匹配，~ 和 ~* 都是正则。",
+    "tags": ["location", "^~", "修饰符"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1407,
+    "type": "multiple",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 出现大量 502，可能的原因有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "后端服务进程挂了或端口没监听" },
+      { "key": "B", "text": "后端返回空响应或不合法响应头" },
+      { "key": "C", "text": "proxy_pass 地址或端口配错" },
+      { "key": "D", "text": "客户端网络带宽不足" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "502 是 Nginx 与上游之间的问题：连不上、收到非法/空响应、地址配错。客户端带宽不足会表现为慢或超时，不会产生 502。",
+    "tags": ["502", "排障", "上游"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1408,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 配置改了如何平滑生效？reload 和 restart 有什么区别？",
+    "answer": "推荐 nginx -s reload（或 systemctl reload nginx），实现平滑重载。\n\n机制：\n1. master 收到 HUP 信号，重新读取并校验配置\n2. 启动新的 worker 进程（用新配置）\n3. 老 worker 收到 graceful shutdown 信号，处理完已接收的请求后退出\n\n效果：整个过程不断连接、不丢请求，配置即时生效。\n\nrestart 则是完全停止再启动：\n- 会断开所有现有连接\n- 有短暂不可用窗口\n- 只在改动了无法平滑生效的项（如监听端口、SSL 某些参数、worker 进程模型）时才需要\n\n标准流程：\n1. nginx -t 先校验配置（必须先做，配错 reload 会让 nginx 拒载甚至退出）\n2. nginx -s reload\n3. 看 error.log 有无报错，ps 看 worker 是否换成新 PID\n\n注意：nginx -t 通过不代表业务逻辑对；reload 失败时老进程通常仍在用旧配置运行，服务不会立刻挂，但新配置不生效。",
+    "tags": ["reload", "平滑重启", "运维操作"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1409,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 常用命令有哪些？改配置的标准流程是什么？",
+    "answer": "常用命令：\n- nginx -t：校验配置文件语法（改配置后第一件事）\n- nginx -T：校验并打印完整生效配置（排查是否被其他文件覆盖时最有用）\n- nginx -s reload：平滑重载\n- nginx -s quit：优雅退出（处理完请求再退）\n- nginx -s stop：立即停止\n- nginx -v / -V：版本 / 版本+编译参数（确认装了什么模块）\n- systemctl status/reload nginx：systemd 环境\n\n标准变更流程：\n1. 改配置前先备份：cp nginx.conf nginx.conf.bak.$(date +%F)\n2. nginx -t 校验\n3. nginx -s reload\n4. 观察 error.log 与 access.log\n5. curl 验证关键路径\n6. 有问题立刻恢复备份并再 reload 一次\n\n高频坑：\n- 未备份就改，出问题难以快速回退\n- 只 nginx -t 不看业务，语法对但路径/后端配错\n- 用 restart 而非 reload，造成连接中断",
+    "tags": ["命令", "变更流程", "运维"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1410,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 的 proxy_pass http://backend/ 结尾带斜杠，请求 /api/user 会被转发为？",
+    "options": [
+      { "key": "A", "text": "/api/user" },
+      { "key": "B", "text": "/user" },
+      { "key": "C", "text": "/api/api/user" },
+      { "key": "D", "text": "直接返回 404" }
+    ],
+    "answer": ["B"],
+    "explanation": "带斜杠时，location 的前缀（/api/）会被替换成 /，所以 /api/user 变成 /user。不带斜杠则原样透传为 /api/user。",
+    "tags": ["proxy_pass", "斜杠", "路径"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1411,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "如何用 Nginx 做 HTTPS 配置？关键的几个参数是什么？",
+    "answer": "最小可用配置：\n\nserver {\n    listen 443 ssl;\n    server_name example.com;\n\n    ssl_certificate     /etc/nginx/ssl/fullchain.pem;\n    ssl_certificate_key /etc/nginx/ssl/privkey.pem;\n\n    ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_ciphers HIGH:!aNULL:!MD5;\n    ssl_session_cache shared:SSL:10m;\n    ssl_session_timeout 10m;\n\n    location / { proxy_pass http://backend; }\n}\n\n关键点：\n1. ssl_certificate 用**完整链**（fullchain），不是只有服务器证书。缺中间证书会导致部分客户端（尤其安卓/Java）握手失败\n2. 只启 TLSv1.2 和 1.3，禁用 1.0/1.1\n3. HTTP 跳 HTTPS 的 301 建议配置：\n   server { listen 80; return 301 https://$host$request_uri; }\n4. 开 HSTS 需谨慎：一旦下发，浏览器在有效期内强制 HTTPS，回退困难\n\n验证：\n- openssl s_client -connect example.com:443 -servername example.com 看证书链是否完整\n- curl -vI https://example.com 看握手过程\n- 用 SSL Labs 在线评测分级",
+    "tags": ["HTTPS", "SSL", "证书链"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1412,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "困难",
+    "question": "Nginx 的 upstream 健康检查是怎么做的？开源版有什么限制？",
+    "answer": "开源版（OSS）：**被动健康检查**\n- 依据实际请求结果判断：失败次数达到 max_fails 后，在 fail_timeout 时间内标记为不可用\n- 配置：server 10.0.0.1:8080 max_fails=3 fail_timeout=30s;\n- 时间到后会在下一个请求尝试探测（半开状态）\n\n限制：\n- 没有主动探测：后端挂了但如果请求一直没路由到它，Nginx 不知道\n- 单个 worker 独立记录状态（fail_timeout 计数不完全共享）\n- 默认 max_fails=1、fail_timeout=10s，对抖动较敏感，容易误踢\n\n商业版（Nginx Plus）额外支持主动健康检查：\n- health_check interval=5s fails=3 passes=2;\n- 定期独立探测 /health 接口，不依赖用户流量\n\n开源版替代方案：\n1. 调大 max_fails、缩短 fail_timeout，减少误判\n2. 用 proxy_next_upstream 在失败时重试下一台：\n   proxy_next_upstream error timeout http_502 http_503;\n3. 部署第三方模块（如 nginx_upstream_check_module）实现主动检查\n4. 把健康检查交给上游的负载均衡层（LVS/K8s）\n\n注意：被动检查意味着「挂了但没流量过去」不会被告警，监控要覆盖后端存活。",
+    "tags": ["upstream", "健康检查", "max_fails"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1413,
+    "type": "multiple",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 相比 Apache 的优势有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "事件驱动模型，并发连接数高时内存占用低" },
+      { "key": "B", "text": "静态资源处理性能强" },
+      { "key": "C", "text": "反向代理与负载均衡功能内置" },
+      { "key": "D", "text": "原生支持 .htaccess 目录级配置" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是 Apache 的特性，Nginx 完全没有 .htaccess，配置必须写在主配置或 include 的文件里，改配置需要 reload。这也是从 Apache 迁移到 Nginx 的主要工作量来源。",
+    "tags": ["Nginx vs Apache", "对比"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1414,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 日志里 request_time 和 upstream_response_time 有什么区别？排障怎么用？",
+    "answer": "两个时间口径不同，是定位「慢在谁」的关键：\n\n- request_time：从读第一个字节到发送完最后一个字节的总耗时（整个请求）\n- upstream_response_time：从与上游建连到读完上游响应的耗时（只算后端）\n\n配置（放在 log_format 里）：\nlog_format main '$remote_addr - $request_time $upstream_response_time $upstream_status $request \"$request_uri\"';\n\n判读方法：\n1. 两者接近 → 耗时主要在上游（后端慢）\n2. request_time 远大于 upstream_response_time → 耗时在 Nginx 侧或网络传输（如大文件下载、客户端慢）\n3. upstream_response_time 出现多个值用逗号分隔 → 发生了重试（proxy_next_upstream），说明有后端失败\n4. upstream_response_time 为 \"-\" → 没有走上游（静态文件或上游未连接成功）\n\n典型排障：\n- 客户投诉慢，日志 request_time=5s、upstream=0.1s → 慢在传输/客户端，不是后端\n- request_time=0.2s、upstream=4.8s → 后端慢，找后端",
+    "tags": ["日志", "request_time", "耗时分析"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1415,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "困难",
+    "question": "Nginx 作为反向代理时，如何把真实客户端 IP 传给后端应用？",
+    "answer": "因为经过代理后，后端看到的连接来源是 Nginx 的 IP，需要显式传递。\n\nNginx 侧配置：\nproxy_set_header X-Real-IP $remote_addr;\nproxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\nproxy_set_header Host $host;\nproxy_set_header X-Forwarded-Proto $scheme;\n\n说明：\n- $proxy_add_x_forwarded_for 会**追加**到已有的 XFF 后面（保留原有链路），比直接覆盖 $remote_addr 更正确\n- 多层代理后 XFF 是个列表，格式为「客户端IP, 代理1, 代理2」\n\n后端应用侧要配合：\n- 应用需信任代理层并解析 XFF/X-Real-IP（如 Tomcat 的 RemoteIpValve、Spring 的 ForwardedHeaderFilter）\n- 不要直接信任任意来源的 XFF 头（可伪造），只信任自己代理的 IP\n\n安全提醒：\n- 如果 Nginx 前面还有 SLB/CDN，要用 realip 模块还原真实 IP：\n  set_real_ip_from 10.0.0.0/8;\n  real_ip_header X-Forwarded-For;\n  real_ip_recursive on;\n\n验证：后端日志里看 IP 是否为真实客户端 IP，而非 Nginx 的 IP。",
+    "tags": ["真实IP", "X-Forwarded-For", "代理"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1416,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "查看 Nginx 完整生效配置（含 include 的所有文件）的命令是？",
+    "options": [
+      { "key": "A", "text": "nginx -t" },
+      { "key": "B", "text": "nginx -T" },
+      { "key": "C", "text": "nginx -v" },
+      { "key": "D", "text": "cat /etc/nginx/nginx.conf" }
+    ],
+    "answer": ["B"],
+    "explanation": "nginx -T 会校验语法并打印出所有 include 展开后的完整配置，是排查「配置为何没生效」的首选——常发现是某个 conf.d 下的文件覆盖了主配置。",
+    "tags": ["nginx -T", "配置排查", "include"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1417,
+    "type": "multiple",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 做静态资源服务时，哪些优化是有效的？（多选）",
+    "options": [
+      { "key": "A", "text": "开启 gzip 压缩文本类资源" },
+      { "key": "B", "text": "为带 hash 的静态文件设置长缓存 expires 1y" },
+      { "key": "C", "text": "用 sendfile 与 tcp_nopush 提升文件传输效率" },
+      { "key": "D", "text": "为所有静态资源设置 no-cache" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 会让每次请求都回源验证，白白增加延迟与带宽。正确做法是「带 hash 的资源长缓存 + html 不缓存」，这也是本项目 deploy/nginx.conf.snippet 采用的策略。",
+    "tags": ["静态资源", "缓存", "gzip"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1418,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 如何实现 HTTP 跳转到 HTTPS？要注意什么？",
+    "answer": "最简洁的写法：\n\nserver {\n    listen 80;\n    server_name example.com;\n    return 301 https://$host$request_uri;\n}\n\n要点：\n1. 用 301（永久）还是 302（临时）：SEO 场景用 301，临时维护用 302\n2. $request_uri 保留原始路径与查询串，避免跳转后丢失参数\n3. 用 $host 而不是硬编码域名，便于多域名复用\n\n注意事项：\n- 如果前面有 SLB/CDN 做 HTTPS 卸载，这里的 80 端口可能已经是内网流量，不要盲目配跳转\n- 配 HSTS 后浏览器会强制 HTTPS，跳转都省了，但回退困难：\n  add_header Strict-Transport-Security \"max-age=31536000\" always;\n- 证书过期时跳转会失败，需保证证书续期机制可靠（acme/certbot 自动续）\n- 跳转不要把 POST 请求丢掉：301/302 会变成 GET，接口 POST 需用 307/308 保持方法\n\n验证：curl -I http://example.com 看是否返回 301 且 Location 正确。",
+    "tags": ["跳转", "HTTPS", "301"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1419,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "困难",
+    "question": "Nginx 报 worker_connections are not enough 怎么解决？",
+    "answer": "原因：并发连接数超过了单 worker 的上限。\n\nNginx 的连接计算：\n- 每个客户端连接占 1 个\n- 每个到上游的连接再占 1 个\n- 所以一个反向代理请求通常占 2 个连接（客户端 + 上游）\n- 理论最大并发 ≈ worker_processes × worker_connections / 2\n\n解决步骤：\n\n1. 调大配置\n   worker_processes auto;\n   events { worker_connections 10240; }\n\n2. 同步调大系统限制（否则改了也不生效）\n   ulimit -n 65535\n   并在 /etc/security/limits.conf 或 systemd 的 LimitNOFILE 里持久化\n\n3. 确认没有连接泄漏\n   - ss -s 看总连接数与状态分布\n   - netstat -an | grep :80 | awk '{print $6}' | sort | uniq -c\n   - TIME_WAIT 过多说明短连接多，考虑开 keepalive 到上游：\n     upstream 里加 keepalive 32; 并配 proxy_http_version 1.1 与 proxy_set_header Connection \"\";\n\n4. 减少单请求的连接占用\n   - 对上游启用长连接（关键，能砍掉一半连接）\n   - 用 HTTP/2 减少客户端连接数\n\n经典误区：只改 worker_connections 不改 ulimit，重启后 Nginx 仍按旧限制跑。",
+    "tags": ["worker_connections", "并发", "ulimit"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1420,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 配置文件语法校验失败时，nginx -s reload 会发生什么？",
+    "options": [
+      { "key": "A", "text": "Nginx 停止服务" },
+      { "key": "B", "text": "reload 被拒绝，继续用旧配置运行" },
+      { "key": "C", "text": "部分配置生效" },
+      { "key": "D", "text": "自动回滚到上一次的正确配置" }
+    ],
+    "answer": ["B"],
+    "explanation": "配置有错时 reload 会失败并报错，老 worker 继续用旧配置服务，所以线上不会立刻挂——但这会让人误以为「配置生效了」，实际新配置根本没加载。所以改动后必须 nginx -t 并看 reload 输出。",
+    "tags": ["reload", "配置错误", "行为"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1421,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "如何限制 Nginx 的访问频率、防止被刷？",
+    "answer": "用 limit_req（限速）+ limit_conn（限并发）两个模块。\n\n1. 定义限速区（放在 http 块）：\nlimit_req_zone $binary_remote_addr zone=perip:10m rate=10r/s;\nlimit_conn_zone $binary_remote_addr zone=conn_perip:10m;\n\n2. 在 server/location 里应用：\nlimit_req zone=perip burst=20 nodelay;\nlimit_conn conn_perip 10;\n\n参数解释：\n- burst：允许的突发请求数（超出 rate 的瞬时请求排队或放行）\n- nodelay：突发部分不延迟直接放行（否则会排队变慢）\n- rate=10r/s 表示每秒 10 个请求\n\n3. 被限时返回 503，可自定义：\nlimit_req_status 429;\nlimit_conn_status 429;\n\n注意：\n- 匹配 key 用 $binary_remote_addr（比 $remote_addr 省内存），NAT 后多人共用会一起被限\n- 如果前面有 SLB/CDN，要先用 realip 模块还原真实 IP，否则全局限到代理 IP\n- 静态资源、健康检查路径要单独放开，别被误限\n\n验证：用 ab 或 wrk 压测，观察 429/503 比例是否符合预期。",
+    "tags": ["限流", "limit_req", "防刷"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1422,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 的 root 和 alias 有什么区别？",
+    "answer": "区别在路径拼接方式：\n\n- root：把 location 的完整路径拼到 root 后面\n  location /static/ { root /data/www; }\n  请求 /static/a.png → /data/www/static/a.png\n  即：root + 完整 URI\n\n- alias：把 location 匹配的部分替换成 alias\n  location /static/ { alias /data/files/; }\n  请求 /static/a.png → /data/files/a.png\n  即：alias 替换 location 前缀\n\n易错点：\n- alias 结尾的斜杠要与 location 的斜杠匹配，否则路径会拼歪（很常见的 404 原因）\n- alias 不能用在正则 location 中（除非用命名捕获）\n- root 可以放在 http/server/location 各级；alias 只能放 location\n\n选择建议：\n- 目录结构与 URL 结构一致 → 用 root\n- URL 路径与磁盘路径不一致（如 /static 映射到 /data/files）→ 用 alias",
+    "tags": ["root", "alias", "路径"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1423,
+    "type": "multiple",
+    "category": "Nginx",
+    "difficulty": "困难",
+    "question": "Nginx 性能调优，以下哪些配置通常是有效的？（多选）",
+    "options": [
+      { "key": "A", "text": "worker_processes 设为 auto（跟随 CPU 核数）" },
+      { "key": "B", "text": "对上游启用 keepalive 长连接" },
+      { "key": "C", "text": "开启 sendfile、tcp_nopush 用于静态文件传输" },
+      { "key": "D", "text": "把 worker_processes 设为 100 以提升并发" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是误区：worker 数远超 CPU 核数会增加上下文切换与内存占用，通常反而降低性能。Nginx 的性能核心是「少量 worker + 事件驱动 + 长连接 + 系统参数配套」。",
+    "tags": ["性能调优", "keepalive", "worker"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1424,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "如何在 Nginx 里配置缓存后端响应（proxy_cache），减少回源？",
+    "answer": "三部分配置：\n\n1. 定义缓存区（http 块）：\nproxy_cache_path /var/cache/nginx levels=1:2 keys_zone=mycache:10m max_size=1g inactive=60m use_temp_path=off;\n\n2. 定义缓存条件（可放在 location 或单独 include）：\nproxy_cache_key \"$scheme$host$request_uri\";\n\n3. 在 location 中启用（server 块）：\nproxy_cache mycache;\nproxy_cache_valid 200 302 10m;\nproxy_cache_valid 404 1m;\nadd_header X-Cache-Status $upstream_cache_status;\n\n关键说明：\n- $upstream_cache_status 会返回 HIT/MISS/EXPIRED/REVALIDATED，是最实用的观测手段\n- 加 Cache-Control 控制：proxy_ignore_headers 可强制忽略上游的 no-cache\n- 有条件的缓存（只缓 GET）：proxy_cache_methods GET HEAD;\n- 对带鉴权的请求要谨慎缓存，避免把私有数据串号（务必纳入 proxy_cache_key 或直接 bypass）\n\n验证：curl -I 两次，看 X-Cache-Status 从 MISS 变 HIT。",
+    "tags": ["proxy_cache", "缓存", "回源"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1425,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 默认配置文件通常位于？",
+    "options": [
+      { "key": "A", "text": "/etc/nginx/nginx.conf" },
+      { "key": "B", "text": "/etc/nginx.conf" },
+      { "key": "C", "text": "/usr/local/nginx/conf.d" },
+      { "key": "D", "text": "/etc/default/nginx" }
+    ],
+    "answer": ["A"],
+    "explanation": "主流发行版（CentOS/Ubuntu）都在 /etc/nginx/nginx.conf，并 include conf.d/*.conf 与 sites-enabled。用 nginx -T 可打印含 include 的完整配置。",
+    "tags": ["配置路径", "基础"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1426,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "困难",
+    "question": "Nginx 作为静态文件服务器时，如何支持大文件下载并避免超时中断？",
+    "answer": "几个关键配置：\n\n1. 关闭代理缓冲（如果走 proxy）或用直接的静态服务\n   sendfile on;\n   tcp_nopush on;\n   tcp_nodelay on;\n\n2. 超时时间调大（下载大文件耗时长）\n   send_timeout 300s;\n   proxy_read_timeout 300s;\n   client_body_timeout 300s;\n\n3. 支持断点续传（Nginx 静态文件默认支持 Accept-Ranges，无需额外配置）\n   确认没有被中间层剥离 Range 头，且 proxy 场景不要 buffering 到磁盘再整发\n\n4. 限制下载速率（防止单用户占满带宽）\n   limit_rate 1m;\n   limit_rate_after 10m;   # 前 10M 不限速\n\n5. 日志中代理写入磁盘导致 IO 压力时，可用 buffer 或异步写\n   access_log /var/log/nginx/access.log main buffer=32k flush=5s;\n\n6. 大文件场景关闭 gzip（压缩大文件浪费 CPU 且意义不大）\n   gzip off; 或只对 text 类压缩\n\n排查下载中断：看 Nginx error.log 是否有 upstream timed out、client prematurely closed connection，同时检查 SLB 的连接空闲超时设置（这个很常见，容易忽略）。",
+    "tags": ["大文件", "下载", "超时"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1427,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 的 error.log 里常见错误有哪些？分别意味着什么？",
+    "answer": "按关键字识别，这些是排障的核心线索：\n\n1. connect() failed (111: Connection refused)\n   → 后端端口没监听/进程挂了。直接去后端 ss -lntp 看\n\n2. upstream timed out (110: Connection timed out)\n   → 后端处理超过 proxy_read_timeout，属于 504。找后端慢原因\n\n3. no live upstreams while connecting to upstream\n   → 所有后端都被标记为不可用（max_fails 达上限），需要等 fail_timeout 或人工介入\n\n4. upstream prematurely closed connection\n   → 后端未返回完整响应就断开，常见于后端崩溃、被 OOM kill、或超时自行断开。表现为 502\n\n5. client intended to send too large body\n   → 上传超过 client_max_body_size，调大该值\n\n6. open() \"/path\" failed (13: Permission denied)\n   → 文件权限问题，注意 worker 用户（如 nginx/www-data）是否可读\n\n7. worker_connections are not enough\n   → 并发连接超上限，调 worker_connections 与 ulimit\n\n8. SSL_do_handshake() failed\n   → TLS 握手失败，多为协议/加密套件不匹配或客户端过老\n\n排查习惯：error.log 按时间 grep 关键字，配合 access.log 的 request_time 与 upstream_response_time 交叉验证。",
+    "tags": ["error.log", "错误码", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1428,
+    "type": "multiple",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "从 Apache 迁移到 Nginx 时，以下哪些是需要重写/替换的？（多选）",
+    "options": [
+      { "key": "A", "text": ".htaccess 目录级配置需合并进主配置" },
+      { "key": "B", "text": "mod_rewrite 规则需改写为 Nginx 的 rewrite 或 location" },
+      { "key": "C", "text": "Allow/Deny 的访问控制需改为 allow/deny 或 ip 模块" },
+      { "key": "D", "text": "PHP 的 php-fpm 调用方式保持不变即可" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 不对：Apache 通常用 mod_php 内嵌，Nginx 必须通过 fastcgi_pass 转给 php-fpm，配置与运行方式都不同。A/B/C 都是必须重写的部分，也是迁移主要工作量。",
+    "tags": ["迁移", "Apache", "rewrite"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1429,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 如何做 URL 重写与重定向？rewrite、return、try_files 各自用在哪？",
+    "answer": "三者定位不同，别混用：\n\n1. return：直接返回状态码或重定向，性能最好，优先用\n   return 301 https://example.com$request_uri;\n   return 404;\n\n2. rewrite：改写 URI，可配合 flag（last/break/redirect/permanent）\n   rewrite ^/old/(.*)$ /new/$1 permanent;\n   - last：重写后重新走 location 匹配\n   - break：重写后不再重新匹配，在当前 location 继续\n   - permanent → 301，redirect → 302\n\n3. try_files：按顺序尝试文件，常用于 SPA 与静态目录\n   try_files $uri $uri/ /index.html;\n   - 最后一个参数是 fallback（SPA 必备，否则刷新子路由 404）\n\n选择建议：\n- 整站协议/域名跳转 → return 301\n- 老 URL 结构迁移 → rewrite permanent\n- SPA/history 路由、静态目录回退 → try_files\n- 正则改写尽量少用，location + return 更易读易维护\n\n本项目部署到 Nginx 时就是靠 try_files $uri $uri/ /index.html 解决刷新子路由 404。",
+    "tags": ["rewrite", "return", "try_files"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1430,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "SPA 应用部署到 Nginx 后，刷新子路由返回 404，最直接的解决配置是？",
+    "options": [
+      { "key": "A", "text": "location / { try_files $uri $uri/ /index.html; }" },
+      { "key": "B", "text": "location / { root /dist; }" },
+      { "key": "C", "text": "rewrite ^ /index.html break;" },
+      { "key": "D", "text": "autoindex on;" }
+    ],
+    "answer": ["A"],
+    "explanation": "try_files 依次尝试：真实文件 → 目录 → 兜底返回 index.html，让前端路由接管。B 缺回退逻辑，刷新 /bank 会因为找不到文件而 404。",
+    "tags": ["SPA", "try_files", "history路由"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1431,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 的 server 块、location 块、upstream 块分别是什么？",
+    "answer": "三个层级，从外到内：\n\n- upstream：定义一组后端服务器，供 proxy_pass 引用\n  upstream backend {\n      least_conn;\n      server 10.0.0.1:8080;\n      server 10.0.0.2:8080 backup;\n  }\n\n- server：一个虚拟主机，对应「域名 + 端口」的组合\n  server {\n      listen 80;\n      server_name example.com;\n      ...\n  }\n\n- location：server 内部按 URI 路径分流\n  location /api/ { proxy_pass http://backend; }\n  location /static/ { root /data; }\n\n关系：\n- http 块包含多个 server（多个站点）\n- server 块包含多个 location（同一站点的不同路径）\n- upstream 在 http 块级别定义，可被多个 server 共享\n\n排查时常见困惑：改了 location 不生效 → 用 nginx -T 看最终生效配置，常发现是被另一个 server 块的 server_name 抢先匹配了（Server 块按 server_name 与 listen 匹配，第一个匹配的胜出）。",
+    "tags": ["架构", "server", "location", "upstream"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1432,
+    "type": "multiple",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "关于 Nginx 的 keepalive，以下说法正确的是？（多选）",
+    "options": [
+      { "key": "A", "text": "keepalive 可以复用到上游的连接，减少握手开销" },
+      { "key": "B", "text": "对上游启用 keepalive 需要同时设 proxy_http_version 1.1" },
+      { "key": "C", "text": "启用后需要清理 Connection 头（proxy_set_header Connection \"\"）" },
+      { "key": "D", "text": "keepalive 值越大越好，建议设 10000" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：keepalive 指每个 worker 缓存的空闲连接数，过大反而占用资源且后端可能主动断开。经验值 16-64，需结合上游的连接超时设置。A/B/C 是对上游长连接的必要条件。",
+    "tags": ["keepalive", "长连接", "upstream"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1433,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "困难",
+    "question": "Nginx 4 层（stream）和 7 层（http）代理有什么区别？各自场景？",
+    "answer": "核心差异是「看不看得到 HTTP 内容」。\n\n7 层（http 块，proxy_pass）：\n- 解析 HTTP 协议，能看到 URL、Header、Cookie\n- 支持按路径/域名分流、改请求头、缓存、gzip\n- 场景：Web 反向代理、API 网关、静态资源、需要按 URL 规则的场景\n- 代价：必须完整解析，性能略低，且不支持非 HTTP 协议\n\n4 层（stream 块，proxy_pass）：\n- 只做 TCP/UDP 转发，不看内容\n- 性能高、延迟低、支持任意协议（MySQL、Redis、TCP 自定义协议）\n- 场景：数据库代理、Redis 代理、MQTT、游戏长连接、四层负载均衡\n- 代价：无法按 URL 分流，无法做 HTTP 级缓存与改写\n\n配置示例（stream 在 http 块之外，是顶层块）：\nstream {\n    upstream mysql_backend { server 10.0.0.1:3306; }\n    server {\n        listen 3306;\n        proxy_pass mysql_backend;\n    }\n}\n\n选择原则：需要按内容做决策 → 7 层；只需转发且追求性能/协议无关 → 4 层。注意 stream 需要编译时带 --with-stream 模块。",
+    "tags": ["stream", "4层", "7层"],
+    "frequency": "中频"
+  },
+  {
+    "id": 1434,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 的 access.log 里能看到哪些关键信息？如何用它排查问题？",
+    "answer": "默认 combined 格式包含：客户端 IP、时间、请求方法与 URI、状态码、响应大小、Referer、User-Agent。\n\n增强格式（生产建议）：\nlog_format main '$remote_addr - [$time_local] \"$request\" $status $body_bytes_sent '\n                '$request_time $upstream_response_time $upstream_addr \"$http_referer\"';\n\n排障用法：\n\n1. 统计状态码分布，快速判断故障类型\n   awk '{print $9}' access.log | sort | uniq -c | sort -rn | head\n   （5xx 突增 → 后端问题；499 → 客户端主动断开）\n\n2. 找最慢的请求\n   sort -k 12 -n access.log | tail -20\n\n3. 定位某 IP 或某接口\n   grep \"1.2.3.4\" access.log | tail\n   grep \"/api/order\" access.log | awk '{print $9}' | sort | uniq -c\n\n4. 区分慢在谁：对比 request_time 与 upstream_response_time（见另一题）\n\n注意：499 表示客户端在服务端返回前断开（常见于用户主动取消、超时重试、或后端太慢导致用户跑了），不要和 500 混淆。",
+    "tags": ["access.log", "日志分析", "排障"],
+    "frequency": "高频"
+  },
+  {
+    "id": 1435,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 配置文件里，表示「工作进程数」的指令是？",
+    "options": [
+      { "key": "A", "text": "worker_processes" },
+      { "key": "B", "text": "worker_connections" },
+      { "key": "C", "text": "keepalive_timeout" },
+      { "key": "D", "text": "multi_accept" }
+    ],
+    "answer": ["A"],
+    "explanation": "worker_processes 控制进程数（推荐 auto）；worker_connections 是单个 worker 的最大连接数（在 events 块内）；multi_accept 表示一次性接受所有新连接。两者要一起看，并发上限 = 进程数 × 连接数 / 2。",
+    "tags": ["worker_processes", "基础配置"],
+    "frequency": "中频"
+  }
+]

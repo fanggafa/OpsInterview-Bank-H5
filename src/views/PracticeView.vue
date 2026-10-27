@@ -20,6 +20,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import DifficultyBadge from '@/components/DifficultyBadge.vue'
 import FrequencyBadge from '@/components/FrequencyBadge.vue'
 import ChoiceOptions from '@/components/ChoiceOptions.vue'
+import AnswerText from '@/components/AnswerText.vue'
 import Ring from '@/components/Ring.vue'
 
 const route = useRoute()
@@ -502,7 +503,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
               <div class="answer" :class="{ 'answer--open': expanded }">
                 <div class="answer__inner">
                   <div class="answer__body">
-                    <pre class="pre-text">{{ current.answer }}</pre>
+                    <AnswerText :answer="current.answer" />
                   </div>
                 </div>
               </div>

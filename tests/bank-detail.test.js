@@ -213,7 +213,8 @@ describe('详情页 · 折叠答案', () => {
     await wrapper.find('.answer-toggle').trigger('click')
     expect(wrapper.find('.answer-toggle').attributes('aria-expanded')).toBe('true')
     expect(wrapper.find('.answer').classes()).toContain('answer--open')
-    expect(wrapper.find('.pre-text').text()).toBe('three way')
+    // 答案改由 AnswerText 渲染（.ans-block），不再用 pre.pre-text
+    expect(wrapper.find('.ans-block').text()).toContain('three way')
   })
 
   it('再次点击收起', async () => {
