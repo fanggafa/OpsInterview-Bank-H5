@@ -1,0 +1,90 @@
+[
+  {
+    "id": 4400,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP 的流量控制和拥塞控制有什么区别？拥塞控制有哪四个阶段？",
+    "answer": "**两个完全不同的问题**：\n\n| | 流量控制（Flow Control） | 拥塞控制（Congestion Control） |\n|---|---|---|\n| 解决谁的问题 | **接收方**处理不过来 | **网络**处理不过来 |\n| 依据 | 接收窗口 `rwnd` | 拥塞窗口 `cwnd` |\n| 谁通知 | 接收方在 ACK 里告知 | **发送方自己探测** |\n\n**实际发送量 = min(rwnd, cwnd)**。\n\n**拥塞控制四阶段**：\n\n**1. 慢启动（Slow Start）**\n- `cwnd` 从 1 MSS 开始，**每个 RTT 翻倍**（指数增长）\n- 到 `ssthresh` 阈值后转拥塞避免\n- 「慢」是相对「一上来就发满带宽」而言，不是真的慢\n\n**2. 拥塞避免（Congestion Avoidance）**\n- 每个 RTT `cwnd` 只 **+1 MSS**（线性增长）\n- 小心试探上限\n\n**3. 快速重传（Fast Retransmit）**\n- 收到 **3 个重复 ACK** 就立刻重传，不等超时\n- 这让恢复时间从「等 RTO 超时」缩短到「一个 RTT」\n\n**4. 快速恢复（Fast Recovery）**\n- `ssthresh` 设为当前 `cwnd` 的一半，`cwnd` 设为 `ssthresh`（不等回到 1）\n- 直接进入拥塞避免，**比超时后重回慢启动快得多**\n\n**两种丢包的反应不同**（面试重点）：\n\n| 事件 | 判断 | 动作 |\n|---|---|---|\n| **超时（RTO）** | 严重拥塞 | `ssthresh = cwnd/2`、`cwnd = 1`、**重回慢启动** |\n| **3 个重复 ACK** | 轻度丢包（链路抖动） | 快速重传 + 快速恢复，`cwnd` 减半 |\n\n**现代算法**：`CUBIC`（Linux 默认）用三次函数代替线性增长，更适合高带宽长距离；`BBR`（Google）**不依赖丢包**判断拥塞，而是测带宽和 RTT，在有丢包的链路上表现更好。"
+  },
+  {
+    "id": 4401,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TCP 粘包是什么？为什么 UDP 没有粘包问题？怎么解决？",
+    "answer": "**「粘包」不是 TCP 的 bug，是应用层没定义消息边界。**\n\n**本质**：TCP 是**字节流**协议，只保证「字节有序到达」，**不保证消息边界**。发送方两次 `write()` 的数据，接收方可能一次 `read()` 全拿到（粘在一起），也可能一条消息分两次到达（拆包）。\n\n**为什么 UDP 没有**：UDP 是**数据报**协议，每个 `sendto()` 的报文独立，接收端一次 `recvfrom()` 就是完整的一个报文（有边界，但有大小限制，超 MTU 会分片）。\n\n**三种解决方案**：\n\n**1. 定长消息（最简单）**\n```\n每条消息固定 100 字节，不足补齐\n```\n缺点：浪费空间，不灵活。\n\n**2. 分隔符（文本协议常用）**\n```\n每条消息以 \\n 或 \\r\\n 结尾\n```\nRedis 的 RESP 协议、HTTP 头都用类似思路。缺点：消息体里不能出现该分隔符，需要转义。\n\n**3. 长度前缀（二进制协议标准做法）**\n```\n[4 字节长度][N 字节消息体]\n```\n接收方先读 4 字节得到长度 N，再读 N 字节。**这是最通用、最高效的方案**，gRPC、Kafka 都用。\n\n**关键实现细节**：长度前缀的字节序要统一（网络序大端），且**必须处理「读到的字节数 < 期望」的情况**——需要循环读直到读满，不能假设一次 `read()` 就够。\n\n**HTTP 是怎么解决的**（教科书级案例）：\n- `Content-Length` 头 → 长度前缀\n- `Transfer-Encoding: chunked` → 分块，每块前面带十六进制长度，最后 0 长度结束\n\n**常见错误回答**：「粘包是 TCP 的缺陷」——错。TCP 只承诺字节流，边界是应用层的责任。"
+  },
+  {
+    "id": 4402,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "MTU 和 MSS 是什么？PMTUD 是做什么的？为什么 VPN/隧道会导致「大包不通」？",
+    "answer": "**两个层级的大小限制**：\n\n| | MTU | MSS |\n|---|---|---|\n| 层 | 二层（链路层） | 四层（TCP） |\n| 含义 | 一个帧能承载的**最大数据长度** | TCP 报文里**最大数据段长度** |\n| 典型值 | 以太网 **1500 字节** | **1460 = 1500 - 20(IP) - 20(TCP)** |\n\n**为什么差 40**：IP 头 20 字节 + TCP 头 20 字节。\n\n**分片（Fragmentation）**：\n- IP 层发现包 > MTU 时会**分片**，接收端重组\n- 分片很糟糕：**任何一片丢了整个包就要重传**，且中间设备处理碎片开销大\n\n**PMTUD（路径 MTU 发现）**：\n- 发送方设 `DF=1`（Don't Fragment），让包**不许分片**\n- 中间路由器遇到超 MTU 的包 → 回 **ICMP「Fragmentation Needed」**（Type 3 Code 4），带 MTU 值\n- 发送方据此调小 MSS\n\n**为什么 VPN / 隧道会导致「大包不通」**（超高频的线上故障）：\n\n```\n原始包 1500 字节\n  ↓ 加隧道头（IPsec 约 50-70 字节，GRE 24 字节，VXLAN 50 字节）\n变成 1570 字节 > 物理 MTU 1500\n```\n\n隧道内外网卡若没设 `DF` 或中间设备**屏蔽了 ICMP**（很常见的「安全策略」），PMTUD 就失效：\n- 小包（ping、HTTP 请求）正常\n- **大包静默丢弃** → 表现为「能连上但传不了数据」「SSH 能登录但一 `ls -l` 就卡死」\n\n**这是「SSH 能连但卡住」「HTTP 页面能开但下载失败」的经典原因。**\n\n**排查与修复**：\n```\n# 测路径 MTU（Linux，-M do 禁止分片）\nping -M do -s 1472 目标IP        # 1472+28=1500，通了说明 MTU 正常\nping -M do -s 1400 目标IP        # 逐步减小找到临界值\n```\n修复：\n1. **把隧道内网卡 MTU 调小**（如 IPsec 用 1400，VXLAN 用 1450）\n2. **显式钳制 MSS**：\n```\niptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu\n```\n3. **别屏蔽 ICMP Type 3 Code 4**——它不承载数据，但对网络正常工作至关重要"
+  },
+  {
+    "id": 4403,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TCP 和 UDP 各有哪些典型应用？为什么 DNS 用 UDP，而 HTTP/3 反而跑到 UDP 上？",
+    "answer": "**基础对比**：\n\n| | TCP | UDP |\n|---|---|---|\n| 连接 | 面向连接 | 无连接 |\n| 可靠性 | 重传、确认 | 不保证 |\n| 有序 | 保证 | 不保证 |\n| 开销 | 头 20 字节 + 握手 | 头 8 字节，无握手 |\n| 速度 | 慢（建连 + 拥塞控制） | 快 |\n\n**典型应用**：\n\n**TCP**：HTTP/1.1、HTTPS、SSH、SMTP、MySQL、Redis —— 凡是**不能丢数据**的都用它。\n\n**UDP**：DNS、DHCP、NTP、SNMP、游戏、视频直播、VoIP —— 凡是**宁可丢也不要延迟**的都用它。\n\n**为什么 DNS 用 UDP**：\n1. **一问一答，一个包就能搞定**——建立 TCP 连接的成本（1 RTT 握手）比查询本身还高\n2. DNS 是**关键路径**：每次上网都要解析，延迟必须极低\n3. 丢了重传就行（应用层自己重试）\n\n注意：**DNS 在响应 > 512 字节、或做区域传送（AXFR）、或加密（DoT/DoH）时会切到 TCP**。\n\n**为什么 HTTP/3（QUIC）用 UDP**（这是面试高频的反直觉问题）：\n\n这不是「退回去用不可靠协议」，而是**在 UDP 之上自己实现了可靠传输**：\n\n| 问题 | TCP 的困境 | QUIC 的解法 |\n|---|---|---|\n| **队头阻塞** | 一个包丢了，后面所有流都等（内核层面的字节流） | 每条流独立重传，**互不阻塞** |\n| **握手延迟** | TCP 3 次 + TLS 2 次 = 2-3 RTT | **握手与加密合并**，1 RTT 甚至 0 RTT（重连） |\n| **连接迁移** | IP 变了连接就断（手机切 WiFi→4G 要重连） | 用 Connection ID 标识，**IP 变了连接不断** |\n| **协议僵化** | 中间设备（防火墙、NAT）只认 TCP，改不动 | UDP 上层全在用户态，**可快速迭代** |\n| **移动网络优化** | 内核实现，改不动 | 用户态，可按场景定制拥塞算法 |\n\n**代价**：UDP 在很多企业网络/CDN 上被限速或封禁；CPU 开销比内核态 TCP 高（用户态协议栈）。\n\n**一句话**：**「TCP 提供可靠字节流」和「可靠传输」不是一回事**——QUIC 证明你可以用 UDP 造一个更好的可靠传输。"
+  },
+  {
+    "id": 4404,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "NAT 有哪几种类型？为什么 P2P 打洞在有些 NAT 下能成功、有些不行？",
+    "answer": "**四种 NAT（按限制程度递增）**：\n\n| 类型 | 行为 | 打洞 |\n|---|---|---|\n| **Full Cone（完全锥形）** | 内部地址映射到固定公网端口后，**任何外部主机都能通过该端口访问** | ✅ 容易 |\n| **Restricted Cone（受限锥形）** | 只有**内部主机先发过包的目标 IP** 才能进来 | ✅ 可 |\n| **Port Restricted Cone（端口受限锥形）** | 必须**IP + 端口**都匹配过才能进来 | ⚠️ 需协调 |\n| **Symmetric（对称）** | **每个「目标 IP:端口」分配不同的映射端口** | ❌ 极难 |\n\n**打洞（Hole Punching）原理**：\n\n```\nA 和 B 都在 NAT 后，想直连\n1. 双方都先向 stun 服务器发包，得知自己的公网 IP:端口\n2. 通过信令服务器交换对方的公网地址\n3. A 主动向 B 的公网地址发包（在 A 的 NAT 上「打洞」）\n4. B 也主动向 A 发包 → 双方 NAT 上都有了对方的放行规则\n```\n\n**为什么对称 NAT 打不动**：\n- A 先向 stun 服务器发包 → NAT 分配端口 P1\n- A 再向 B 发包 → 因为是**不同的目标**，对称 NAT 会分配**另一个端口 P2**\n- B 拿着 P1 去连 A，但 A 的 NAT 只对「到 stun 的流量」放了 P1，对 B 是 P2\n- **B 拿到的地址根本连不上 A**\n\n**这就是为什么很多视频通话/P2P 需要 TURN 中继**：对称 NAT 情况下只能靠服务器中转（STUN 只能发现地址，TURN 负责转发）。\n\n**判断自己是不是对称 NAT**：向两个不同的 stun 服务器查询，若返回的公网端口**不同** → 对称 NAT。\n\n**CGNAT（运营商级 NAT，最棘手）**：运营商在用户之后再套一层 NAT，用户完全无法做端口映射。**表现**：家里机器怎么配都访问不了，且光猫做 DMZ 也没用。这是 IPv6 普及的主要动力之一。"
+  },
+  {
+    "id": 4405,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP/1.0、1.1、2.0、3.0 的关键差异是什么？",
+    "answer": "| 版本 | 关键特性 | 解决的问题 |\n|---|---|---|\n| **1.0** | 每个请求一个连接，**短连接** | — |\n| **1.1** | **持久连接（keep-alive）**、pipeline、Host 头、chunked | 频繁建连的开销 |\n| **2.0** | **二进制分帧、多路复用、头部压缩（HPACK）、服务端推送** | 1.1 的队头阻塞 |\n| **3.0（QUIC）** | 基于 **UDP**、0/1-RTT 握手、**流级重传**、连接迁移 | TCP 的队头阻塞与握手延迟 |\n\n**1.1 的两个核心问题**（面试必问）：\n\n**1. 队头阻塞（HOL Blocking）**\n- 浏览器同域并发一般 6 个连接，超出的请求要**排队**\n- 一个慢请求会卡住同连接后面的所有请求\n- 这就是「域名分片（domain sharding）」和「雪碧图」等优化手段的由来\n\n**2. 头部冗余**\n- 每个请求都带完整的 Cookie、User-Agent（可能几百字节）\n- 小请求的实际 payload 可能只有几十字节，**头部占比超过 80%**\n\n**2.0 怎么解决**：\n- **多路复用**：一个 TCP 连接上跑多条流，各自有 stream id，互不阻塞（**应用层解决了**）\n- **HPACK**：头部用索引表压缩，重复的头只传索引\n- **二进制分帧**：比文本协议解析更快、更不易出错\n\n**2.0 的残留问题**：\n- **TCP 层队头阻塞仍在**：一个 TCP 包丢了，所有流都等重传\n- 所以 2.0 在**高丢包网络**下反而不如 1.1 快（这也是 QUIC 的动机）\n\n**3.0（QUIC）的关键改进**：\n- **流级重传**：一个流丢包只影响该流\n- **握手合并**：TCP 3 次 + TLS 1.3 = 1 RTT（甚至重连时 0 RTT）\n- **连接迁移**：手机从 WiFi 切 4G，连接不断\n\n**实战结论**：\n- 内网/低延迟场景 1.1 与 2.0 差异不大\n- **高延迟、高丢包（如移动网络、跨国）** → 3.0 收益明显\n- 2.0 需要 HTTPS（浏览器不支持明文 h2c），且**服务端要有足够连接不被打散**"
+  },
+  {
+    "id": 4406,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TLS 1.2 和 TLS 1.3 的握手有什么差别？为什么说 1.3 更快也更安全？",
+    "answer": "**TLS 1.2：2-RTT 握手；TLS 1.3：1-RTT（首次），0-RTT（重连）。**\n\n**TLS 1.2 握手（简化）**：\n```\n客户端 → ClientHello（支持的算法）\n服务端 → ServerHello + Certificate + ServerKeyExchange + [完成]\n客户端 → ClientKeyExchange + ChangeCipherSpec + Finished\n服务端 → ChangeCipherSpec + Finished\n共 2 个 RTT 才开始传数据\n```\n\n**TLS 1.3 握手**：\n```\n客户端 → ClientHello + [key share]（直接带上密钥交换参数）\n服务端 → ServerHello + [key share] + Certificate + Finished（一把发完）\n客户端 → Finished\n1 个 RTT 完成\n```\n\n**关键差别**：\n\n| | TLS 1.2 | TLS 1.3 |\n|---|---|---|\n| 握手 RTT | 2 | **1**（重连 **0**） |\n| 密钥交换 | RSA 或 ECDHE（明文协商） | **只有 ECDHE**（前向安全） |\n| 加密的起点 | Finished 之后 | **ServerHello 之后就开始加密**（含证书） |\n| 支持的算法 | 一堆历史包袱（RC4、SHA-1、CBC） | **砍掉所有弱算法** |\n| **0-RTT** | 无 | 有（重连时，但有重放风险） |\n\n**为什么更安全**：\n1. **强制前向安全（PFS）**：删除了 RSA 密钥交换，即使服务器私钥泄漏，**过去的流量也解密不了**\n2. **删除弱算法**：CBC 模式、RC4、SHA-1、静态 DH 全部移除，不再有降级攻击面\n3. **证书也加密**：1.3 里 Certificate 消息在加密通道内，**中间人看不到你在访问谁**\n\n**0-RTT 的风险（重点）**：0-RTT 数据用的是「旧的会话密钥」，**可被重放**。所以：\n- **只能用于幂等请求**（GET）\n- 绝不用于 POST、支付、修改状态\n- 服务端要配 `early_data` 白名单\n\n**实践要点**：\n- Nginx 的 `ssl_protocols TLSv1.2 TLSv1.3;`\n- **TLS 1.3 需要 OpenSSL 1.1.1+**，老系统升不上来就只能用 1.2\n- 抓包调试 1.3 很难（证书加密了），要 `SSLKEYLOGFILE` 才能在 Wireshark 里解密"
+  },
+  {
+    "id": 4407,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTPS 证书校验有哪些环节？证书链不完整会导致什么问题？",
+    "answer": "**四个校验环节**：\n\n1. **域名匹配**：证书里的 SAN（`subjectAltName`）必须包含请求的域名。**CN 字段早已废弃**，只看 SAN\n2. **有效期**：`notBefore` ~ `notAfter`，**系统时间错一点就会失败**\n3. **信任链**：从服务器证书 → 中间 CA → 根 CA，根 CA 必须在客户端信任库里\n4. **吊销状态**：CRL 或 OCSP（浏览器多改成 CRLset 或直接不检查）\n\n**证书链不完整是最常见的事故**。\n\n**现象**：\n- **浏览器能打开，但 curl / Java / Python 报错**（浏览器会自己补下载中间证书，命令行工具不会）\n- App 报 `SSLHandshakeException`、`unable to find valid certification path`\n\n**原因**：服务器只发了「服务器证书」，没发「中间 CA 证书」。浏览器见证书里带了 AIA 扩展（`Authority Information Access`）会自动去下载中间证书，所以你不容易发现；但**其他客户端不会这么做**。\n\n**验证方法**：\n```\n# 看服务端到底发了几个证书\nopenssl s_client -connect example.com:443 -showcerts </dev/null\n# 应该至少有 2 个：实体证书 + 中间证书\n\n# 模拟严格校验\nopenssl s_client -connect example.com:443 -CAfile /etc/ssl/certs/ca-certificates.crt </dev/null \\\n  | grep 'Verify return code'\n# 输出 code 0 才是链完整\n```\n\n**修复**：在 `fullchain.pem` 里把**服务器证书 + 中间证书**按顺序拼接（**服务器证书必须在最前**）：\n```\ncat server.crt intermediate.crt > fullchain.pem\n```\nNginx：`ssl_certificate fullchain.pem; ssl_certificate_key privkey.pem;`\n\n**其他高频证书问题**：\n1. **证书过期**：**一定要配到期监控**，这是最容易忘、后果最严重的问题\n2. **SNI 缺失**：一个 IP 多域名时，客户端不发 SNI 会拿到错误的证书\n3. **自签证书**：内部服务要么用内网 CA 并分发根证书，要么接受「所有客户端都要 `-k`」\n4. **时钟偏差**：机器时间错到证书有效期外，报 `certificate is not yet valid`"
+  },
+  {
+    "id": 4408,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "负载均衡有哪几种会话保持方式？各自的局限是什么？",
+    "answer": "**六种方式，按可靠性排序**：\n\n| 方式 | 原理 | 局限 |\n|---|---|---|\n| **源 IP 哈希**（LVS `sh`、HAProxy `source`） | 同一 IP 落同一后端 | **移动网络/NAT 出口**会导致大量用户挤同一后端；客户端 IP 变化时失效 |\n| **Cookie 插入**（Nginx `sticky`、HAProxy `cookie`） | LB 在后端响应里插入 cookie，后续按 cookie 路由 | 需要七层；后端生成的 cookie 可能冲突 |\n| **Cookie 学习** | LB 观察应用自己写的 JSESSIONID，学习映射关系 | 应用需先写 cookie；无 cookie 的请求无法保持 |\n| **URL/参数哈希** | 按 URI 或 query 参数路由 | 只适合「同资源落同后端」（如缓存场景） |\n| **应用层共享 Session** | 把 Session 存 Redis/DB，**任意后端都能处理** | **需要改应用**，但有状态服务就此无状态化 |\n| **一致性哈希** | 按 key 环形分布，节点变化影响小 | 适合缓存路由，不适合会话 |\n\n**正确的决策顺序**：\n\n1. **优先让服务无状态**（共享 Session 到 Redis）——这是唯一根本解\n2. 短期过渡用 **Cookie 保持**（最精确，因为按会话而不是按 IP）\n3. 源 IP 哈希只用于「实在没法改」的场景，且**知道它的坑**\n\n**源 IP 哈希的三个典型坑**：\n\n1. **NAT 出口集中**：一个大企业出口 IP 只有一个，几万员工全落同一后端，**负载完全失效**\n2. **移动网络切换**：手机从 WiFi 切 4G，源 IP 变了 → 会话丢失需重新登录\n3. **四层无法感知 HTTP**：不能按 URI 路由，也不能插 cookie\n\n**验证会话保持是否生效**：\n```\nfor i in {1..10}; do curl -s -b cookies.txt -c cookies.txt http://lb/whoami; done\n# 看返回的机器名是否一直是同一台\n```\n\n**还有一个关键问题**：**会话保持会放大后端故障的影响**。一个后端挂了，绑在它上面的所有会话都要重新登录/丢失状态。这也是为什么要做共享 Session。"
+  },
+  {
+    "id": 4409,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "服务端大量 SYN_RECV 状态，是什么问题？SYN Flood 怎么防御？",
+    "answer": "**`SYN_RECV` 表示「收到了 SYN，回了 SYN+ACK，但还没收到第三次 ACK」**——半连接队列里的条目。\n\n**正常情况**：`SYN_RECV` 应该是瞬时且极少的。\n\n**大量 `SYN_RECV` 的三种可能**：\n\n1. **SYN Flood 攻击**：大量伪造源 IP 发 SYN，永远等不到 ACK\n2. **客户端太慢**：弱网、高延迟链路（跨国）导致 ACK 迟迟不回\n3. **服务端溢出**：SYN 队列满导致丢弃，客户端重传\n\n**排查**：\n```\nss -ant state syn-recv | wc -l\nss -ant state syn-recv | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn | head\nnetstat -s | grep -i 'SYNs to LISTEN\\|overflow'\n```\n\n**关键判断：源 IP 是否分散**\n- **高度分散（很多不同 IP）** → SYN Flood\n- **集中在少数 IP** → 可能是正常业务（某个客户端卡）或定向攻击\n\n**防御手段（分层）**：\n\n**1. 内核参数（基础防护）**\n```\nnet.ipv4.tcp_syncookies = 1              # 关键！用 cookie 代替半连接队列\nnet.ipv4.tcp_max_syn_backlog = 8192      # 半连接队列上限\nnet.core.somaxconn = 65535               # 全连接队列\nnet.ipv4.tcp_synack_retries = 2          # 减少重试（默认 5 次约 180 秒）\n```\n**`tcp_syncookies=1` 是最有效的单条措施**：队列满时不丢 SYN，而是用加密 cookie 无状态地完成握手。代价是丢掉 TCP 的某些选项（如窗口缩放）。\n\n**2. 反向代理/负载均衡层**\n- 让 LB 承担握手（**LVS DR 模式在四层转发**，攻击流量过不了 LB 的队列）\n- CDN/云 WAF（最有效，攻击在边缘被清掉）\n\n**3. 限速与黑名单**\n```\n# iptables recent 模块：每 IP 每秒最多 20 个新连接\niptables -A INPUT -p tcp --dport 443 --syn \\\n  -m recent --name synflood --set\niptables -A INPUT -p tcp --dport 443 --syn \\\n  -m recent --name synflood --update --seconds 1 --hitcount 20 -j DROP\n```\n\n**4. 不要做的事**\n- **别开 `tcp_syncookies=0`**（很多人为了性能关掉，等于拆掉防线）\n- **别把 `tcp_max_syn_backlog` 调到无限大**（内存有限，队列越大越容易被吃光）\n- **不要在攻击期间反复重启服务**（重启会丢队列，客户端全部重连，雪上加霜）\n\n**真实案例的判断线索**：如果 `ss -s` 显示 `synrecv` 几万但 `estab` 正常，且 CPU 不高、带宽没打满 —— 那就是典型的 SYN Flood（攻击成本低、不需要打通）。"
+  },
+  {
+    "id": 4410,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`iptables` 和 `nftables` 有什么关系？为什么新系统推荐 nftables？",
+    "answer": "**`nftables` 是 `iptables` 的官方继任者**，不是替代品的新名字，是**重新实现**。\n\n| | iptables | nftables |\n|---|---|---|\n| 内核子系统 | `ip_tables`（IPv4）、`ip6_tables`、`arp_tables` 各一套 | **`nf_tables` 统一**（IPv4/IPv6/ARP/bridge 同一套） |\n| 规则匹配 | **线性链表逐条遍历** | **集合 + 哈希查找**，规则多时快得多 |\n| 原子更新 | 修改要重写整条链 | **支持事务式原子提交** |\n| 命令 | `iptables`、`ip6tables`、`ebtables`、`arptables` 四个 | **一个 `nft`** |\n| 语法 | 一堆选项 | 更像编程语言（可定义变量、映射、集合） |\n| 现状 | **只是 nf_tables 上的兼容层**（`iptables-nft`） | 主流发行版默认 |\n\n**关键事实：现代发行版上的 `iptables` 命令，底层已经是 nftables**。用 `iptables-nft` 兼容层转换。\n\n**为什么规则多时 nftables 更快**：\n\niptables 对每个包**从上到下逐条匹配**，1000 条规则最坏要匹配 1000 次。\n\nnftables 支持**集合和映射（set/map）**：\n```\nnft add set inet filter blacklist { type ipv4_addr\\; }\nnft add element inet filter blacklist { 1.2.3.4, 5.6.7.8, ... }\nnft add rule inet filter input ip saddr @blacklist drop\n```\n**10000 个 IP 封禁只需一条规则 + O(1) 哈希查找**，而 iptables 时代要么写 10000 条规则，要么用 `ipset`（在这点上 ipset 已经解决了问题）。\n\n**该用哪个**：\n- **已有环境、脚本、文档** → 继续用 iptables，别为了「新」而迁移\n- **新系统、规则量大、需要 IPv4/IPv6 统一管理** → nftables\n- **K8s 节点** → 跟着发行版默认走，别手动改成另一个\n\n**注意**：**不要把 iptables 和 nftables 规则混在一起配**。两者操作的是同一内核子系统，混用会导致规则互相覆盖、排查时看漏。确认当前用的是哪套：\n```\niptables -V                    # 输出含 nf_tables 或 legacy\niptables-save | head\nnft list ruleset | head\n```"
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "id": 4442,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "`192.168.1.130/26` 所在网段的广播地址是？",
+    "options": [
+      { "key": "A", "text": "192.168.1.191" },
+      { "key": "B", "text": "192.168.1.255" },
+      { "key": "C", "text": "192.168.1.159" },
+      { "key": "D", "text": "192.168.1.128" }
+    ],
+    "answer": ["A"],
+    "explanation": "/26 的块大小是 256-192 = **64**，所以网段是 128-191（130 落在这一块）。网段地址 192.168.1.128，广播地址 = 网段 + 块大小 - 1 = **192.168.1.191**，可用地址 129~190（62 个）。速算口诀：**块大小 = 256 - 掩码第四段**，然后找 130 落在哪个 64 的倍数区间。"
+  },
+  {
+    "id": 4443,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "以下哪些属于「应用层」协议？（多选）",
+    "options": [
+      { "key": "A", "text": "HTTP、DNS" },
+      { "key": "B", "text": "SSH、SMTP" },
+      { "key": "C", "text": "TCP、UDP" },
+      { "key": "D", "text": "MySQL 协议、Redis RESP" }
+    ],
+    "answer": ["A", "B", "D"],
+    "explanation": "TCP、UDP 是**传输层**（四层模型的第三层）。分层速记：**物理/链路（以太网、ARP）→ 网络（IP、ICMP）→ 传输（TCP、UDP）→ 应用（HTTP、DNS、SSH、SMTP、FTP、MySQL协议、RESP）**。注意 DNS 通常走 UDP 53，但它是应用层协议，**传输层用什么不影响它的分层归属**。"
+  },
+  {
+    "id": 4444,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`ss -lnt` 输出中 `Recv-Q` 列接近 `Send-Q` 列，说明什么？",
+    "options": [
+      { "key": "A", "text": "ACCEPT 队列正在溢出，应用 accept 太慢" },
+      { "key": "B", "text": "SYN 队列溢出" },
+      { "key": "C", "text": "带宽跑满" },
+      { "key": "D", "text": "磁盘空间不足" }
+    ],
+    "answer": ["A"],
+    "explanation": "在 `ss -l`（监听态）下，**`Recv-Q` 是已完成的握手但还没被 `accept()` 的连接数，`Send-Q` 是这个队列的上限**（取 `somaxconn` 与应用 `listen backlog` 的较小值）。接近或相等说明**应用 accept 太慢**（线程池满、GC、阻塞）。这与 SYN 队列溢出不同：SYN 队列溢出表现为客户端重传 SYN、连接变慢，不在 `ss -l` 的这一列体现。"
+  },
+  {
+    "id": 4445,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "关于 DNS 的 TTL，以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "变更解析前应先调小 TTL，并等一个旧 TTL 周期后再改" },
+      { "key": "B", "text": "客户端的本地缓存和各级递归 DNS 都会各自按 TTL 缓存" },
+      { "key": "C", "text": "TTL 设为 0 表示不缓存，每次都要查询" },
+      { "key": "D", "text": "改完 TTL 会立刻对所有客户端生效" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：**TTL 是「缓存多久」，改动只影响后续查询**，已缓存的记录要等过期才会更新。这就是「变更前先降 TTL、等一个周期」的原因——否则改完可能要等 24 小时才全网生效。补充：⑤某些运营商 DNS 会**忽略 TTL**（强制长时间缓存），这是国内 DNS 变更最头疼的问题，涉及重大变更应考虑换域名；⑥C 的「TTL=0」在实践中仍有少量缓存（取决于实现），不等于「完全实时」。"
+  },
+  {
+    "id": 4446,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "抓包看到大量 `Dup ACK`，最合理的推断是？",
+    "options": [
+      { "key": "A", "text": "链路中间有丢包，接收方在重复索要缺失的段" },
+      { "key": "B", "text": "接收方收到重复的数据包" },
+      { "key": "C", "text": "发送方在重传" },
+      { "key": "D", "text": "连接被重置" }
+    ],
+    "answer": ["A"],
+    "explanation": "`Dup ACK` 是**接收方重复发同一个 ACK**，因为它期望的那个序号没到（后续的段先到了，造成乱序），所以它反复催「我要 N」。收到 **3 个 Dup ACK** 会触发发送方的**快速重传**——这是 TCP 应对丢包的优化机制。B 是字面误解（不是「收到重复包」）；C 是 Dup ACK 的**后果**而非原因；D 是 RST 的语义。"
+  },
+  {
+    "id": 4447,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "关于 TCP Fast Open（TFO），以下说法正确的有哪些？（多选）",
+    "options": [
+      { "key": "A", "text": "允许在握手完成前就携带数据，省掉一个 RTT" },
+      { "key": "B", "text": "需要服务端与客户端都开启，且依赖 cookie 机制" },
+      { "key": "C", "text": "首次连接仍然要标准三次握手（没有 cookie）" },
+      { "key": "D", "text": "开启了就一定能让所有请求更快" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：TFO 只在**重复连接**（已有 cookie）时才有收益，首次连接无收益；而且**中间设备可能丢弃带数据的 SYN**，部分网络下反而回退到普通握手。这也是 TFO 部署率不高的原因。补充：⑤Linux 用 `net.ipv4.tcp_fastopen`（1=客户端、2=服务端、3=双向）；⑥**幂等性要求**：TFO 携带的数据可能被重复处理，所以只能用于幂等请求（这也是 QUIC 的 0-RTT 面临的同样问题）。"
+  },
+  {
+    "id": 4448,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP 的 `Retry-After` 响应头用在什么状态码下最合理？",
+    "options": [
+      { "key": "A", "text": "429（限流）和 503（服务暂时不可用）" },
+      { "key": "B", "text": "404" },
+      { "key": "C", "text": "401" },
+      { "key": "D", "text": "301" }
+    ],
+    "answer": ["A"],
+    "explanation": "`Retry-After` 告诉客户端「**过多久可以重试**」，因此只对**暂时性**错误有意义。429（Too Many Requests）和 503（Service Unavailable）是最典型的场景，值可以是秒数或 HTTP 日期。404/401/301 都是「确定性的结果」，重试没有意义。**实践价值**：客户端（尤其是爬虫、SDK）按 `Retry-After` 退避能显著减少对服务端的压力；网关限流时配上它比只返回 429 更友好。"
+  },
+  {
+    "id": 4449,
+    "type": "multiple",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "排查「服务端能收到请求但客户端超时无响应」，以下哪些方向是对的？（多选）",
+    "options": [
+      { "key": "A", "text": "检查服务端处理耗时是否超过客户端超时时间" },
+      { "key": "B", "text": "检查响应体是否过大导致传输慢（带宽/MTU）" },
+      { "key": "C", "text": "检查中间设备（LB/防火墙）是否有响应超时或大小限制" },
+      { "key": "D", "text": "客户端一定有 bug" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是无依据的结论。三项正确的本质都是「**响应发出去了但客户端没等到**」：A 是处理慢（最符合描述「服务端有日志但客户端超时」）；B 是大响应体在慢链路上传输超时，**或 MTU 问题导致大包被丢弃**（经典症状：小请求正常、大响应超时）；C 是中间设备有阈值（如 Nginx `proxy_read_timeout`、LB 的空闲超时、WAF 的响应大小限制）。**判断关键**：服务端日志里的**耗时**字段——如果耗时很短，问题在传输/中间设备；如果耗时很长，是处理慢。"
+  }
+]

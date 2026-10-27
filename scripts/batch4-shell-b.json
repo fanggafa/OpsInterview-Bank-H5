@@ -1,0 +1,206 @@
+[
+  {
+    "id": 4213,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`sed` 的常用用法有哪些？`-i` 有哪些坑？",
+    "answer": "**核心定位：按行做「查找替换/删除/插入」。**\n\n**最常用**：\n```\nsed 's/old/new/' file          # 替换每行第一个\nsed 's/old/new/g' file         # 替换所有（g）\nsed 's/old/new/2' file         # 只替换第 2 个\nsed -n '10,20p' file           # 打印 10-20 行（-n 必须，否则全打印）\nsed '/^#/d' file               # 删除注释行\nsed '/pattern/d' file          # 删除匹配行\nsed '3i\\新行' file             # 第 3 行前插入\nsed '$a\\末行' file             # 末尾追加\nsed -n '/start/,/end/p' file   # 按区间打印（日志截取神器）\n```\n**`sed -n '/start/,/end/p'` 是日志排障的高频用法**——直接截出两个标记之间的内容。\n\n**`-i` 原地修改的坑**：\n\n**1. GNU sed 与 BSD/macOS 语法不兼容**\n```\nsed -i 's/a/b/' f            # GNU（Linux）\nsed -i '' 's/a/b/' f         # BSD（macOS）：必须给个空备份后缀\n```\n跨平台脚本要额外判断 `uname`。\n\n**2. `-i` 会直接改文件，无法回滚**\n生产上的正确做法：**先备份再改**\n```\ncp file file.bak && sed -i 's/a/b/' file\n# 或先看会改成什么样\nsed 's/a/b/' file | diff file -\n```\n\n**3. `-i` 修改的是 inode 吗？**\nGNU sed 的 `-i` 实际是「**写临时文件 + 重命名覆盖**」，**inode 会变**。后果：\n- 如果文件被硬链接或进程持有 fd，改的是新 inode，旧句柄看不到变化\n- **配置文件被服务 reload 后才发现改动没生效**——因为服务读的可能是旧 inode\n- **容器挂载的配置文件被 sed -i 后，宿主机看到的可能还是旧的**（configmap 挂载场景）\n\n**4. 特殊字符必须转义或换分隔符**\n```\nsed 's/\\/usr\\/local/\\/opt/'      # 反斜杠地狱\nsed 's|/usr/local|/opt|g'         # 换分隔符（推荐）\nsed 's/[&/]/\\\\&/g'              # 替换内容里含 & 时要转义\n```\n`&` 在替换串里表示「整个匹配内容」，忘转义会出现莫名其妙的重复。\n\n**`sed` 与 `awk` 的选择**：简单替换/删行用 `sed`；需要按字段计算、聚合用 `awk`。**别用 `sed` 做算术**，那是 `awk` 的活。"
+  },
+  {
+    "id": 4214,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`find` 的常用组合有哪些？`-exec` 和 `xargs` 有什么区别？",
+    "answer": "**`find` 的核心是「条件 + 动作」的组合**。\n\n**最常用的六种**：\n```\n# 1. 按时间（清理日志的标准用法）\nfind /var/log -name '*.log' -mtime +7\n# 2. 按大小（找大文件）\nfind / -type f -size +1G -exec ls -lh {} \\; \n# 3. 按权限（安全审计）\nfind / -perm -4000 -type f 2>/dev/null     # SUID\n# 4. 按属主\nfind /data -user nobody\n# 5. 排除目录（避免扫 .git/node_modules）\nfind . -type f -name '*.log' -not -path './.git/*'\n# 6. 执行动作\nfind /tmp -name '*.tmp' -delete\n```\n\n**时间参数的三种写法（易混）**：\n\n| 参数 | 含义 |\n|---|---|\n| `-mtime +7` | 修改时间 **7 天前**（>7×24h） |\n| `-mtime -7` | **7 天内**修改过 |\n| `-mmin +60` | 60 分钟前 |\n| `-newer file` | 比某文件新 |\n| `-cmin` / `-amin` | 状态变更 / 访问时间 |\n\n**`-exec` vs `xargs`**：\n\n| | `-exec cmd {} \\;` | `-exec cmd {} +` | `xargs` |\n| 调用次数 | **每个文件一次** | 批量（接近命令行上限） | 批量 |\n| 特殊文件名 | **安全**（直接传参） | **安全** | 需 `-0` 才安全 |\n| 速度 | 慢（进程开销） | 快 | 快 |\n\n**推荐：优先 `-exec ... +`**（安全又批量），次选 `xargs -0`。\n\n**`xargs` 必须配 `-print0` 的两个理由**：\n```\n# 错：文件名含空格会被拆成多个参数\nfind . -name '*.log' | xargs rm\n# 对\nfind . -name '*.log' -print0 | xargs -0 rm -f --\n```\n1. **`-print0`/`-0` 用 NUL 分隔**，空格、换行、引号都不是问题\n2. **末尾 `--`** 防止文件名以 `-` 开头被当成选项\n3. `-r`（GNU）或无输入时不执行——不加的话空输入会执行一次裸命令\n\n**`find` 性能坑**：\n- 遍历 `/` 一定要 `-xdev`（不跨文件系统）或明确路径，否则会扫到 `/proc` 无限流\n- **先给 `-name` 再用 `-exec`**，否则对全部文件执行\n- `-path` 的匹配串**必须写全**：`-path '*.git*'` 会误伤 `digital`，安全写法是 `-path '*/.git/*'`"
+  },
+  {
+    "id": 4215,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 里怎么做字符串处理（截取、替换、分割、去重）？",
+    "answer": "**纯 Shell 参数扩展（无外部命令，最快）**：\n```\nf=/data/app/logs/app.log\n\n${f##*/}        # app.log      删掉最后一个 / 及之前（取文件名）\n${f%/*}         # /data/app/logs  删掉最后一个 / 及之后（取目录）\n${f%.*}         # /data/app/logs/app  去扩展名\n${f##*.}        # log          取扩展名\n\n${var#prefix}   # 删最短前缀匹配\n${var##prefix}  # 删最长前缀匹配（# = 从左删）\n${var%suffix}   # 删最短后缀\n${var%%suffix}  # 删最长后缀（% = 从右删）\n\n${var/a/b}      # 替换第一个 a 为 b\n${var//a/b}     # 替换所有\n${var/#a/b}     # 只在开头\n${var/%a/b}     # 只在结尾\n\n${#var}         # 长度\n${var:2:5}      # 从下标 2 取 5 个字符\n${var^^}        # 全部转大写（bash 4+）\n${var,,}        # 全部转小写\n```\n**助记：`#` 在键盘左侧（从左删），`%` 在右侧（从右删）；单个删最短，双写删最长。**\n\n**分割**：\n```\nIFS=',' read -ra arr <<< \"a,b,c\"     # 拆成数组（推荐）\n```\n\n**去重与集合运算**：\n```\nsort -u f                          # 去重\nsort f | uniq -d                   # 只留重复行\ncomm -12 <(sort a) <(sort b)       # 交集\ncomm -23 <(sort a) <(sort b)       # 差集（在 a 不在 b）\n```\n\n**三个坑**：\n1. **`${var:-x}` 与 `${var#x}` 不能混用**——前者是默认值，后者是删除前缀\n2. **变量未加引号会被分词**，含空格的路径必须 `\"$var\"`\n3. **`${var^^}` 需 bash 4+**，`/bin/sh`（dash）不支持，脚本开头要 `#!/usr/bin/env bash`\n\n**性能建议**：频繁字符串操作时用参数扩展，**不要每次都 `awk`/`sed` 起子进程**——循环 10 万次时差距是几十秒 vs 几分钟。"
+  },
+  {
+    "id": 4216,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "Shell 脚本如何做「幂等」与「可重入」，保证重复执行不产生副作用？",
+    "answer": "**幂等的本质：先判断状态，再决定动作；不要盲目执行。**\n\n**五条模式**：\n\n**1. 用「存在性检查」包裹**\n```\n[[ -d /data/app ]] || mkdir -p /data/app\ngrep -q '^export PATH' ~/.bashrc || echo 'export PATH=...' >> ~/.bashrc\n```\n**`>>` 是幂等的天敌**——重跑会重复追加。要么用 `grep -q` 守卫，要么改用覆盖式模板。\n\n**2. 覆盖优于追加（幂等写法）**\n```\n# 反例：每次跑都多一行\ncat conf >> /etc/sysctl.conf\n# 正例：生成的完整配置整体覆盖（幂等）\ncat > /etc/sysctl.conf <<'EOF'\nnet.ipv4.ip_forward = 1\nEOF\n```\n\n**3. 用“标记文件”做一次性动作**\n```\n[[ -f /var/lib/xxx/.installed ]] && exit 0\n# ... 安装逻辑\ntouch /var/lib/xxx/.installed\n```\n适合不可重入的操作（初始化数据库、改密码）。\n\n**4. 用 API 的幂等语义**\n- `mkdir -p`（存在不报错）\n- `systemctl enable --now`（已启用也不报错）\n- `sysctl -w`（覆盖）\n- `apt-get install`（幂等）\n\n**5. 用锁防止并发重入**\n```\nexec 9> /var/lock/myscript.lock\nflock -n 9 || { echo '已有实例在跑'; exit 1; }\n```\n**`flock -n` 是 crontab 脚本的必备护身符**——任务执行时间超过间隔时，不加锁会叠跑，可能拖垮机器。\n\n**测试可重入性的方法**：\n```\n./script.sh && ./script.sh     # 连跑两次\n```\n第二次的输出应该完全相同、无副作用。**这是上线前的强制检查。**\n\n**几个高频非幂等点**：\n1. `>>` 追加配置\n2. `useradd` / `CREATE DATABASE`（重复执行报错）\n3. 计数类操作（`INCR` 语义）\n4. 随机端口/文件名生成（每次不同）\n5. `rm -rf` 后重建（中间失败会留下半成品）"
+  },
+  {
+    "id": 4217,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`trap` 能捕获哪些信号？写一个带清理逻辑的完整示例，并说明常见坑。",
+    "answer": "**`trap` 是脚本的「异常安全出口」**，用来保证临时文件清理、进程回收、锁释放。\n\n**可捕获的信号**：`EXIT`（伪信号，正常/异常退出都触发）、`INT`（Ctrl+C）、`TERM`、`HUP`、`ERR`（`set -e` 触发时）、`DEBUG`、`RETURN`。\n\n**完整示例**：\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\n\ntmp=$(mktemp -d)\ncleanup() {\n  local code=$?\n  rm -rf \"$tmp\"\n  exit \"$code\"            # 保留原退出码\n}\ntrap cleanup EXIT\n\n# 后台任务\nlong_job &\npid=$!\ntrap cleanup EXIT INT TERM\n```\n\n**五个必须知道的坑**：\n\n**1. 捕获 EXIT 后要显式 `exit $?`**\n```\n# 错：trap 里 exit 0 会把失败变成成功\ntrap 'rm -f \"$tmp\"' EXIT\n# 对：\ncleanup() { local rc=$?; rm -rf \"$tmp\"; exit $rc; }\ntrap cleanup EXIT\n```\n这是**最隐蔽的 bug**：脚本失败但返回 0，CI 终于还是绿的。\n\n**2. `EXIT` 陷阱会在 `INT`/`TERM` 之后自动触发**\n所以写 `trap cleanup EXIT` **通常就够了**，不需要再写 `INT TERM`。写了反而会执行两次清理（`rm -rf` 两次无害，但 `exit` 逻辑会乱）。\n\n**3. `trap` 里的 `$?` 只在 EXIT/ERR 时有意义**\n在 INT/TERM 陷阱里 `$?` 是 130/143，要自己判断。\n\n**4. 子 shell 不会继承 trap（除非 `set -E` + `trap -E`）**\n```\nset -E\ntrap 'echo ERR at $LINENO' ERR     # -E 让子 shell 也继承 ERR 陷阱\n```\n\n**5. `trap '' SIGNAL` 是忽略，`trap - SIGNAL` 是恢复默认**\n```\ntrap '' INT      # 屏蔽 Ctrl+C（危险，脚本会杀不掉）\ntrap - INT       # 恢复默认行为\n```\n\n**实际最有价值的三个用途**：\n1. **临时文件清理**：避免 `/tmp` 堆积\n2. **锁文件释放**：`flock` 用 fd 时随进程退出自动释放，但手写 `.lock` 文件必须 trap 清理\n3. **失败时输出上下文**：`trap 'echo \"失败于第 $LINENO 行\"' ERR` —— **排障利器**"
+  },
+  {
+    "id": 4218,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何在 Shell 脚本里做日志输出？为什么不能直接 echo？",
+    "answer": "**直接 `echo` 的四个问题**：\n\n| 问题 | 后果 |\n|---|---|\n| 无时间戳 | 出问题时无法对齐时间线 |\n| 无级别 | 无法区分信息/警告/错误 |\n| **输出到 stdout** | 污染管道输出（`script \\| jq` 直接失败） |\n| 无来源标识 | 多脚本混跑时分不清是谁打的 |\n\n**推荐的最小骨架**：\n```bash\nlog() {\n  local level=$1; shift\n  printf '%s [%s] %s\\n' \"$(date '+%F %T')\" \"$level\" \"$*\" >&2\n}\ninfo()  { log INFO  \"$@\"; }\nwarn()  { log WARN  \"$@\"; }\nerror() { log ERROR \"$@\"; }\ndie()   { error \"$@\"; exit 1; }\n```\n\n**关键设计点**：\n\n**1. 日志走 stderr（`>&2`）**\n这是**最重要的一条**。stdout 留给「数据」，stderr 留给「过程信息」：\n```\n# 这样才对：数据给下游，日志给人看\nmyscript.sh | jq '.id'\nmyscript.sh 2>/dev/null | xargs ...   # 需要时还能丢弃日志\n```\n\n**2. 用 `printf` 而不是 `echo`**\n`echo` 在不同 shell 里对 `-n`、`-e`、反斜杠的处理不一致（POSIX 都允许不同实现），**`printf` 是唯一可靠的**。\n\n**3. 同时落文件**：\n```\nexec > >(tee -a /var/log/myscript.log) 2>&1\n```\n用进程替换把 stdout/stderr 同时送到终端和文件。注意这会改变 fd，`set -e` 的行为不受影响。\n\n**4. 不要给日志加颜色到文件**\n```\n# 只在 tty 上加颜色\n[[ -t 2 ]] && RED='\\033[31m' || RED=''\n```\n`-t 2` 判断 stderr 是不是终端。**无脑加 ANSI 码会让日志文件里全是乱码控制符**，grep 都费劲。\n\n**5. 敏感信息脱敏**\n日志里绝不能出现密码、token。写个 `mask()` 函数处理：\n```\nmask() { sed -E 's/(password|token|secret)=[^ ,]*/\\1=***/g'; }\n```\n\n**常见错误**：`echo -e \"a\\tb\"` 在 dash 下不会解释 `\\t`，输出字面 `\\t`。改成 `printf 'a\\tb\\n'`。"
+  },
+  {
+    "id": 4219,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何用 Shell 做简单的 HTTP 请求与接口健康检查？`curl` 常用参数有哪些？",
+    "answer": "**脚本里 `curl` 的必备参数组合**：\n```\ncurl -sSfL --max-time 5 -o /dev/null -w '%{http_code}' https://api/health\n```\n\n| 参数 | 作用 | 为什么必须 |\n|---|---|---|\n| **`-s`** | 静默（不显示进度条） | 否则日志被进度条污染 |\n| **`-S`** | **出错时仍显示错误**（配合 `-s`） | 只有 `-s` 会连错误信息一起吞掉 |\n| **`-f`** | HTTP ≥400 时返回非 0 退出码 | **不加的话 500 也算「成功」** |\n| `-L` | 跟随重定向 | 跳转后误判 |\n| `--max-time` | 总超时（秒） | **防止脚本挂死** |\n| `--connect-timeout` | 连接超时 | 区分连不上 vs 响应慢 |\n| `-w '%{http_code}'` | 输出状态码 | 脚本里要精确判断 |\n| `-o /dev/null` | 丢弃 body | 只看状态 |\n| `-H` | 自定义 header | 认证 |\n| `-d` / `--data` | POST body | 接口测试 |\n\n**`-f` 是最容易漏的一个**：不加的话，服务返回 500、`curl` 退出码仍是 0，健康检查永远绿。\n\n**健康检查脚本**：\n```bash\ncheck() {\n  local url=$1 expect=${2:-200}\n  local code\n  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -L \"$url\" 2>/dev/null) || {\n    echo \"FAIL $url 连接失败\"; return 1\n  }\n  if [[ \"$code\" == \"$expect\" ]]; then\n    echo \"OK $url $code\"; return 0\n  fi\n  echo \"FAIL $url 期望 $expect 实际 $code\"; return 1\n}\n```\n\n**几个坑**：\n1. **`-w` 输出会混进 body**：不 `-o /dev/null` 的话，body 和状态码拼在一起没法解析\n2. **`-sS` 顺序有讲究**：`-s` 后加 `-S` 才生效；写成 `-S -s` 两者都会被应用（顺序无关，但习惯上 `-sS`）\n3. **TLS 证书问题**：测试环境可 `-k`（跳过校验），**生产绝对不能加 `-k`**\n4. **`--retry` 家族**：`--retry 3 --retry-delay 2 --retry-connrefused` 简单场景够用，不用自己写重试循环\n5. **JSON 接口要 `-H 'Content-Type: application/json'`**，否则服务端会按表单解析"
+  },
+  {
+    "id": 4220,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "写一个「批量分发并执行命令到多台机器」的脚本，要考虑哪些问题？",
+    "answer": "**核心难点不在「怎么连」，在「怎么并发、怎么汇总、怎么不炸」。**\n\n**最小可用骨架**：\n```bash\n#!/usr/bin/env bash\nset -uo pipefail       # 注意：这里不用 -e，单台失败不该中断全部\n\nHOSTS=${1:-hosts.txt}\nCMD=$2\nOUT=results/$(date +%s)\nmkdir -p \"$OUT\"\n\nexec_host() {\n  local h=$1\n  if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \\\n        \"$h\" \"$CMD\" > \"$OUT/$h.out\" 2> \"$OUT/$h.err\"; then\n    echo \"OK   $h\"\n  else\n    echo \"FAIL $h (exit $?)\"\n  fi\nexport -f exec_host           # 导出函数给 xargs 用\nexport CMD OUT\n\ntr -d '\\r' < \"$HOSTS\" | grep -v '^#' | grep -v '^$' \\\n  | xargs -P 10 -I{} bash -c 'exec_host \"$@\"' _ {}\n\necho '失败清单：'\ngrep -l . \"$OUT\"/*.err 2>/dev/null | sed 's|.*/||;s|\\.err$||'\n```\n\n**必须处理的问题**：\n\n| 问题 | 处理方式 |\n|---|---|\n| **并发控制** | `xargs -P 10`；数量别超目标机承受能力 |\n| **超时** | `ssh ConnectTimeout`（连不上） + `timeout` 包住命令（跑太久） |\n| **免交互** | `BatchMode=yes` 避免卡在密码提示；`StrictHostKeyChecking=accept-new` 免首次确认 |\n| **逐机独立输出** | 每台一个文件，否则输出交错无法看 |\n| **单台失败不中断** | 循环里不能用 `set -e`；用结果文件汇总 |\n| **Windows 换行** | `tr -d '\\r'`（主机清单常从 Excel/Windows 拷来） |\n| **身份认证** | 优先 SSH key + 堡垒机；**不要脚本里写密码** |\n\n**六个高频坑**：\n1. **`ssh` 会抢 stdin**，在 `while read` 循环里必须 `ssh ... < /dev/null`，否则后续行被吞\n2. **`$CMD` 里有变量/引号** 会在远端解析，引号层级极易错。稳妥做法是**把脚本上传后执行**（`scp` + `ssh bash script.sh`）\n3. **远端环境不同**（不同 PATH、不同 shell）→ 命令用绝对路径\n4. **`-A` 代理转发**容易把本机 agent 暴露给不可信跳板，慎用\n5. **大量并发会让目标机 SSH 拒绝**（`MaxStartups`），串行+小并发更稳\n6. **汇总结果要能复现**：把失败清单和每次的输出目录路径打出来\n\n**更好的选择**：超过 20 台就该用 **Ansible**（`ansible all -m shell -a '...'`）或 **Parallel-SSH（pssh）**——它们都解决了上面的所有问题。手写脚本只适合「临时、几台、一次性」。"
+  },
+  {
+    "id": 4221,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 中如何安全地处理用户输入与外部数据？有哪些注入风险？",
+    "answer": "**Shell 的注入风险比 SQL 更隐蔽，因为「数据」和「代码」的边界很模糊。**\n\n**三类典型风险**：\n\n**1. 变量拼成命令执行**\n```\n# 极度危险：用户输入 \"a; rm -rf /\" 就会被执行\ncmd=\"ls $DIR\"; $cmd\n# 稍好但仍有风险：eval 是代码注入\nread -r x; eval \"echo $x\"\n```\n**`eval` 应当视为「把用户输入当代码跑」**，能用就不用。\n\n**2. 命令行参数注入**\n```\n# 输入是 \"-rf /\" 会被当成选项\nrm $FILES\n# 正确\nrm -- \"$@\"\n```\n**`--` 是防选项注入的唯一手段**，所有危险命令（rm、chown、mv）都要加。\n\n**3. 文件名/路径注入**\n```\n# 文件名含空格、换行、以 - 开头都会出问题\nfind . -name '*.log' | xargs rm\n# 正确：NUL 分隔 + --\nfind . -name '*.log' -print0 | xargs -0 rm -f --\n```\n\n**安全处理数据的五条原则**：\n\n1. **一律加引号**：`\"$var\"`、`\"$@\"`\n2. **校验输入格式**（白名单优于黑名单）\n```\n# 只允许 IP\n[[ $ip =~ ^[0-9]{1,3}(\\.[0-9]{1,3}){3}$ ]] || die \"非法 IP\"\n# 只允许字母数字\n[[ $name =~ ^[a-zA-Z0-9_-]+$ ]] || die \"非法名称\"\n```\n3. **用 `--` 终结选项**\n4. **不要把数据拼进命令串**，用参数数组：\n```\n# 危险\nssh host \"tar -czf /tmp/$name.tar.gz /data\"\n# 安全（本地展开，远端只收结果）\nname=$(printf '%q' \"$name\")     # 或先在本地校验\n```\n5. **`printf '%q'` 做转义**（bash 内置）：\n```\nsafe=$(printf '%q' \"$unsafe\")\n```\n它会输出可直接放入 shell 命令的安全形式。\n\n**`$()` 与反引号的差别**：都能执行命令替换，但 `$()` 可嵌套、引号处理更清晰，**且不会被误解析**。反引号在嵌套时几乎无法正确书写。\n\n**最后一条**：**不要让脚本处理「不可信的人的输入」**。面向运维人员的脚本，第一道防线是权限和审计，Shell 层的转义是第二道。"
+  },
+  {
+    "id": 4222,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`while read line; do ...; done < file` 中，如果改成 `cat file | while read line; do ...; done`，会有什么问题？",
+    "options": [
+      { "key": "A", "text": "循环里对变量的修改在循环结束后丢失（管道创建了子 shell）" },
+      { "key": "B", "text": "没有任何区别" },
+      { "key": "C", "text": "管道版本更快" },
+      { "key": "D", "text": "管道版本无法读取最后一行" }
+    ],
+    "answer": ["A"],
+    "explanation": "这是 Shell 最经典的陷阱之一。管道会让右侧 cmd（`while` 循环）在**子 shell** 中执行，循环里 `count=$((count+1))` 只改子 shell 的副本，循环结束后外面看到的还是 0。修复方式：①用重定向 `< file`（推荐）；②用进程替换 `< <(cmd)`；③bash 4.2+ 开 `shopt -s lastpipe`（让管道最后一段在当前 shell 执行）。注意 `lastpipe` 只在**非交互**且未开 job control 时生效。"
+  },
+  {
+    "id": 4223,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "以下哪些是 `crontab` 的常见坑？（多选）",
+    "options": [
+      { "key": "A", "text": "cron 的 PATH 很短，脚本里必须用命令的绝对路径或自己设 PATH" },
+      { "key": "B", "text": "cron 执行时没有终端、没有登录 shell，`~/.bashrc` 里的环境变量不会加载" },
+      { "key": "C", "text": "没加锁且执行时间超过间隔时，会叠跑多个实例" },
+      { "key": "D", "text": "crontab 里的 % 必须转义为 \\%，否则会被当成换行" }
+    ],
+    "answer": ["A", "B", "C", "D"],
+    "explanation": "四项都是真实坑。补充：⑤**cron 默认用 `/bin/sh`**，脚本用了 bash 语法（`[[ ]]`、数组）必须显式 `SHELL=/bin/bash` 或脚本里写 `#!/bin/bash` 并在 crontab 里 `bash /path/script.sh`；⑥**输出会以邮件形式发给用户**，不重定向会产生大量 mail 堆积（`>/dev/null 2>&1` 或追加日志）；⑦**时区**：cron 用系统时区，容器里常是 UTC；⑧**秒级任务不支持**，最少 1 分钟，需要更细用 systemd timer 或循环脚本。"
+  },
+  {
+    "id": 4224,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "如何用 Shell 实现「文件锁」防止脚本被并发执行？`flock` 和手写锁有什么区别？",
+    "answer": "**`flock` 是唯一可靠的方式**，手写「检查文件是否存在」有**检查-创建竞态**。\n\n**flock 的两种用法**：\n\n**1. 命令行包装（最简洁）**\n```\nflock -n /var/lock/backup.lock /opt/scripts/backup.sh\n```\n获取锁失败立即退出（`-n` = non-blocking）。**整个脚本被 flock 包住，退出时自动释放**。\n\n**2. 脚本内 fd 方式（更灵活，推荐）**\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\n\nexec 9>/var/lock/myscript.lock\nif ! flock -n 9; then\n  echo '已有实例在运行，退出' >&2\n  exit 0            # 注意：不是 1，避免 cron 报错\nfi\n# 从这里开始是临界区\n```\n**关键点**：锁绑定在 **fd 9** 上，进程退出 fd 关闭 → 锁自动释放。**不会因为 kill -9 留下僵尸锁文件**。\n\n**为什么手写锁不可靠**：\n```\n# 有竞态的写法\nif [ -f /tmp/myscript.lock ]; then exit 1; fi\ntouch /tmp/myscript.lock     # ← 这中间可能有另一个实例也通过了检查\ntrap 'rm -f /tmp/myscript.lock' EXIT   # kill -9 时不会执行 → 锁永久残留\n```\n两个致命缺陷：\n1. **检查与创建不是原子操作**（`O_EXCL` 才原子，但 shell 里还要写临时文件）\n2. **进程被杀时锁不释放**，下次永远跑不起来（需要人工删锁）\n\n**`flock` 的四个实用参数**：\n\n| 参数 | 作用 |\n|---|---|\n| `-n` | 拿不到锁立即失败（不等待） |\n| `-w 30` | 最多等 30 秒 |\n| `-x` / `-s` | 排他锁（默认）/ 共享锁 |\n| `-E 0` | 拿不到锁时返回指定退出码（便于上层判断） |\n\n**crontab 的标准写法**：\n```\n*/5 * * * * flock -n /var/lock/job.lock /opt/job.sh >> /var/log/job.log 2>&1\n```\n**这一行解决了「叠跑」问题**——比在脚本里写检查更简单可靠。\n\n**验证锁是否生效**：\n```\nflock -n /var/lock/test.lock sleep 10 &\nflock -n /var/lock/test.lock echo 'should fail'    # 应立即失败\n```"
+  },
+  {
+    "id": 4225,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 脚本里怎么处理日期时间（格式化、计算、比较）？",
+    "answer": "**`date` 是核心工具**（GNU date，macOS 参数不同）。\n\n**格式化**：\n```\ndate '+%Y-%m-%d %H:%M:%S'      # 2024-01-15 10:30:00\ndate '+%F %T'                   # 同上（快捷写法）\ndate -d 'yesterday' '+%F'\ndate -d '7 days ago' '+%F'       # 7 天前\ndate -d '1 month ago' '+%F'\ndate -d 'next Monday' '+%F'\ndate -d '2024-01-15' +%s         # 转时间戳\ndate -d @1700000000 '+%F'        # 时间戳转日期\ndate +%s                         # 当前时间戳\ndate -u '+%F %T'                 # UTC\ndate +%s%3N                      # 毫秒（GNU）\n```\n\n**日期计算**：\n```\n# 相差天数\nd1=$(date -d '2024-01-01' +%s); d2=$(date -d '2024-02-01' +%s)\necho $(( (d2-d1)/86400 ))\n```\n**先转时间戳再做算术**，这是唯一可靠的方式。\n\n**文件名带时间戳**：\n```\nfile=\"backup_$(date +%Y%m%d_%H%M%S).tar.gz\"\n```\n\n**比较**：\n```\n# 字符串比较（格式固定为 YYYY-MM-DD 时可行）\n[[ \"$a\" > \"$b\" ]] && echo 'a 更晚'\n# 更严谨：比时间戳\n[[ $(date -d \"$a\" +%s) -gt $(date -d \"$b\" +%s) ]]\n```\n\n**五个坑**：\n\n1. **`-d` 是 GNU 扩展**，macOS/BSD 的 date 不支持。跨平台用 `gdate`（brew coreutils）或改用 `python -c`\n2. **时区要显式指定**：`TZ=Asia/Shanghai date`，否则容器里（UTC）算出来的日期可能差一天\n3. **`date -d \"1 month ago\"` 有月末陷阱**：3 月 31 日减一个月得到 3 月 3 日（2 月只有 28 天）→ 得到的是 2 月 29 还是 3 月 3 取决于实现。**做月度对账要格外小心**\n4. **`%s%3N` 只有 GNU date 支持**（毫秒），BSD 不支持\n5. **时间戳是 UTC 秒**，与时区无关；但 `date +%s` 输出再 `date -d @` 解析时会按本地时区显示"
+  },
+  {
+    "id": 4226,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`sh` 和 `bash`、`dash`、`zsh` 有什么区别？为什么脚本要写 `#!/usr/bin/env bash`？",
+    "answer": "**核心区别在「是否 POSIX 兼容」**。\n\n| shell | 特点 | 用在哪 |\n|---|---|---|\n| **sh** | POSIX 标准，**不同系统指向不同**（Ubuntu→dash，CentOS→bash） | 系统脚本、`/etc/init.d` |\n| **dash** | 极简、启动快，**不支持数组/`[[ ]]`/`$'...'`** | Ubuntu 的 `/bin/sh` |\n| **bash** | 功能最全（数组、`[[ ]]`、`=~`、`${var^^}`） | 运维脚本默认 |\n| **zsh** | 交互体验好（补全、主题），语法有差异 | 个人终端 |\n| **ksh** | 老牌，特性接近 bash | AIX/老 Unix |\n\n**为什么写 `#!/usr/bin/env bash` 而不是 `#!/bin/bash`**：\n\n| 写法 | 问题 |\n|---|---|\n| `#!/bin/bash` | 硬编码路径；**在 macOS/FreeBSD/部分 NixOS 上 bash 不在 `/bin/bash`** |\n| **`#!/usr/bin/env bash`** | 从 `PATH` 找 bash，**跨平台可靠** |\n| `#!/bin/sh` | 若同时用了 bash 特性 → **在 Ubuntu 上直接语法错误** |\n\n**这是运维脚本最常见的「在我机器上能跑」原因**：开发机 `sh` 是 bash，线上 `sh` 是 dash。\n\n**bash 特性在 dash 下的报错示例**：\n```\narr=(a b c)         # dash: Syntax error: \"(\" unexpected\nif [[ -f x ]]      # dash: [[: not found\ns=$'a\\tb'          # dash: 不支持 $'...'\n```\n\n**实用建议**：\n1. **运维脚本一律 `#!/usr/bin/env bash`** + `bash script.sh` 显式调用（绕过可执行位问题）\n2. **crontab 里写 `bash /path/script.sh`**，因为 cron 默认用 sh\n3. **需要 POSIX 兼容时**（如 `/etc/init.d`、容器 entrypoint、Alpine 基础镜像）用 `#!/bin/sh` 并**只写 POSIX 语法**\n4. **Alpine 默认没有 bash**！Dockerfile 里用 bash 必须 `apk add bash`\n\n**怎么检查脚本是否 POSIX 兼容**：`shellcheck -s sh script.sh` 会按 POSIX 规则检查。"
+  },
+  {
+    "id": 4227,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "给一个「一键健康巡检」脚本的完整设计思路，包含哪些维度？",
+    "answer": "**设计原则：先给「红绿灯结论」，再给明细；所有阈值可配置。**\n\n**七个维度 + 对应命令**：\n\n| 维度 | 命令 | 告警阈值 |\n|---|---|---|\n| **CPU** | `top -bn1`、`vmstat 1 3` | load > 核数、`%sy` 高 |\n| **内存** | `free -h`、`vmstat` 的 `si/so` | `available` < 10%、swap 在用 |\n| **磁盘** | `df -h`、`df -i` | 使用率 > 85%（**块和 inode 都要看**） |\n| **IO** | `iostat -x` | `await` 超阈值、`aqu-sz` > 2 |\n| **网络** | `ss -s`、`ss -lntup` | 连接数异常、TIME_WAIT 超 2 万 |\n| **服务** | `systemctl --failed` | **任何 failed 都是问题** |\n| **时间** | `chronyc tracking` | 偏差 > 1s |\n\n**骨架**：\n```bash\n#!/usr/bin/env bash\nset -uo pipefail\nWARN=0\n\nok()   { printf '  ✓ %s\\n' \"$*\"; }\nbad()  { printf '  ✗ %s\\n' \"$*\"; WARN=$((WARN+1)); }\nhead() { printf '\\n[%s]\\n' \"$*\"; }\n\nhead '磁盘'\nwhile read -r use mnt; do\n  u=${use%\\%}\n  if (( u >= 85 )); then bad \"$mnt 使用率 ${use}\"; else ok \"$mnt ${use}\"; fi\ndone < <(df -hP | awk 'NR>1 && $1 !~ /^(tmpfs|overlay|devtmpfs)$/ {print $5, $6}')\n\nhead '服务'\nfailed=$(systemctl --failed --no-legend | wc -l)\n(( failed == 0 )) && ok '无失败服务' || bad \"$failed 个服务失败\"\n\nprintf '\\n===== 结论：%s =====\\n' \"$([[ $WARN -eq 0 ]] && echo 正常 || echo \"$WARN 项异常\")\"\n[[ $WARN -eq 0 ]]\n```\n\n**四个设计要点**：\n\n1. **退出码要反映结果**（末尾 `[[ $WARN -eq 0 ]]`），这样能被监控/CI 直接消费\n2. **`df -hP` 用 `-P`**：POSIX 输出格式，避免长设备名换行导致解析错位（**这是巡检脚本最经典的解析 bug**）\n3. **过滤 `tmpfs`/`overlay`**：容器环境里全是这类，不排除会误报\n4. **阈值外置**：用环境变量或配置文件，别写死在代码里\n\n**必须自己在机器上跑一遍再上线**——巡检脚本本身报错会让人对整站监控失去信任。"
+  },
+  {
+    "id": 4228,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`exit 0`、`exit 1`、`exit 2` 在脚本里分别意味着什么？`return` 和 `exit` 有什么区别？",
+    "options": [
+      { "key": "A", "text": "0 表示成功，非 0 表示失败（具体含义由脚本自定义）；return 用于函数/被 source 的脚本，exit 退出整个进程" },
+      { "key": "B", "text": "1 表示成功，0 表示失败" },
+      { "key": "C", "text": "两者完全相同" },
+      { "key": "D", "text": "exit 只能用在函数里" }
+    ],
+    "answer": ["A"],
+    "explanation": "**约定：0 = 成功，1-255 = 失败**（与 C 的 main 返回值一致）。常用惯例：1 通用错误、2 用法错误、126 不可执行、127 命令未找到、128+N 被信号 N 杀死（如 130 = Ctrl+C）。`return` 在函数里返回给调用者，在 `source` 的脚本里返回到当前 shell；`exit` 无论在哪都终止整个进程。注意 `exit` 参数只有低 8 位有效（`exit 256` 实际是 0）。"
+  },
+  {
+    "id": 4229,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "如何用 `shellcheck` 提升脚本质量？它常报哪些问题？",
+    "answer": "**`shellcheck` 是 Shell 的「静态分析 / linter」，几乎能拦下 80% 的低级错误。**\n\n**用法**：\n```\nshellcheck script.sh\nshellcheck -s bash script.sh        # 指定方言\nshellcheck -x script.sh             # 跟随 source 的文件\nshellcheck -f gcc script.sh         # 输出格式适合 IDE\n```\n**CI 里直接用 `shellcheck -S warning *.sh`**（只报 warning 及以上），退出码非 0 即失败。\n\n**最常报的六类问题**：\n\n| 编号 | 问题 | 后果 |\n|---|---|---|\n| **SC2086** | 变量没加引号 `$var` | 分词/通配符展开，含空格路径直接坏 |\n| **SC2046** | `$(cmd)` 没加引号 | 同上 |\n| **SC2181** | 用 `$?` 判断而非直接 `if cmd` | `cmd` 之后插一条 echo 就失效 |\n| **SC2006** | 用反引号而非 `$()` | 不可嵌套、易错 |\n| **SC2164** | `cd` 没检查是否成功 | cd 失败后在错误目录执行危险操作 |\n| **SC2015** | `a && b \\|\\| c` 逻辑易错 | c 在 b 失败时也执行 |\n\n**SC2086 是最常见的**，几乎每份手写脚本都有：\n```\n# 错\nrm $files\n# 对\nrm -- \"$files\"\n```\n\n**如何优雅地忽略误报**：\n```\n# 单行豁免\n# shellcheck disable=SC2086\necho $PATH_WITH_INTENTIONAL_WORD_SPLIT\n# 文件级豁免（放在 shebang 后）\n# shellcheck disable=SC1091,SC2034\n```\n**但豁免要写理由**，否则会积累成「全文件 disable」等于没检查。\n\n**实际经验**：\n1. **首次跑会有几十条警告**，不要一次全改——按 SC2086 / SC2181 / SC2164 三类优先修（这三是真 bug）\n2. **SC1091（无法跟随 source）用 `-x`** 或豁免\n3. **GitHub Actions 有现成的 `shellcheck` action**，配上即可\n\n**它检查不了的**：逻辑错误、业务语义、并发问题。**lint 通过 ≠ 脚本正确**，但能省掉大量低级返工。"
+  },
+  {
+    "id": 4230,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "Shell 里 `[ ]`、`[[ ]]`、`(( ))` 有什么区别？什么时候必须用哪个？",
+    "answer": "**三种测试语法的本质区别**：\n\n| 语法 | 是什么 | POSIX | 特点 |\n|---|---|---|---|\n| **`[ ]`** | 外部命令 `/usr/bin/[`（也内置于 shell） | ✅ | 古老，坑多 |\n| **`[[ ]]`** | bash/ksh **关键字** | ❌ | 更安全，功能多 |\n| **`(( ))`** | 算术求值（返回 0=真） | ❌ | 数值运算专用 |\n\n**`[ ]` 的四个坑**：\n\n1. **变量必须加引号，否则空值报错**\n```\n[ $x = a ]     # x 为空时变成 [ = a ] → 报错 \"unary operator expected\"\n[ \"$x\" = a ]   # 安全\n```\n2. **`<` `>` 要转义**（否则被当重定向）\n```\n[ \"$a\" \\< \"$b\" ]\n```\n3. **`-a`/`-o` 逻辑优先级不直观**，且 `[` 不支持 `&&`\n4. **不支持正则、不支持 `[[ ]]` 的 `=~`**\n\n**`[[ ]]` 的优势**：\n```\n[[ -f $f && -r $f ]]        # 支持 && ||，不用 -a/-o\n[[ $a == *.log ]]           # 支持通配符匹配（右侧不加引号）\n[[ $s =~ ^[0-9]+$ ]]        # 支持正则（bash 3.2+）\n[[ $a < $b ]]               # 字符串比较不用转义\n[[ -z ${var:-} ]]           # 未定义变量不报错\n```\n**最强的一条：`[[ ]]` 里变量不加引号也不会分词**（但这不意味着可以不加，风格上仍建议加）。\n\n**`(( ))` 的用途**：\n```\n(( i++ ))\n(( total = a + b ))\nif (( n > 10 )); then ...\n# 注意：(( )) 里变量不用 $，会自动求值\n(( x = 1 + 2 ))      # x 变为 3\n[[ $x -eq 3 ]]       # 数值比较也可以用 [[ ]]\n```\n\n**选择规则**：\n- **写 bash 脚本 → 一律 `[[ ]]`**（除了需要 POSIX 兼容时）\n- **数值运算 → `(( ))`**\n- **`/bin/sh` 脚本 → 只能 `[ ]`**，且所有变量加引号\n\n**`[ ]` 里数值比较用 `-eq -ne -lt -gt`，字符串用 `= !=`**。写 `[ $a > 5 ]` 是**字符串比较 + 重定向**，双重错误。"
+  },
+  {
+    "id": 4231,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "如何用 Shell 解析日志并生成 Top 统计报表？给出一个完整可用的示例。",
+    "answer": "**以 Nginx access.log 为例**（格式：`IP - - [时间] \"方法 URI 协议\" 状态 字节`）。\n\n**1. 基础 Top 10**\n```\n# 访问量最大的 IP\nawk '{print $1}' access.log | sort | uniq -c | sort -rn | head -10\n\n# 最热门的 URI\nawk '{print $7}' access.log | sort | uniq -c | sort -rn | head -10\n\n# 状态码分布\nawk '{print $9}' access.log | sort | uniq -c | sort -rn\n\n# 流量最大的 URI（按字节求和）\nawk '{sum[$7]+=$10} END {for (u in sum) printf \"%-50s %10.2f MB\\n\", u, sum[u]/1048576}' access.log \\\n  | sort -k2 -rn | head -10\n```\n\n**2. 带时间过滤（只统计某小时）**\n```\nawk '$4 ~ /15\\/Jan\\/2024:10:/ {print $1}' access.log | sort | uniq -c | sort -rn | head\n```\n\n**3. 算平均响应时间（需要 `$request_time` 字段）**\n```\nawk '{s+=$NF; n++} END {if(n) printf \"平均 %.3f s（%d 条）\\n\", s/n, n}' access.log\n```\n\n**4. 找出慢请求 Top 20**\n```\nawk '$NF > 1 {print $NF, $7, $1}' access.log | sort -rn | head -20\n```\n\n**5. 一次性生成结构化报表**\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\nLOG=${1:?需要日志文件参数}\n\nprintf '=== 总览 ===\\n'\nprintf '总请求数：%s\\n' \"$(wc -l < \"$LOG\")\"\nprintf '独立 IP：%s\\n'   \"$(awk '{print $1}' \"$LOG\" | sort -u | wc -l)\"\nprintf '5xx 数量：%s\\n'  \"$(awk '$9 ~ /^5/ {n++} END {print n+0}' \"$LOG\")\"\n\nprintf '\\n=== Top 10 IP ===\\n'\nawk '{print $1}' \"$LOG\" | sort | uniq -c | sort -rn | head -10\n\nprintf '\\n=== 状态码分布 ===\\n'\nawk '{print $9}' \"$LOG\" | sort | uniq -c | sort -rn\n```\n\n**关键技巧**：\n\n| 技巧 | 说明 |\n|---|---|\n| **单遍扫描聚合** | `awk` 一次读完就出结果，比 `grep \\| sort \\| uniq` 快数倍 |\n| **`END{n=0}` 防 0 输出** | `n+0` 保证空结果输出 0 而不是空行 |\n| **`LC_ALL=C sort`** | 加快排序且结果稳定 |\n| **`sort -k2 -rn`** | 多列排序时必须用 `-k` 指定列 |\n| **先过滤再聚合** | 大文件上只聚合关心的行 |\n\n**大文件（10GB+）的处理**：用 `LC_ALL=C` + 直接 `awk` 单遍扫描；不要先 `sort` 整个文件（内存爆）。需要分布统计时用 `awk` 先按 key 计数，再对计数结果排序。"
+  },
+  {
+    "id": 4232,
+    "type": "multiple",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "以下哪些做法能提升 Shell 脚本的可靠性？（多选）",
+    "options": [
+      { "key": "A", "text": "用 flock 防止并发重入" },
+      { "key": "B", "text": "关键命令前加 timeout，防止永久挂起" },
+      { "key": "C", "text": "用 trap EXIT 清理临时文件并保留原退出码" },
+      { "key": "D", "text": "所有命令都用 `|| true` 保证脚本不中断" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是反模式：「全部 `|| true`」等于关掉了 `set -e` 的所有保护，脚本永远返回 0，出了问题毫无感知——这是「CI 全绿但部署没成功」的典型成因。正确做法是**只在明确可忽略的地方**用（如 `grep -c` 找不到时返回 1）。补充可靠手段：⑤`set -euo pipefail`；⑥记录每步耗时便于定位慢在哪；⑦失败时输出上下文（`trap 'echo 失败于 $LINENO' ERR`）；⑧版本化脚本（git + 变更记录）。"
+  },
+  {
+    "id": 4233,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`nohup`、`&`、`disown`、`setsid`、`systemd` 分别是怎样让程序在后台存活的？有什么区别？",
+    "answer": "**核心问题：终端关闭时（SIGHUP），程序怎么才能不死。**\n\n| 方式 | 效果 | 终端关闭 | 说明 |\n|---|---|---|---|\n| **`cmd &`** | 放后台 | **会死**（收到 SIGHUP） | 只是后台，不代表能活 |\n| **`nohup cmd &`** | 忽略 SIGHUP | **能活** | 输出默认到 `nohup.out` |\n| **`disown -h %1`** | 从 shell 的 job 表移除 | **能活** | 已启动的进程也可补救 |\n| **`setsid cmd`** | 新建会话（脱离控制终端） | **能活** | 更彻底，与终端完全无关 |\n| **`systemd` service** | 由 init 托管 | **能活** | **生产唯一正确做法** |\n\n**五者的关系**：\n```\n&        → 后台，但仍是当前 shell 的 job，终端关了就死\nnohup    → 忽略 SIGHUP，但 stdin 重定向到 /dev/null\nsetsid   → 新会话 + 新进程组，彻底断开关联\ndisown   → 事后补救（从 job 表移除，不再收 SIGHUP）\nsystemd  → 由 PID 1 托管，开机自启、崩溃重启、日志接管\n```\n\n**nohup 的两个细节**：\n1. **默认输出到 `nohup.out`**，在 `/var/log` 或用户家目录堆积，要显式重定向：`nohup cmd > /var/log/x.log 2>&1 &`\n2. **只管 SIGHUP**，其他信号（如 SIGTERM）照常生效\n\n**为什么生产必须用 systemd**：\n```\n# /etc/systemd/system/myapp.service\n[Service]\nExecStart=/opt/app/bin/app\nRestart=always\nRestartSec=5\nStandardOutput=journal\n```\n好处：开机自启（`enable`）、崩溃自动重启、日志进 journald（可 `journalctl -u`）、`systemctl stop` 能优雅退出、资源限制（`LimitNOFILE`、`MemoryMax`）。\n\n**什么时候还能用 nohup**：临时跑一个长时间任务（如数据导入），且不打算长期维护。**但要记住它的 PID，任务结束后清理。**\n\n**排查后台任务**：\n```\nps -ef | grep <name>            # 找 PID\njobs -l                          # 当前 shell 的 job\npstree -p <pid>                  # 看进程树\n```"
+  },
+  {
+    "id": 4234,
+    "type": "short",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "脚本里怎么安全地「一次性替换多个文件中的字符串」？批量替换要注意什么？",
+    "answer": "**标准做法：`grep -l` 筛选 + `xargs` 批量 `sed`，先备份。**\n\n**安全的批量替换**：\n```\n# 1. 先看会影响哪些文件（dry run，必做）\ngrep -rl --include='*.conf' 'old.domain' /etc/app\n\n# 2. 备份\ntar -czf /root/conf-backup-$(date +%F).tar.gz /etc/app\n\n# 3. 批量替换\ngrep -rlZ --include='*.conf' 'old.domain' /etc/app \\\n  | xargs -0 sed -i 's/old\\.domain/new\\.domain/g'\n\n# 4. 验证\ngrep -rn 'old.domain' /etc/app    # 应该没有输出\ngrep -rn 'new.domain' /etc/app | head\n```\n\n**四个关键点**：\n\n**1. `grep -rlZ` 的 `-Z` 不能少**——文件名含空格时会断\n**2. `-i` 改的是新 inode**（GNU sed 写临时文件再 rename），**服务要 reload 才生效**；容器里挂载的 configmap 更不能 `sed -i`（会破坏挂载点），应改源头\n**3. 正则里的 `.` 要转义**：`old.domain` 会误匹配 `oldXdomain`\n**4. 先 `grep` 再 `sed`**，不要反过来——`sed` 直接跑没输出，你永远不知道改了什么\n\n**更稳妥的替代方案**：\n\n**方案 A：用 `sed` 但不覆盖（生成新文件）**\n```\nsed 's/old/new/g' file > file.new && diff file file.new   # 确认后再 mv\n```\n\n**方案 B：用 `perl -pi -e`（支持更丰富语法）**\n```\nperl -pi -e 's/old\\.domain/new.domain/g' *.conf\n```\n比 sed 多了零宽断言、非贪婪等能力。\n\n**方案 C：大项目用 `rpl` 或 `ag + 编辑器`**\n\n**五个必须警惕的场景**：\n1. **配置文件里有密码/证书** → 替换后要重新加密\n2. **`.git` 目录别动** → `--exclude-dir=.git`\n3. **二进制文件** → `grep -I`（忽略二进制）\n4. **权限会变** → `sed -i` 后文件权限按 umask 重置，`/etc/shadow` 这类文件会炸\n5. **行尾差异** → Windows CRLF 文件替换后可能多 `\\r`\n\n**最保险的做法**：生产上**改源头（IaC/配置中心），不直接改文件**。批量 sed 只适合救火场景。"
+  }
+]
