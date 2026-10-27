@@ -650,6 +650,17 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   -webkit-touch-callout: none;
   cursor: grab;
 }
+/**
+ * 关键：touch-action 不继承。
+ * 手指通常落在卡片内容区（.qcard-p__scroll 等子元素）上，
+ * 若子元素是默认的 auto，浏览器会自行接管横向手势并派发 pointercancel，
+ * 导致 JS 手势收不到完整 move → 手机上滑不动。
+ * 这里让舞台内所有元素都只允许纵向平移。
+ */
+.stage,
+.stage * {
+  touch-action: pan-y;
+}
 .stage:active {
   cursor: grabbing;
 }
