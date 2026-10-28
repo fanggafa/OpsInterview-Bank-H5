@@ -11,9 +11,9 @@ const showTab = computed(() => TAB_ROUTES.includes(route.path))
 
 /**
  * 沉浸式页面：自己占满可视高度，内部滚动。
- * 刷题页（题卡占满一屏、操作栏吸底）与面试答题页同构。
+ * 刷题页（题卡占满一屏、操作栏吸底）属于这一类。
  */
-const FULL_ROUTES = ['/practice', '/interview/run']
+const FULL_ROUTES = ['/practice']
 const isFull = computed(() => FULL_ROUTES.includes(route.path))
 </script>
 

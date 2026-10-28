@@ -121,27 +121,40 @@ describe('describeProgress · 带上练习模式', () => {
   })
 })
 
-describe('刷题页模式面板（源码级约束）', () => {
+describe('刷题页练习方式（源码级约束）', () => {
   const view = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
 
-  it('面板包含刷题 / 背题两个选项', () => {
+  it('用两个按钮呈现刷题 / 背题（不再是弹出面板）', () => {
     expect(view).toMatch(/studyModeOptions/)
-    expect(view).toMatch(/setup__mode/)
+    expect(view).toMatch(/aria-label="练习方式"/)
+    // 旧的面板类名应当已经不存在
+    expect(view).not.toMatch(/setup__mode/)
   })
 
-  it('面板包含「继续上次」入口', () => {
-    expect(view).toMatch(/setup__resume/)
-    expect(view).toMatch(/resumeLast/)
+  it('不再有「继续上次」面板入口与「直接开始」（续刷改为自动恢复）', () => {
+    expect(view).not.toMatch(/setup__resume/)
+    expect(view).not.toMatch(/resumeLast/)
+    expect(view).not.toMatch(/startNow/)
   })
 
-  it('可以「直接开始」跳过选择', () => {
-    expect(view).toMatch(/startNow/)
-  })
-
-  it('首页不再有自己的 continueStudy（统一收口到刷题页）', () => {
+  it('首页不再有自己的 continueStudy，也没有刷题/面试快捷入口', () => {
     const home = readFileSync(resolve(process.cwd(), 'src/views/HomeView.vue'), 'utf8')
     expect(home).not.toMatch(/function continueStudy/)
-    // 首页的入口只跳 /practice，不预置 mode/category
-    expect(home).toMatch(/router\.push\('\/practice'\)/)
+    expect(home).not.toMatch(/class="entries"/)
+    expect(home).not.toMatch(/模拟面试/)
+  })
+})
+
+describe('模拟面试已移除（源码级约束）', () => {
+  it('路由里不再注册面试相关页面', () => {
+    const router = readFileSync(resolve(process.cwd(), 'src/router/index.js'), 'utf8')
+    expect(router).not.toMatch(/interview/i)
+  })
+
+  it('首页与统计页都不再有面试入口', () => {
+    const home = readFileSync(resolve(process.cwd(), 'src/views/HomeView.vue'), 'utf8')
+    const stats = readFileSync(resolve(process.cwd(), 'src/views/StatsView.vue'), 'utf8')
+    expect(home).not.toMatch(/interview/i)
+    expect(stats).not.toMatch(/interview/i)
   })
 })

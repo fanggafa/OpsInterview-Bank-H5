@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -275,32 +277,37 @@ describe('详情页 · 自评与收藏', () => {
   })
 })
 
-describe('详情页 · 翻题', () => {
-  it('第一题的上一题按钮禁用', async () => {
+describe('详情页 · 翻题（改为左右滑动）', () => {
+  it('不再渲染「上一题 / 下一题」按钮', async () => {
     const { wrapper } = await mountDetail(1)
-    const pager = wrapper.findAll('.pager__btn')
-    expect(pager[0].attributes('disabled')).toBeDefined()
-    expect(pager[1].attributes('disabled')).toBeUndefined()
+    expect(wrapper.findAll('.pager__btn')).toHaveLength(0)
+    expect(wrapper.find('.pager').exists()).toBe(false)
+    // 滑动提示里含「上一题」字样，但那是提示而非按钮
+    expect(wrapper.find('.swipe-hint').exists()).toBe(true)
+    expect(wrapper.findAll('button').filter((b) => b.text().includes('上一题'))).toHaveLength(0)
   })
 
-  it('最后一题的下一题按钮禁用', async () => {
-    const { wrapper } = await mountDetail(3)
-    const pager = wrapper.findAll('.pager__btn')
-    expect(pager[0].attributes('disabled')).toBeUndefined()
-    expect(pager[1].attributes('disabled')).toBeDefined()
+  it('提供滑动切题的舞台，并给出滑动提示', async () => {
+    const { wrapper } = await mountDetail(1)
+    expect(wrapper.find('.stage').exists()).toBe(true)
+    expect(wrapper.find('.swipe-hint').text()).toContain('左右滑动')
   })
 
-  it('点击下一题跳转且答案自动收起', async () => {
-    const { wrapper, router } = await mountDetail(1)
+  it('舞台及其子孙都设了 touch-action: pan-y（否则移动端横向手势会被吞掉）', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/QuestionView.vue'), 'utf8')
+    expect(src).toMatch(/\.stage,\s*\n\s*\.stage \*/)
+    expect(src).toMatch(/touch-action:\s*pan-y/)
+  })
 
-    await wrapper.find('.answer-toggle').trigger('click')
-    expect(wrapper.find('.answer').classes()).toContain('answer--open')
-
-    await wrapper.findAll('.pager__btn')[1].trigger('click')
-    await flushPromises()
-    await wrapper.vm.$nextTick()
-
-    expect(router.currentRoute.value.path).toBe('/question/2')
-    expect(wrapper.find('.answer').classes()).not.toContain('answer--open')
+  it('边界处不越界：第一题没有上一题，最后一题没有下一题', async () => {
+    const { wrapper: first } = await mountDetail(1)
+    const { wrapper: last } = await mountDetail(3)
+    // 通过源码约束确认两端做了判空（滑动回调里 go(null) 不会跳转）
+    const src = readFileSync(resolve(process.cwd(), 'src/views/QuestionView.vue'), 'utf8')
+    expect(src).toMatch(/onLeft:\s*\(\)\s*=>\s*go\(nextQuestion\.value\)/)
+    expect(src).toMatch(/onRight:\s*\(\)\s*=>\s*go\(prevQuestion\.value\)/)
+    expect(src).toMatch(/function go\(q\)\s*\{\s*\n\s*if \(q\)/)
+    expect(first.find('.stage').exists()).toBe(true)
+    expect(last.find('.stage').exists()).toBe(true)
   })
 })

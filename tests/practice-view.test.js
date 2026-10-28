@@ -334,8 +334,8 @@ describe('刷题页 · 进度持久化', () => {
   })
 })
 
-describe('首页 · 继续上次刷题', () => {
-  it('无进度时不显示该入口', async () => {
+describe('首页 · 不再有「继续上次」入口（已移到刷题页自动恢复）', () => {
+  it('无进度时不显示', async () => {
     const router = makeRouter()
     await router.push('/')
     await router.isReady()
@@ -344,7 +344,7 @@ describe('首页 · 继续上次刷题', () => {
     expect(wrapper.find('.continue').exists()).toBe(false)
   })
 
-  it('有进度时显示练习模式、分类与题号', async () => {
+  it('有进度时首页也不再显示（续刷改为刷题页内自动恢复）', async () => {
     study.saveProgress({ mode: 'random', studyMode: 'memorize', category: 'MySQL', index: 2 })
     const router = makeRouter()
     await router.push('/')
@@ -352,22 +352,7 @@ describe('首页 · 继续上次刷题', () => {
     const wrapper = mount(HomeView, { global: { plugins: [pinia, router] } })
     await flushPromises()
 
-    const text = wrapper.find('.continue__desc').text()
-    expect(text).toContain('MySQL')
-    expect(text).toContain('背题')
-    expect(text).toContain('第 3 题')
-  })
-
-  it('点击后统一跳刷题页（模式在刷题页的面板里选）', async () => {
-    study.saveProgress({ mode: 'random', category: 'MySQL', index: 1 })
-    const router = makeRouter()
-    await router.push('/')
-    await router.isReady()
-    const wrapper = mount(HomeView, { global: { plugins: [pinia, router] } })
-    await flushPromises()
-
-    await wrapper.find('.continue').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/practice')
+    expect(wrapper.find('.continue').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('继续上次')
   })
 })

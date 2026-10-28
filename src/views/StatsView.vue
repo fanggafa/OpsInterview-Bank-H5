@@ -144,26 +144,6 @@ const shortAnswered = computed(() => study.shortKnowCount + study.shortUnknownCo
         </span>
         <span class="entry__num">{{ favoriteCount }}</span>
       </button>
-
-      <button class="entry card" @click="router.push('/interview')">
-        <span class="entry__icon entry__icon--interview" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="18" height="18">
-            <path
-              d="M12 3l7 4v5c0 4.4-2.9 7.6-7 9-4.1-1.4-7-4.6-7-9V7l7-4z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linejoin="round"
-            />
-            <path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </span>
-        <span class="entry__text">
-          <span class="entry__title">模拟面试</span>
-          <span class="entry__desc">随机抽题 + 自评评估</span>
-        </span>
-        <span class="entry__go">→</span>
-      </button>
     </div>
 
     <!-- 分类掌握度 -->
@@ -328,10 +308,6 @@ const shortAnswered = computed(() => study.shortKnowCount + study.shortUnknownCo
 .entry__icon--fav {
   color: var(--c-warning);
   background: rgba(250, 173, 20, 0.12);
-}
-.entry__icon--interview {
-  color: var(--c-primary);
-  background: var(--c-primary-weak);
 }
 .entry__go {
   font-size: 16px;

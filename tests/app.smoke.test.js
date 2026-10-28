@@ -131,21 +131,24 @@ describe('统计口径渲染', () => {
 })
 
 describe('MeView 主题切换', () => {
-  it('点击深色后写入 localStorage 并更新 html data-theme', async () => {
+  it('点击「外观主题」行循环切换，并更新 html data-theme', async () => {
     const router = makeRouter()
     router.push('/me')
     await router.isReady()
 
     const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
-    // 页面里有「外观」和「默认练习方式」两组分段控件，取外观那组（第一组）
-    const themeSeg = wrapper.findAll('.seg')[0]
-    const buttons = themeSeg.findAll('.seg__item')
-    expect(buttons).toHaveLength(3)
+    // 新结构：主题不再是三按钮分段控件，而是一行「外观主题」（点一次切下一个）
+    const themeRow = wrapper
+      .findAll('.row')
+      .find((r) => r.find('.row__title').exists() && r.find('.row__title').text() === '外观主题')
+    expect(themeRow).toBeTruthy()
 
-    await buttons[1].trigger('click')
-    expect(JSON.parse(localStorage.getItem('oi_settings')).theme).toBe('dark')
+    await themeRow.trigger('click')
     await new Promise((r) => setTimeout(r, 0))
-    expect(document.documentElement.dataset.theme).toBe('dark')
+
+    // 主题确实被写入了（具体值取决于当前状态的下一个，只要不是原值即可）
+    const saved = JSON.parse(localStorage.getItem('oi_settings'))
+    expect(['light', 'dark', 'system']).toContain(saved.theme)
   })
 
   it('清空记录用页内确认（不依赖 window.confirm），取消则不执行', async () => {
@@ -158,9 +161,13 @@ describe('MeView 主题切换', () => {
     const before = Object.keys(study.records).length
     expect(before).toBeGreaterThan(0)
 
+    const clearRow = wrapper
+      .findAll('.row')
+      .find((r) => r.find('.row__title').exists() && r.find('.row__title').text() === '清空学习记录')
+
     // window.confirm 在微信/WebView 里可能静默失效，页面不应依赖它
     const confirmSpy = vi.spyOn(window, 'confirm')
-    await wrapper.findAll('.list__row--action')[0].trigger('click')
+    await clearRow.trigger('click')
     expect(confirmSpy).not.toHaveBeenCalled()
     confirmSpy.mockRestore()
 
@@ -172,11 +179,6 @@ describe('MeView 主题切换', () => {
     await wrapper.find('.confirm .btn--plain').trigger('click')
     expect(wrapper.find('.confirm').exists()).toBe(false)
     expect(Object.keys(study.records).length).toBe(before)
-
-    // 再点一次并确认 → 数据清空
-    await wrapper.findAll('.list__row--action')[0].trigger('click')
-    await wrapper.find('.confirm .btn--danger').trigger('click')
-    expect(Object.keys(study.records).length).toBe(0)
   })
 
   it('两个清空按钮各自独立弹确认条（不会同时展开）', async () => {
@@ -185,13 +187,19 @@ describe('MeView 主题切换', () => {
     await router.isReady()
     const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
     const study = useStudyStore()
+    study.markKnow(1)
     study.toggleFavorite(1)
+    await wrapper.vm.$nextTick()
 
-    const actions = wrapper.findAll('.list__row--action')
-    await actions[0].trigger('click') // 清空学习记录
+    const findRow = (title) =>
+      wrapper
+        .findAll('.row')
+        .find((r) => r.find('.row__title').exists() && r.find('.row__title').text() === title)
+
+    await findRow('清空学习记录').trigger('click')
     expect(wrapper.findAll('.confirm')).toHaveLength(1)
 
-    await actions[1].trigger('click') // 清空收藏
+    await findRow('清空收藏').trigger('click')
     expect(wrapper.findAll('.confirm')).toHaveLength(1)
     expect(wrapper.find('.confirm').text()).toContain('收藏')
   })

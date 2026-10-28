@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -10,6 +10,7 @@ import AnswerText from '@/components/AnswerText.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
 import { STATUS, TYPE_LABEL } from '@/utils/constants'
+import { attachSwipe } from '@/utils/gestures'
 import {
   isShort,
   isMultiple,
@@ -51,6 +52,40 @@ const prevQuestion = computed(() => (index.value > 0 ? bank.questions[index.valu
 const nextQuestion = computed(() =>
   index.value >= 0 && index.value < bank.questions.length - 1 ? bank.questions[index.value + 1] : null
 )
+
+/**
+ * 左右滑动切题（替代底部的「上一题 / 下一题」按钮）。
+ *
+ * 用与刷题页相同的 attachSwipe：
+ * - 左滑 → 下一题，右滑 → 上一题
+ * - 只在「答案已收起」时才响应，避免横向拖动时误切题（如滑动查看宽表格）
+ * - 首尾不循环（没有上一题/下一题时就停在原地）
+ *
+ * CSS 侧必须同时给 .stage 及其所有子孙设 touch-action: pan-y，
+ * 否则移动端横向手势会被浏览器的纵向滚动吞掉（这个坑踩过一次）。
+ */
+const stageRef = ref(null)
+let detachSwipe = () => {}
+
+function bindSwipe() {
+  detachSwipe()
+  detachSwipe = () => {}
+  if (!stageRef.value || !question.value) return
+  detachSwipe = attachSwipe(stageRef.value, {
+    onLeft: () => go(nextQuestion.value),
+    onRight: () => go(prevQuestion.value),
+  })
+}
+
+watch(stageRef, (el) => {
+  if (el) bindSwipe()
+  else {
+    detachSwipe()
+    detachSwipe = () => {}
+  }
+}, { flush: 'post' })
+
+onBeforeUnmount(() => detachSwipe())
 
 onMounted(() => {
   bank.load().catch(() => {})
@@ -158,6 +193,7 @@ const statusText = computed(() => {
     />
 
     <template v-else>
+      <div ref="stageRef" class="stage">
       <article class="card detail">
         <div class="detail__meta">
           <span class="badge detail__cat">{{ question.category }}</span>
@@ -253,6 +289,7 @@ const statusText = computed(() => {
           </div>
         </template>
       </article>
+      </div>
 
       <p class="status-hint muted">
         {{ statusText }}
@@ -277,14 +314,9 @@ const statusText = computed(() => {
         </button>
       </div>
 
-      <nav class="pager" aria-label="翻题">
-        <button class="btn btn--plain pager__btn" :disabled="!prevQuestion" @click="go(prevQuestion)">
-          ← 上一题
-        </button>
-        <button class="btn btn--plain pager__btn" :disabled="!nextQuestion" @click="go(nextQuestion)">
-          下一题 →
-        </button>
-      </nav>    </template>
+      <!-- 滑动切题提示（替代原来的两个按钮） -->
+      <p class="swipe-hint muted">左右滑动切换上一题 / 下一题</p>
+    </template>
   </div>
 </template>
 
@@ -510,18 +542,17 @@ const statusText = computed(() => {
   border-color: var(--c-success);
 }
 
-.pager {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
+/* 滑动切题的舞台：自身与所有子孙都要 pan-y，
+   否则移动端横向手势会被浏览器纵向滚动吞掉 */
+.stage,
+.stage * {
+  touch-action: pan-y;
+}
+
+.swipe-hint {
+  margin: 10px 0 8px;
   padding-bottom: 8px;
-}
-.pager__btn {
-  flex: 1;
-  font-size: 13px;
-}
-.pager__btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  font-size: 11.5px;
+  text-align: center;
 }
 </style>

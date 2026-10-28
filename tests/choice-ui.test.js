@@ -182,12 +182,13 @@ describe('详情页 · 单选题', () => {
   })
 
   it('切题后重置作答态', async () => {
-    const { wrapper } = await mountDetail(1)
+    const { wrapper, router } = await mountDetail(1)
     await wrapper.findAll('.option')[1].trigger('click')
     await wrapper.vm.$nextTick()
     expect(wrapper.find('.result').exists()).toBe(true)
 
-    await wrapper.findAll('.pager__btn')[1].trigger('click')
+    // 翻题按钮已移除，改为直接跳到下一题的路由（等价于滑动触发）
+    await router.push('/question/2')
     await flushPromises()
     await wrapper.vm.$nextTick()
     expect(wrapper.find('.result').exists()).toBe(false)

@@ -7,7 +7,6 @@ import { useStudyStore } from '@/stores/studyStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { formatPercent } from '@/utils/format'
 import { STORAGE_KEYS, categoryColor } from '@/utils/constants'
-import { describeProgress } from '@/utils/practice'
 
 const bank = useBankStore()
 const study = useStudyStore()
@@ -24,19 +23,6 @@ function toggleTheme() {
 onMounted(() => {
   bank.load().catch(() => {})
 })
-
-/** 「继续上次刷题」的展示文案（PRD §二.2） */
-const progressInfo = computed(() => describeProgress(study.progress))
-
-/**
- * 「开始刷题」与「继续上次」都跳刷题页。
- *
- * 模式选择（刷题 / 背题）和「继续上次」都收口到刷题页的模式面板里：
- * 首页只负责「进去」，具体怎么练、从哪继续，在刷题页一次决定。
- */
-function goPractice() {
-  router.push('/practice')
-}
 
 /** 分类入口：按题库实际分类动态生成，带各自进度与专属颜色 */
 const categories = computed(() => {
@@ -124,54 +110,7 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
       </div>
     </header>
 
-    <!-- 快捷入口 -->
-    <div class="entries">
-      <button class="entry entry--practice" @click="goPractice">
-        <span class="entry__icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="20" height="20">
-            <path d="M13 3 5 14h5l-1 7 8-11h-5l1-7z" fill="currentColor" />
-          </svg>
-        </span>
-        <span class="entry__text">
-          <span class="entry__title">开始刷题</span>
-          <span class="entry__desc">刷题 / 背题 · 顺序 / 随机</span>
-        </span>
-      </button>
-
-      <button class="entry entry--interview" @click="router.push('/interview')">
-        <span class="entry__icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="20" height="20">
-            <path
-              d="M12 3l7 4v5c0 4.4-2.9 7.6-7 9-4.1-1.4-7-4.6-7-9V7l7-4z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linejoin="round"
-            />
-            <path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </span>
-        <span class="entry__text">
-          <span class="entry__title">模拟面试</span>
-          <span class="entry__desc">随机抽题 + 自评评估</span>
-        </span>
-      </button>
-    </div>
-
-    <!-- 继续上次：统一收口到刷题页的模式面板，这里只展示状态 -->
-    <section v-if="progressInfo" class="continue" @click="goPractice">
-      <span class="continue__dot" aria-hidden="true" />
-      <div class="continue__body">
-        <p class="continue__title">继续上次刷题</p>
-        <p class="continue__desc">
-          {{ progressInfo.studyModeLabel }} · {{ progressInfo.category }} ·
-          {{ progressInfo.positionText }}
-        </p>
-      </div>
-      <span class="continue__arrow" aria-hidden="true">→</span>
-    </section>
-
-    <!-- 分类入口 -->
+    <!-- 按分类刷题 -->
     <h2 class="section-title">按分类刷题</h2>
     <div class="cats">
       <router-link
@@ -304,114 +243,6 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
   font-style: normal;
   font-weight: 400;
   color: rgba(255, 255, 255, 0.66);
-}
-
-/* ---------- 快捷入口 ---------- */
-.entries {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 10px;
-}
-.entry {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 12px 11px;
-  border-radius: var(--radius);
-  border: 1px solid var(--c-border);
-  background: var(--c-card);
-  box-shadow: var(--shadow-card);
-  text-align: left;
-  transition: transform 0.14s ease, box-shadow 0.14s ease;
-}
-.entry:active {
-  transform: scale(0.985);
-  box-shadow: var(--shadow-lift);
-}
-.entry__icon {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-}
-.entry--practice .entry__icon {
-  background: var(--grad-indigo);
-}
-.entry--interview .entry__icon {
-  background: var(--grad-teal);
-}
-.entry__text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.entry__title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text);
-  white-space: nowrap;
-}
-.entry__desc {
-  font-size: 10px;
-  color: var(--c-text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ---------- 继续上次 ---------- */
-.continue {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  border: 1px solid var(--c-border);
-  background: var(--c-card);
-  background-image: var(--grad-card);
-  box-shadow: var(--shadow-card);
-  cursor: pointer;
-}
-.continue:active {
-  transform: scale(0.99);
-}
-.continue__dot {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--c-primary);
-  box-shadow: 0 0 0 3px var(--c-primary-weak);
-}
-.continue__body {
-  flex: 1;
-  min-width: 0;
-}
-.continue__title {
-  margin: 0 0 2px;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--c-text);
-}
-.continue__desc {
-  margin: 0;
-  font-size: 12px;
-  color: var(--c-text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.continue__arrow {
-  flex-shrink: 0;
-  font-size: 16px;
-  color: var(--c-primary);
 }
 
 /* ---------- 分类卡片 ---------- */
