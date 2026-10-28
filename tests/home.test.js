@@ -6,6 +6,7 @@ import HomeView from '@/views/HomeView.vue'
 import BankView from '@/views/BankView.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
+import { pickDailyQuestion } from '@/utils/daily'
 import { STATUS } from '@/utils/constants'
 
 const FIXTURE = [
@@ -133,9 +134,9 @@ describe('首页 · 快捷入口已移除', () => {
     expect(wrapper.find('.continue').exists()).toBe(false)
   })
 
-  it('首页仍保留分类入口（可直达对应分类）', async () => {
+  it('首页不再有分类列表（已换成每日一题）', async () => {
     const { wrapper } = await mountHome()
-    expect(wrapper.findAll('.cats__item').length).toBeGreaterThan(0)
+    expect(wrapper.findAll('.cats__item')).toHaveLength(0)
   })
 
   it('右上角按钮直接切换主题，不跳转页面', async () => {
@@ -156,55 +157,64 @@ describe('首页 · 快捷入口已移除', () => {
   })
 })
 
-describe('首页 · 分类入口', () => {
-  it('按题库实际分类生成，不出现空分类', async () => {
+describe('首页 · 每日一题', () => {
+  it('渲染每日一题卡片（替代原来的分类列表）', async () => {
     const { wrapper } = await mountHome()
-    const cats = wrapper.findAll('.cats__item').map((c) => c.find('.cats__name').text())
-    expect(cats).toEqual(['Linux基础', 'MySQL'])
+    expect(wrapper.find('.daily').exists()).toBe(true)
+    expect(wrapper.find('.daily__q').text().length).toBeGreaterThan(0)
   })
 
-  it('每个分类卡片带 --cat-color 自定义属性', async () => {
+  it('不再渲染「按分类刷题」列表（点哪儿都跳同一个刷题页，信息量低）', async () => {
     const { wrapper } = await mountHome()
-    wrapper.findAll('.cats__item').forEach((it) => {
-      expect(it.attributes('style') || '').toContain('--cat-color')
-    })
+    expect(wrapper.findAll('.cats__item')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('按分类刷题')
   })
 
-  it('不同分类使用不同颜色（分类色板生效）', async () => {
+  it('同一天始终是同一题（不是随机刷新）', async () => {
     const { wrapper } = await mountHome()
-    const items = wrapper.findAll('.cats__item')
-    expect(items[0].attributes('style')).not.toBe(items[1].attributes('style'))
+    const first = wrapper.find('.daily__q').text()
+    const second = await mountHome()
+    expect(second.wrapper.find('.daily__q').text()).toBe(first)
   })
 
-  it('渲染分类色点（视觉区分）', async () => {
-    const { wrapper } = await mountHome()
-    expect(wrapper.findAll('.cats__dot').length).toBe(2)
-  })
-
-  it('显示各分类已刷/总数与进度条', async () => {
-    study.markKnow(1)
-    const { wrapper } = await mountHome()
-    const first = wrapper.findAll('.cats__item')[0]
-    expect(first.find('.cats__count').text()).toBe('1/2')
-
-    const fill = first.find('.cats__fill')
-    expect(fill.attributes('style')).toContain('50%')
-  })
-
-  it('未刷分类进度为 0 且不报错', async () => {
-    const { wrapper } = await mountHome()
-    const mysql = wrapper.findAll('.cats__item')[1]
-    // MySQL 有 2 道题（1 简答 + 1 单选）
-    expect(mysql.find('.cats__count').text()).toBe('0/2')
-    expect(mysql.find('.cats__fill').attributes('style')).toContain('0%')
-  })
-
-  it('点击分类进入该分类刷题', async () => {
+  it('点击进入题目详情页（与刷题页不重复）', async () => {
     const { wrapper, router } = await mountHome()
-    await wrapper.findAll('.cats__item')[1].trigger('click')
+    await wrapper.find('.daily').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/practice')
-    expect(router.currentRoute.value.query.category).toBe('MySQL')
+    expect(router.currentRoute.value.path).toMatch(/^\/question\/\d+$/)
+  })
+
+  it('未作答时状态标为「今日一题」', async () => {
+    const { wrapper } = await mountHome()
+    expect(wrapper.find('.daily__tag').text()).toBe('今日一题')
+    expect(wrapper.find('.daily__tag--fresh').exists()).toBe(true)
+  })
+
+  it('今日答对后状态转绿并提示已作答', async () => {
+    const q = pickDailyQuestion(FIXTURE, new Date())
+    study.markKnow(q.id)
+    const { wrapper } = await mountHome()
+    expect(wrapper.find('.daily__tag--know').exists()).toBe(true)
+    expect(wrapper.find('.daily__hint').text()).toContain('今天已作答')
+  })
+
+  it('今日答错后状态转红', async () => {
+    const q = pickDailyQuestion(FIXTURE, new Date())
+    study.markUnknown(q.id)
+    const { wrapper } = await mountHome()
+    expect(wrapper.find('.daily__tag--unknown').exists()).toBe(true)
+  })
+
+  it('昨天答过不算今天答过（状态回到「今日一题」）', async () => {
+    const q = pickDailyQuestion(FIXTURE, new Date())
+    // 手工塞一条「昨天」的记录
+    const yesterday = Date.now() - 24 * 60 * 60 * 1000
+    study.records = {
+      ...study.records,
+      [q.id]: { status: STATUS.KNOW, times: 1, lastReviewed: yesterday },
+    }
+    const { wrapper } = await mountHome()
+    expect(wrapper.find('.daily__tag').text()).toBe('今日一题')
   })
 
   it('页脚说明题型构成', async () => {
