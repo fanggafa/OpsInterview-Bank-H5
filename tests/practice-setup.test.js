@@ -169,6 +169,22 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
     expect(wrapper.find('.ptop__count').text()).toContain('第 1 / 3 题')
   })
 
+  it('返回箭头是「横线+箭头」的标准样式，不是孤立的小 chevron', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
+    // 回归：早先用单个 chevron（M15 5l-7 7 7 7），反馈「很突兀」
+    expect(src).not.toMatch(/M15 5l-7 7 7 7/)
+    // 现在用带横线的箭头
+    expect(src).toMatch(/M20 12H5M11 6l-6 6 6 6/)
+  })
+
+  it('返回按钮有淡底色块（与其它块状控件同一视觉语言，不显孤立）', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
+    const block = src.slice(src.indexOf('.ptop__back {'), src.indexOf('.ptop__back:active'))
+    expect(block).toMatch(/background:\s*var\(--c-card\)/)
+    expect(block).toMatch(/border:\s*1px solid var\(--c-border\)/)
+    expect(block).toMatch(/border-radius:\s*9px/)
+  })
+
   it('点返回回到「选择练习方式」页（而不是跳走）', async () => {
     const { wrapper, router } = await mountPractice()
     await pick(wrapper, '刷题模式')

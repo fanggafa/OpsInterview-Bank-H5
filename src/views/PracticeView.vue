@@ -479,12 +479,14 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
     -->
     <header v-if="started && !finished" class="ptop">
       <button class="ptop__back" aria-label="返回选择练习方式" @click="backToPicker">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <!-- 标准返回箭头：横线 + 箭头头。比单个 chevron 更像「返回」，
+             视觉重量也能压住右侧的块状元素，不再显得孤立突兀 -->
+        <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
           <path
-            d="M15 5l-7 7 7 7"
+            d="M20 12H5M11 6l-6 6 6 6"
             fill="none"
             stroke="currentColor"
-            stroke-width="2"
+            stroke-width="1.9"
             stroke-linecap="round"
             stroke-linejoin="round"
           />
@@ -954,6 +956,17 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   background: var(--c-bg);
   border-bottom: 1px solid var(--c-border);
 }
+/**
+ * 返回按钮。
+ *
+ * 反馈「箭头很突兀」的原因：原来是无底色的细 chevron（`<`），
+ * 竖在三个「有底色的块状元素」旁边，显得单薄又孤立。
+ *
+ * 现在：
+ * - 换成带横线的标准返回箭头（←），视觉重量与其它元素匹配
+ * - 加一个与「顺序胶囊」同款淡底色圆角方块，让它成为「一排控件」中的一员
+ * - 颜色用 text-2（不是更浅的 text-3），避免被当成禁用态
+ */
 .ptop__back {
   flex-shrink: 0;
   width: 32px;
@@ -962,10 +975,14 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   align-items: center;
   justify-content: center;
   color: var(--c-text-2);
-  border-radius: 50%;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
 }
 .ptop__back:active {
-  background: var(--c-border);
+  background: var(--c-primary-weak);
+  border-color: var(--c-primary);
+  color: var(--c-primary);
 }
 
 /* 中间：进度文字 + 细进度条，纵向两行但很紧凑 */
