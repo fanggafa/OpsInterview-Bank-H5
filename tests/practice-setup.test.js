@@ -128,23 +128,29 @@ describe('刷题页 · 选择页（两个居中按钮）', () => {
 })
 
 describe('刷题页 · 进入后仍可切换', () => {
-  it('题卡页顶部保留练习方式切换与题目顺序', async () => {
+  it('题卡页顶部只有「题目顺序」，练习方式收进右上角', async () => {
     const { wrapper } = await mountPractice()
     await pick(wrapper, '刷题模式')
 
-    expect(wrapper.find('[aria-label="练习方式"]').exists()).toBe(true)
+    // 练习方式不再是页面里的一行按钮，而是页头右上角一个切换按钮
+    expect(wrapper.find('[aria-label="练习方式"]').exists()).toBe(false)
+    expect(wrapper.find('.practice__mode-btn').exists()).toBe(true)
+    // 题目顺序仍在
     expect(wrapper.find('[aria-label="题目顺序"]').exists()).toBe(true)
   })
 
-  it('题卡页点「背题模式」会切队列', async () => {
+  it('点右上角模式按钮会切到另一种练习方式', async () => {
     const { wrapper } = await mountPractice()
     await pick(wrapper, '刷题模式')
     expect(wrapper.text()).toContain('第 1 / 3 题')
+    expect(wrapper.find('.practice__mode-btn').text()).toContain('刷题模式')
 
-    const btns = wrapper.findAll('[aria-label="练习方式"] .modes__item')
-    await btns[1].trigger('click')
+    await wrapper.find('.practice__mode-btn').trigger('click')
     await flushPromises()
     await wrapper.vm.$nextTick()
+
+    // 切到背题模式：只剩简答题，按钮文案也跟着变
+    expect(wrapper.find('.practice__mode-btn').text()).toContain('背题模式')
     expect(wrapper.text()).toContain('第 1 / 2 题')
   })
 

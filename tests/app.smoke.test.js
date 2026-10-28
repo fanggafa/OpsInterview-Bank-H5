@@ -6,6 +6,7 @@ import App from '@/App.vue'
 import HomeView from '@/views/HomeView.vue'
 import BankView from '@/views/BankView.vue'
 import MeView from '@/views/MeView.vue'
+import SettingsView from '@/views/SettingsView.vue'
 import QuestionView from '@/views/QuestionView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
 import TabBar from '@/components/TabBar.vue'
@@ -129,76 +130,72 @@ describe('统计口径渲染', () => {
   })
 })
 
-describe('MeView 主题切换', () => {
-  it('点击「外观主题」行循环切换，并更新 html data-theme', async () => {
+describe('SettingsView 设置页', () => {
+  async function mountSettings() {
     const router = makeRouter()
-    router.push('/me')
+    router.push('/settings')
     await router.isReady()
+    const wrapper = mount(SettingsView, { global: { plugins: [pinia, router] } })
+    await flushPromises()
+    return { wrapper, router }
+  }
 
-    const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
-    // 新结构：主题不再是三按钮分段控件，而是一行「外观主题」（点一次切下一个）
-    const themeRow = wrapper
+  function rowByTitle(wrapper, title) {
+    return wrapper
       .findAll('.row')
-      .find((r) => r.find('.row__title').exists() && r.find('.row__title').text() === '外观主题')
-    expect(themeRow).toBeTruthy()
+      .find((r) => r.find('.row__title').exists() && r.find('.row__title').text() === title)
+  }
 
-    await themeRow.trigger('click')
-    await new Promise((r) => setTimeout(r, 0))
+  it('主题是三态分段控件，点击写入 localStorage', async () => {
+    const { wrapper } = await mountSettings()
+    const themeSeg = wrapper.findAll('.seg')[0]
+    const buttons = themeSeg.findAll('.seg__item')
+    expect(buttons).toHaveLength(3)
 
-    // 主题确实被写入了（具体值取决于当前状态的下一个，只要不是原值即可）
-    const saved = JSON.parse(localStorage.getItem('oi_settings'))
-    expect(['light', 'dark', 'system']).toContain(saved.theme)
+    await buttons[1].trigger('click')
+    expect(JSON.parse(localStorage.getItem('oi_settings')).theme).toBe('dark')
+  })
+
+  it('包含默认练习方式与数据管理', async () => {
+    const { wrapper } = await mountSettings()
+    expect(wrapper.text()).toContain('默认练习方式')
+    expect(rowByTitle(wrapper, '清空学习记录')).toBeTruthy()
+    expect(rowByTitle(wrapper, '清空收藏')).toBeTruthy()
   })
 
   it('清空记录用页内确认（不依赖 window.confirm），取消则不执行', async () => {
-    const router = makeRouter()
-    router.push('/me')
-    await router.isReady()
-    const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
+    const { wrapper } = await mountSettings()
     const study = useStudyStore()
     study.markKnow(1)
+    await flushPromises()
     const before = Object.keys(study.records).length
     expect(before).toBeGreaterThan(0)
 
-    const clearRow = wrapper
-      .findAll('.row')
-      .find((r) => r.find('.row__title').exists() && r.find('.row__title').text() === '清空学习记录')
-
     // window.confirm 在微信/WebView 里可能静默失效，页面不应依赖它
     const confirmSpy = vi.spyOn(window, 'confirm')
-    await clearRow.trigger('click')
+    await rowByTitle(wrapper, '清空学习记录').trigger('click')
     expect(confirmSpy).not.toHaveBeenCalled()
     confirmSpy.mockRestore()
 
-    // 点「清空学习记录」→ 出现页内确认条，此时还没删
     expect(wrapper.find('.confirm').exists()).toBe(true)
     expect(Object.keys(study.records).length).toBe(before)
 
-    // 点「取消」→ 确认条消失，数据仍在
     await wrapper.find('.confirm .btn--plain').trigger('click')
     expect(wrapper.find('.confirm').exists()).toBe(false)
     expect(Object.keys(study.records).length).toBe(before)
   })
 
   it('两个清空按钮各自独立弹确认条（不会同时展开）', async () => {
-    const router = makeRouter()
-    router.push('/me')
-    await router.isReady()
-    const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
+    const { wrapper } = await mountSettings()
     const study = useStudyStore()
     study.markKnow(1)
     study.toggleFavorite(1)
     await wrapper.vm.$nextTick()
 
-    const findRow = (title) =>
-      wrapper
-        .findAll('.row')
-        .find((r) => r.find('.row__title').exists() && r.find('.row__title').text() === title)
-
-    await findRow('清空学习记录').trigger('click')
+    await rowByTitle(wrapper, '清空学习记录').trigger('click')
     expect(wrapper.findAll('.confirm')).toHaveLength(1)
 
-    await findRow('清空收藏').trigger('click')
+    await rowByTitle(wrapper, '清空收藏').trigger('click')
     expect(wrapper.findAll('.confirm')).toHaveLength(1)
     expect(wrapper.find('.confirm').text()).toContain('收藏')
   })

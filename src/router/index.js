@@ -54,6 +54,12 @@ const routes = [
     meta: { title: '我的' },
   },
   {
+    path: '/settings',
+    name: 'settings',
+    component: () => import('@/views/SettingsView.vue'),
+    meta: { title: '设置', parent: '/me' },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),

@@ -119,7 +119,9 @@ function build() {
   )
   cursor.value = start.index
   resumed.value = start.resumed
-  expanded.value = false
+  // 背题模式默认展开答案（它的用途就是「看题背答案」）；
+  // 刷题模式仍默认收起，先自己想再看
+  expanded.value = studyMode.value === 'memorize'
   finished.value = false
   roundAnswers.value = {}
   resetChoice()
@@ -183,7 +185,8 @@ function goTo(index) {
 
   schedule(() => {
     cursor.value = index
-    expanded.value = false
+    // 切题后同样按模式决定：背题模式每道都直接展开答案
+    expanded.value = studyMode.value === 'memorize'
     resetChoice()
     slideDir.value = ''
     persistProgress()
@@ -299,6 +302,8 @@ function switchMode(nextMode) {
 function switchStudyMode(nextStudyMode) {
   if (studyMode.value === nextStudyMode) return
   study.clearProgress()
+  // 先按新模式决定答案展开态，避免路由切换那一瞬还是旧状态
+  expanded.value = nextStudyMode === 'memorize'
   router.replace({ path: '/practice', query: { ...route.query, studyMode: nextStudyMode } })
 }
 
@@ -436,18 +441,22 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   <div class="page practice page--fill">
     <AppHeader :title="headerTitle" :back="false">
       <template #right>
+        <!-- 模式切换：像切换主题一样，点一下切到另一种练习方式 -->
         <button
-          class="practice__fav"
-          :aria-label="favorite ? '取消收藏' : '收藏'"
-          :aria-pressed="favorite"
-          @click="toggleFavorite"
+          v-if="started && !finished"
+          class="practice__mode-btn"
+          :aria-label="`当前${STUDY_MODE_LABEL[studyMode]}，点击切换`"
+          :title="`点击切换到${STUDY_MODE_LABEL[studyMode === 'practice' ? 'memorize' : 'practice']}`"
+          @click="switchStudyMode(studyMode === 'practice' ? 'memorize' : 'practice')"
         >
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <span class="practice__mode-text">{{ STUDY_MODE_LABEL[studyMode] }}</span>
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <path
-              d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
-              :fill="favorite ? 'currentColor' : 'none'"
+              d="M7 9l5 5 5-5"
+              fill="none"
               stroke="currentColor"
-              stroke-width="1.6"
+              stroke-width="2"
+              stroke-linecap="round"
               stroke-linejoin="round"
             />
           </svg>
@@ -455,47 +464,48 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
       </template>
     </AppHeader>
 
-    <!-- 选择页：只放两个居中按钮，选定后才进入刷题 -->
+    <!-- 选择页：两个居中按钮，选定后才进入刷题 -->
     <section v-if="!started && !finished" class="picker">
-      <p class="picker__tip muted">选择练习方式</p>
-      <button
-        class="picker__btn picker__btn--practice"
-        @click="startStudy('practice')"
-      >
-        <span class="picker__name">刷题模式</span>
-        <span class="picker__desc">全部题 · 简答自评 / 选择作答</span>
+      <h1 class="picker__title">选择练习方式</h1>
+      <p class="picker__tip muted">
+        两种方式共用同一套题库，随时可在右上角切换
+      </p>
+
+      <button class="picker__btn picker__btn--practice" @click="startStudy('practice')">
+        <span class="picker__icon picker__icon--practice" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path d="M13 3 5 14h5l-1 7 8-11h-5l1-7z" fill="currentColor" />
+          </svg>
+        </span>
+        <span class="picker__body">
+          <span class="picker__name">刷题模式</span>
+          <span class="picker__desc">全部题 · 简答自评 / 选择作答</span>
+        </span>
       </button>
-      <button
-        class="picker__btn picker__btn--memorize"
-        @click="startStudy('memorize')"
-      >
-        <span class="picker__name">背题模式</span>
-        <span class="picker__desc">只有简答题 · 看题背答案</span>
+
+      <button class="picker__btn picker__btn--memorize" @click="startStudy('memorize')">
+        <span class="picker__icon picker__icon--memorize" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path
+              d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5v-13zM14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14V4z"
+              fill="currentColor"
+            />
+          </svg>
+        </span>
+        <span class="picker__body">
+          <span class="picker__name">背题模式</span>
+          <span class="picker__desc">只有简答题 · 答案默认展开</span>
+        </span>
       </button>
+
       <p v-if="progressInfo" class="picker__resume muted">
         上次停在 {{ progressInfo.studyModeLabel }} · {{ progressInfo.category }} ·
-        {{ progressInfo.positionText }}，继续会接着刷
+        {{ progressInfo.positionText }}
       </p>
     </section>
 
     <!-- 刷题中：只在 started 之后渲染 -->
     <template v-if="started">
-    <!-- 练习方式：刷题中可随时切换 -->
-    <div class="modes modes--study" role="radiogroup" aria-label="练习方式">
-      <button
-        v-for="opt in studyModeOptions"
-        :key="opt.value"
-        class="modes__item modes__item--study"
-        :class="{ 'modes__item--on': studyMode === opt.value }"
-        role="radio"
-        :aria-checked="studyMode === opt.value"
-        @click="switchStudyMode(opt.value)"
-      >
-        {{ opt.label }}
-      </button>
-      <span class="modes__count muted">{{ progressText }}</span>
-    </div>
-
     <!-- 题目顺序 -->
     <div class="modes" role="radiogroup" aria-label="题目顺序">
       <button
@@ -509,7 +519,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
       >
         {{ opt.label }}
       </button>
-      <span class="modes__count muted">{{ queueHint }}</span>
+      <span class="modes__count muted">{{ progressText }}</span>
     </div>
 
     <div
@@ -572,6 +582,24 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
             <span v-if="status" class="badge qcard-p__status" :class="`qcard-p__status--${status}`">
               {{ status === 'know' ? (short ? '会' : '答对') : (short ? '不会' : '答错') }}
             </span>
+            <!-- 收藏：放在题目自己这一行，与「顶部导航」无关 -->
+            <button
+              class="qcard-p__fav"
+              :class="{ 'qcard-p__fav--on': favorite }"
+              :aria-label="favorite ? '取消收藏' : '收藏这道题'"
+              :aria-pressed="favorite"
+              @click="toggleFavorite"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path
+                  d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
+                  :fill="favorite ? 'currentColor' : 'none'"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
           </div>
 
           <!-- 可滚动的题目主体 -->
@@ -697,6 +725,27 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   border-radius: 50%;
 }
 
+/* 右上角的模式切换按钮：像主题切换一样，点一下换一种练习方式 */
+.practice__mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 30px;
+  padding: 0 9px 0 11px;
+  border-radius: 15px;
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  font-size: 12px;
+  color: var(--c-primary);
+  white-space: nowrap;
+}
+.practice__mode-btn:active {
+  background: var(--c-primary-weak);
+}
+.practice__mode-text {
+  font-weight: 600;
+}
+
 /* ---------- 选择页（进入刷题前的两个居中按钮） ---------- */
 .picker {
   flex: 1;
@@ -705,24 +754,31 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 24px 8px 40px;
+  padding: 20px 6px 40px;
+}
+.picker__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--c-text);
 }
 .picker__tip {
-  margin: 0 0 4px;
-  font-size: 12.5px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-align: center;
 }
 .picker__btn {
   width: 100%;
-  max-width: 320px;
+  max-width: 340px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 22px 18px;
+  gap: 13px;
+  padding: 17px 18px;
   border-radius: 14px;
   border: 1.5px solid var(--c-border);
   background: var(--c-card);
   box-shadow: var(--shadow-card);
+  text-align: left;
   transition: transform 0.14s ease, border-color 0.14s ease;
 }
 .picker__btn:active {
@@ -732,26 +788,49 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   border-color: var(--c-primary);
   background: var(--c-primary-weak);
 }
+.picker__icon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.picker__icon--practice {
+  background: var(--grad-indigo);
+}
+.picker__icon--memorize {
+  background: var(--grad-teal);
+}
+.picker__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
 .picker__name {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--c-text);
-}
-.picker__btn--practice .picker__name {
-  color: var(--c-primary);
 }
 .picker__desc {
   font-size: 11.5px;
   color: var(--c-text-3);
 }
 .picker__resume {
-  margin: 8px 0 0;
+  margin: 12px 0 0;
+  padding: 8px 14px;
+  border-radius: 20px;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
   font-size: 11px;
   line-height: 1.6;
   text-align: center;
 }
 
-/* ---------- 练习方式按钮（刷题中可切换） ---------- */
+/* ---------- 题目顺序按钮 ---------- */
 .modes {
   display: flex;
   align-items: center;
@@ -771,20 +850,6 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   color: #fff;
   background: var(--c-primary);
   border-color: var(--c-primary);
-}
-/* 练习方式（刷题/背题）做得比「题目顺序」更醒目：
-   它是进入刷题页后第一个要做的选择 */
-.modes--study {
-  margin-top: 6px;
-  gap: 8px;
-}
-.modes__item--study {
-  flex: 1;
-  height: 40px;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  font-weight: 600;
-  text-align: center;
 }
 .modes__count {
   margin-left: auto;
@@ -889,6 +954,24 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   gap: 5px;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+/* 收藏按钮固定在题头行末尾（题目自己的收藏，与顶部导航无关） */
+.qcard-p__fav {
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--c-text-3);
+}
+.qcard-p__fav:active {
+  background: var(--c-bg);
+}
+.qcard-p__fav--on {
+  color: var(--c-warning);
 }
 .qcard-p__cat {
   color: var(--c-text-2);

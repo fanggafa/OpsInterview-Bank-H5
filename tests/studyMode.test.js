@@ -124,11 +124,23 @@ describe('describeProgress · 带上练习模式', () => {
 describe('刷题页练习方式（源码级约束）', () => {
   const view = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
 
-  it('用两个按钮呈现刷题 / 背题（不再是弹出面板）', () => {
+  it('进入时用两个居中按钮选择练习方式（不再是弹出面板）', () => {
     expect(view).toMatch(/studyModeOptions/)
-    expect(view).toMatch(/aria-label="练习方式"/)
+    expect(view).toMatch(/class="picker"/)
+    expect(view).toMatch(/picker__btn/)
     // 旧的面板类名应当已经不存在
     expect(view).not.toMatch(/setup__mode/)
+  })
+
+  it('刷题中练习方式收进右上角一个切换按钮（不再占一行）', () => {
+    expect(view).toMatch(/practice__mode-btn/)
+    // 题卡页不再有整行的练习方式 radiogroup
+    expect(view).not.toMatch(/aria-label="练习方式"/)
+  })
+
+  it('背题模式默认展开答案', () => {
+    // build 与 goTo 都按 studyMode 决定 expanded 初值
+    expect(view).toMatch(/expanded\.value = studyMode\.value === 'memorize'/)
   })
 
   it('不再有「继续上次」面板入口与「直接开始」（续刷改为自动恢复）', () => {

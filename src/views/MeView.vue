@@ -1,75 +1,20 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import BarChart from '@/components/BarChart.vue'
-import { useSettingsStore } from '@/stores/settingsStore'
-import {
-  THEMES,
-  STORAGE_KEYS,
-  STUDY_MODE_LABEL,
-  STUDY_MODES,
-  DEFAULT_STUDY_MODE,
-} from '@/utils/constants'
 import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
 import { formatPercent } from '@/utils/format'
-import { readJSON, writeJSON, isStorageAvailable } from '@/utils/storage'
-import { isShort } from '@/utils/question'
 
-const router = useRouter()
-const settings = useSettingsStore()
+/**
+ * 「我的」页：只做「看我自己的数据 + 快速进入错题/收藏」。
+ *
+ * 外观主题、默认练习方式、清空数据这些配置项都移到了 /settings，
+ * 页头右上角一个齿轮按钮进入——避免主页面被设置项撑得太长。
+ */
+
 const study = useStudyStore()
 const bank = useBankStore()
-
-const THEME_LABEL = { light: '浅色', dark: '深色', system: '跟随系统' }
-
-// ---------- 页内二次确认（替代 window.confirm） ----------
-/**
- * 为什么不用 window.confirm：
- * 微信内置浏览器、部分安卓 WebView、以及某些「禁止弹窗」的设置下，
- * window.confirm 会**静默返回 false 或直接不弹**，
- * 表现为「点了清空按钮毫无反应」——这是本页此前的真实 bug。
- * 改用页内确认条：渲染在页面上，任何环境都能显示与点击。
- */
-const confirming = reactive({ records: false, favorites: false })
-
-function askConfirm(kind) {
-  // 一次只弹一个，避免两个确认条同时铺开
-  confirming.records = false
-  confirming.favorites = false
-  confirming[kind] = true
-}
-
-function cancelConfirm(kind) {
-  confirming[kind] = false
-}
-
-function confirmClearRecords() {
-  study.clearRecords()
-  confirming.records = false
-  toast('已清空学习记录')
-}
-
-function confirmClearFavorites() {
-  study.clearFavorites()
-  confirming.favorites = false
-  toast('已清空收藏')
-}
-
-// ---------- 轻提示 ----------
-const toastText = ref('')
-let toastTimer = null
-
-function toast(text) {
-  toastText.value = text
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => {
-    toastText.value = ''
-  }, 1800)
-}
-
-// ---------- 概览数据 ----------
 
 const masteryText = computed(() => formatPercent(study.masteryRate))
 const choiceText = computed(() => formatPercent(study.choiceRate))
@@ -77,16 +22,18 @@ const favCount = computed(() => study.favorites.length)
 const wrongCount = computed(() => study.wrongList.length)
 const percentText = computed(() => formatPercent(study.progressRate))
 
-/** 头部三格数据（主流 App 的「数字摘要」位置） */
+/** 头部三格数据 */
 const summary = computed(() => [
   { label: '已刷', value: study.reviewedCount, to: '/practice' },
   { label: '错题', value: wrongCount.value, to: '/wrong' },
   { label: '收藏', value: favCount.value, to: '/favorites' },
 ])
 
-// ---------- 各分类掌握度（原统计页搬来） ----------
+/** 分类图表默认折叠（页面太长，点开再看细节） */
+const expandedMastery = ref(false)
+const expandedChoice = ref(false)
 
-/** 各分类掌握度（仅简答题，与统计口径一致） */
+/** 各分类掌握度（仅简答题） */
 const categoryMastery = computed(() =>
   study.categoryStats
     .filter((s) => s.shortTotal > 0)
@@ -116,42 +63,31 @@ const categoryChoice = computed(() => {
     percent: s.know + s.unknown ? Math.round((s.know / (s.know + s.unknown)) * 100) : null,
   }))
 })
-
-// ---------- 默认练习方式 ----------
-
-const prefMode = computed({
-  get() {
-    const saved = readJSON(STORAGE_KEYS.SETTINGS, {})
-    return STUDY_MODES.includes(saved?.studyMode) ? saved.studyMode : DEFAULT_STUDY_MODE
-  },
-  set(next) {
-    if (!STUDY_MODES.includes(next)) return
-    const saved = readJSON(STORAGE_KEYS.SETTINGS, {})
-    writeJSON(STORAGE_KEYS.SETTINGS, { ...saved, studyMode: next })
-    toast(`默认模式：${STUDY_MODE_LABEL[next]}`)
-  },
-})
-
-const prefOptions = computed(() =>
-  STUDY_MODES.map((m) => ({ value: m, label: STUDY_MODE_LABEL[m] }))
-)
-
-// ---------- 其它 ----------
-
-const storageOk = computed(() => isStorageAvailable())
-const appVersion = '0.2.0'
-
-/** 主题循环切换（点击一次切下一个） */
-const themeText = computed(() => THEME_LABEL[settings.theme] || '跟随系统')
-
-function cycleTheme() {
-  settings.cycleTheme()
-}
 </script>
 
 <template>
   <div class="page">
-    <AppHeader title="我的" :back="false" />
+    <AppHeader title="我的" :back="false">
+      <template #right>
+        <router-link to="/settings" class="me__settings" aria-label="设置">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path
+              d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+            />
+            <path
+              d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </router-link>
+      </template>
+    </AppHeader>
 
     <!-- 个人卡：头像 + 总体进度 + 三格数字 -->
     <section class="profile">
@@ -204,15 +140,32 @@ function cycleTheme() {
       </div>
     </div>
 
-    <!-- 各分类掌握度（原统计页） -->
-    <h2 class="section-title">各分类掌握度<span class="section-title__tip">（仅简答题）</span></h2>
-    <section class="card chart-card">
+    <!-- 各分类掌握度：默认折叠，点标题展开 -->
+    <button class="collapse" :aria-expanded="expandedMastery" @click="expandedMastery = !expandedMastery">
+      <span class="collapse__title">
+        各分类掌握度
+        <span class="collapse__tip">（仅简答题）</span>
+      </span>
+      <span class="collapse__chev" :class="{ 'collapse__chev--up': expandedMastery }" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16">
+          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span>
+    </button>
+    <section v-if="expandedMastery" class="card chart-card">
       <BarChart :items="categoryMastery" empty-text="还没有简答题的作答记录" />
     </section>
 
-    <!-- 各分类选择题正确率 -->
-    <h2 class="section-title">各分类选择正确率</h2>
-    <section class="card chart-card">
+    <!-- 各分类选择正确率：同样默认折叠 -->
+    <button class="collapse" :aria-expanded="expandedChoice" @click="expandedChoice = !expandedChoice">
+      <span class="collapse__title">各分类选择正确率</span>
+      <span class="collapse__chev" :class="{ 'collapse__chev--up': expandedChoice }" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16">
+          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span>
+    </button>
+    <section v-if="expandedChoice" class="card chart-card">
       <BarChart :items="categoryChoice" empty-text="还没有选择题的作答记录" />
     </section>
 
@@ -260,157 +213,32 @@ function cycleTheme() {
       </router-link>
     </div>
 
-    <!-- 学习设置分组 -->
-    <h2 class="section-title">学习设置</h2>
-    <div class="group card">
-      <!-- 默认练习方式 -->
-      <div class="row row--stack">
-        <div class="row__main">
-          <span class="row__icon row__icon--teal" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="17" height="17">
-              <path
-                d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5v-13zM14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14V4z"
-                fill="currentColor"
-                opacity=".9"
-              />
-            </svg>
-          </span>
-          <div class="row__text">
-            <span class="row__title">默认练习方式</span>
-            <span class="row__desc">进入刷题页时默认选中</span>
-          </div>
-        </div>
-        <div class="seg">
-          <button
-            v-for="opt in prefOptions"
-            :key="opt.value"
-            class="seg__item"
-            :class="{ 'seg__item--on': prefMode === opt.value }"
-            @click="prefMode = opt.value"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
+    <!-- 设置入口：外观 / 默认练习方式 / 数据管理都收进设置页 -->
+    <router-link to="/settings" class="row row--entry card">
+      <span class="row__icon row__icon--indigo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="17" height="17">
+          <path
+            d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+          />
+          <path
+            d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
+      <div class="row__text">
+        <span class="row__title">设置</span>
+        <span class="row__desc">外观主题 · 默认练习方式 · 清空数据</span>
       </div>
+      <span class="row__chev" aria-hidden="true">›</span>
+    </router-link>
 
-      <!-- 主题 -->
-      <button class="row" @click="cycleTheme">
-        <span class="row__icon row__icon--indigo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="17" height="17">
-            <path
-              d="M15 3.5a7.5 7.5 0 1 0 5.5 12.4A8.5 8.5 0 0 1 15 3.5z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <div class="row__text">
-          <span class="row__title">外观主题</span>
-          <span class="row__desc">点击切换浅色 / 深色 / 跟随系统</span>
-        </div>
-        <span class="row__value">{{ themeText }}</span>
-        <span class="row__chev" aria-hidden="true">›</span>
-      </button>
-    </div>
-
-    <!-- 数据管理分组 -->
-    <h2 class="section-title">数据管理</h2>
-    <div class="group card">
-      <button class="row" @click="askConfirm('records')">
-        <span class="row__icon row__icon--amber" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="17" height="17">
-            <path
-              d="M4 7h16M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M6.5 7l.8 11.6A1.5 1.5 0 0 0 8.8 20h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-        <div class="row__text">
-          <span class="row__title">清空学习记录</span>
-          <span class="row__desc">已刷状态、掌握率、进度一并清除</span>
-        </div>
-        <span class="row__value">{{ study.reviewedCount }} 题</span>
-        <span class="row__chev" aria-hidden="true">›</span>
-      </button>
-
-      <div v-if="confirming.records" class="confirm" role="alertdialog">
-        <p class="confirm__text">
-          确定清空全部学习记录？<br />
-          <span class="muted">此操作不可恢复。</span>
-        </p>
-        <div class="confirm__actions">
-          <button class="btn btn--plain btn--sm" @click="cancelConfirm('records')">取消</button>
-          <button class="btn btn--danger btn--sm" @click="confirmClearRecords">确定清空</button>
-        </div>
-      </div>
-
-      <button
-        class="row"
-        :disabled="!favCount"
-        :class="{ 'row--disabled': !favCount }"
-        @click="askConfirm('favorites')"
-      >
-        <span class="row__icon row__icon--rose" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="17" height="17">
-            <path
-              d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <div class="row__text">
-          <span class="row__title">清空收藏</span>
-          <span class="row__desc">手动标记的重点题</span>
-        </div>
-        <span class="row__value">{{ favCount }} 题</span>
-        <span class="row__chev" aria-hidden="true">›</span>
-      </button>
-
-      <div v-if="confirming.favorites" class="confirm" role="alertdialog">
-        <p class="confirm__text">确定清空全部收藏？（{{ favCount }} 题）</p>
-        <div class="confirm__actions">
-          <button class="btn btn--plain btn--sm" @click="cancelConfirm('favorites')">取消</button>
-          <button class="btn btn--danger btn--sm" @click="confirmClearFavorites">确定清空</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 关于 -->
-    <h2 class="section-title">关于</h2>
-    <div class="group card">
-      <div class="row row--static">
-        <div class="row__text">
-          <span class="row__title">版本</span>
-        </div>
-        <span class="row__value">v{{ appVersion }}</span>
-      </div>
-      <div class="row row--static">
-        <div class="row__text">
-          <span class="row__title">存储方式</span>
-        </div>
-        <span class="row__value">{{ storageOk ? '本机 localStorage' : '不可用' }}</span>
-      </div>
-      <div class="row row--static">
-        <div class="row__text">
-          <span class="row__title">题库</span>
-        </div>
-        <span class="row__value">{{ bank.total }} 题 · 23 分类</span>
-      </div>
-    </div>
-
-    <p class="foot muted">
-      数据只存在本机浏览器，清除浏览器数据或换设备会丢失。
-    </p>
-
-    <!-- 轻提示 -->
     <Transition name="toast">
       <div v-if="toastText" class="toast" role="status">{{ toastText }}</div>
     </Transition>
@@ -502,6 +330,62 @@ function cycleTheme() {
 .chart-card {
   padding: 14px 14px 8px;
 }
+
+/* 页头右上角的设置入口 */
+.me__settings {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-2);
+  border-radius: 50%;
+}
+.me__settings:active {
+  background: var(--c-primary-weak);
+}
+
+/* 可折叠标题（分类掌握度 / 选择正确率） */
+.collapse {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 0 2px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--c-text);
+  text-align: left;
+}
+.collapse__title {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.collapse__tip {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--c-text-3);
+}
+.collapse__chev {
+  display: flex;
+  align-items: center;
+  color: var(--c-text-3);
+  transition: transform 0.2s ease;
+}
+.collapse__chev--up {
+  transform: rotate(180deg);
+}
+
+/* 设置入口行（单独一张卡） */
+.row--entry {
+  margin-top: 16px;
+  padding: 0 14px;
+  min-height: 56px;
+  border-bottom: none;
+}
 .tile__label {
   font-size: 11.5px;
   color: var(--c-text-3);
@@ -551,11 +435,6 @@ function cycleTheme() {
 .row--disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-.row--stack {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 9px;
 }
 
 .row__main {
@@ -618,83 +497,10 @@ function cycleTheme() {
 }
 
 /* ---------- 分段选择 ---------- */
-.seg {
-  display: flex;
-  padding: 3px;
-  gap: 3px;
-  border-radius: 9px;
-  background: var(--c-bg);
-}
-.seg__item {
-  flex: 1;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 7px;
-  font-size: 12.5px;
-  color: var(--c-text-2);
-}
-.seg__item--on {
-  background: var(--c-primary);
-  color: #fff;
-  font-weight: 500;
-}
 
 /* ---------- 页内确认条 ---------- */
-.confirm {
-  padding: 11px 0 13px;
-  border-bottom: 1px solid var(--c-border);
-}
-.confirm__text {
-  margin: 0 0 9px;
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--c-text);
-}
-.confirm__actions {
-  display: flex;
-  gap: 8px;
-}
-.btn--sm {
-  height: 34px;
-  padding: 0 14px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-}
-.btn--danger {
-  background: var(--c-danger);
-  color: #fff;
-  font-weight: 500;
-}
 
 /* ---------- 页脚 ---------- */
-.foot {
-  margin: 16px 2px 8px;
-  font-size: 10.5px;
-  line-height: 1.7;
-  text-align: center;
-}
 
 /* ---------- 轻提示 ---------- */
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 16px);
-  transform: translateX(-50%);
-  padding: 8px 16px;
-  border-radius: 18px;
-  font-size: 12.5px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.78);
-  z-index: 60;
-  pointer-events: none;
-}
-.toast-enter-active,
-.toast-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(6px);
-}
 </style>

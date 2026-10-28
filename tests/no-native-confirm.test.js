@@ -61,14 +61,21 @@ describe('不使用原生 confirm 做二次确认', () => {
     expect(offenders).toEqual([])
   })
 
-  it('「我的」页与「收藏」页都提供页内确认条', () => {
-    const me = readFileSync(resolve(ROOT, 'views/MeView.vue'), 'utf8')
+  it('「设置」页与「收藏」页都提供页内确认条', () => {
+    // 清空类操作已从「我的」页搬到「设置」页
+    const settings = readFileSync(resolve(ROOT, 'views/SettingsView.vue'), 'utf8')
     const fav = readFileSync(resolve(ROOT, 'views/FavoritesView.vue'), 'utf8')
 
-    ;[me, fav].forEach((src) => {
+    ;[settings, fav].forEach((src) => {
       expect(src).toMatch(/role="alertdialog"/)
       expect(src).toMatch(/class="confirm"/)
       expect(src).toMatch(/btn--danger/)
     })
+  })
+
+  it('「我的」页本身不再含清空操作（已移到设置页）', () => {
+    const me = readFileSync(resolve(ROOT, 'views/MeView.vue'), 'utf8')
+    expect(me).not.toMatch(/window\.confirm/)
+    expect(me).not.toMatch(/清空学习记录/)
   })
 })
