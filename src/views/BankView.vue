@@ -205,16 +205,6 @@ const hasFilter = computed(
     Boolean(state.value.keyword)
 )
 
-/** 已生效的筛选数量，用于折叠状态下提示「还有筛选没展开」 */
-const activeFilterCount = computed(() => {
-  let n = 0
-  if (state.value.category) n++
-  if (state.value.frequency) n++
-  if (state.value.difficulty) n++
-  if (state.value.keyword) n++
-  return n
-})
-
 /** 各分类题量，用于 Tab 上的角标 */
 const categoryCounts = computed(() => {
   const counts = {}
@@ -273,7 +263,7 @@ const resultText = computed(() => {
       </button>
     </div>
 
-    <!-- 分类 Tab：默认折叠，只显示前几个；点箭头展开全部 -->
+    <!-- 分类 Tab：默认折叠，只显示前几个；末尾一个小箭头展开全部 -->
     <nav id="bank-cats" class="chip-grid bank-tabs" aria-label="分类筛选">
       <button
         class="chip"
@@ -292,31 +282,35 @@ const resultText = computed(() => {
       >
         <span class="chip__label">{{ cat }}</span><span class="chip__count">{{ categoryCounts[cat] }}</span>
       </button>
-    </nav>
 
-    <!-- 折叠开关：分类多时才出现 -->
-    <button
-      v-if="catsCollapsible"
-      class="tabs-toggle"
-      :aria-expanded="catsExpanded"
-      aria-controls="bank-cats"
-      @click="catsExpanded = !catsExpanded"
-    >
-      <span>
-        {{ catsExpanded ? '收起分类' : `展开全部 ${availableCategories.length} 个分类` }}
-        <em v-if="!catsExpanded && activeFilterCount">· 已筛选 {{ activeFilterCount }} 项</em>
-      </span>
-      <svg
-        class="tabs-toggle__chev"
-        :class="{ 'tabs-toggle__chev--up': catsExpanded }"
-        viewBox="0 0 24 24"
-        width="16"
-        height="16"
-        aria-hidden="true"
+      <!--
+        展开箭头：不再是独占一整行的文字按钮，而是分类列表末尾的一个小图标胶囊。
+        省掉整行高度（30px + 6px 间距），分类区看起来更紧凑。
+
+        aria-label 里带上完整语义（而不是「展开全部 23 个分类」的文字），
+        因为视觉上只剩一个箭头，读屏需要能说清它干什么。
+      -->
+      <button
+        v-if="catsCollapsible"
+        class="chip chip--expand"
+        :class="{ 'chip--expand--open': catsExpanded }"
+        :aria-expanded="catsExpanded"
+        aria-controls="bank-cats"
+        :aria-label="catsExpanded ? '收起分类' : `展开全部 ${availableCategories.length} 个分类`"
+        :title="catsExpanded ? '收起分类' : `展开全部 ${availableCategories.length} 个分类`"
+        @click="catsExpanded = !catsExpanded"
       >
-        <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-      </svg>
-    </button>
+        <svg
+          class="chip__chev"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          aria-hidden="true"
+        >
+          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </nav>
 
     <!-- 频率筛选 -->
     <nav class="chip-wrap bank-tabs" aria-label="频率筛选">
@@ -469,28 +463,34 @@ const resultText = computed(() => {
   margin-bottom: 6px;
 }
 
-/* 折叠开关 */
-.tabs-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  width: 100%;
+/**
+ * 展开/收起箭头：分类列表末尾的一个小胶囊图标。
+ *
+ * 早期版本是「独占一行的文字按钮（展开全部 23 个分类 ⌄）」，
+ * 白占 30px 高度 + 6px 间距。改成行内小图标后：
+ * - 省掉整行，分类区更紧凑
+ * - 位置在列表末尾，语义上就是「后面还有，展开看」
+ */
+.chip--expand {
+  width: 30px;
   height: 30px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: var(--c-primary);
-  background: none;
-}
-.tabs-toggle em {
-  font-style: normal;
+  padding: 0;
+  justify-content: center;
   color: var(--c-text-3);
+  background: var(--c-bg);
+  border-color: var(--c-border);
 }
-.tabs-toggle__chev {
+.chip--expand:active {
+  background: var(--c-primary-weak);
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+}
+.chip__chev {
   flex-shrink: 0;
   transition: transform 0.2s ease;
 }
-.tabs-toggle__chev--up {
+/* 展开后箭头翻转，提示「点它收起」 */
+.chip--expand--open .chip__chev {
   transform: rotate(180deg);
 }
 

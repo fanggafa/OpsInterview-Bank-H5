@@ -1074,13 +1074,21 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 }
 
 /**
- * 题干区（固定不滚）。
+ * 题干区（固定不滚，但有高度上限）。
  *
- * flex-shrink: 0 是关键——它保证题干不被下方的滚动区挤压；
- * 内容再长（长题目）也只会自己换行，不会把答案区挤没。
+ * flex-shrink: 0 保证它不被下方滚动区挤压；
+ * 同时给一个 max-height，避免「超长题干」把答案区挤得只剩几行——
+ * 超过上限时题干自己内部滚动，仍然「标题始终可见」，只是不会无限占屏。
+ *
+ * 上限取 38vh：iPhone SE 级小屏（约 570px 可视高）下约 216px，
+ * 够放 4-5 行 16px 的题干；再长就内部滚。
  */
 .qcard-p__head {
   flex-shrink: 0;
+  max-height: 38vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding-top: 2px;
 }
 /* 题干 + 标签 与「看答案」按钮同一行：标签左、按钮右 */
