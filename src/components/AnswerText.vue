@@ -1,7 +1,13 @@
 <script setup>
-import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { parseAnswerFlow } from '@/utils/answerParts'
 import { getFigure } from '@/components/figures/index'
+import {
+  attachPinch,
+  keepFocusScrollLeft,
+  MIN_PINCH_SCALE,
+  MAX_PINCH_SCALE,
+} from '@/utils/pinch'
 
 /**
  * 答案渲染组件：结构化块渲染（标题/段落/列表/表格/代码）+ 内联 SVG 插图。
@@ -48,16 +54,90 @@ function segs(list) {
  * 为什么需要：图解的 SVG 画布固定 340 宽，在手机上被缩到 ~0.85 倍，
  * 里面 7.5~9px 的标注字实际只有 6~8px —— 正常视力都吃力，近视更看不清。
  * 直接把画布重新排版不现实（34 张图），所以给一个「点开看大的」出口：
- * 放大后按约 2.4 倍渲染，左右拖动查看，标注字回到 18~22px。
+ * 打开时先按 2.6 倍渲染，再用**双指缩放**在 1~5 倍之间自己调。
  */
 const zoomComp = shallowRef(null) // 用 shallowRef：组件对象不能被做成响应式代理
 const isZoomOpen = computed(() => zoomComp.value !== null)
 
+/** 当前缩放比例（1 = 打开时的基准宽度 260vw） */
+const zoomScale = ref(1)
+/** 手势过程中的临时比例，用于保持手指中点下的内容不跑掉 */
+let pinchFrom = 1
+
+const canvasRef = ref(null)
+let detachPinch = () => {}
+
 function openZoom(comp) {
   zoomComp.value = comp
+  zoomScale.value = 1
 }
+
 function closeZoom() {
   zoomComp.value = null
+  zoomScale.value = 1
+}
+
+/**
+ * 双指缩放：改的是画布的 CSS 宽度，滚动区自然跟着变宽。
+ *
+ * 不用 CSS transform: scale()——那样滚动范围不会跟着变，
+ * 放大后超出部分会被裁掉，用户拖不过去。
+ */
+function onPinchStart() {
+  pinchFrom = zoomScale.value
+}
+
+function onPinchChange({ scale, midX }) {
+  const canvas = canvasRef.value
+  if (!canvas) {
+    zoomScale.value = scale
+    return
+  }
+
+  const from = pinchFrom
+  const scrollLeftBefore = canvas.scrollLeft
+  zoomScale.value = scale
+
+  // 等宽度生效后再按「两指中点」修正横向滚动位置，
+  // 否则每次缩放都从左边开始变，视线要重新找地方。
+  requestAnimationFrame(() => {
+    const el = canvasRef.value
+    if (!el) return
+    el.scrollLeft = keepFocusScrollLeft({
+      scrollLeft: scrollLeftBefore,
+      midX,
+      fromScale: from,
+      toScale: scale,
+    })
+  })
+}
+
+function bindPinch(el) {
+  detachPinch()
+  detachPinch = () => {}
+  if (!el) return
+  detachPinch = attachPinch(el, {
+    getScale: () => zoomScale.value,
+    onStart: onPinchStart,
+    onChange: onPinchChange,
+    min: MIN_PINCH_SCALE,
+    max: MAX_PINCH_SCALE,
+  })
+}
+
+watch(canvasRef, (el) => {
+  if (el && isZoomOpen.value) bindPinch(el)
+  else {
+    detachPinch()
+    detachPinch = () => {}
+  }
+})
+
+/** 双击复位：缩放到 2 倍以上后，双击可以快速回到基准尺寸 */
+function onCanvasDoubleClick() {
+  zoomScale.value = 1
+  const el = canvasRef.value
+  if (el) el.scrollLeft = 0
 }
 
 function onKeydown(e) {
@@ -82,6 +162,7 @@ watch(isZoomOpen, (open) => {
 })
 
 onBeforeUnmount(() => {
+  detachPinch()
   if (typeof document === 'undefined') return
   document.removeEventListener('keydown', onKeydown, true)
   document.body.style.overflow = ''
@@ -232,7 +313,19 @@ onBeforeUnmount(() => {
         aria-label="图解放大"
       >
         <div class="ans-zoom__bar">
-          <span class="ans-zoom__tip">左右拖动查看完整图解</span>
+          <span class="ans-zoom__tip">
+            双指缩放 · 拖动查看
+            <span v-if="zoomScale > 1" class="ans-zoom__pct">{{ Math.round(zoomScale * 100) }}%</span>
+          </span>
+          <button
+            type="button"
+            class="ans-zoom__reset"
+            :class="{ 'ans-zoom__reset--hidden': zoomScale === 1 }"
+            aria-label="复位大小"
+            @click="onCanvasDoubleClick"
+          >
+            复位
+          </button>
           <button
             type="button"
             class="ans-zoom__close"
@@ -244,11 +337,16 @@ onBeforeUnmount(() => {
             </svg>
           </button>
         </div>
-        <div class="ans-zoom__canvas" @click.self="closeZoom">
-          <div class="ans-zoom__inner">
-            <component :is="zoomComp" />
+          <div
+            ref="canvasRef"
+            class="ans-zoom__canvas"
+            @click.self="closeZoom"
+            @dblclick="onCanvasDoubleClick"
+          >
+            <div class="ans-zoom__inner" :style="{ '--zoom': zoomScale }">
+              <component :is="zoomComp" />
+            </div>
           </div>
-        </div>
       </div>
     </Teleport>
   </div>
@@ -532,8 +630,37 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: var(--c-text-2);
 }
-.ans-zoom__close {
+/* 缩放百分比：只在放大后才出现，避免「100%」这种没信息量的数字常驻 */
+.ans-zoom__pct {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 「复位」：缩放后才出现，点一下回到基准尺寸 */
+.ans-zoom__reset {
   margin-left: auto;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--c-text-2);
+}
+.ans-zoom__reset:active {
+  background: var(--c-primary-weak);
+  color: var(--c-primary);
+}
+.ans-zoom__reset--hidden {
+  visibility: hidden;
+}
+
+.ans-zoom__close {
+  margin-left: 4px;
   width: 40px;
   height: 40px;
   display: flex;
@@ -551,6 +678,11 @@ onBeforeUnmount(() => {
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /**
+   * 单指拖动看图用 pan-x pan-y；双指缩放不靠它 ——
+   * 这个值会禁用 pinch-zoom，浏览器见到两指会当平移接管并 cancel 手势，
+   * 所以 pinch 绑定器在第二根手指落下时会把元素的 touch-action 临时改成 none。
+   */
   touch-action: pan-x pan-y;
 }
 .ans-zoom__inner {
@@ -559,16 +691,15 @@ onBeforeUnmount(() => {
   padding: 12px 12px calc(24px + env(safe-area-inset-bottom, 0px));
 }
 /**
- * 放大态：画布 340 宽 → 显示宽 min(920, 屏宽)，实际约 2.7 倍，
- * 原本 8px 的标注字变成 ~21px，散布在各处的说明才真正读得下来。
+ * 放大态：画布 340 宽 → 基准显示宽 min(920, 屏宽*2.6)，实际约 2.7 倍，
+ * 原本 8px 的标注字变成 ~21px。
  *
- * 为什么用「相对屏宽」而不是固定像素：小屏手机（375px）上固定 920 会让
- * 内容超出屏幕太多，需要反复左右拖动才能读一行；这里取屏宽的 2.6 倍，
- * 保证「一屏能看到大半张图，同时字足够大」，超出部分才需要拖。
- * 上限 920 防止在平板上把字放得过大。
+ * 这里的宽度还乘上 `--zoom`（双指缩放的比例）：
+ * 用 CSS 宽度而不是 transform: scale()，因为 transform 不改变元素的布局尺寸，
+ * 滚动区不会跟着变宽 —— 放大后超出屏幕的部分没法拖过去，等于被裁掉。
  */
 .ans-zoom__inner :deep(.fig) {
-  width: min(920px, 260vw);
+  width: calc(min(920px, 260vw) * var(--zoom, 1));
   margin: 0;
   padding: 14px 14px 10px;
   box-shadow: none;

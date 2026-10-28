@@ -179,8 +179,10 @@ describe('图解放大', () => {
     const idx = css.indexOf('.ans-zoom__inner')
     expect(idx).toBeGreaterThan(-1)
     const zoomRule = css.slice(idx)
-    const m = zoomRule.match(/width:\s*min\((\d+)px,\s*(\d+)vw\)/)
+    // 基准宽度 min(920px, 260vw)，再乘双指缩放的 --zoom
+    const m = zoomRule.match(/width:\s*calc\(min\((\d+)px,\s*(\d+)vw\)/)
     expect(m).toBeTruthy()
+    expect(zoomRule).toMatch(/var\(--zoom/)
     // 画布 340 宽 → 最大 920 宽（约 2.7 倍），8px 标注字变 ~21px；
     // 小屏（375px）上 260vw≈975，被 920 上限收住
     expect(Number(m[1])).toBeGreaterThanOrEqual(700)
