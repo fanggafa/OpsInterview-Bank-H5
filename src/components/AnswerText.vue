@@ -54,15 +54,16 @@ function segs(list) {
  * 为什么需要：图解的 SVG 画布固定 340 宽，在手机上被缩到 ~0.85 倍，
  * 里面 7.5~9px 的标注字实际只有 6~8px —— 正常视力都吃力，近视更看不清。
  * 直接把画布重新排版不现实（34 张图），所以给一个「点开看大的」出口：
- * 打开时先按 2.6 倍渲染，再用**双指缩放**在 1~5 倍之间自己调。
+ * 打开时先按 2.6 倍渲染，然后按平台习惯缩放——
+ * 移动端双指缩放，桌面端滚轮缩放（触控板的捏合也会派发 wheel，一并接住）。
  */
 const zoomComp = shallowRef(null) // 用 shallowRef：组件对象不能被做成响应式代理
 const isZoomOpen = computed(() => zoomComp.value !== null)
 
 /** 当前缩放比例（1 = 打开时的基准宽度 260vw） */
 const zoomScale = ref(1)
-/** 手势过程中的临时比例，用于保持手指中点下的内容不跑掉 */
-let pinchFrom = 1
+/** 手势/滚轮过程中的临时比例，用于保持焦点下的内容不跑掉 */
+let zoomFrom = 1
 
 const canvasRef = ref(null)
 let detachPinch = () => {}
@@ -78,28 +79,27 @@ function closeZoom() {
 }
 
 /**
- * 双指缩放：改的是画布的 CSS 宽度，滚动区自然跟着变宽。
+ * 缩放：改的是画布的 CSS 宽度，滚动区自然跟着变宽。
  *
  * 不用 CSS transform: scale()——那样滚动范围不会跟着变，
  * 放大后超出部分会被裁掉，用户拖不过去。
  */
-function onPinchStart() {
-  pinchFrom = zoomScale.value
+function captureScale() {
+  zoomFrom = zoomScale.value
 }
 
-function onPinchChange({ scale, midX }) {
+function onZoomChange({ scale, midX }) {
   const canvas = canvasRef.value
-  if (!canvas) {
-    zoomScale.value = scale
-    return
-  }
+  const from = zoomFrom
+  const scrollLeftBefore = canvas ? canvas.scrollLeft : 0
 
-  const from = pinchFrom
-  const scrollLeftBefore = canvas.scrollLeft
   zoomScale.value = scale
+  zoomFrom = scale
 
-  // 等宽度生效后再按「两指中点」修正横向滚动位置，
-  // 否则每次缩放都从左边开始变，视线要重新找地方。
+  if (!canvas) return
+
+  // 等宽度生效后再按焦点位置修正横向滚动，否则每次缩放都从左边开始变，
+  // 视线要重新找地方。
   requestAnimationFrame(() => {
     const el = canvasRef.value
     if (!el) return
@@ -118,8 +118,8 @@ function bindPinch(el) {
   if (!el) return
   detachPinch = attachPinch(el, {
     getScale: () => zoomScale.value,
-    onStart: onPinchStart,
-    onChange: onPinchChange,
+    onStart: captureScale,
+    onChange: onZoomChange,
     min: MIN_PINCH_SCALE,
     max: MAX_PINCH_SCALE,
   })
@@ -133,7 +133,12 @@ watch(canvasRef, (el) => {
   }
 })
 
-/** 双击复位：缩放到 2 倍以上后，双击可以快速回到基准尺寸 */
+/**
+ * 双击复位：回到打开时的基准尺寸（1）。
+ *
+ * 只保留这一个「一键回到已知位置」的入口。缩到多小、放多大，
+ * 交给滚轮/双指自己控制 —— 图上有多少内容该占多少屏，用户比我们清楚。
+ */
 function onCanvasDoubleClick() {
   zoomScale.value = 1
   const el = canvasRef.value
@@ -314,18 +319,9 @@ onBeforeUnmount(() => {
       >
         <div class="ans-zoom__bar">
           <span class="ans-zoom__tip">
-            双指缩放 · 拖动查看
-            <span v-if="zoomScale > 1" class="ans-zoom__pct">{{ Math.round(zoomScale * 100) }}%</span>
+            滚轮 / 双指缩放 · 拖动查看
+            <span v-if="zoomScale !== 1" class="ans-zoom__pct">{{ Math.round(zoomScale * 100) }}%</span>
           </span>
-          <button
-            type="button"
-            class="ans-zoom__reset"
-            :class="{ 'ans-zoom__reset--hidden': zoomScale === 1 }"
-            aria-label="复位大小"
-            @click="onCanvasDoubleClick"
-          >
-            复位
-          </button>
           <button
             type="button"
             class="ans-zoom__close"
@@ -337,16 +333,16 @@ onBeforeUnmount(() => {
             </svg>
           </button>
         </div>
-          <div
-            ref="canvasRef"
-            class="ans-zoom__canvas"
-            @click.self="closeZoom"
-            @dblclick="onCanvasDoubleClick"
-          >
-            <div class="ans-zoom__inner" :style="{ '--zoom': zoomScale }">
-              <component :is="zoomComp" />
-            </div>
+        <div
+          ref="canvasRef"
+          class="ans-zoom__canvas"
+          @click.self="closeZoom"
+          @dblclick="onCanvasDoubleClick"
+        >
+          <div class="ans-zoom__inner" :style="{ '--zoom': zoomScale }">
+            <component :is="zoomComp" />
           </div>
+        </div>
       </div>
     </Teleport>
   </div>
@@ -630,7 +626,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: var(--c-text-2);
 }
-/* 缩放百分比：只在放大后才出现，避免「100%」这种没信息量的数字常驻 */
+/* 缩放百分比：只在偏离基准时出现，避免「100%」这种没信息量的数字常驻 */
 .ans-zoom__pct {
   margin-left: 6px;
   font-size: 12px;
@@ -639,28 +635,8 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* 「复位」：缩放后才出现，点一下回到基准尺寸 */
-.ans-zoom__reset {
-  margin-left: auto;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid var(--c-border);
-  background: var(--c-bg);
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--c-text-2);
-}
-.ans-zoom__reset:active {
-  background: var(--c-primary-weak);
-  color: var(--c-primary);
-}
-.ans-zoom__reset--hidden {
-  visibility: hidden;
-}
-
 .ans-zoom__close {
-  margin-left: 4px;
+  margin-left: auto;
   width: 40px;
   height: 40px;
   display: flex;
@@ -685,22 +661,51 @@ onBeforeUnmount(() => {
    */
   touch-action: pan-x pan-y;
 }
+/**
+ * 内层撑满画布的**内容宽度**，左右内边距由它自己承担。
+ *
+ * 为什么不用 100vw：画布是 overflow:auto 的滚动容器，它自己还有内边距、
+ * 桌面端还可能有竖向滚动条占宽。用 vw 写死宽度，这些都会被叠加在屏幕宽度之上
+ * —— 结果就是「默认大小右边就超出屏幕」（用户截图里的现象）。
+ * 改用 100%（百分比）参照画布的内容盒，内边距与滚动条会被自动扣掉。
+ */
 .ans-zoom__inner {
-  width: max-content;
-  margin: 0 auto;
+  box-sizing: border-box;
+  width: 100%;
   padding: 12px 12px calc(24px + env(safe-area-inset-bottom, 0px));
+  /*
+   * 让超出部分能被滚动容器滚到，而不是被居中/负 margin 裁掉。
+   * flex-start 保证「图比可视区宽」时从左边开始铺，不会左右各被切一半。
+   */
+  display: flex;
+  justify-content: flex-start;
 }
 /**
- * 放大态：画布 340 宽 → 基准显示宽 min(920, 屏宽*2.6)，实际约 2.7 倍，
- * 原本 8px 的标注字变成 ~21px。
+ * 图的宽度 = 画布可用宽度 × 缩放比例。
  *
- * 这里的宽度还乘上 `--zoom`（双指缩放的比例）：
- * 用 CSS 宽度而不是 transform: scale()，因为 transform 不改变元素的布局尺寸，
- * 滚动区不会跟着变宽 —— 放大后超出屏幕的部分没法拖过去，等于被裁掉。
+ * 用户要求「图片应当根据屏幕边框大小进行对应的平铺，而不是固定的大小」，
+ * 且默认状态必须不溢出屏幕：
+ * - 基准 = 画布内容宽度的 100%（正好铺满可视区，左右不留白也不越界）
+ * - --zoom 在这之上再乘
+ *
+ * 任意宽度的设备都成立：
+ * - 100% 时图正好占满可视宽度
+ * - 放大到 250% 是 2.5 个可视宽，横向拖动看细节
+ * - 小到 35% 时整张图缩进屏内（竖屏窄边长图也能看全）
+ *
+ * 用 CSS 宽度而不是 transform: scale()，因为 transform 不改变布局尺寸，
+ * 滚动范围不会跟着变 —— 放大后超出屏幕的部分就没法拖过去，等于被裁掉。
  */
 .ans-zoom__inner :deep(.fig) {
-  width: calc(min(920px, 260vw) * var(--zoom, 1));
-  margin: 0;
+  width: calc(100% * var(--zoom, 1));
+  /*
+   * 缩得比可视区窄（zoom < 1）时需要居中；放大时不能居中 ——
+   * margin auto 在子元素比容器宽的情况下会算出负的左外边距，
+   * 结果左侧内容被推到容器外，滚也滚不回来。
+   * flex-shrink: 0 防止被 flex 容器压窄。
+   */
+  flex: 0 0 auto;
+  margin: 0 auto;
   padding: 14px 14px 10px;
   box-shadow: none;
 }

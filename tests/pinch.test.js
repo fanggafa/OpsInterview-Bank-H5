@@ -4,6 +4,7 @@ import {
   distance,
   keepFocusScrollLeft,
   pinchScale,
+  wheelScale,
   MAX_PINCH_SCALE,
   MIN_PINCH_SCALE,
   PINCH_DEADZONE_RATIO,
@@ -86,9 +87,20 @@ describe('pinchScale · 灵敏度（回归：轻轻一挪就放得很大）', ()
     expect(scale).toBeGreaterThan(1)
   })
 
-  it('缩小方向同样是阻尼过的', () => {
+  it('缩小方向同样是阻尼过的，且能真的缩到 1 倍以下', () => {
     const scale = pinchScale(200, 100)
-    expect(scale).toBe(MIN_PINCH_SCALE) // 被下限夹住
+    /**
+     * 回归：用户反馈「原始大小下只能放大不能缩小」。
+     * 原因是下限曾是 1，而打开时的基准宽度已经是屏宽的 2.6 倍，
+     * 想「看全整张图」需要缩到 0.4 左右 —— 必须允许比 1 更小。
+     */
+    expect(scale).toBeLessThan(1)
+    expect(scale).toBeGreaterThan(MIN_PINCH_SCALE)
+  })
+
+  it('缩到底（间距极小时）被下限兜住，不会缩成看不见', () => {
+    expect(pinchScale(400, 48)).toBe(MIN_PINCH_SCALE)
+    expect(MIN_PINCH_SCALE).toBeLessThan(1)
   })
 
   it('灵敏度可通过参数放宽（后续调手感用）', () => {
@@ -121,6 +133,46 @@ describe('pinchScale · 比例计算与夹取', () => {
     expect(PINCH_MIN_START_DISTANCE).toBeGreaterThan(40)
     expect(PINCH_DEADZONE_RATIO).toBeGreaterThan(0)
     expect(PINCH_SENSITIVITY).toBeLessThan(1)
+  })
+})
+
+describe('wheelScale · 桌面滚轮缩放', () => {
+  it('向上滚（deltaY 为负）放大', () => {
+    expect(wheelScale({ scale: 1, deltaY: -100 })).toBeGreaterThan(1)
+  })
+
+  it('向下滚（deltaY 为正）缩小', () => {
+    expect(wheelScale({ scale: 1, deltaY: 100 })).toBeLessThan(1)
+  })
+
+  it('是乘性步长：1→2 与 3→6 的相对变化一致', () => {
+    const a = wheelScale({ scale: 1, deltaY: -100 }) / 1
+    const b = wheelScale({ scale: 3, deltaY: -100 }) / 3
+    expect(a).toBeCloseTo(b, 5)
+  })
+
+  it('滚一格的幅度适中（不会一闪就过）', () => {
+    const next = wheelScale({ scale: 1, deltaY: -100 })
+    expect(next).toBeGreaterThan(1)
+    expect(next).toBeLessThan(1.35)
+  })
+
+  it('受上下限夹取', () => {
+    expect(wheelScale({ scale: 1, deltaY: -100000 })).toBe(MAX_PINCH_SCALE)
+    expect(wheelScale({ scale: 1, deltaY: 100000 })).toBe(MIN_PINCH_SCALE)
+  })
+
+  it('deltaY 为 0 时不变', () => {
+    expect(wheelScale({ scale: 2, deltaY: 0 })).toBe(2)
+  })
+
+  it('非法输入不产生 NaN（比例非法时按 1 起算）', () => {
+    const fromNaN = wheelScale({ scale: NaN, deltaY: -100 })
+    expect(Number.isFinite(fromNaN)).toBe(true)
+    expect(fromNaN).toBeGreaterThan(1) // 按 1 起算，滚轮增量照常生效
+
+    // deltaY 非法则完全不变
+    expect(wheelScale({ scale: 2, deltaY: NaN })).toBe(2)
   })
 })
 
@@ -255,8 +307,14 @@ describe('attachPinch · 双指张开 / 捏合', () => {
     expect(scale).toBeLessThan(1.7)
   })
 
-  it('两指捏合能缩小，但不小于基准 1 倍', () => {
-    expect(pinch(200, 100).at(-1)).toBe(MIN_PINCH_SCALE)
+  it('两指捏合能缩小到 1 倍以下（回归：只能放大不能缩小）', () => {
+    const scale = pinch(400, 160).at(-1)
+    expect(scale).toBeLessThan(1)
+    expect(scale).toBeGreaterThanOrEqual(MIN_PINCH_SCALE)
+  })
+
+  it('捏到底被下限兜住，不会缩成看不见', () => {
+    expect(pinch(400, 20).at(-1)).toBe(MIN_PINCH_SCALE)
   })
 
   it('两指从很近（20px）开始张开时，不会立刻跳成大倍数', () => {

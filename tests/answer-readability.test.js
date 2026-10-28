@@ -173,20 +173,36 @@ describe('图解放大', () => {
     wrapper.unmount()
   })
 
-  it('放大层宽度是真实放大（约 2.7 倍），不是原样再显示一遍', () => {
+  /**
+   * 回归：用户要求「图片应当根据屏幕边框大小进行对应的平铺，而不是固定的大小」，
+   * 且默认状态**不能溢出屏幕**。
+   *
+   * 早期版本把基准写死 min(920px, 260vw)，与设备无关；改成 100vw 后又溢出了 ——
+   * 画布自己有内边距、桌面还有滚动条，叠加在 100vw 之上就超边（用户截图现象）。
+   * 所以基准必须是「相对画布内容盒的 100%」，由百分比自动扣掉内边距与滚动条。
+   */
+  it('图宽基准跟随可视区（百分比），不是写死像素或 vw', () => {
     const css = answerCss()
-    // 选择器里带 :deep(...)，用宽松匹配定位到那条规则
-    const idx = css.indexOf('.ans-zoom__inner')
+    const idx = css.indexOf('.ans-zoom__inner :deep(.fig)')
     expect(idx).toBeGreaterThan(-1)
-    const zoomRule = css.slice(idx)
-    // 基准宽度 min(920px, 260vw)，再乘双指缩放的 --zoom
-    const m = zoomRule.match(/width:\s*calc\(min\((\d+)px,\s*(\d+)vw\)/)
-    expect(m).toBeTruthy()
-    expect(zoomRule).toMatch(/var\(--zoom/)
-    // 画布 340 宽 → 最大 920 宽（约 2.7 倍），8px 标注字变 ~21px；
-    // 小屏（375px）上 260vw≈975，被 920 上限收住
-    expect(Number(m[1])).toBeGreaterThanOrEqual(700)
-    expect(Number(m[2])).toBeGreaterThanOrEqual(200)
+    const rule = css.slice(idx, idx + 500)
+
+    // 必须是 calc(100% * var(--zoom))
+    expect(rule).toMatch(/width:\s*calc\(100%\s*\*\s*var\(--zoom/)
+    // 不能是写死像素，也不能用 vw（会叠加内边距导致溢出）
+    expect(rule).not.toMatch(/width:\s*\d+px/)
+    expect(rule).not.toMatch(/100vw/)
+    expect(rule).not.toMatch(/260vw/)
+  })
+
+  it('内层用 border-box + 百分比，避免 padding 叠加到屏宽之上', () => {
+    const css = answerCss()
+    const idx = css.indexOf('.ans-zoom__inner {')
+    expect(idx).toBeGreaterThan(-1)
+    const rule = css.slice(idx, idx + 400)
+    expect(rule).toMatch(/box-sizing:\s*border-box/)
+    expect(rule).toMatch(/width:\s*100%/)
+    expect(rule).not.toMatch(/100vw/)
   })
 })
 
