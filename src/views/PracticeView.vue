@@ -454,44 +454,45 @@ function startStudy(next) {
   }
 }
 
+/**
+ * 返回「选择练习方式」页。
+ *
+ * 不是退出 App、也不是跳题库：刷题页本身有两个阶段（选模式 / 刷题），
+ * 返回箭头就应该是「退回上一个阶段」，和用户在浏览器里点后退的预期一致。
+ */
+function backToPicker() {
+  started.value = false
+  resumeToast.value = ''
+  clearTimeout(resumeTimer)
+}
+
 const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 </script>
 
 <template>
   <div class="page practice page--fill">
     <!--
-      刷题中不显示大标题栏（"运维面试题库 / 刷题"那种），改成 44px 的紧凑顶栏：
-      左退出 · 中进度 · 右模式切换。省下来的高度全给题目与答案。
+      刷题中的紧凑顶栏（44px）。
 
-      选择页/完成页仍用 AppHeader —— 那些页面本来就没多少内容，标题有意义。
+      布局：左「返回」· 中进度 + 进度条 · 右模式切换；题目顺序做成中段的分段胶囊。
+      返回 = 回到「选择练习方式」页（不是回题库，也不是退出 App）。
     -->
     <header v-if="started && !finished" class="ptop">
-      <button class="ptop__exit" aria-label="退出刷题" @click="router.push('/bank')">
+      <button class="ptop__back" aria-label="返回选择练习方式" @click="backToPicker">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
           <path
-            d="M7 7l10 10M17 7L7 17"
+            d="M15 5l-7 7 7 7"
             fill="none"
             stroke="currentColor"
             stroke-width="2"
             stroke-linecap="round"
+            stroke-linejoin="round"
           />
         </svg>
       </button>
 
       <div class="ptop__center">
-        <div class="ptop__row">
-          <!-- 题目顺序：从整行收成两个小字开关 -->
-          <button
-            v-for="opt in modeOptions"
-            :key="opt.value"
-            class="ptop__order"
-            :class="{ 'ptop__order--on': mode === opt.value }"
-            @click="switchMode(opt.value)"
-          >
-            {{ opt.label }}
-          </button>
-          <span class="ptop__count">{{ progressText }}</span>
-        </div>
+        <span class="ptop__count">{{ progressText }}</span>
         <div
           class="ptop__bar"
           role="progressbar"
@@ -501,6 +502,21 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
         >
           <div class="ptop__fill" :style="{ width: total ? (answeredCount / total) * 100 + '%' : '0%' }" />
         </div>
+      </div>
+
+      <!-- 题目顺序：分段胶囊（当前项高亮） -->
+      <div class="ptop__seg" role="radiogroup" aria-label="题目顺序">
+        <button
+          v-for="opt in modeOptions"
+          :key="opt.value"
+          class="ptop__seg-item"
+          :class="{ 'ptop__seg-item--on': mode === opt.value }"
+          role="radio"
+          :aria-checked="mode === opt.value"
+          @click="switchMode(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
       </div>
 
       <!-- 模式切换：点一下切到另一种练习方式 -->
@@ -917,63 +933,52 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 }
 
 /**
- * 刷题中的紧凑顶栏（44px）。
+ * 刷题中的紧凑顶栏（48px）。
  *
- * 取代原来的 AppHeader（52px 大标题 + 题目顺序行 30px + 进度条 11px ≈ 93px），
- * 现在只剩 44px：左退出、中顺序+进度、右模式切换。
- * 省下的约 50px 全部给题目与答案。
+ * 布局：左返回 · 中进度 · 右「顺序胶囊 + 模式切换」。
+ *
+ * 设计取舍（第一版被反馈「太丑」后重做）：
+ * - 返回用箭头（←）而不是 ✕：✕ 暗示「关闭/丢弃」，而这里是「退回上一阶段」
+ * - 顺序不再是裸文字，做成有底色的分段胶囊，与模式按钮同一套视觉语言
+ * - 进度「第 17 / 1430 题」+ 细进度条合并成一块，不再挤成两行
+ * - 顶栏底色与页面一致、底部一条 1px 分隔线，边界清晰不显脏
  */
 .ptop {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 44px;
+  gap: 10px;
+  height: 48px;
   margin: 0 -16px;
-  padding: 0 10px;
+  padding: 0 12px;
   background: var(--c-bg);
+  border-bottom: 1px solid var(--c-border);
 }
-.ptop__exit {
+.ptop__back {
   flex-shrink: 0;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--c-text-3);
+  color: var(--c-text-2);
   border-radius: 50%;
 }
-.ptop__exit:active {
+.ptop__back:active {
   background: var(--c-border);
 }
 
+/* 中间：进度文字 + 细进度条，纵向两行但很紧凑 */
 .ptop__center {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-.ptop__row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-/* 题目顺序：从 26px 胶囊收成纯文字开关，占位极小 */
-.ptop__order {
-  padding: 0;
-  font-size: 11.5px;
-  color: var(--c-text-3);
-  white-space: nowrap;
-}
-.ptop__order--on {
-  color: var(--c-primary);
-  font-weight: 600;
+  gap: 5px;
 }
 .ptop__count {
-  margin-left: auto;
-  font-size: 11.5px;
-  color: var(--c-text-3);
+  font-size: 12px;
+  color: var(--c-text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -990,7 +995,31 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   transition: width 0.3s ease;
 }
 
-/* 紧凑模式按钮：与顶栏同高，去掉「刷题模式」里的多余右侧箭头 */
+/* 题目顺序：分段胶囊（有底色，当前项高亮） */
+.ptop__seg {
+  flex-shrink: 0;
+  display: flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 10px;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+}
+.ptop__seg-item {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--c-text-3);
+  white-space: nowrap;
+}
+.ptop__seg-item--on {
+  color: #fff;
+  background: var(--c-primary);
+  font-weight: 500;
+}
+
+/* 紧凑模式按钮：与顶栏同高 */
 .practice__mode-btn--compact {
   height: 30px;
   padding: 0 11px;
@@ -1001,7 +1030,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 /* 续刷浮层提示：2 秒后消失，不占常驻高度 */
 .resume-toast {
   position: absolute;
-  top: 50px;
+  top: 58px;
   left: 50%;
   transform: translateX(-50%);
   padding: 6px 14px;

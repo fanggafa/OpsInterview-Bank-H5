@@ -140,15 +140,16 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
     expect(wrapper.find('.ptop').exists()).toBe(true)
   })
 
-  it('题目顺序收进顶栏，不再单独占一行', async () => {
+  it('题目顺序做成顶栏里的分段胶囊，不再单独占一行', async () => {
     const { wrapper } = await mountPractice()
     await pick(wrapper, '刷题模式')
 
-    // 不再有独立的 radiogroup 行
-    expect(wrapper.find('[aria-label="题目顺序"]').exists()).toBe(false)
-    // 顶栏里有两个纯文字开关
-    const orders = wrapper.findAll('.ptop__order')
-    expect(orders.map((o) => o.text())).toEqual(['顺序', '随机'])
+    // 顶栏里有分段胶囊（有 role=radiogroup，但是紧凑版而非整行）
+    const seg = wrapper.find('.ptop__seg')
+    expect(seg.exists()).toBe(true)
+    expect(seg.attributes('role')).toBe('radiogroup')
+    const items = seg.findAll('.ptop__seg-item')
+    expect(items.map((o) => o.text())).toEqual(['顺序', '随机'])
   })
 
   it('练习方式仍收在右上角一个按钮', async () => {
@@ -157,12 +158,31 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
     expect(wrapper.find('.ptop .practice__mode-btn').exists()).toBe(true)
   })
 
-  it('顶栏带退出按钮与进度条', async () => {
+  it('顶栏带「返回」按钮、进度文字与进度条', async () => {
     const { wrapper } = await mountPractice()
     await pick(wrapper, '刷题模式')
-    expect(wrapper.find('.ptop__exit').exists()).toBe(true)
+    // 返回用箭头（不是 ✕，语义是「退回选择页」）
+    const back = wrapper.find('.ptop__back')
+    expect(back.exists()).toBe(true)
+    expect(back.attributes('aria-label')).toContain('返回')
     expect(wrapper.find('.ptop__bar').exists()).toBe(true)
     expect(wrapper.find('.ptop__count').text()).toContain('第 1 / 3 题')
+  })
+
+  it('点返回回到「选择练习方式」页（而不是跳走）', async () => {
+    const { wrapper, router } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+    expect(wrapper.find('.ptop').exists()).toBe(true)
+
+    const before = router.currentRoute.value.path
+    await wrapper.find('.ptop__back').trigger('click')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    // 页码不变，但回到选择页
+    expect(router.currentRoute.value.path).toBe(before)
+    expect(wrapper.find('.picker').exists()).toBe(true)
+    expect(wrapper.find('.ptop').exists()).toBe(false)
   })
 
   it('点右上角模式按钮会切到另一种练习方式', async () => {
@@ -212,8 +232,8 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
     const { wrapper, router } = await mountPractice()
     await pick(wrapper, '刷题模式')
 
-    const orders = wrapper.findAll('.ptop__order')
-    await orders[1].trigger('click')
+    const items = wrapper.findAll('.ptop__seg-item')
+    await items[1].trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query.mode).toBe('random')
   })
