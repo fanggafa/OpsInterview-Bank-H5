@@ -122,7 +122,7 @@ export const useStudyStore = defineStore('study', () => {
     ratio(shortKnowCount.value, shortKnowCount.value + shortUnknownCount.value)
   )
 
-  /** 选择题正确率（独立指标，仅在统计页展示） */
+  /** 选择题正确率（独立指标，展示在「我的」页） */
   const choiceRate = computed(() =>
     ratio(choiceKnowCount.value, choiceKnowCount.value + choiceUnknownCount.value)
   )

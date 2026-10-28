@@ -5,7 +5,6 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import App from '@/App.vue'
 import HomeView from '@/views/HomeView.vue'
 import BankView from '@/views/BankView.vue'
-import StatsView from '@/views/StatsView.vue'
 import MeView from '@/views/MeView.vue'
 import QuestionView from '@/views/QuestionView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
@@ -28,7 +27,6 @@ function makeRouter() {
       { path: '/bank', component: BankView },
       { path: '/question/:id', component: QuestionView },
       { path: '/practice', component: BankView },
-      { path: '/stats', component: StatsView },
       { path: '/me', component: MeView },
       { path: '/:pathMatch(.*)*', component: NotFoundView },
     ],
@@ -63,15 +61,17 @@ describe('应用挂载冒烟', () => {
 })
 
 describe('TabBar', () => {
-  it('渲染 5 项且当前路由高亮', async () => {
+  it('渲染 4 项且当前路由高亮（统计页已并入「我的」）', async () => {
     const router = makeRouter()
     router.push('/bank')
     await router.isReady()
 
     const wrapper = mount(TabBar, { global: { plugins: [pinia, router] } })
     const links = wrapper.findAll('.tabbar__item')
-    expect(links).toHaveLength(5)
+    expect(links).toHaveLength(4)
     expect(wrapper.find('.tabbar__item--active').text()).toContain('题库')
+    // 统计页已移除，底部栏不应再有「统计」
+    expect(wrapper.text()).not.toContain('统计')
   })
 
   it('底部栏包含「首页」入口，且能回到首页（否则进去就出不来）', async () => {
@@ -106,8 +106,7 @@ describe('TabBar', () => {
         { path: '/', component: BankView },
         { path: '/bank', component: BankView },
         { path: '/practice', component: BankView },
-        { path: '/stats', component: StatsView },
-        { path: '/me', component: MeView },
+          { path: '/me', component: MeView },
       ],
     })
     router.push('/question/1')

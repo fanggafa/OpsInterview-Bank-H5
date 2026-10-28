@@ -100,15 +100,27 @@ async function mountWithAsyncLoad(query = {}) {
       await flushPromises()
       await wrapper.vm.$nextTick()
       await flushPromises()
+
+      // 数据就绪后先落在「选择练习方式」页，点一下才出题卡
+      const btn = wrapper
+        .findAll('.picker__btn')
+        .find((b) => b.text().includes('刷题模式'))
+      if (btn) {
+        await btn.trigger('click')
+        await flushPromises()
+        await wrapper.vm.$nextTick()
+        await flushPromises()
+      }
     },
   }
 }
 
 describe('滑动切题 · 异步加载后仍可用（核心回归）', () => {
-  it('题库加载前只有骨架屏，没有题卡', async () => {
+  it('题库加载前没有题卡（先落在选择练习方式）', async () => {
     const { wrapper } = await mountWithAsyncLoad()
-    expect(wrapper.find('.skeleton').exists()).toBe(true)
     expect(wrapper.find('.stage').exists()).toBe(false)
+    // 未点选之前不渲染题卡；选择页本身可先选，加载会并行完成
+    expect(wrapper.find('.picker').exists() || wrapper.find('.skeleton').exists()).toBe(true)
   })
 
   it('加载完成后卡片出现，鼠标左滑能切到下一题', async () => {

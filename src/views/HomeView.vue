@@ -110,6 +110,22 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
       </div>
     </header>
 
+    <!-- 继续刷题：一个明确的行动入口，首页不再只是看数据 -->
+    <button class="cta" @click="router.push('/practice')">
+      <span class="cta__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path d="M13 3 5 14h5l-1 7 8-11h-5l1-7z" fill="currentColor" />
+        </svg>
+      </span>
+      <span class="cta__text">
+        <span class="cta__title">{{ todayDone ? '继续刷题' : '开始刷题' }}</span>
+        <span class="cta__desc">
+          {{ todayDone ? `今天已刷 ${study.todayReviewedCount} 题` : '选刷题或背题模式开始' }}
+        </span>
+      </span>
+      <span class="cta__arrow" aria-hidden="true">→</span>
+    </button>
+
     <!-- 按分类刷题 -->
     <h2 class="section-title">按分类刷题</h2>
     <div class="cats">
@@ -243,6 +259,59 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
   font-style: normal;
   font-weight: 400;
   color: rgba(255, 255, 255, 0.66);
+}
+
+/* ---------- 继续刷题入口 ---------- */
+.cta {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 13px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  background-image: var(--grad-card);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+.cta:active {
+  transform: scale(0.985);
+  box-shadow: var(--shadow-lift);
+}
+.cta__icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: var(--grad-indigo);
+}
+.cta__text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cta__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.cta__desc {
+  font-size: 11px;
+  color: var(--c-text-3);
+}
+.cta__arrow {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--c-primary);
 }
 
 /* ---------- 分类卡片 ---------- */

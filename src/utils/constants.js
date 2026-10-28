@@ -30,7 +30,7 @@ export const CATEGORIES = [
   '综合场景题',
 ]
 
-/** 各分类一句话复习建议，用于统计页「薄弱分类」文案 */
+/** 各分类一句话复习建议，用于「我的」页「薄弱分类」文案 */
 export const CATEGORY_ADVICE = {
   Linux基础:
     '重点补 CPU/内存/IO 排查链路：top → vmstat → iostat → pidstat，并熟记 inode、软硬链接、进程与线程区别。',
@@ -212,7 +212,6 @@ export const TAB_ITEMS = [
   { path: '/', label: '首页', icon: 'home' },
   { path: '/bank', label: '题库', icon: 'bank' },
   { path: '/practice', label: '刷题', icon: 'practice' },
-  { path: '/stats', label: '统计', icon: 'stats' },
   { path: '/me', label: '我的', icon: 'me' },
 ]
 

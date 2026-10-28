@@ -35,22 +35,17 @@ const routes = [
     meta: { title: '刷题' },
   },
   {
-    path: '/stats',
-    name: 'stats',
-    component: () => import('@/views/StatsView.vue'),
-    meta: { title: '统计' },
-  },
-  {
     path: '/favorites',
     name: 'favorites',
     component: () => import('@/views/FavoritesView.vue'),
-    meta: { title: '收藏', parent: '/stats' },
+    // 收藏 / 错题本都从「我的」进入，所属 Tab 因而指向 /me
+    meta: { title: '收藏', parent: '/me' },
   },
   {
     path: '/wrong',
     name: 'wrong',
     component: () => import('@/views/WrongView.vue'),
-    meta: { title: '错题本', parent: '/stats' },
+    meta: { title: '错题本', parent: '/me' },
   },
   {
     path: '/me',

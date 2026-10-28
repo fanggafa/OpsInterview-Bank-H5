@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import BarChart from '@/components/BarChart.vue'
 import { useSettingsStore } from '@/stores/settingsStore'
 import {
   THEMES,
@@ -14,6 +15,7 @@ import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
 import { formatPercent } from '@/utils/format'
 import { readJSON, writeJSON, isStorageAvailable } from '@/utils/storage'
+import { isShort } from '@/utils/question'
 
 const router = useRouter()
 const settings = useSettingsStore()
@@ -77,10 +79,43 @@ const percentText = computed(() => formatPercent(study.progressRate))
 
 /** 头部三格数据（主流 App 的「数字摘要」位置） */
 const summary = computed(() => [
-  { label: '已刷', value: study.reviewedCount, to: '/stats' },
+  { label: '已刷', value: study.reviewedCount, to: '/practice' },
   { label: '错题', value: wrongCount.value, to: '/wrong' },
   { label: '收藏', value: favCount.value, to: '/favorites' },
 ])
+
+// ---------- 各分类掌握度（原统计页搬来） ----------
+
+/** 各分类掌握度（仅简答题，与统计口径一致） */
+const categoryMastery = computed(() =>
+  study.categoryStats
+    .filter((s) => s.shortTotal > 0)
+    .map((s) => ({
+      label: s.category,
+      count: s.know,
+      total: s.know + s.unknown,
+      percent: s.mastery,
+    }))
+)
+
+/** 各分类选择题正确率 */
+const categoryChoice = computed(() => {
+  const map = new Map()
+  Array.from(study.choiceIds).forEach((id) => {
+    const q = bank.questionMap.get(id)
+    if (!q) return
+    if (!map.has(q.category)) map.set(q.category, { know: 0, unknown: 0 })
+    const s = map.get(q.category)
+    if (study.recordOf(id).status === 'know') s.know += 1
+    else s.unknown += 1
+  })
+  return Array.from(map.entries()).map(([label, s]) => ({
+    label,
+    count: s.know,
+    total: s.know + s.unknown,
+    percent: s.know + s.unknown ? Math.round((s.know / (s.know + s.unknown)) * 100) : null,
+  }))
+})
 
 // ---------- 默认练习方式 ----------
 
@@ -148,24 +183,80 @@ function cycleTheme() {
       </div>
     </section>
 
-    <!-- 数据概览 -->
+    <!-- 数据概览（纯展示，统计页已并入本页） -->
     <h2 class="section-title">掌握情况</h2>
     <div class="grid">
-      <router-link to="/stats" class="tile card">
+      <div class="tile card">
         <span class="tile__label">简答掌握率</span>
         <span class="tile__value">{{ masteryText }}</span>
-      </router-link>
-      <router-link to="/stats" class="tile card">
+      </div>
+      <div class="tile card">
         <span class="tile__label">选择正确率</span>
         <span class="tile__value">{{ choiceText }}</span>
-      </router-link>
-      <router-link to="/stats" class="tile card">
+      </div>
+      <div class="tile card">
         <span class="tile__label">今日已刷</span>
         <span class="tile__value">{{ study.todayReviewedCount }}<em>题</em></span>
-      </router-link>
-      <router-link to="/stats" class="tile card">
+      </div>
+      <div class="tile card">
         <span class="tile__label">题库总量</span>
         <span class="tile__value">{{ bank.total }}<em>题</em></span>
+      </div>
+    </div>
+
+    <!-- 各分类掌握度（原统计页） -->
+    <h2 class="section-title">各分类掌握度<span class="section-title__tip">（仅简答题）</span></h2>
+    <section class="card chart-card">
+      <BarChart :items="categoryMastery" empty-text="还没有简答题的作答记录" />
+    </section>
+
+    <!-- 各分类选择题正确率 -->
+    <h2 class="section-title">各分类选择正确率</h2>
+    <section class="card chart-card">
+      <BarChart :items="categoryChoice" empty-text="还没有选择题的作答记录" />
+    </section>
+
+    <!-- 错题本 / 收藏入口 -->
+    <h2 class="section-title">我的题目</h2>
+    <div class="group card">
+      <router-link to="/wrong" class="row">
+        <span class="row__icon row__icon--rose" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="17" height="17">
+            <path
+              d="M12 7v6M12 16.5v.5M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 0 0-15 0z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
+        <div class="row__text">
+          <span class="row__title">错题本</span>
+          <span class="row__desc">答错 / 自评「不会」的题</span>
+        </div>
+        <span class="row__value">{{ wrongCount }} 题</span>
+        <span class="row__chev" aria-hidden="true">›</span>
+      </router-link>
+
+      <router-link to="/favorites" class="row">
+        <span class="row__icon row__icon--amber" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="17" height="17">
+            <path
+              d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <div class="row__text">
+          <span class="row__title">我的收藏</span>
+          <span class="row__desc">手动标记的重点题</span>
+        </div>
+        <span class="row__value">{{ favCount }} 题</span>
+        <span class="row__chev" aria-hidden="true">›</span>
       </router-link>
     </div>
 
@@ -405,6 +496,11 @@ function cycleTheme() {
   gap: 4px;
   padding: 12px 13px;
   color: var(--c-text);
+}
+
+/* 图表卡（分类掌握度） */
+.chart-card {
+  padding: 14px 14px 8px;
 }
 .tile__label {
   font-size: 11.5px;

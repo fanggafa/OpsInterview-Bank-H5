@@ -18,6 +18,7 @@ import {
   resolveStartIndex,
   normalizeMode,
   normalizeStudyMode,
+  describeProgress,
   summarizeRound,
 } from '@/utils/practice'
 import {
@@ -53,6 +54,15 @@ const queue = ref([])
 const cursor = ref(0)
 const resumed = ref(false)
 const ready = ref(false)
+
+/**
+ * 是否已进入「刷题中」。
+ *
+ * 进入页面先显示选择页（两个居中按钮），选定后才渲染题卡。
+ * 从首页分类入口进来时带 category 参数，仍先选择方式——
+ * 因为「刷题 / 背题」是不同的队列，必须先定。
+ */
+const started = ref(false)
 const expanded = ref(false)
 const roundAnswers = ref({})
 const finished = ref(false)
@@ -404,6 +414,21 @@ const queueHint = computed(() => {
   return `本次 ${total.value} 题`
 })
 
+/** 上次进度（只在选择页展示，让用户知道继续会接上） */
+const progressInfo = computed(() => describeProgress(study.progress))
+
+/** 选定练习方式并开始 */
+function startStudy(next) {
+  started.value = true
+  if (studyMode.value !== next) {
+    switchStudyMode(next)
+  } else {
+    // 同一模式：直接在当前队列上恢复/继续
+    build()
+    persistProgress()
+  }
+}
+
 const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 </script>
 
@@ -430,7 +455,32 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
       </template>
     </AppHeader>
 
-    <!-- 练习方式：两个按钮，一眼可选 -->
+    <!-- 选择页：只放两个居中按钮，选定后才进入刷题 -->
+    <section v-if="!started && !finished" class="picker">
+      <p class="picker__tip muted">选择练习方式</p>
+      <button
+        class="picker__btn picker__btn--practice"
+        @click="startStudy('practice')"
+      >
+        <span class="picker__name">刷题模式</span>
+        <span class="picker__desc">全部题 · 简答自评 / 选择作答</span>
+      </button>
+      <button
+        class="picker__btn picker__btn--memorize"
+        @click="startStudy('memorize')"
+      >
+        <span class="picker__name">背题模式</span>
+        <span class="picker__desc">只有简答题 · 看题背答案</span>
+      </button>
+      <p v-if="progressInfo" class="picker__resume muted">
+        上次停在 {{ progressInfo.studyModeLabel }} · {{ progressInfo.category }} ·
+        {{ progressInfo.positionText }}，继续会接着刷
+      </p>
+    </section>
+
+    <!-- 刷题中：只在 started 之后渲染 -->
+    <template v-if="started">
+    <!-- 练习方式：刷题中可随时切换 -->
     <div class="modes modes--study" role="radiogroup" aria-label="练习方式">
       <button
         v-for="opt in studyModeOptions"
@@ -505,7 +555,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
       </p>
       <div class="done__actions">
         <button class="btn btn--plain" @click="restart">再来一轮</button>
-        <button class="btn btn--primary" @click="router.push('/stats')">看统计</button>
+        <button class="btn btn--primary" @click="router.push('/me')">看掌握情况</button>
       </div>
     </section>
 
@@ -623,6 +673,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
         <template v-else>左滑下一题 · 右滑上一题 · A–D 选择<template v-if="multiple"> · Enter 提交</template></template>
       </p>
     </template>
+    </template>
   </div>
 </template>
 
@@ -646,6 +697,61 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   border-radius: 50%;
 }
 
+/* ---------- 选择页（进入刷题前的两个居中按钮） ---------- */
+.picker {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 8px 40px;
+}
+.picker__tip {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+}
+.picker__btn {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 22px 18px;
+  border-radius: 14px;
+  border: 1.5px solid var(--c-border);
+  background: var(--c-card);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+.picker__btn:active {
+  transform: scale(0.985);
+}
+.picker__btn--practice {
+  border-color: var(--c-primary);
+  background: var(--c-primary-weak);
+}
+.picker__name {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+.picker__btn--practice .picker__name {
+  color: var(--c-primary);
+}
+.picker__desc {
+  font-size: 11.5px;
+  color: var(--c-text-3);
+}
+.picker__resume {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* ---------- 练习方式按钮（刷题中可切换） ---------- */
 .modes {
   display: flex;
   align-items: center;

@@ -7,13 +7,13 @@ import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
 
 /**
- * 刷题页的「练习方式」：两个按钮，直接选，不再是弹出式面板。
+ * 刷题页的「两步流程」：
  *
- * 需求变更背景：原来点击进入后会先弹一个「选择练习方式」面板
- * （带说明文案、题目顺序、「继续上次」「直接开始」），用户反馈太花哨。
- * 现在改成两行按钮：
- *   第一行：刷题模式 / 背题模式（大按钮）
- *   第二行：顺序 / 随机（小按钮）
+ * 1. 进入 `/practice` 先只显示**选择页**（两个居中按钮，不展示题目）
+ * 2. 点选「刷题模式」或「背题模式」后才渲染题卡
+ *
+ * 需求背景：之前进入页面即出题卡、顶部有模式按钮，用户要求
+ * 「只要两个按钮居中做选择，不用展示题目」。
  */
 
 const FIXTURE = [
@@ -50,81 +50,111 @@ async function mountPractice(query = {}) {
   await router.isReady()
   const wrapper = mount(PracticeView, { global: { plugins: [pinia, router] }, attachTo: document.body })
   await flushPromises()
+  await wrapper.vm.$nextTick()
   return { wrapper, router }
 }
 
-describe('刷题页 · 练习方式两个按钮', () => {
-  it('进入后直接看到题卡，没有弹出式面板', async () => {
+/** 点选练习方式 */
+async function pick(wrapper, keyword) {
+  const btn = wrapper.findAll('.picker__btn').find((b) => b.text().includes(keyword))
+  expect(btn).toBeTruthy()
+  await btn.trigger('click')
+  await flushPromises()
+  await wrapper.vm.$nextTick()
+}
+
+describe('刷题页 · 选择页（两个居中按钮）', () => {
+  it('进入后只显示选择页，不展示题目', async () => {
     const { wrapper } = await mountPractice()
-    expect(wrapper.find('.setup').exists()).toBe(false)
-    expect(wrapper.find('.qcard-p').exists()).toBe(true)
+    expect(wrapper.find('.picker').exists()).toBe(true)
+    expect(wrapper.find('.stage').exists()).toBe(false)
+    expect(wrapper.find('.qcard-p').exists()).toBe(false)
   })
 
-  it('渲染「刷题模式 / 背题模式」两个按钮', async () => {
+  it('选择页恰好两个按钮：刷题模式 / 背题模式', async () => {
     const { wrapper } = await mountPractice()
-    const group = wrapper.find('[aria-label="练习方式"]')
-    expect(group.exists()).toBe(true)
-    const btns = group.findAll('.modes__item')
+    const btns = wrapper.findAll('.picker__btn')
     expect(btns).toHaveLength(2)
-    expect(btns[0].text()).toBe('刷题模式')
-    expect(btns[1].text()).toBe('背题模式')
+    expect(btns[0].text()).toContain('刷题模式')
+    expect(btns[1].text()).toContain('背题模式')
   })
 
-  it('默认选中刷题模式', async () => {
+  it('两个按钮各自带一句模式说明', async () => {
     const { wrapper } = await mountPractice()
-    const on = wrapper.find('[aria-label="练习方式"] .modes__item--on')
-    expect(on.text()).toBe('刷题模式')
+    const btns = wrapper.findAll('.picker__btn')
+    expect(btns[0].text()).toContain('全部题')
+    expect(btns[1].text()).toContain('简答题')
   })
 
-  it('点「背题模式」→ URL 带上 studyMode=memorize', async () => {
+  it('点「刷题模式」后进入题卡', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+    expect(wrapper.find('.picker').exists()).toBe(false)
+    expect(wrapper.find('.qcard-p').exists()).toBe(true)
+    expect(wrapper.text()).toContain('第 1 / 3 题')
+  })
+
+  it('点「背题模式」后进入题卡，且只剩简答题', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '背题模式')
+    expect(wrapper.find('.qcard-p').exists()).toBe(true)
+    expect(wrapper.text()).toContain('第 1 / 2 题')
+  })
+
+  it('背题按钮把 studyMode 写进 URL', async () => {
     const { wrapper, router } = await mountPractice()
-    const btns = wrapper.findAll('[aria-label="练习方式"] .modes__item')
-    await btns[1].trigger('click')
-    await flushPromises()
+    await pick(wrapper, '背题模式')
     expect(router.currentRoute.value.query.studyMode).toBe('memorize')
   })
 
-  it('背题模式下只剩简答题（题量从 3 变 2）', async () => {
+  it('带 studyMode=memorize 进来时，点背题直接用该模式', async () => {
     const { wrapper } = await mountPractice({ studyMode: 'memorize' })
+    await pick(wrapper, '背题模式')
     expect(wrapper.text()).toContain('第 1 / 2 题')
-    expect(wrapper.find('.qcard-p').text()).toContain('q1')
   })
 
-  it('带 studyMode=memorize 进入时选中背题模式', async () => {
-    const { wrapper } = await mountPractice({ studyMode: 'memorize' })
-    const on = wrapper.find('[aria-label="练习方式"] .modes__item--on')
-    expect(on.text()).toBe('背题模式')
-  })
-
-  it('题目顺序仍是独立的第二行按钮', async () => {
+  it('选择页提示上次进度（若有）', async () => {
+    study.saveProgress({ mode: 'sequential', studyMode: 'practice', category: null, index: 1 })
     const { wrapper } = await mountPractice()
-    const group = wrapper.find('[aria-label="题目顺序"]')
-    expect(group.exists()).toBe(true)
-    const btns = group.findAll('.modes__item')
-    expect(btns.map((b) => b.text())).toEqual(['顺序', '随机'])
+    const tip = wrapper.find('.picker__resume')
+    expect(tip.exists()).toBe(true)
+    expect(tip.text()).toContain('上次停在')
   })
 
-  it('点「随机」→ URL 带上 mode=random', async () => {
+  it('无进度时选择页不显示上次进度提示', async () => {
+    const { wrapper } = await mountPractice()
+    expect(wrapper.find('.picker__resume').exists()).toBe(false)
+  })
+})
+
+describe('刷题页 · 进入后仍可切换', () => {
+  it('题卡页顶部保留练习方式切换与题目顺序', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+
+    expect(wrapper.find('[aria-label="练习方式"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="题目顺序"]').exists()).toBe(true)
+  })
+
+  it('题卡页点「背题模式」会切队列', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+    expect(wrapper.text()).toContain('第 1 / 3 题')
+
+    const btns = wrapper.findAll('[aria-label="练习方式"] .modes__item')
+    await btns[1].trigger('click')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('第 1 / 2 题')
+  })
+
+  it('题卡页点「随机」写入 mode=random', async () => {
     const { wrapper, router } = await mountPractice()
-    const group = wrapper.find('[aria-label="题目顺序"]')
-    const btns = group.findAll('.modes__item')
+    await pick(wrapper, '刷题模式')
+
+    const btns = wrapper.find('[aria-label="题目顺序"]').findAll('.modes__item')
     await btns[1].trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query.mode).toBe('random')
-  })
-
-  it('不再出现「继续上次」「直接开始」这类面板按钮', async () => {
-    study.saveProgress({ mode: 'sequential', studyMode: 'practice', category: null, index: 1 })
-    const { wrapper } = await mountPractice()
-    expect(wrapper.find('.setup__resume').exists()).toBe(false)
-    expect(wrapper.find('.setup__skip').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('直接开始')
-  })
-
-  it('有进度时从断点继续，并给出提示', async () => {
-    study.saveProgress({ mode: 'sequential', studyMode: 'practice', category: null, index: 1 })
-    const { wrapper } = await mountPractice()
-    expect(wrapper.find('.hint').exists()).toBe(true)
-    expect(wrapper.find('.hint').text()).toContain('已从上次位置继续')
   })
 })

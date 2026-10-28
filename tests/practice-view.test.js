@@ -48,7 +48,14 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-async function mountPractice(query = {}) {
+/**
+ * 挂载刷题页。
+ *
+ * 注意：现在进入 `/practice` 会先显示「选择练习方式」页（两个居中按钮），
+ * 点选之后才渲染题卡。这里默认 `start: true` 自动点击「刷题模式」/「背题模式」
+ * 完成这一步，让断言聚焦在刷题行为本身；需要测选择页的用例传 start: false。
+ */
+async function mountPractice(query = {}, { start = true } = {}) {
   const router = makeRouter()
   await router.push({ path: '/practice', query })
   await router.isReady()
@@ -58,6 +65,19 @@ async function mountPractice(query = {}) {
   })
   await flushPromises()
   await wrapper.vm.$nextTick()
+
+  if (start) {
+    const memorize = query.studyMode === 'memorize'
+    const btn = wrapper
+      .findAll('.picker__btn')
+      .find((b) => (memorize ? b.text().includes('背题模式') : b.text().includes('刷题模式')))
+    if (btn) {
+      await btn.trigger('click')
+      await flushPromises()
+      await wrapper.vm.$nextTick()
+    }
+  }
+
   return { wrapper, router }
 }
 

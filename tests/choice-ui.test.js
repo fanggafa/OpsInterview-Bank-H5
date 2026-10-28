@@ -109,6 +109,18 @@ async function mountPractice(query = {}) {
   const wrapper = mount(PracticeView, { global: { plugins: [pinia, router] }, attachTo: document.body })
   await flushPromises()
   await wrapper.vm.$nextTick()
+
+  // 进入刷题页先落在「选择练习方式」，点一下才开始出题卡
+  const memorize = query.studyMode === 'memorize'
+  const btn = wrapper
+    .findAll('.picker__btn')
+    .find((b) => (memorize ? b.text().includes('背题模式') : b.text().includes('刷题模式')))
+  if (btn) {
+    await btn.trigger('click')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+  }
+
   return { wrapper, router }
 }
 

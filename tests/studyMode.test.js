@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { buildQueue, normalizeStudyMode, describeProgress, resolveStartIndex } from '@/utils/practice'
 import { FREQUENCIES, STUDY_MODES, STUDY_MODE_LABEL } from '@/utils/constants'
@@ -151,10 +151,43 @@ describe('模拟面试已移除（源码级约束）', () => {
     expect(router).not.toMatch(/interview/i)
   })
 
-  it('首页与统计页都不再有面试入口', () => {
+  it('首页与「我的」页都不再有面试入口', () => {
     const home = readFileSync(resolve(process.cwd(), 'src/views/HomeView.vue'), 'utf8')
-    const stats = readFileSync(resolve(process.cwd(), 'src/views/StatsView.vue'), 'utf8')
+    const me = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
     expect(home).not.toMatch(/interview/i)
-    expect(stats).not.toMatch(/interview/i)
+    expect(me).not.toMatch(/interview/i)
+  })
+})
+
+describe('统计页已移除（并入「我的」）', () => {
+  it('StatsView 文件已不存在', () => {
+    const views = readdirSync(resolve(process.cwd(), 'src/views'))
+    expect(views).not.toContain('StatsView.vue')
+  })
+
+  it('路由里不再注册 /stats', () => {
+    const router = readFileSync(resolve(process.cwd(), 'src/router/index.js'), 'utf8')
+    expect(router).not.toMatch(/'\/stats'/)
+  })
+
+  it('底部 Tab 变成 4 项，不再有「统计」', () => {
+    const constants = readFileSync(resolve(process.cwd(), 'src/utils/constants.js'), 'utf8')
+    expect(constants).toMatch(/TAB_ITEMS = \[[\s\S]*?\]/)
+    expect(constants).not.toMatch(/path: '\/stats'/)
+    const tabCount = (constants.match(/path: '\/[a-z]*'/g) || []).length
+    expect(tabCount).toBe(4)
+  })
+
+  it('「我的」页承载了原统计页的分类掌握度图表', () => {
+    const me = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
+    expect(me).toMatch(/BarChart/)
+    expect(me).toMatch(/各分类掌握度/)
+    expect(me).toMatch(/各分类选择正确率/)
+  })
+
+  it('「我的」页提供错题本与收藏入口', () => {
+    const me = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
+    expect(me).toMatch(/to="\/wrong"/)
+    expect(me).toMatch(/to="\/favorites"/)
   })
 })
