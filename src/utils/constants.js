@@ -166,6 +166,28 @@ export const STATUS = {
 export const PRACTICE_MODES = ['sequential', 'random', 'wrong']
 
 /**
+ * 复习赛（从首页直接进入的一次性题组）。
+ *
+ * - daily：每日复习，从全库随机抽 15 题，用来巩固
+ * - wrong：错题复习，从错题本里随机抽 10 题，集中攻克
+ *
+ * 与上面的 PRACTICE_MODES 分开：那三个是「连续刷」的队列来源，
+ * 复习赛是有明确题量、抽完即止的一次性题组，且每次进入都重新随机。
+ */
+export const REVIEW_MODES = ['daily', 'wrong']
+
+/** 复习赛题量 */
+export const REVIEW_SIZES = { daily: 15, wrong: 10 }
+
+/**
+ * 错题本的「毕业」门槛：连续/累计答对满 3 次即自动移出。
+ *
+ * 之所以不是「答对一次就移出」：错题本的价值是「还没真掌握」的题，
+ * 蒙对一次就移出，等于把最该复习的题漏掉了。三次是一个常见的最低熟练度。
+ */
+export const WRONG_CLEAR_STREAK = 3
+
+/**
  * 练习模式（怎么练）——与上面的「队列模式」是两个正交维度：
  *
  * - practice（刷题模式）：全部题，简答自评 + 选择题作答判定

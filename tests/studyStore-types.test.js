@@ -127,10 +127,18 @@ describe('错题本包含答错的选择题', () => {
     expect(study.wrongList.map((q) => q.id)).toEqual([5])
   })
 
-  it('选择题重做答对后移出错题本', () => {
+  /**
+   * 回归：答对一次不再立刻移出，要连对 3 次（用户要求）。
+   * 见 studyStore.test.js 里的完整规则用例。
+   */
+  it('选择题连对 3 次后移出错题本', () => {
     study.markUnknown(5)
     study.markKnow(5)
-    expect(study.wrongList).toHaveLength(0)
+    expect(study.wrongList.map((q) => q.id)).toEqual([5]) // 第 1 次对，still 在
+    study.markKnow(5)
+    expect(study.wrongList.map((q) => q.id)).toEqual([5]) // 第 2 次对
+    study.markKnow(5)
+    expect(study.wrongList).toHaveLength(0) // 第 3 次对，移出
   })
 
   it('简答与选择题错题混合，按题库顺序', () => {

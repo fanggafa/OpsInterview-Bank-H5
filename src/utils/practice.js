@@ -82,6 +82,45 @@ export function buildQueue(
 }
 
 /**
+ * 复习赛：从指定题池里随机抽固定题量的一次性题组。
+ *
+ * 与 buildQueue 的区别：
+ * - buildQueue 是「连续刷」的全量队列（可按分类/模式收窄，可断点续刷）
+ * - 复习赛是「今天练这一批」，抽完即止、每次进入重新随机、不记进度
+ *
+ * @param {Array} questions 题池（已按来源筛好，如错题本或全库）
+ * @param {Object} options
+ * @param {number} options.size 抽多少题
+ * @param {() => number} [options.random] 注入随机源，便于测试
+ * @returns {Array} 题目数组（题池不足时返回全部）
+ */
+export function pickReviewSet(questions, { size = 15, random } = {}) {
+  const pool = Array.isArray(questions) ? questions : []
+  if (!pool.length) return []
+
+  const want = Math.max(0, Number(size) || 0)
+  if (!want) return []
+
+  /**
+   * 洗牌后取前 want 个；题池不足时自然返回全部。
+   * random 允许注入，测试里用它把结果固定住。
+   * shuffle() 返回新数组（不改入参），所以要接住返回值。
+   */
+  let arr
+  if (typeof random === 'function') {
+    arr = pool.slice()
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1))
+      ;[arr[i], arr[j]] = [arr[j], arr[i]]
+    }
+  } else {
+    arr = shuffle(pool)
+  }
+
+  return arr.slice(0, Math.min(want, arr.length))
+}
+
+/**
  * 解析断点续刷的位置。
  *
  * 规则（PRD §二.2）：

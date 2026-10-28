@@ -12,9 +12,13 @@ import {
   STUDY_MODE_DESC,
   DEFAULT_STUDY_MODE,
   TYPE_LABEL,
+  REVIEW_MODES,
+  REVIEW_SIZES,
+  WRONG_CLEAR_STREAK,
 } from '@/utils/constants'
 import {
   buildQueue,
+  pickReviewSet,
   resolveStartIndex,
   normalizeMode,
   normalizeStudyMode,
@@ -49,6 +53,21 @@ const studyMode = computed(() => normalizeStudyMode(route.query.studyMode || DEF
 const category = computed(() =>
   CATEGORIES.includes(route.query.category) ? route.query.category : ''
 )
+
+/**
+ * 复习赛（从首页直接进入的一次性题组）。
+ *
+ * - daily：每日复习，全库随机 15 题
+ * - wrong：错题复习，错题本随机 10 题
+ *
+ * 与普通刷题的区别：直接出题（跳过「选择练习方式」）、每次进入重新抽、
+ * 不写断点进度——它是「今天练这一批」，练完就该结束，
+ * 下次进来重新抽一批才有意义。
+ */
+const reviewKind = computed(() =>
+  REVIEW_MODES.includes(route.query.review) ? route.query.review : ''
+)
+const isReview = computed(() => !!reviewKind.value)
 
 const queue = ref([])
 const cursor = ref(0)
@@ -85,6 +104,18 @@ const short = computed(() => (current.value ? isShort(current.value) : true))
 const multiple = computed(() => (current.value ? isMultiple(current.value) : false))
 const status = computed(() => (current.value ? study.statusOf(current.value.id) : null))
 const favorite = computed(() => (current.value ? study.isFavorite(current.value.id) : false))
+
+/**
+ * 该题在错题本里的连对次数（0 表示不在错题本，不显示）。
+ *
+ * 复习赛 / 普通刷题 / 每日一题都走同一个 mark()，所以这个数字在哪儿都对。
+ * 只有当题真的在错题本里才显示——否则「答对 1/3」会让人以为错题本也收了正常题。
+ */
+const wrongStreak = computed(() => {
+  if (!current.value) return 0
+  if (!study.isWrong(current.value.id)) return 0
+  return study.streakOf(current.value.id)
+})
 const progressText = computed(() => `第 ${cursor.value + 1} / ${total.value} 题`)
 const answeredCount = computed(() => Object.keys(roundAnswers.value).length)
 const typeLabel = computed(() => (current.value ? TYPE_LABEL[current.value.type || 'short'] : ''))
@@ -107,6 +138,25 @@ function build() {
   clearTimers()
   animating = false
   slideDir.value = ''
+
+  // 复习赛：直接从指定题池里抽一批，跳过队列与断点逻辑
+  if (isReview.value) {
+    const pool =
+      reviewKind.value === 'wrong'
+        ? bank.questions.filter((q) => study.isWrong(q.id))
+        : bank.questions
+    queue.value = pickReviewSet(pool, { size: REVIEW_SIZES[reviewKind.value] })
+    cursor.value = 0
+    resumed.value = false
+    // 复习赛直接进入题卡（不显示「选择练习方式」）
+    started.value = true
+    expanded.value = false
+    finished.value = false
+    roundAnswers.value = {}
+    resetChoice()
+    ready.value = true
+    return
+  }
 
   const wrongIds = new Set(study.wrongList.map((q) => q.id))
   const q = buildQueue(bank.questions, {
@@ -163,7 +213,7 @@ onMounted(() => {
     })
 })
 
-watch([mode, studyMode, category], () => {
+watch([mode, studyMode, category, reviewKind], () => {
   if (bank.questions.length) build()
 })
 
@@ -188,6 +238,8 @@ function clearTimers() {
 // ---------- 导航 ----------
 
 function persistProgress() {
+  // 复习赛不写断点：它是一次性题组，下次进来要重新抽
+  if (isReview.value) return
   study.saveProgress({
     mode: mode.value,
     studyMode: studyMode.value,
@@ -306,12 +358,19 @@ function toggleAnswer() {
 }
 
 function restart() {
-  study.clearProgress()
   roundAnswers.value = {}
   finished.value = false
   cursor.value = 0
   expanded.value = false
   resetChoice()
+
+  // 复习赛：重新抽一批（不是重放同一批，那样第二遍就记住答案了）
+  if (isReview.value) {
+    build()
+    return
+  }
+
+  study.clearProgress()
   persistProgress()
   if (mode.value === 'random') build()
 }
@@ -465,12 +524,41 @@ function startStudy(next) {
  * 返回箭头就应该是「退回上一个阶段」，和用户在浏览器里点后退的预期一致。
  */
 function backToPicker() {
+  // 复习赛没有「选择练习方式」这一步，返回应当是退出到首页
+  if (isReview.value) {
+    router.push('/')
+    return
+  }
   started.value = false
   resumeToast.value = ''
   clearTimeout(resumeTimer)
 }
 
 const headerTitle = computed(() => (category.value ? category.value : '刷题'))
+
+/** 复习赛的顶栏标题 */
+const reviewTitle = computed(() =>
+  reviewKind.value === 'wrong' ? '错题复习' : '每日复习'
+)
+
+/** 空态文案：复习赛和普通刷题的原因不一样，提示也要分开 */
+const emptyTitle = computed(() => {
+  if (isReview.value) {
+    return reviewKind.value === 'wrong' ? '错题本是空的' : '题库还没有题'
+  }
+  return mode.value === 'wrong' ? '暂无错题' : '该分类下暂无题目'
+})
+
+const emptyDesc = computed(() => {
+  if (isReview.value) {
+    return reviewKind.value === 'wrong'
+      ? '答错或自评「不会」的题会进入错题本，连对 3 次才移出。'
+      : '换一个分类，或到题库页浏览全部题目。'
+  }
+  return mode.value === 'wrong'
+    ? `答错 / 自评「不会」的题会自动进入错题本；之后任意方式连对 ${WRONG_CLEAR_STREAK} 次自动移出。`
+    : '换一个分类，或到题库页浏览全部题目。'
+})
 </script>
 
 <template>
@@ -480,9 +568,14 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 
       布局：左「返回」· 中进度 + 进度条 · 右模式切换；题目顺序做成中段的分段胶囊。
       返回 = 回到「选择练习方式」页（不是回题库，也不是退出 App）。
+      复习赛没有选择页，返回直接回首页，顶栏也换成标题 + 进度（不需要顺序切换）。
     -->
-    <header v-if="started && !finished" class="ptop">
-      <button class="ptop__back" aria-label="返回选择练习方式" @click="backToPicker">
+    <header v-if="started && !finished" class="ptop" :class="{ 'ptop--review': isReview }">
+      <button
+        class="ptop__back"
+        :aria-label="isReview ? '返回首页' : '返回选择练习方式'"
+        @click="backToPicker"
+      >
         <!-- 标准返回箭头：横线 + 箭头头。比单个 chevron 更像「返回」，
              视觉重量也能压住右侧的块状元素，不再显得孤立突兀 -->
         <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
@@ -497,6 +590,9 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
         </svg>
       </button>
 
+      <!-- 复习赛：显示标题，不做顺序/模式切换（这批题是抽出来的，改顺序没意义） -->
+      <span v-if="isReview" class="ptop__review-title">{{ reviewTitle }}</span>
+
       <div class="ptop__center">
         <span class="ptop__count">{{ progressText }}</span>
         <div
@@ -510,8 +606,8 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
         </div>
       </div>
 
-      <!-- 题目顺序：分段胶囊（当前项高亮） -->
-      <div class="ptop__seg" role="radiogroup" aria-label="题目顺序">
+      <!-- 题目顺序：分段胶囊（当前项高亮）。复习赛不显示 -->
+      <div v-if="!isReview" class="ptop__seg" role="radiogroup" aria-label="题目顺序">
         <button
           v-for="opt in modeOptions"
           :key="opt.value"
@@ -525,8 +621,9 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
         </button>
       </div>
 
-      <!-- 模式切换：点一下切到另一种练习方式 -->
+      <!-- 模式切换：点一下切到另一种练习方式。复习赛不显示（抽好的题不该被中途换掉） -->
       <button
+        v-if="!isReview"
         class="practice__mode-btn practice__mode-btn--compact"
         :class="`practice__mode-btn--${studyMode}`"
         :aria-label="`当前${STUDY_MODE_LABEL[studyMode]}，点击切换`"
@@ -614,8 +711,8 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
     <EmptyState
       v-else-if="!total"
       variant="wrong"
-      :title="mode === 'wrong' ? '暂无错题' : '该分类下暂无题目'"
-      :desc="mode === 'wrong' ? '答错 / 自评「不会」的题会自动进入错题本。' : '换一个分类，或到题库页浏览全部题目。'"
+      :title="emptyTitle"
+      :desc="emptyDesc"
       action="去题库"
       @action="router.push('/bank')"
     />
@@ -623,14 +720,17 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
     <!-- 完成小结 -->
     <section v-else-if="finished" class="done card">
       <Ring :percent="roundSummary.knowRate" :size="96" label="掌握" />
-      <h2 class="done__title">本轮完成</h2>
+      <h2 class="done__title">{{ isReview ? `${reviewTitle}完成` : '本轮完成' }}</h2>
       <p class="done__desc">
         共 {{ roundSummary.total }} 题 · 对 <strong class="ok">{{ roundSummary.know }}</strong> ·
         错 <strong class="bad">{{ roundSummary.unknown }}</strong>
       </p>
       <div class="done__actions">
-        <button class="btn btn--plain" @click="restart">再来一轮</button>
-        <button class="btn btn--primary" @click="router.push('/me')">看掌握情况</button>
+        <!-- 复习赛「再来一批」= 重新抽题，不沿用旧题组 -->
+        <button class="btn btn--plain" @click="restart">{{ isReview ? '再来一批' : '再来一轮' }}</button>
+        <button class="btn btn--primary" @click="isReview ? router.push('/') : router.push('/me')">
+          {{ isReview ? '回首页' : '看掌握情况' }}
+        </button>
       </div>
     </section>
 
@@ -646,6 +746,14 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
             <FrequencyBadge :frequency="current.frequency" />
             <span v-if="status" class="badge qcard-p__status" :class="`qcard-p__status--${status}`">
               {{ status === 'know' ? (short ? '会' : '答对') : (short ? '不会' : '答错') }}
+            </span>
+            <!--
+              错题本的连对进度：只在「本来在错题本、且还没毕业」时显示。
+              题头这一行空间有限，所以是极小的「错题 2/3」胶囊；
+              不显示会让用户看着题一直在、不知道为什么答对了还没移出。
+            -->
+            <span v-if="wrongStreak" class="badge qcard-p__wrong">
+              错题 {{ wrongStreak }} / {{ WRONG_CLEAR_STREAK }}
             </span>
             <!-- 收藏：放在题目自己这一行，与「顶部导航」无关 -->
             <button
@@ -989,6 +1097,23 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   color: var(--c-primary);
 }
 
+/**
+ * 复习赛的顶栏标题。
+ *
+ * 复习赛没有顺序/模式切换，中间换成「错题复习 · 第 3/10 题」这种标题 + 进度。
+ * 标题用 13px 600，比进度文字重一档，让它成为这一行的视觉主体。
+ */
+.ptop__review-title {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+/* 复习态：靠左的标题要让出一部分宽度给进度条，间距收紧一点 */
+.ptop--review {
+  gap: 8px;
+}
+
 /* 中间：进度文字 + 细进度条，纵向两行但很紧凑 */
 .ptop__center {
   flex: 1;
@@ -1190,6 +1315,12 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 .qcard-p__status--unknown {
   color: var(--c-danger);
   background: var(--c-danger-weak);
+}
+
+/* 错题本连对进度：用 warning 色，和「答对/答错」的红绿区分开 */
+.qcard-p__wrong {
+  color: var(--c-warning);
+  background: rgba(250, 173, 20, 0.14);
 }
 
 /**
