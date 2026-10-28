@@ -1,6 +1,6 @@
 <script setup>
-import { computed } from 'vue'
-import { parseAnswerFlow, splitInline } from '@/utils/answerParts'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { parseAnswerFlow } from '@/utils/answerParts'
 import { getFigure } from '@/components/figures/index'
 
 /**
@@ -41,12 +41,75 @@ function segs(list) {
     code: !!s.code,
   }))
 }
+
+/**
+ * 图解放大。
+ *
+ * 为什么需要：图解的 SVG 画布固定 340 宽，在手机上被缩到 ~0.85 倍，
+ * 里面 7.5~9px 的标注字实际只有 6~8px —— 正常视力都吃力，近视更看不清。
+ * 直接把画布重新排版不现实（34 张图），所以给一个「点开看大的」出口：
+ * 放大后按约 2.4 倍渲染，左右拖动查看，标注字回到 18~22px。
+ */
+const zoomComp = shallowRef(null) // 用 shallowRef：组件对象不能被做成响应式代理
+const isZoomOpen = computed(() => zoomComp.value !== null)
+
+function openZoom(comp) {
+  zoomComp.value = comp
+}
+function closeZoom() {
+  zoomComp.value = null
+}
+
+function onKeydown(e) {
+  // 放大层是模态的：打开期间不许刷题页的快捷键（← / → / 空格 / 1 / 2）生效，
+  // 否则「看图时按方向键顺手换了下一题」。用捕获阶段拦，才能先于
+  // PracticeView 挂在 window 上的冒泡监听。
+  e.stopPropagation()
+  e.stopImmediatePropagation()
+  if (e.key === 'Escape') closeZoom()
+}
+
+// 打开时锁住背景滚动并接管 Esc；关闭/卸载时全部还原
+watch(isZoomOpen, (open) => {
+  if (typeof document === 'undefined') return
+  if (open) {
+    document.addEventListener('keydown', onKeydown, true)
+    document.body.style.overflow = 'hidden'
+  } else {
+    document.removeEventListener('keydown', onKeydown, true)
+    document.body.style.overflow = ''
+  }
+})
+
+onBeforeUnmount(() => {
+  if (typeof document === 'undefined') return
+  document.removeEventListener('keydown', onKeydown, true)
+  document.body.style.overflow = ''
+})
 </script>
 
 <template>
   <div class="answer-body">
     <template v-for="item in flow" :key="item.key">
-      <component :is="item.comp" v-if="item.type === 'figure'" />
+      <div
+        v-if="item.type === 'figure'"
+        class="ans-fig"
+        role="button"
+        tabindex="0"
+        aria-label="放大查看图解"
+        @click="openZoom(item.comp)"
+        @keydown.enter.prevent="openZoom(item.comp)"
+        @keydown.space.prevent="openZoom(item.comp)"
+      >
+        <component :is="item.comp" />
+        <span class="ans-fig__hint" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="6" />
+            <path d="M20 20l-4.5-4.5M11 8.5v5M8.5 11h5" />
+          </svg>
+          点开放大
+        </span>
+      </div>
 
       <div v-else-if="item.type === 'fallback'" class="ans-block">
         <div class="ans-line">{{ item.text }}</div>
@@ -158,6 +221,36 @@ function segs(list) {
         </template>
       </div>
     </template>
+
+    <!-- 图解全屏放大：与手机相册的「看图」同一套交互，点开就能读清标注 -->
+    <Teleport to="body">
+      <div
+        v-if="isZoomOpen"
+        class="ans-zoom"
+        role="dialog"
+        aria-modal="true"
+        aria-label="图解放大"
+      >
+        <div class="ans-zoom__bar">
+          <span class="ans-zoom__tip">左右拖动查看完整图解</span>
+          <button
+            type="button"
+            class="ans-zoom__close"
+            aria-label="关闭图解"
+            @click="closeZoom"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+        <div class="ans-zoom__canvas" @click.self="closeZoom">
+          <div class="ans-zoom__inner">
+            <component :is="zoomComp" />
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -167,13 +260,21 @@ function segs(list) {
   flex-direction: column;
   gap: 10px;
 }
+/**
+ * 正文 16px。
+ *
+ * 用户反馈「参考答案太小了，近视看不清」：
+ * 原来是 13.5px，手机上又常被系统字号压一档，长段落很难读。
+ * 16px + 1.75 行高是中文长文比较舒服的组合（微信正文 17px 量级），
+ * 代价是答案要多滚两屏 —— 可滚动区本来就是独立滚动的，可以接受。
+ */
 .ans-block {
-  font-size: 13.5px;
+  font-size: 16px;
   line-height: 1.75;
   color: var(--c-text);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
 
 /* 段落：中文优先正文字体，不再全局等宽 */
@@ -191,7 +292,7 @@ function segs(list) {
 }
 .ans-h--1,
 .ans-h--2 {
-  font-size: 14.5px;
+  font-size: 18px;
   padding-left: 9px;
   border-left: 3px solid var(--c-primary);
   line-height: 1.5;
@@ -200,7 +301,7 @@ function segs(list) {
 .ans-h--4,
 .ans-h--5,
 .ans-h--6 {
-  font-size: 13.5px;
+  font-size: 16px;
   color: var(--c-primary);
 }
 
@@ -231,20 +332,20 @@ function segs(list) {
 .ans-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.65;
 }
 .ans-table th {
   background: var(--c-table-head);
   color: var(--c-text);
   font-weight: 700;
-  padding: 7px 9px;
+  padding: 9px 10px;
   text-align: left;
   white-space: nowrap;
   border-bottom: 1px solid var(--c-border);
 }
 .ans-table td {
-  padding: 7px 9px;
+  padding: 9px 10px;
   border-bottom: 1px solid var(--c-table-line);
   vertical-align: top;
 }
@@ -268,7 +369,7 @@ function segs(list) {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 .ans-list > li {
   display: flex;
@@ -279,22 +380,22 @@ function segs(list) {
   flex: none;
   width: 5px;
   height: 5px;
-  margin-top: 0.62em;
+  margin-top: 0.66em;
   border-radius: 50%;
   background: var(--c-primary);
   opacity: 0.85;
 }
 .ans-list__num {
   flex: none;
-  min-width: 17px;
-  height: 17px;
+  min-width: 20px;
+  height: 20px;
   margin-top: 0.18em;
   border-radius: 5px;
   background: var(--c-primary-weak);
   color: var(--c-primary);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  line-height: 17px;
+  line-height: 20px;
   text-align: center;
   font-family: var(--mono);
 }
@@ -306,11 +407,11 @@ function segs(list) {
 /* 列表项下的缩进续行（多为命令或补充说明） */
 .ans-list__extra {
   display: block;
-  margin-top: 2px;
+  margin-top: 3px;
   padding-left: 2px;
   font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.65;
   color: var(--c-text-2);
   white-space: pre-wrap;
 }
@@ -333,7 +434,7 @@ function segs(list) {
   display: block;
   padding: 4px 10px;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.4px;
   text-transform: uppercase;
   color: var(--c-text-3);
@@ -342,12 +443,12 @@ function segs(list) {
 }
 .ans-pre__body {
   margin: 0;
-  padding: 9px 11px;
+  padding: 10px 11px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.65;
+  font-size: 13.5px;
+  line-height: 1.7;
   color: var(--c-code-text);
   white-space: pre;
   tab-size: 2;
@@ -359,7 +460,7 @@ function segs(list) {
 /* 引用与分隔线 */
 .ans-quote {
   margin: 0;
-  padding: 7px 11px;
+  padding: 8px 11px;
   border-left: 3px solid var(--c-border);
   background: var(--c-bg);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
@@ -370,5 +471,108 @@ function segs(list) {
   border: none;
   height: 1px;
   background: var(--c-border);
+}
+
+/* ---------- 图解：可点开放大 ---------- */
+.ans-fig {
+  position: relative;
+  /* 纵向间距交给图自身的 .fig（它有 12px 上边距），这里不再叠加 */
+  margin: 0;
+  cursor: zoom-in;
+  /* 点按反馈：轻压一下，表明「这张图能点」 */
+  transition: transform 0.14s ease;
+}
+.ans-fig:active {
+  transform: scale(0.995);
+}
+/**
+ * 「点开放大」提示。
+ *
+ * 早期版本做成压在图片右上角的胶囊，但 34 张图几乎每一张的右上 / 右下都排了
+ * 说明文字，胶囊会盖住标注 —— 图本来就是拿来读标注的，盖住等于白做。
+ * 所以改为图下方右对齐的一行小字：不遮挡任何内容，也不占太多高度。
+ */
+.ans-fig__hint {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--c-primary);
+  opacity: 0.9;
+}
+.ans-fig__hint svg {
+  flex: none;
+}
+
+/* 全屏看图 */
+.ans-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-bg);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.ans-zoom__bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 50px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-card);
+}
+.ans-zoom__tip {
+  font-size: 13px;
+  color: var(--c-text-2);
+}
+.ans-zoom__close {
+  margin-left: auto;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--c-text-2);
+}
+.ans-zoom__close:active {
+  background: var(--c-bg);
+}
+.ans-zoom__canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
+}
+.ans-zoom__inner {
+  width: max-content;
+  margin: 0 auto;
+  padding: 12px 12px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+/**
+ * 放大态：把 340 宽的画布拉到 820（≈2.4 倍），
+ * 原来 8px 的标注字变成 ~19px，散布在各处的说明才真正读得下来。
+ * 比屏宽时左右拖动；图注也一起放大，跟着图走。
+ */
+.ans-zoom__inner :deep(.fig) {
+  min-width: 820px;
+  margin: 0;
+  padding: 14px 14px 10px;
+  box-shadow: none;
+}
+.ans-zoom__inner :deep(.fig svg) {
+  max-height: none;
+}
+.ans-zoom__inner :deep(.fig figcaption) {
+  font-size: 13px;
 }
 </style>

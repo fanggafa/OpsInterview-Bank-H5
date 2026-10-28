@@ -4,7 +4,9 @@
  */
 .fig {
   margin: 12px 0 4px;
-  padding: 12px 10px 8px;
+  /* 内边距从 12/10 收到 10/8：手机上每一点宽度都直接换成图里标注字的字号，
+     画布 340 宽、屏内实际可用约 300 —— 收 4px 内边距就能多出约 1.3% 的放大 */
+  padding: 10px 8px 8px;
   border-radius: 10px;
   background: var(--fig-bg);
   border: 1px solid var(--fig-stroke);
@@ -17,11 +19,11 @@
   max-height: 320px;
 }
 .fig figcaption {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 7px;
+  padding-top: 7px;
   border-top: 1px dashed var(--fig-stroke);
-  font-size: 11px;
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 1.6;
   color: var(--fig-muted);
   text-align: center;
 }
