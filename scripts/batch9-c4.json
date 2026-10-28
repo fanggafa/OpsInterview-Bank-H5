@@ -1,0 +1,527 @@
+[
+  {
+    "id": 4300,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "脚本第一行写 `#!/bin/bash` 的作用是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "指定该脚本由 `/bin/bash` 解释执行（shebang）"
+      },
+      {
+        "key": "B",
+        "text": "只是一句普通注释，可以省略且不影响执行"
+      },
+      {
+        "key": "C",
+        "text": "把脚本预编译成二进制以提高执行速度"
+      },
+      {
+        "key": "D",
+        "text": "声明脚本内所有变量都是 bash 内置类型"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "第一行的 `#!` 叫 shebang，内核执行该文件时读到它，就用后面指定的 `/bin/bash` 来运行脚本，而不是由当前 shell 顺便解释。它不是普通注释：省略后会退回调用方 shell（可能是 sh/dash），数组、`[[ ]]` 等 bash 专有语法可能直接报错。B 错在「可省略」；bash 不做预编译，C 不成立；D 是把 shebang 当类型声明，属于臆想。",
+    "tags": [
+      "shebang",
+      "脚本头部",
+      "解释器"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4301,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "在 bash 里赋值写成 `name = ops`（等号两边有空格），执行结果是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "变量 name 被自动设成只读"
+      },
+      {
+        "key": "B",
+        "text": "正常把 ops 赋给变量 name"
+      },
+      {
+        "key": "C",
+        "text": "把字符串 `= ops` 赋给变量 name"
+      },
+      {
+        "key": "D",
+        "text": "把 `name` 当成命令执行，报 command not found"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "bash 按空白分词，`name = ops` 会被拆成命令 `name` 加两个参数，shell 找不到名为 name 的命令，于是报 `command not found`。赋值必须紧贴等号：`name=ops`、`name=\"hello world\"` 都行，但等号两边不能有空格。C 是把等号误当参数；A 的只读变量要用 `readonly name=ops` 声明，与空格无关。",
+    "tags": [
+      "变量赋值",
+      "语法",
+      "常见报错"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4302,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "执行 `echo '$HOME'` 会输出什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "空行"
+      },
+      {
+        "key": "B",
+        "text": "当前用户的家目录路径"
+      },
+      {
+        "key": "C",
+        "text": "字面量 `$HOME`"
+      },
+      {
+        "key": "D",
+        "text": "报错，因为变量未定义"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "单引号内的一切字符都保持字面量，不做变量展开、命令替换和转义，所以原样输出 `$HOME`。只有双引号才展开变量，`echo \"$HOME\"` 才会打印家目录。需要原样输出含 `$`、反引号的字符串（awk 程序、密码）时用单引号最稳。B 是双引号的效果，A、D 都不符合引号规则。",
+    "tags": [
+      "单引号双引号",
+      "变量展开",
+      "字符串"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4303,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "特殊变量 `$?` 表示什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "当前 shell 进程的 PID"
+      },
+      {
+        "key": "B",
+        "text": "上一条命令的退出状态码"
+      },
+      {
+        "key": "C",
+        "text": "脚本传入的位置参数个数"
+      },
+      {
+        "key": "D",
+        "text": "上一条命令的标准输出内容"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "`$?` 保存上一条命令的退出状态码，0 表示成功，非 0 表示失败，常用于 `if cmd; then` 或 `cmd || exit 1`。当前进程 PID 是 `$$`，参数个数是 `$#`，命令输出不会自动进变量。注意它只反映紧邻的上一条命令，中间插入一句 echo 就会把它覆盖成 0。",
+    "tags": [
+      "退出状态码",
+      "特殊变量",
+      "条件判断"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4304,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "执行 `./backup.sh /data /backup` 时，`$#` 的值是多少？",
+    "options": [
+      {
+        "key": "A",
+        "text": "3"
+      },
+      {
+        "key": "B",
+        "text": "2"
+      },
+      {
+        "key": "C",
+        "text": "1"
+      },
+      {
+        "key": "D",
+        "text": "0"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "`$#` 是位置参数的总个数，**不含脚本名本身**，所以 `/data` 和 `/backup` 共 2 个。脚本名是 `$0`，第一个参数是 `$1`（即 /data）。全部参数合在一起用 `$@` 或 `$*`。入门最容易混的就是把脚本名也算进去而得 3，那是把 `$0` 当参数的误解。",
+    "tags": [
+      "位置参数",
+      "$#",
+      "特殊变量"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4305,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "遍历脚本参数，且参数本身可能含空格时，哪种写法最稳妥？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`for a in \"$@\"; do ...; done`"
+      },
+      {
+        "key": "B",
+        "text": "`for a in \"$*\"; do ...; done`"
+      },
+      {
+        "key": "C",
+        "text": "`for a in $*; do ...; done`"
+      },
+      {
+        "key": "D",
+        "text": "`for a in '$@'; do ...; done`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "双引号包裹的 `$@` 会把每个参数作为独立一项展开，参数里带空格也不会被拆开，所以 A 最稳。`\"$*\"` 用 IFS 把所有参数拼成一个字符串，只会循环一次；不加引号的 `$*` 会被重新分词；`'$@'` 是字面量，根本不展开。排查「参数带空格被拆成两个」时，问题通常就出在引号上。",
+    "tags": [
+      "$@与$*",
+      "参数遍历",
+      "引号"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4306,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "下列哪种判断只能用 `[[ ]]` 实现，`[ ]` 写不出来？",
+    "options": [
+      {
+        "key": "A",
+        "text": "判断数值大于 `[ \"$n\" -gt 5 ]`"
+      },
+      {
+        "key": "B",
+        "text": "判断字符串相等 `[ \"$a\" = \"$b\" ]`"
+      },
+      {
+        "key": "C",
+        "text": "判断文件存在 `[ -f /etc/passwd ]`"
+      },
+      {
+        "key": "D",
+        "text": "正则匹配 `[[ $s =~ ^[0-9]+$ ]]`"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "`[[ ]]` 是 bash 的关键字，支持 `=~` 正则匹配、可在括号内直接写 `&&`/`||`，且不做分词和通配符展开，更安全。`[ ]` 实质是 test 命令，参数先被 shell 分词，不支持正则。B、C、A 三种判断在 `[ ]` 里都能正常写，所以只有 D 必须用 `[[ ]]`。",
+    "tags": [
+      "条件判断",
+      "[[ ]]",
+      "正则"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4307,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "下面哪个 bash for 循环的语法是正确的？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`for i = 1 to 3; do echo $i; done`"
+      },
+      {
+        "key": "B",
+        "text": "`for (i=1; i<=3; i++) { echo $i }`"
+      },
+      {
+        "key": "C",
+        "text": "`for i in 1 2 3; do echo $i; done`"
+      },
+      {
+        "key": "D",
+        "text": "`foreach i (1 2 3) echo $i`"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "bash 的 for 语法是 `for 变量 in 列表; do ...; done`，列表用空格分隔，循环体用 do/done 包住，所以 C 正确。B 是 C/Java 的三段式，A 是 Pascal/VB 风格，D 的 foreach 属于 tcsh，bash 都不认。还要注意 `; do` 前的分号，写成 `for i in 1 2 3 do` 会报语法错误。",
+    "tags": [
+      "for循环",
+      "语法",
+      "循环"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4308,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "逐行读文件时，为什么推荐 `while read -r line; do ...; done < file` 而不是 `cat file | while read line`？",
+    "options": [
+      {
+        "key": "A",
+        "text": "用 `<` 重定向读取速度一定更快"
+      },
+      {
+        "key": "B",
+        "text": "管道会改变文件的内容编码"
+      },
+      {
+        "key": "C",
+        "text": "管道会创建子 shell，循环内修的变量出了循环就丢失"
+      },
+      {
+        "key": "D",
+        "text": "while 循环不能接在管道后面"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "管道的每一段都在子 shell 里执行，`cmd | while read` 循环中累加的变量（如计数、拼好的字符串）出了循环就丢了，这是最常见的坑。用 `< file` 把文件重定向到循环上，循环在当前 shell 执行，变量和 break 都正常。B、A 与子 shell 机制无关；D 错在管道完全可以接 while。",
+    "tags": [
+      "while循环",
+      "read",
+      "子shell"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4309,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "case 语句中用来匹配「其余所有情况」的分支写法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`default:`"
+      },
+      {
+        "key": "B",
+        "text": "`*)`"
+      },
+      {
+        "key": "C",
+        "text": "`else`"
+      },
+      {
+        "key": "D",
+        "text": "`catch _`"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "case 用模式匹配分支，每个分支以 `;;` 结束表示不再往下匹配，兜底分支固定写 `*)`，所以 B 正确。`default:` 是 C/Go 的 switch 写法，else 属于 if 语句，catch 是异常处理。注意 case 的模式里可以写通配符和竖线，例如 `start|begin) ... ;;`。",
+    "tags": [
+      "case",
+      "分支",
+      "语法"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4310,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "脚本开头写 `set -e` 起什么作用？",
+    "options": [
+      {
+        "key": "A",
+        "text": "任一命令返回非 0 时立即退出脚本"
+      },
+      {
+        "key": "B",
+        "text": "把执行的每条命令打印出来"
+      },
+      {
+        "key": "C",
+        "text": "允许使用未定义的变量"
+      },
+      {
+        "key": "D",
+        "text": "开启语法检查模式"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "`set -e` 让脚本在任意命令返回非 0 时立即退出，避免错误被忽略后继续执行造成更大破坏。打印每条命令是 `set -x`；使用未定义变量直接报错是 `set -u`；语法检查是 `bash -n`。要注意 `set -e` 在 `if` 条件、`&&`/`||` 左侧等本来就是判断失败的位置不生效。",
+    "tags": [
+      "set -e",
+      "错误处理",
+      "健壮性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4311,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`cmd1 | cmd2` 中 cmd1 失败、cmd2 成功，此时 `$?` 默认是多少？",
+    "options": [
+      {
+        "key": "A",
+        "text": "不确定，由命令执行顺序随机决定"
+      },
+      {
+        "key": "B",
+        "text": "1，因为只要有一环失败就返回非 0"
+      },
+      {
+        "key": "C",
+        "text": "cmd1 的返回码原样返回"
+      },
+      {
+        "key": "D",
+        "text": "0，因为管道只取最后一个命令的状态"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "默认情况下管道的 `$?` 只等于最后一个命令的返回码，所以 cmd1 失败而 cmd2 成功时整体仍是 0，早期错误被吞掉。加上 `set -o pipefail` 后，管道中任一环节失败就返回那个非 0 状态，配合 `set -e` 才能真正「出错即停」。C 正是 pipefail 想解决的问题，A 不符合管道语义。",
+    "tags": [
+      "pipefail",
+      "管道",
+      "退出码"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4312,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "bash 函数里的 `return` 能返回什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "浮点数结果"
+      },
+      {
+        "key": "B",
+        "text": "任意长度的字符串"
+      },
+      {
+        "key": "C",
+        "text": "数组或字典"
+      },
+      {
+        "key": "D",
+        "text": "0-255 的整数退出码，表示成功或失败"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "bash 函数的 `return` 只能返回 0-255 的整数退出码，表示成功/失败，超出范围会被取模截断。想返回字符串或计算结果，要 `echo` 到标准输出，再在调用处用 `result=$(func)` 接住。B、C、A 都是把 return 当成其他语言里「返回值」来理解，属于典型误解。",
+    "tags": [
+      "函数",
+      "return",
+      "返回值"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4313,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "只想让某个变量在函数内部生效，应该怎么声明？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`set v=1`"
+      },
+      {
+        "key": "B",
+        "text": "`var v=1`"
+      },
+      {
+        "key": "C",
+        "text": "`local v=1`"
+      },
+      {
+        "key": "D",
+        "text": "`global v=1`"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "`local` 在函数内声明变量，作用域仅限该函数，函数返回后变量消失，可避免与脚本全局变量或其他函数同名冲突。函数内不加 local 直接赋值，默认是全局变量。`var`、`global` 都不是 bash 关键字，`set v=1` 也不是赋值语法（set 用于设置选项和位置参数）。",
+    "tags": [
+      "local",
+      "函数",
+      "变量作用域"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4314,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`cmd > file 2>&1` 的效果是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "标准输出写 file，错误仍打印到终端"
+      },
+      {
+        "key": "B",
+        "text": "标准输出和标准错误都写入 file"
+      },
+      {
+        "key": "C",
+        "text": "只把标准错误写 file，输出打印到终端"
+      },
+      {
+        "key": "D",
+        "text": "把 file 的内容输出到标准错误"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "重定向按从左到右生效：先 `> file` 把 stdout 指向 file，再 `2>&1` 把 stderr 复制到「当前 stdout」也就是 file，所以两者都进文件。若写成 `cmd 2>&1 > file`，stderr 会先指向原来的终端，结果错误仍打在屏幕上，这是最高频的坑。只丢弃错误则用 `2>/dev/null`。",
+    "tags": [
+      "重定向",
+      "2>&1",
+      "标准错误"
+    ],
+    "frequency": "高频"
+  }
+]

@@ -1,0 +1,257 @@
+[
+  {
+    "id": 4100,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`ps aux` 与 `ps -ef` 的共同作用是？",
+    "options": [
+      { "key": "A", "text": "查看系统中当前运行的进程信息（两者只是 BSD 风格和 SysV 风格的选项差异）" },
+      { "key": "B", "text": "查看磁盘空间使用情况" },
+      { "key": "C", "text": "查看系统启动日志" },
+      { "key": "D", "text": "查看网络连接状态" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`ps aux`（BSD 风格）和 `ps -ef`（System V 风格）都是列出进程**，字段略有差异：`aux` 有 `%CPU`、`%MEM`、`STAT`，`-ef` 有 `PPID`、`C`、`STIME`。\n\n```bash\nps aux | grep nginx        # 按名字找进程\nps -ef --forest            # 树状显示父子关系\nps -eo pid,ppid,cmd --sort=-%cpu | head   # 按 CPU 降序\n```\n\n区分要点：**`ps` 是某个瞬间的快照**（配合 `grep` 用），要动态刷新看 `top`；`ps aux` 里的 `STAT` 列（R/S/D/Z/T）是常考点。B 项是 `df`/`du`；C 项是 `journalctl`/`dmesg`；D 项是 `ss`/`netstat`。",
+    "tags": ["ps", "进程查看", "常用命令"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4101,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "进程状态 `D`（不可中断睡眠）的典型特征是？",
+    "options": [
+      { "key": "A", "text": "进程正在等待 IO（如磁盘、NFS）完成，此状态通常杀不掉，连 `kill -9` 也要等 IO 返回" },
+      { "key": "B", "text": "进程正在运行或可运行，占用 CPU" },
+      { "key": "C", "text": "进程已终止，等待父进程回收" },
+      { "key": "D", "text": "进程被暂停（Ctrl+Z），等待 `fg` 恢复" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`D` = uninterruptible sleep，进程卡在内核态的 IO 等待中，不响应任何信号（包括 SIGKILL）**，所以 `kill -9` 也杀不掉，只能等 IO 完成或恢复（比如 NFS 服务器回来了）。大量 D 状态进程通常是**磁盘/NFS/存储故障**的信号，用 `ps -eo stat,pid,cmd` 或 `cat /proc/<pid>/stack` 排查。\n\n其余状态：\n\n```text\nR  运行或可运行（runqueue 里）\nS  可中断睡眠（最常见，等事件）\nD  不可中断睡眠（卡 IO）\nZ  僵尸（已退出，父进程没 wait）\nT  停止（Ctrl+Z 或被 SIGSTOP）\n```\n\nB 是 R，C 是 Z，D 是 T。",
+    "tags": ["进程状态", "D状态", "IO等待"],
+    "frequency": "低频"
+  },
+  {
+    "id": 4102,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`SIGKILL`（信号 9）与 `SIGTERM`（信号 15）的关键区别是？",
+    "options": [
+      { "key": "A", "text": "SIGTERM 可被进程捕获或忽略、让它优雅退出；SIGKILL 不能被捕获或忽略，强制终止" },
+      { "key": "B", "text": "SIGTERM 强制终止且不可捕获，SIGKILL 可以优雅退出" },
+      { "key": "C", "text": "两者完全等价，都不可捕获" },
+      { "key": "D", "text": "SIGKILL 只能由 root 发送，SIGTERM 只能由普通用户发送" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`SIGTERM`（15）是「请优雅退出」**：进程可以捕获它，做清理（刷盘、关闭连接、保存状态）后再退出，所以**停机脚本应先用它**。**`SIGKILL`（9）由内核直接终止进程，不可捕获、不可忽略、不给清理机会**，可能造成数据丢失或文件损坏，是最后手段。\n\n```bash\nkill -TERM <pid>          # 先礼\nsleep 10; kill -9 <pid>   # 后兵（注意 -9 也杀不了 D 状态进程）\nkill -HUP <pid>           # 常用于让守护进程重载配置（如 nginx -s reload 的底层）\n```\n\nB 项说反了；C 项错误；D 项不对——信号权限取决于**发送者是否有权向该进程发信号**（同用户或 root），不是两个信号本身的权限差异。",
+    "tags": ["信号", "SIGTERM", "SIGKILL"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4103,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`uptime` 输出的 load average 三个数字分别表示？",
+    "options": [
+      { "key": "A", "text": "过去 1 分钟、5 分钟、15 分钟的平均负载（运行队列 + 不可中断睡眠的进程数）" },
+      { "key": "B", "text": "CPU 使用率的当前值、峰值、平均值" },
+      { "key": "C", "text": "内存占用、交换分区占用、磁盘占用" },
+      { "key": "D", "text": "用户数、进程数、线程数" }
+    ],
+    "answer": ["A"],
+    "explanation": "**load average 三个值 = 最近 1、5、15 分钟的平均负载**，统计的是「**TASK_RUNNING（可运行/正在运行）+ TASK_UNINTERRUPTIBLE（D 状态）**」的进程数（任务队列长度）。\n\n判读要点：**负载要和 CPU 核数对比才有意义**——`nproc` 得到核数，负载持续接近或超过核数说明在排队；超过核数很多则明显过载。\n\n```bash\nnproc\nuptime\n# load average: 8.20, 4.10, 2.05  → 1min 高、15min 低 = 正在变糟\n```\n\n注意：**负载高不等于 CPU 忙**——大量 D 状态进程（卡 IO）也会把负载拉高，这时 CPU 可能很闲（看 `iostat` 的 `%util` 和 `await`）。B 项把负载误解成 CPU 使用率，这是最常见的错误。",
+    "tags": ["load average", "uptime", "系统负载"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4104,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "软链接（符号链接）与硬链接的区别，正确的是？",
+    "options": [
+      { "key": "A", "text": "软链接是独立文件、指向目标路径（可跨分区、目标删了就成了断链）；硬链接与源文件共享同一个 inode，删源文件不影响数据" },
+      { "key": "B", "text": "硬链接可以跨文件系统，软链接不能" },
+      { "key": "C", "text": "软链接和硬链接都会让 inode 计数加一" },
+      { "key": "D", "text": "硬链接不能对目录建立，软链接也不能" }
+    ],
+    "answer": ["A"],
+    "explanation": "**软链接（`ln -s`）本质是个「快捷方式」文件，内容存的是目标路径字符串**，有自己的 inode，可以跨分区、能指向目录，目标删除后变成**断链**。**硬链接（`ln`）不给新文件，只是给同一 inode 增加一个目录项，链接计数 +1**，必须同分区（inode 只在单文件系统内有效），不能链接目录（防止循环），删掉任一名字数据都还在，直到计数为 0 才真正释放。\n\n```bash\nln -s /data/app/current /opt/app   # 软链接：发布切版本的标准做法\nln /data/a.log /data/b.log         # 硬链接：同一份数据的两个名字\nls -li                              # 看 inode 和链接计数\n```\n\nB、C 项说反了——跨分区是软链接的能力，inode 计数加一是硬链接的行为；D 项错误，软链接**可以**指向目录。",
+    "tags": ["软链接", "硬链接", "inode"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4105,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "文件权限 `-rwxr-x---` 表示？",
+    "options": [
+      { "key": "A", "text": "属主 rwx（读写执行），属组 r-x（读执行），其他人无任何权限" },
+      { "key": "B", "text": "属主 r-x，属组 rwx，其他人无权限" },
+      { "key": "C", "text": "所有人都是 rwx 权限" },
+      { "key": "D", "text": "属主 rwx，其他人 r-x，属组无权限" }
+    ],
+    "answer": ["A"],
+    "explanation": "**权限字符串 9 位按「属主 | 属组 | 其他」三段、每段 rwx 排列**：`rwxr-x---` = `rwx` + `r-x` + `---`，即**属主可读写执行（7）、属组可读执行（5）、其他人无权限（0）**，八进制就是 `750`。\n\n```bash\nchmod 750 file        # 等价于上面\nchmod u+x,go-rwx file # 符号写法\nls -ld /data/app      # 看目录权限\n```\n\n对照表：`r=4, w=2, x=1`，`rwx=7, r-x=5, r--=4, ---=0`。B 项把属主和属组调换了；C、D 项位置错乱。补充：**目录的 x 权限表示「能进入/遍历」，r 表示「能列出内容」，w 表示「能在其中创建删除文件」**——只给 r 不给 x，`ls` 会失败。",
+    "tags": ["文件权限", "chmod", "rwx"],
+    "frequency": "低频"
+  },
+  {
+    "id": 4106,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`umask` 为 `022` 时，新建普通文件的默认权限是？",
+    "options": [
+      { "key": "A", "text": "`644`（rw-r--r--）" },
+      { "key": "B", "text": "`666`（rw-rw-rw-）" },
+      { "key": "C", "text": "`755`（rwxr-xr-x）" },
+      { "key": "D", "text": "`777`（rwxrwxrwx）" }
+    ],
+    "answer": ["A"],
+    "explanation": "**新建文件的基础权限是 `666`，目录是 `777`，再「减掉」umask 的位**：`666 - 022 = 644`（去掉属组和其他的写权限）。\n\n```bash\numask            # 查看，常见 022 或 002\numask 027        # 临时改：新建文件变 640，目录 750\n```\n\n关键点：**文件默认不会带执行权限**——所以基础值是 666 而不是 777；**目录则是 777 - 022 = 755**。C 项 755 是新建**目录**的结果，也是常见的混淆项；B 项是 umask=000 时的文件权限（不考虑执行位）；D 项只有 `chmod 777` 显式设置才可能出现。另外 **umask 是按位「清除」，不是数学减法**（如 umask=033 时结果为 644 而非 633）。",
+    "tags": ["umask", "默认权限", "文件权限"],
+    "frequency": "低频"
+  },
+  {
+    "id": 4107,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`/proc` 目录的主要作用是？",
+    "options": [
+      { "key": "A", "text": "虚拟文件系统，暴露内核和进程的运行状态（如 `/proc/cpuinfo`、`/proc/<pid>/`），不占磁盘" },
+      { "key": "B", "text": "存放系统可执行程序（相当于 `/usr/bin`）" },
+      { "key": "C", "text": "存放用户家目录" },
+      { "key": "D", "text": "存放临时文件，重启自动清空" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`/proc` 是 procfs 虚拟文件系统，内容在内存里、不以磁盘文件形式存在**，是内核和进程运行状态的窗口：\n\n```bash\ncat /proc/cpuinfo              # CPU 信息\ncat /proc/meminfo              # 内存明细\ncat /proc/loadavg              # 负载\ncat /proc/<pid>/status         # 某进程的状态、内存\ncat /proc/<pid>/limits         # 该进程的 ulimit 限制\nls -l /proc/<pid>/fd           # 打开的文件描述符（排查句柄泄漏）\ncat /proc/sys/net/ipv4/ip_forward   # 内核参数（可写，等同 sysctl）\n```\n\n很多命令本质就是在读 `/proc`：`free` 读 `/proc/meminfo`、`ps`/`top` 读 `/proc/<pid>`、`uptime` 读 `/proc/loadavg`。B、C、D 分别是 `/usr/bin`、`/home`、`/tmp` 的职责。补充考点：`/proc/sys` 下的可调内核参数，`/sys`（sysfs）是另一套设备/驱动视图。",
+    "tags": ["/proc", "procfs", "系统信息"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4108,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "systemctl 中用于「设置服务开机自启」的子命令是？",
+    "options": [
+      { "key": "A", "text": "`systemctl enable <服务>`" },
+      { "key": "B", "text": "`systemctl start <服务>`" },
+      { "key": "C", "text": "`systemctl status <服务>`" },
+      { "key": "D", "text": "`systemctl daemon-reload`" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`enable` = 建立开机自启的软链接（通常在 `/etc/systemd/system/*.wants/` 下），`disable` 取消**；注意 **`enable` 不会立刻启动服务**，要配 `--now` 才两件事一起做。\n\n```bash\nsystemctl enable --now nginx     # 设置自启 + 立即启动\nsystemctl start nginx            # 只启动，重启机器后不会自己起来\nsystemctl status nginx           # 查看状态（含最近日志）\nsystemctl daemon-reload          # 改了 unit 文件后必须执行，否则改动不生效\nsystemctl restart / stop / is-active / is-enabled nginx\n```\n\nB 是本次启动，C 是查状态，D 是重载 unit 配置（**不是重启服务**，这是最常见的误解）。排查服务起不来用 `systemctl status` + `journalctl -u <服务>` 一起看。",
+    "tags": ["systemctl", "开机自启", "systemd"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4109,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "查看某个 systemd 服务（如 nginx）的日志，应该用？",
+    "options": [
+      { "key": "A", "text": "`journalctl -u nginx`" },
+      { "key": "B", "text": "`cat /var/log/messages`" },
+      { "key": "C", "text": "`tail -f /var/log/nginx/access.log`" },
+      { "key": "D", "text": "`dmesg`" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`journalctl -u <unit>` 按 unit 过滤 systemd 收集的日志**，是排查服务启动失败的首选（和 `systemctl status` 显示的片段配套）。\n\n```bash\njournalctl -u nginx              # 该服务的全部日志\njournalctl -u nginx -f           # 实时跟踪（类似 tail -f）\njournalctl -u nginx --since \"10 min ago\"\njournalctl -u nginx -p err       # 只看 error 及以上\njournalctl -xe                   # 最近报错 + 详细提示\njournalctl --disk-usage          # 日志占用，太大就 vacuum\n```\n\nB 项是传统 syslog 文件（有的发行版没有，且不区分 unit）；C 项是 nginx 自己的**访问日志**，只是业务请求记录，看不到启动失败原因；D 项 `dmesg` 是**内核环形缓冲区**日志（硬件、驱动、OOM killer），不用于应用服务排查。",
+    "tags": ["journalctl", "systemd", "日志排查"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4110,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "crontab 表达式中，`0 3 * * *` 表示？",
+    "options": [
+      { "key": "A", "text": "每天 3:00 执行一次" },
+      { "key": "B", "text": "每小时的第 3 分钟执行一次" },
+      { "key": "C", "text": "每月 3 号 0 点执行一次" },
+      { "key": "D", "text": "每 3 小时执行一次" }
+    ],
+    "answer": ["A"],
+    "explanation": "**五个字段依次是：分 时 日 月 周。`0 3 * * *` = 第 0 分、第 3 时、每天、每月、每周 → 每天凌晨 3 点整执行一次。**\n\n```text\n* * * * *     每分钟\n*/5 * * * *   每 5 分钟\n0 3 * * *     每天 3:00\n0 3 * * 1     每周一 3:00\n0 0 1 * *     每月 1 号 0:00\n```\n\nB 项对应 `3 * * * *`（每小时第 3 分）；C 项对应 `0 0 3 * *`；D 项对应 `0 */3 * * *`。**运维易踩的坑：`%` 在 crontab 里是换行符，命令里要转义成 `\\%`；cron 环境变量很干净，脚本里要用绝对路径并自己 source 环境；日志重定向 `>> /tmp/x.log 2>&1` 别漏。**",
+    "tags": ["crontab", "定时任务", "五字段"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4111,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`nohup cmd &` 的作用是？",
+    "options": [
+      { "key": "A", "text": "让命令在后台运行，并且忽略 SIGHUP，退出终端/断开 SSH 后不被挂断" },
+      { "key": "B", "text": "让命令以 root 权限运行" },
+      { "key": "C", "text": "让命令在开机时自动运行" },
+      { "key": "D", "text": "让命令只运行一次，失败自动重试" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`nohup`：忽略 SIGHUP（终端关闭时发送的挂断信号）；`&`：放到后台执行。** 两者合起来，才能让长任务在 SSH 断开后继续跑。\n\n```bash\nnohup ./job.sh > /data/logs/job.out 2>&1 &\n# 之后的照护：\njobs -l          # 看后台任务\nps -ef | grep job.sh\ndisown %1        # 脱离当前 shell 的作业控制，彻底不随终端退出\n```\n\n**关键细节：一定要重定向输出**——否则 nohup 默认写 `nohup.out`，磁盘可能被写满。比 nohup 更现代的做法是 **systemd 服务**或 **tmux/screen**（可以随时回到会话看输出）。B 项需要 `sudo`/`su`；C 项是 `cron` 或 `systemd enable`；D 项是进程守护工具（supervisor/systemd `Restart=`）的能力。",
+    "tags": ["nohup", "后台运行", "SIGHUP"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4112,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "要在 `/data/logs` 下查找 7 天前的 `.log` 文件并删除，下列 `find` 写法正确的是？",
+    "options": [
+      { "key": "A", "text": "`find /data/logs -name \"*.log\" -mtime +7 -delete`" },
+      { "key": "B", "text": "`find /data/logs -name \"*.log\" -mtime -7 -delete`" },
+      { "key": "C", "text": "`find /data/logs -name \"*.log\" -ctime 7 -delete`" },
+      { "key": "D", "text": "`find /data/logs -name \"*.log\" -mtime +7 -exec rm`" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`-mtime +7` 表示「修改时间在 7 天以前」，`-delete` 删除匹配项**，组合起来就是清理老日志的标准写法。\n\n```bash\n# 先确认匹配范围再删（强烈建议）\nfind /data/logs -name \"*.log\" -mtime +7 -ls\nfind /data/logs -name \"*.log\" -mtime +7 -delete\n```\n\n易错点：\n\n- **`-mtime -7` 是「7 天以内」**（反了会删掉新日志，是事故级错误）；\n- `-atime`/`-ctime` 分别是访问时间、inode 变更时间，语义不同，`-ctime 7` 是「正好第 7 天」而非「超过 7 天」；\n- **`-exec rm` 后面必须跟 `{} \\;`**，D 项语法不完整，会报错；\n- 按分钟粒度可以用 `-mmin +60`。",
+    "tags": ["find", "mtime", "文件清理"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4113,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "用 `grep` 搜索时「忽略大小写」和「显示行号」分别用哪个参数？",
+    "options": [
+      { "key": "A", "text": "`-i` 忽略大小写，`-n` 显示行号" },
+      { "key": "B", "text": "`-v` 忽略大小写，`-c` 显示行号" },
+      { "key": "C", "text": "`-n` 忽略大小写，`-i` 显示行号" },
+      { "key": "D", "text": "`-E` 忽略大小写，`-r` 显示行号" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`-i` = ignore case（忽略大小写），`-n` = line number（显示行号）**，两者是最常用组合：`grep -in \"error\" app.log`。\n\n其他高频参数：\n\n```bash\ngrep -v \"DEBUG\" app.log     # 反向匹配（排除）\ngrep -c \"timeout\" app.log   # 统计匹配行数\ngrep -E \"err|fail\" app.log  # 扩展正则（等同 egrep）\ngrep -r \"listen 80\" /etc/nginx   # 递归搜目录\ngrep -A3 -B1 \"ERROR\" app.log     # 带上下文（后 3 行/前 1 行）\ngrep -F \"a.b\" file          # 按纯文本匹配，不当正则解释\n```\n\nB 项 `-v` 是反向匹配、`-c` 是计数；C 项把两个参数对调了（常见笔误）；D 项 `-E` 是扩展正则、`-r` 是递归。**排障时 `grep -n` 定位行号后用 `sed -n '100,120p'` 看上下文**是常用套路。",
+    "tags": ["grep", "忽略大小写", "常用参数"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4114,
+    "type": "single",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "`sed -i 's/old/new/g' file.txt` 的作用是？",
+    "options": [
+      { "key": "A", "text": "直接修改原文件，把每一行中所有 old 替换成 new" },
+      { "key": "B", "text": "只输出到屏幕，不修改文件，每行只替换第一个 old" },
+      { "key": "C", "text": "在文件末尾追加 new" },
+      { "key": "D", "text": "删除包含 old 的行" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`s/old/new/g` 中 `g` 表示「每行内全局替换」（不加 g 只换每行第一个）；`-i` 表示 in-place，直接改动原文件**（不打印到屏幕）。\n\n```bash\nsed -n '10,20p' f.txt              # 只看第 10-20 行（-n 关闭默认输出）\nsed -i.bak 's/8080/9090/g' f.txt   # 改文件并留 .bak 备份（生产推荐）\nsed '/^#/d' f.conf                 # 删除以 # 开头的行\nsed -i '3a\\new line' f.txt         # 在第 3 行后追加\n```\n\n**注意 `-i` 在不同平台行为不同**：Linux GNU sed 可以直接 `-i`，macOS/BSD 的 `sed -i` 必须带备份后缀（`-i ''`）。B 项是「不加 -i 且不加 g」的效果；C 项是 `>>` 重定向或 `sed '$a` 的活；D 项对应 `sed '/old/d'`。此外，**正则替换前一定要先 dry-run 或备份**，误替换配置文件是常见事故。",
+    "tags": ["sed", "替换", "in-place"],
+    "frequency": "中频"
+  }
+]

@@ -1,0 +1,527 @@
+[
+  {
+    "id": 5100,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "Prometheus 的核心「拉取（pull）」模型指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Prometheus 主动定时去抓取（scrape）目标暴露的 metrics 接口"
+      },
+      {
+        "key": "B",
+        "text": "目标主动推送给 Prometheus"
+      },
+      {
+        "key": "C",
+        "text": "用户手工导入数据"
+      },
+      {
+        "key": "D",
+        "text": "从数据库读数据"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Prometheus 默认 pull：按 `scrape_interval` 去访问目标的 `/metrics`**（如 node_exporter 的 9100 端口）。**好处**：目标不需要知道监控系统存在、能自动发现目标状态（抓不到=down）。**push 场景用 Pushgateway**（短生命周期任务，如批处理脚本）。",
+    "tags": [
+      "Prometheus",
+      "pull",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5101,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "Prometheus 的四种指标类型中，只增不减的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Summary"
+      },
+      {
+        "key": "B",
+        "text": "Gauge"
+      },
+      {
+        "key": "C",
+        "text": "Histogram"
+      },
+      {
+        "key": "D",
+        "text": "Counter"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**Counter 只能增加（或重置归零）**，如「请求总数」「错误总数」。**因此用 Counter 必须配 `rate()`/`increase()` 才能看出「每秒速率」**——直接看 Counter 的绝对值没有意义（它永远在涨）。**Gauge 可增可减**（内存使用率、连接数）。**Histogram/Summary 用于统计分布（如请求延迟）**。",
+    "tags": [
+      "Prometheus",
+      "指标类型",
+      "Counter"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5102,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "「黄金指标（Golden Signals）」通常指哪四个？",
+    "options": [
+      {
+        "key": "A",
+        "text": "QPS、TPS、GC、连接数"
+      },
+      {
+        "key": "B",
+        "text": "CPU、内存、磁盘、网络"
+      },
+      {
+        "key": "C",
+        "text": "延迟、流量、错误、饱和度"
+      },
+      {
+        "key": "D",
+        "text": "可用性、可靠性、可维护性、安全性"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**Google SRE 提出的四个黄金信号：延迟（Latency）、流量（Traffic）、错误（Errors）、饱和度（Saturation）**。**它们站在「服务」视角而非「资源」视角**——B 是资源指标，资源正常但服务可能已经出错（如连接池打满、下游超时）。**「资源指标全绿但业务失败」就是只做 B 层（资源指标）监控的盲区。**",
+    "tags": [
+      "监控",
+      "黄金指标",
+      "SRE"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5103,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "告警规则里 `for: 5m` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "告警 5 分钟后自动恢复"
+      },
+      {
+        "key": "B",
+        "text": "条件持续满足 5 分钟才触发告警（避免瞬时抖动误报）"
+      },
+      {
+        "key": "C",
+        "text": "每 5 分钟检查一次"
+      },
+      {
+        "key": "D",
+        "text": "告警重复发送 5 次"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`for` 是「持续时间」——表达式连续为真达到该时长才真正触发告警**。**这是减少误报最重要的参数**：CPU 瞬时冲高 10 秒不该告警，持续 5 分钟才值得人介入。**代价是「发现变慢」**——对致命问题（如服务完全不可用）要把 `for` 设短。`for` 与 `scrape_interval` 要配合（`for` 不能小于采样间隔）。",
+    "tags": [
+      "Prometheus",
+      "告警",
+      "for"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5104,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "`rate(http_requests_total[5m])` 计算的是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "最近 5 分钟的总请求数"
+      },
+      {
+        "key": "B",
+        "text": "最近 5 分钟内「每秒的请求数」"
+      },
+      {
+        "key": "C",
+        "text": "请求数的最大值"
+      },
+      {
+        "key": "D",
+        "text": "请求数的方差"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`rate()` 把 Counter 的「累计值」换算成「每秒速率」**（对区间内每个采样点做线性回归，能正确处理计数器重置）。**要总量用 `increase()`**（区间内的总增量）。**常见错误：直接用 Counter 的原始值判断流量**——它是单调递增的，看不出「当前是否异常」。",
+    "tags": [
+      "Prometheus",
+      "rate",
+      "查询"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5105,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "「告警风暴（alert storm）」指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "一次故障引发成百上千条告警，淹没真正有用的信息"
+      },
+      {
+        "key": "B",
+        "text": "告警发送得太慢"
+      },
+      {
+        "key": "C",
+        "text": "告警内容写错了"
+      },
+      {
+        "key": "D",
+        "text": "没有告警"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**一个底层故障（如网络抖动）会触发上下游所有组件的告警**，导致值班人收到上百条消息、无法判断根因。**治理手段**：①**告警分组（grouping）**——同一类告警合并成一条；②**抑制（inhibition）**——底层故障时抑制上层衍生告警；③**分层告警**——只对「用户可感知的症状」告警，而不是每个内部指标。**「抑制」是最有效的：数据库挂了，就不要同时告警 20 个应用接口超时。**",
+    "tags": [
+      "监控",
+      "告警",
+      "风暴"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5106,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "「USE 方法」用于分析什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "数据库：读、写、锁"
+      },
+      {
+        "key": "B",
+        "text": "应用：用户数、会话数、错误数"
+      },
+      {
+        "key": "C",
+        "text": "网络：上行、下行、延迟"
+      },
+      {
+        "key": "D",
+        "text": "资源：使用率（Utilization）、饱和度（Saturation）、错误（Errors）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**USE（Brendan Gregg 提出）针对「每类资源」检查三项**：利用率（是否接近满载）、饱和度（是否排队——如 CPU run queue、磁盘 await）、错误（硬件/软件错误计数）。**它和「黄金指标」互补：USE 看资源，黄金指标看服务。** 排查「系统变慢」时，**饱和度往往比利用率更能说明问题**（利用率 70% 但队列很长 = 已经在排队）。",
+    "tags": [
+      "监控",
+      "USE",
+      "方法论"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5107,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "衡量「延迟」时为什么更常用 P99 而不是平均值？",
+    "options": [
+      {
+        "key": "A",
+        "text": "平均值没有意义"
+      },
+      {
+        "key": "B",
+        "text": "P99 计算更简单"
+      },
+      {
+        "key": "C",
+        "text": "平均值会被大量快请求拉低，掩盖「少数用户极慢」的问题"
+      },
+      {
+        "key": "D",
+        "text": "P99 总是比平均值小"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**平均值会掩盖长尾**：99 个请求 10ms + 1 个请求 10s → 平均值约 110ms，看起来「还行」，但那 1 个用户等了 10 秒。**P99 = 99% 的请求都快于这个值**，能反映「最差的那部分用户体验」。**实践中常同时看 P50/P90/P99**：P50 看常态，P99 看尾巴。**注意：直方图的桶边界要设置合理，否则 P99 不准。**",
+    "tags": [
+      "监控",
+      "延迟",
+      "P99"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5108,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "node_exporter 默认监听哪个端口？",
+    "options": [
+      {
+        "key": "A",
+        "text": "8080"
+      },
+      {
+        "key": "B",
+        "text": "9090"
+      },
+      {
+        "key": "C",
+        "text": "9100"
+      },
+      {
+        "key": "D",
+        "text": "3000"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**node_exporter 默认 9100**（`/metrics`）。**9090 是 Prometheus Server**，**3000 是 Grafana**，**8080 是常见应用端口**。这些端口的记忆有助于排查「为什么抓不到指标」——先 `curl localhost:9100/metrics` 确认 exporter 正常，再确认 Prometheus 的 `targets` 是 UP。",
+    "tags": [
+      "监控",
+      "node_exporter",
+      "端口"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5109,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "「黑盒监控」与「白盒监控」的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "黑盒是监控数据库，白盒是监控服务器"
+      },
+      {
+        "key": "B",
+        "text": "白盒看内部指标（如 QPS/内存），黑盒从外部探测「服务是否可用」"
+      },
+      {
+        "key": "C",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "D",
+        "text": "黑盒不需要网络"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**白盒（内部视角）**：应用暴露的 metrics，如请求数、延迟、GC、线程池。**黑盒（外部视角）**：从用户位置探测（HTTP 探针、ICMP、DNS 查询、端口探测）——**它回答「用户能不能用」，而不是「服务自己觉得好不好」**。**两者必须都有**：白盒能定位原因，黑盒能发现「服务自认为健康但实际不可用」（如返回 500、DNS 解析错、证书过期）。",
+    "tags": [
+      "监控",
+      "黑盒",
+      "白盒"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5110,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "Grafana 是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "可视化与看板工具（可接多种数据源），本身不存数据"
+      },
+      {
+        "key": "B",
+        "text": "时序数据库"
+      },
+      {
+        "key": "C",
+        "text": "日志采集器"
+      },
+      {
+        "key": "D",
+        "text": "告警短信网关"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Grafana 是「前端可视化」，它不采集也不存储数据**——数据来自 Prometheus/Loki/ES/MySQL 等多种数据源。**所以「Grafana 上看不到数据」时，要先去数据源（如 Prometheus 的 Graph 页面）确认数据是否存在。** 它也内置告警功能（Grafana Alerting），但很多团队仍用 Prometheus + Alertmanager 做告警。",
+    "tags": [
+      "Grafana",
+      "可视化",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5111,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "「告警收敛」的目的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "删除所有告警"
+      },
+      {
+        "key": "B",
+        "text": "把告警短信改成邮件"
+      },
+      {
+        "key": "C",
+        "text": "降低告警的精度"
+      },
+      {
+        "key": "D",
+        "text": "把同一根因的多条告警合并，减少噪音"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**收敛 = 减少噪音、突出真问题**。手段：①**分组（group）**——同一告警名的多条实例合成一条；②**抑制（inhibit）**——底层故障时压掉上层的衍生告警；③**静默（silence）**——计划维护期不告警；④**去重（dedup）**——同一告警不重复通知。**目标：值班人收到的每条告警都「值得立即处理」。**",
+    "tags": [
+      "监控",
+      "告警收敛",
+      "治理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5112,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "「PromQL 里的 `by` 和 `without`」用于？",
+    "options": [
+      {
+        "key": "A",
+        "text": "指定数据源"
+      },
+      {
+        "key": "B",
+        "text": "过滤时间范围"
+      },
+      {
+        "key": "C",
+        "text": "设置告警阈值"
+      },
+      {
+        "key": "D",
+        "text": "聚合时保留（by）或排除（without）指定的标签"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`sum by (instance) (...)` 保留 instance 维度；`sum without (instance) (...)` 排除它**。用途：**按维度聚合**——如「按接口统计 QPS」用 `sum by (path) (rate(...[1m]))`。**常见坑：聚合后标签丢失导致「不同维度被合并」**（如把 instance 去掉后，多台机器的值被加在一起）。",
+    "tags": [
+      "Prometheus",
+      "PromQL",
+      "聚合"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 5113,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "「监控指标基数（cardinality）爆炸」通常由什么引起？",
+    "options": [
+      {
+        "key": "A",
+        "text": "告警规则太多"
+      },
+      {
+        "key": "B",
+        "text": "监控的机器太多"
+      },
+      {
+        "key": "C",
+        "text": "把高基数字段（如 user_id、request_id、URL 全路径）做成了标签"
+      },
+      {
+        "key": "D",
+        "text": "看板太多"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**「标签基数」= 每个标签取值的组合数**。如果 `label=user_id`，每个用户都是新时间序列 → 几万个用户就是几万条序列 → **Prometheus 内存与写入压力暴涨**。**规则：标签只放「有限枚举」**（service、status、endpoint 模板），**高基数字段放日志或 trace，不要进指标**。排查：`topk(10, count by (__name__)({__name__=~\".+\"}))`。",
+    "tags": [
+      "Prometheus",
+      "基数",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5114,
+    "type": "single",
+    "category": "监控告警",
+    "difficulty": "简单",
+    "question": "一条「好告警」最重要的特征是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "能反映尽可能多的指标"
+      },
+      {
+        "key": "B",
+        "text": "对应一个明确的、可执行的动作（有 Runbook），且真的需要人介入"
+      },
+      {
+        "key": "C",
+        "text": "触发次数越多越好"
+      },
+      {
+        "key": "D",
+        "text": "只发给管理者"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**「每条告警都应对应一个动作」是告警设计的核心原则**。如果收到告警后「只能看看，什么也做不了」，那它就该是看板而不是告警。**配套要素**：①明确的触发条件（含 `for` 持续时长）；②**Runbook 链接**（收到后去哪查、怎么处理）；③严重级别（P1 电话 vs P3 邮件）；④抑制关系（避免连带告警）。**「告警太多没人看」的根源往往就是「多数告警不需要动作」。**",
+    "tags": [
+      "监控",
+      "告警设计",
+      "原则"
+    ],
+    "frequency": "高频"
+  }
+]

@@ -1,0 +1,527 @@
+[
+  {
+    "id": 1500,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "配置 `worker_processes auto;` 的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "按 CPU 核心数自动决定 worker 进程数量"
+      },
+      {
+        "key": "B",
+        "text": "按并发连接数自动伸缩 worker 数量"
+      },
+      {
+        "key": "C",
+        "text": "自动选择最空闲的 worker 处理请求"
+      },
+      {
+        "key": "D",
+        "text": "随系统负载动态增减 worker 进程"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`auto` 等于 CPU 核心数**（`nproc` 的结果）。Nginx 是多进程模型：一个 master 负责读配置、管理 worker，多个 worker 各自独立 accept 连接，所以 worker 数一般对齐核心数即可。它**不会**随负载或并发动态伸缩，那是 `worker_connections` 和上游扩容要解决的事；「选最空闲的 worker」也不是 Nginx 的调度方式。",
+    "tags": [
+      "Nginx",
+      "worker_processes",
+      "进程模型"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1501,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "同一个 server 里同时存在 `location = /index.html`、`location ^~ /static/`、`location ~ \\.php$`、`location /` 时，优先级最高的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`location /`（最长普通前缀匹配）"
+      },
+      {
+        "key": "B",
+        "text": "`location ^~ /static/`（前缀匹配且不再试正则）"
+      },
+      {
+        "key": "C",
+        "text": "`location ~ \\.php$`（正则匹配）"
+      },
+      {
+        "key": "D",
+        "text": "`location = /index.html`（精确匹配）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "location 优先级从高到低是：**`=` 精确匹配 → `^~` 前缀（命中后直接停止，不再试正则）→ 正则 `~`/`~*`（按出现顺序，第一条命中即止）→ 普通前缀（选最长的那个）**。所以 `=` 排第一。很多人以为正则优先于一切前缀，其实 `^~` 就是为了「前缀命中就不要再走正则」而存在的。",
+    "tags": [
+      "Nginx",
+      "location",
+      "匹配优先级"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1502,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "`location /api/ { proxy_pass http://backend; }` 与 `proxy_pass http://backend/;` 的关键区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "带斜杠表示只代理 GET 请求，不带斜杠代理全部方法"
+      },
+      {
+        "key": "B",
+        "text": "带斜杠表示走 HTTPS，不带斜杠表示走 HTTP"
+      },
+      {
+        "key": "C",
+        "text": "带斜杠时后端收到的是去掉 `/api/` 前缀后的 URI，不带斜杠时原样透传完整 URI"
+      },
+      {
+        "key": "D",
+        "text": "两者完全等价，斜杠只是书写风格"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "判断依据是 `proxy_pass` 里**有没有 URI 部分**：写了 URI（哪怕只有一个 `/`）就用它**替换掉 location 匹配到的那段前缀**，所以 `/api/user` 到后端变成 `/user`；没写 URI 就**把原始 URI 原样转发**，后端仍收到 `/api/user`。这个差异是 404 和「后端路由对不上」的高发原因。",
+    "tags": [
+      "Nginx",
+      "proxy_pass",
+      "反向代理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1503,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "upstream 块里不写任何负载均衡指令时，默认的算法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`ip_hash`，按客户端 IP 哈希"
+      },
+      {
+        "key": "B",
+        "text": "`rr`，按顺序轮询"
+      },
+      {
+        "key": "C",
+        "text": "`least_conn`，转发给连接数最少的节点"
+      },
+      {
+        "key": "D",
+        "text": "随机挑选一个节点"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**默认就是轮询 `rr`**，配了 `weight` 就是加权轮询 `wrr`。`ip_hash` 需要显式声明，用来把同一客户端固定到同一台上（缓解会话问题，但节点上下线会导致分布漂移）；`least_conn` 也要显式声明。Nginx 没有「随机」这个内建算法。",
+    "tags": [
+      "Nginx",
+      "upstream",
+      "负载均衡"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1504,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "什么场景下应该给 upstream 加 `ip_hash`？",
+    "options": [
+      {
+        "key": "A",
+        "text": "后端节点处理能力不一致，需要按权重分配"
+      },
+      {
+        "key": "B",
+        "text": "会话保存在单机本地、后端没有共享 session 存储，需要同一客户端固定落到同一台"
+      },
+      {
+        "key": "C",
+        "text": "后端某个节点经常慢，想让快节点多接请求"
+      },
+      {
+        "key": "D",
+        "text": "想让后端响应内容按客户端 IP 做差异化缓存"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "`ip_hash` 的价值是**用客户端 IP 做一致性绑定**，解决「session 存在本地文件/内存」时的会话丢失。但它是把双刃剑：①NAT 后大量客户端共用一个出口 IP，会全压到一台；②节点增减时映射大面积漂移。所以更好的做法是共享 session（Redis）后回到 rr/wrr。按能力分配用 `weight`，`least_conn` 才是照顾慢节点。",
+    "tags": [
+      "Nginx",
+      "ip_hash",
+      "会话保持"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1505,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "`try_files $uri $uri/ /index.html;` 的执行逻辑是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "依次检查 `$uri`、`$uri/` 是否存在于磁盘，都不存在时内部跳转到 `/index.html`"
+      },
+      {
+        "key": "B",
+        "text": "三者同时尝试，哪个先返回就用哪个"
+      },
+      {
+        "key": "C",
+        "text": "先请求 `/index.html`，失败再回退到 `$uri`"
+      },
+      {
+        "key": "D",
+        "text": "把三个 URI 拼成一条路径去找文件"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "`try_files` 是**按顺序逐个检查，前一个不存在才试下一个，最后一个作为 fallback**（可以是内部 URI 跳转，也可以是 `=404`）。`$uri` 查文件、`$uri/` 查目录，都不存在就落到 `/index.html`。这正是 SPA（单页应用）刷新子路由 404 的标准解法。它不是并发尝试，也不会逆序。",
+    "tags": [
+      "Nginx",
+      "try_files",
+      "静态资源"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1506,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "把旧域名永久迁移到新域名，应该用哪个返回？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`return 302 https://new.example.com;`"
+      },
+      {
+        "key": "B",
+        "text": "`return 500;`"
+      },
+      {
+        "key": "C",
+        "text": "`return 404;`"
+      },
+      {
+        "key": "D",
+        "text": "`return 301 https://new.example.com;`"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**301 是永久重定向**，搜索引擎会把权重迁移到新域名，浏览器也会缓存这个跳转，所以适合「确定不再回头」的域名迁移；**302 是临时重定向**，不缓存、不传递权重，适合灰度或临时维护。404/500 只是错误码，不会把用户送到新站。注意 301 一旦被浏览器缓存，测试阶段用错会很难回退。",
+    "tags": [
+      "Nginx",
+      "return",
+      "重定向"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1507,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "开了 `gzip on;` 之后发现 JS、CSS 依然没有被压缩，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "必须同时开启 `gzip_static` 才能压动态内容"
+      },
+      {
+        "key": "B",
+        "text": "gzip 只支持压缩 HTML，其他类型天生压不了"
+      },
+      {
+        "key": "C",
+        "text": "没有在 `gzip_types` 里显式列出 `application/javascript`、`text/css` 等类型"
+      },
+      {
+        "key": "D",
+        "text": "客户端没有声明 `Accept-Encoding: gzip` 才会这样，与配置无关"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "`gzip on` 只打开开关，**默认 `gzip_types` 仅包含 `text/html`**，其余 MIME 类型必须显式添加，例如 `gzip_types text/css application/javascript application/json;`。JS/CSS 体量大、压缩收益最高，是必配项。`gzip_static` 是另一件事：直接发送预压缩好的 `.gz` 文件。客户端没带 `Accept-Encoding` 确实会导致不压缩，但那属于正常协议行为，不是「配置缺失」。",
+    "tags": [
+      "Nginx",
+      "gzip",
+      "配置"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1508,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "`error_log` 的级别中，记录信息最少（只记最严重问题）的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`debug`"
+      },
+      {
+        "key": "B",
+        "text": "`info`"
+      },
+      {
+        "key": "C",
+        "text": "`crit`"
+      },
+      {
+        "key": "D",
+        "text": "`warn`"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "级别从多到少依次是 **debug → info → notice → warn → error → crit → alert → emerg**。设定某个级别会记录「该级别及更严重」的日志，所以 `crit` 只记严重错误，日志量最小。`debug` 最啰嗦，只在排查时临时开，生产常开会把磁盘写满。默认级别是 `error`。",
+    "tags": [
+      "Nginx",
+      "error_log",
+      "日志"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1509,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "用户上传大文件时返回 `413 Request Entity Too Large`，应该调整哪个指令？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`keepalive_timeout`"
+      },
+      {
+        "key": "B",
+        "text": "`client_max_body_size`"
+      },
+      {
+        "key": "C",
+        "text": "`worker_connections`"
+      },
+      {
+        "key": "D",
+        "text": "`proxy_read_timeout`"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`client_max_body_size` 限制请求体大小，默认只有 `1m`**，超限直接回 413，请求根本到不了后端——所以「后端日志里啥都没有」是这个报错的典型特征。改大即可，例如 `client_max_body_size 100m;`。`worker_connections` 是单 worker 最大连接数，`proxy_read_timeout` 是等后端的超时，`keepalive_timeout` 是客户端长连接空闲时长，都和报文体积无关。",
+    "tags": [
+      "Nginx",
+      "client_max_body_size",
+      "413"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1510,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "`root` 与 `alias` 在 location 中的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`root` 会把 location 前缀拼进路径，`alias` 则直接用 alias 路径替换掉 location 前缀"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价，只是写法不同"
+      },
+      {
+        "key": "C",
+        "text": "`root` 只能用于 server 级，`alias` 只能用于 location 级"
+      },
+      {
+        "key": "D",
+        "text": "`root` 用于静态文件，`alias` 用于反向代理目标地址"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`root` 是「拼」：最终路径 = root + 请求 URI**；**`alias` 是「替」：最终路径 = alias 指定的路径 + 去掉 location 前缀后的剩余部分**。例如 `location /img/ { alias /data/img/; }` 请求 `/img/a.png` 读的是 `/data/img/a.png`；若用 `root /data/img;` 则会去找 `/data/img/img/a.png`。alias 是指向目录时**结尾斜杠必须写**，否则路径会错拼。",
+    "tags": [
+      "Nginx",
+      "root",
+      "alias"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1511,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "`keepalive_timeout 65;` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "worker 进程最长存活 65 秒后自动重启"
+      },
+      {
+        "key": "B",
+        "text": "单次请求处理最长 65 秒，超时返回 504"
+      },
+      {
+        "key": "C",
+        "text": "与后端 upstream 建立连接的超时时间"
+      },
+      {
+        "key": "D",
+        "text": "客户端长连接空闲超过 65 秒后由服务端关闭连接"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`keepalive_timeout` 管的是客户端连接复用（空闲多久后关闭）**，目的是复用 TCP、省掉重复握手。它不限制单个请求的处理时长——那要看 `send_timeout`、`proxy_read_timeout`。和后端建连超时是 `proxy_connect_timeout`，upstream 长连接池另有 `keepalive` 指令。",
+    "tags": [
+      "Nginx",
+      "keepalive_timeout",
+      "连接"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1512,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "改完 nginx.conf 后要平滑生效、不中断现有连接，正确做法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`nginx -s stop` 后再启动"
+      },
+      {
+        "key": "B",
+        "text": "直接 `systemctl restart nginx` 即可，不会中断"
+      },
+      {
+        "key": "C",
+        "text": "`kill -9` master 进程后重启"
+      },
+      {
+        "key": "D",
+        "text": "`nginx -s reload`（等价于向 master 发 HUP 信号）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**reload 会启动新 worker 加载新配置，旧 worker 把手上的请求处理完再退出**，因此不停服。它由 master 收到 HUP 实现。`stop` 和 `restart` 都会中断连接，`kill -9` 更会丢掉未落盘的日志并可能留下端口占用。规范流程是：先 `nginx -t` 校验语法，再 `reload`。",
+    "tags": [
+      "Nginx",
+      "reload",
+      "平滑升级"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1513,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "想知道 Nginx 到底记了哪些访问日志字段，该看哪个文件里的 `log_format` 定义？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`/var/log/nginx/error.log`"
+      },
+      {
+        "key": "B",
+        "text": "`/etc/nginx/access.log`"
+      },
+      {
+        "key": "C",
+        "text": "`/etc/nginx/nginx.conf`（及 `include` 进来的配置文件）"
+      },
+      {
+        "key": "D",
+        "text": "`/etc/nginx/conf.d/default.conf` 里的 `server_name` 行"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "`log_format` 是**配置指令，只能写在 nginx.conf 及其 include 的配置文件中**（http 上下文），默认格式叫 `combined`。access.log 是输出结果、error.log 是错误日志，它们本身不定义字段。想让日志带上耗时、上游地址等，就得自定义 `log_format` 并在 `access_log` 里引用。",
+    "tags": [
+      "Nginx",
+      "access_log",
+      "log_format"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1514,
+    "type": "single",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "重新加载或重启 Nginx 之前，检查配置文件语法是否正确的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`nginx -s reload`"
+      },
+      {
+        "key": "B",
+        "text": "`nginx -t`"
+      },
+      {
+        "key": "C",
+        "text": "`nginx -v`"
+      },
+      {
+        "key": "D",
+        "text": "`nginx -V`"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`nginx -t` 只做语法与路径校验，不启动服务、不影响线上**，输出 `syntax is ok` / `test is successful` 才算过；`nginx -T` 是校验并打印完整生效配置，排查 include 顺序很有用。`-s reload` 是真正重载（配置有错会导致旧 worker 保留、新配置不生效），`-v`/`-V` 是看版本和编译参数。养成「先 -t 再 reload」的习惯能避免自己把自己搞挂。",
+    "tags": [
+      "Nginx",
+      "nginx -t",
+      "配置校验"
+    ],
+    "frequency": "低频"
+  }
+]

@@ -1,0 +1,257 @@
+[
+  {
+    "id": 3700,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "InnoDB 与 MyISAM 最主要的区别是？",
+    "options": [
+      { "key": "A", "text": "InnoDB 支持事务和行级锁，MyISAM 不支持事务、只有表级锁" },
+      { "key": "B", "text": "InnoDB 不支持外键，MyISAM 支持外键" },
+      { "key": "C", "text": "MyISAM 支持崩溃恢复，InnoDB 不支持" },
+      { "key": "D", "text": "两者都支持事务，区别只是锁粒度不同" }
+    ],
+    "answer": ["A"],
+    "explanation": "**InnoDB 支持事务、行级锁、外键和崩溃恢复（redo log），MyISAM 三者都没有，只支持表级锁。** 这是选型的第一判据：\n\n```sql\n-- MyISAM 下这条语句会锁整张表，并发写入全部排队\nUPDATE t SET c = c + 1 WHERE id = 1;\n```\n\nB、C 两项把两者的特性说反了；D 项错误在于 **MyISAM 根本不支持事务**。结论：**OLTP 业务一律 InnoDB**，MyISAM 只在老系统或只读统计表里还能见到。",
+    "tags": ["InnoDB", "MyISAM", "存储引擎"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3701,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "InnoDB 的索引底层使用哪种数据结构？",
+    "options": [
+      { "key": "A", "text": "B+Tree（B+ 树）" },
+      { "key": "B", "text": "哈希表" },
+      { "key": "C", "text": "红黑树" },
+      { "key": "D", "text": "跳表" }
+    ],
+    "answer": ["A"],
+    "explanation": "**InnoDB 的索引是 B+Tree**：非叶子节点只存索引键（不存数据），扇出大、树高通常 3 层左右，一次查询只需几次磁盘 IO；叶子节点之间用双向链表串联，**天然支持范围查询和排序**。\n\n- 哈希索引只支持等值查询，InnoDB 里只有自适应哈希索引（AHI）这种内部优化，不是用户可建的主结构；\n- 红黑树每个节点只存一个键，层数深、IO 次数多；\n- 跳表是 Redis 的 zset 用的，不是 MySQL 索引结构。",
+    "tags": ["B+Tree", "索引结构", "InnoDB"],
+    "frequency": "低频"
+  },
+  {
+    "id": 3702,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "InnoDB 中聚簇索引（主键索引）与二级索引的叶子节点分别存放什么？",
+    "options": [
+      { "key": "A", "text": "聚簇索引叶子节点存完整行数据，二级索引叶子节点存主键值" },
+      { "key": "B", "text": "两者叶子节点都存完整行数据" },
+      { "key": "C", "text": "两者叶子节点都只存主键值" },
+      { "key": "D", "text": "聚簇索引叶子节点存主键值，二级索引叶子节点存完整行数据" }
+    ],
+    "answer": ["A"],
+    "explanation": "**聚簇索引（clustered index）的叶子节点就是数据页，整行记录都在里面**；二级索引（辅助索引）叶子只存「索引列 + 主键值」，所以要拿其他列就得**回表**——再按主键值查一次聚簇索引。\n\n```sql\n-- idx_name(user_name) 是二级索引\nSELECT * FROM users WHERE user_name = 'tom';\n-- 先在 idx_name 找到主键 id，再用 id 回表取整行\n```\n\n正因为要回表，才需要**覆盖索引**（查询列全在索引里，Extra 显示 `Using index`）来省掉这次额外查找。D 项把两者说反了。",
+    "tags": ["聚簇索引", "二级索引", "回表"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3703,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "联合索引为 `(a, b, c)`，查询条件只有 `WHERE b = 1` 时，通常能否有效利用该索引？",
+    "options": [
+      { "key": "A", "text": "不能有效利用，因为不满足最左前缀原则" },
+      { "key": "B", "text": "一定能用，因为 b 是索引里的一列" },
+      { "key": "C", "text": "能用，效果等同于单独建一个 `(b)` 索引" },
+      { "key": "D", "text": "会直接报错，提示索引不存在" }
+    ],
+    "answer": ["A"],
+    "explanation": "**最左前缀原则：联合索引按 (a, b, c) 的顺序排序，必须从最左列 a 开始匹配。** 只给 b，MySQL 无法在索引上定位起点，通常只能全表扫描（MySQL 8.0 的 skip scan 是特例，不能当常态）。\n\n```sql\n-- 能用：a 打头\nSELECT * FROM t WHERE a = 1 AND b = 2;\n-- 用不上（或只能用 a）：b 打头\nSELECT * FROM t WHERE b = 2;\n```\n\nC 项是常见误解——`(a, b, c)` 的 b 是按 a 分组后才有序的，并不等价于 `(b)` 单列索引。设计联合索引时，**把等值条件多、区分度高的列放左边**。",
+    "tags": ["最左前缀", "联合索引", "索引优化"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3704,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "事务 ACID 中的「A」（Atomicity，原子性）指的是？",
+    "options": [
+      { "key": "A", "text": "事务中的操作要么全部成功，要么全部失败回滚" },
+      { "key": "B", "text": "并发事务之间互不干扰" },
+      { "key": "C", "text": "事务提交后数据永久保存，不会丢失" },
+      { "key": "D", "text": "数据始终满足业务约束（如余额不能为负）" }
+    ],
+    "answer": ["A"],
+    "explanation": "**A = Atomicity 原子性：一个事务是不可分割的整体，要么全做、要么全不做。** InnoDB 靠 **undo log** 实现回滚——执行过程中每个修改都记了反向操作，失败时倒序撤销。\n\nB 是隔离性（Isolation），靠锁和 MVCC；C 是持久性（Durability），靠 redo log；D 是一致性（Consistency）。**ACID 里的一致性更多是业务层面的约束**（约束、触发器、唯一索引），数据库本身保证的是 A、I、D 三个机制。",
+    "tags": ["事务", "ACID", "原子性"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3705,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "MySQL InnoDB 的默认事务隔离级别是？",
+    "options": [
+      { "key": "A", "text": "读未提交（READ UNCOMMITTED）" },
+      { "key": "B", "text": "读已提交（READ COMMITTED）" },
+      { "key": "C", "text": "可重复读（REPEATABLE READ）" },
+      { "key": "D", "text": "串行化（SERIALIZABLE）" }
+    ],
+    "answer": ["C"],
+    "explanation": "**InnoDB 默认是 REPEATABLE READ（可重复读）**，用 `SELECT @@transaction_isolation;` 可以确认（5.7 及以前变量名是 `tx_isolation`）。\n\n- 读未提交：能读到别人没提交的数据，会脏读；\n- 读已提交：Oracle/PostgreSQL 的默认级别；\n- 可重复读：同一事务内多次查询结果一致（MVCC 快照），并且 InnoDB 用**间隙锁（next-key lock）**在很大程度上避免了幻读；\n- 串行化：读写全加锁，并发最差。\n\n注意：**很多互联网业务会主动改成 READ COMMITTED**（减少间隙锁、提高并发），但问「MySQL 默认值」时答案是可重复读。",
+    "tags": ["隔离级别", "MVCC", "可重复读"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3706,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "哪个隔离级别能避免脏读，但仍可能出现不可重复读？",
+    "options": [
+      { "key": "A", "text": "读未提交（READ UNCOMMITTED）" },
+      { "key": "B", "text": "读已提交（READ COMMITTED）" },
+      { "key": "C", "text": "可重复读（REPEATABLE READ）" },
+      { "key": "D", "text": "串行化（SERIALIZABLE）" }
+    ],
+    "answer": ["B"],
+    "explanation": "**READ COMMITTED 只保证「只能读到已提交的数据」，所以脏读没了；但每次 SELECT 都会重新生成 Read View，同一事务内两次查询可能看到不同结果，即不可重复读。**\n\n对照表：\n\n| 级别 | 脏读 | 不可重复读 | 幻读 |\n| --- | --- | --- | --- |\n| 读未提交 | 可能 | 可能 | 可能 |\n| **读已提交** | 不会 | **可能** | 可能 |\n| 可重复读 | 不会 | 不会 | InnoDB 基本不会 |\n| 串行化 | 不会 | 不会 | 不会 |\n\nC 项可重复读同样避免了不可重复读，不符合「仍可能出现」；A 项连脏读都没避免；D 项三者都避免了。",
+    "tags": ["隔离级别", "脏读", "不可重复读"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3707,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "MVCC（多版本并发控制）实现「快照读」主要依赖哪类日志？",
+    "options": [
+      { "key": "A", "text": "undo log" },
+      { "key": "B", "text": "redo log" },
+      { "key": "C", "text": "binlog" },
+      { "key": "D", "text": "error log" }
+    ],
+    "answer": ["A"],
+    "explanation": "**MVCC = undo log 版本链 + Read View。** 每行记录的隐藏字段 `DB_ROLL_PTR` 指向 undo log 里的旧版本，读的时候从最新版本顺着版本链往回找，直到找到「对本事务可见」的那个版本，所以普通 SELECT 不用加锁也能读到一致快照。\n\n- redo log 是物理日志，保证崩溃恢复（已提交的数据不丢），和版本可见性无关；\n- binlog 是 server 层日志，用于主从复制和按时间点恢复；\n- error log 只是错误日志。\n\n补充：**RC 每次 SELECT 新建 Read View，RR 在事务第一次 SELECT 时建一次并复用**——这就是两者「可重复读」差异的根源。",
+    "tags": ["MVCC", "undo log", "Read View"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3708,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "关于 redo log 与 undo log 的区别，下列正确的是？",
+    "options": [
+      { "key": "A", "text": "redo log 记录页的物理修改，用于崩溃恢复；undo log 记录反向操作，用于回滚和 MVCC" },
+      { "key": "B", "text": "redo log 用于回滚，undo log 用于崩溃恢复" },
+      { "key": "C", "text": "两者都是 binlog 的别名" },
+      { "key": "D", "text": "undo log 是 InnoDB 引擎层日志，redo log 是 server 层日志" }
+    ],
+    "answer": ["A"],
+    "explanation": "**redo log：物理日志，记录「某页某偏移改成了什么」，循环写、容量固定，保证崩溃后已提交事务能重做（Durability）。** **undo log：逻辑日志，记录反向 SQL/旧版本，事务回滚时用，同时给 MVCC 提供历史版本。**\n\n```text\nUPDATE t SET c = 1 WHERE id = 10;\n→ undo log 记：把 c 改回旧值（逻辑反向）\n→ redo log 记：页 5 偏移 0x30 的值改为 1（物理）\n```\n\nD 项把层级说反了——**redo log 和 undo log 都在 InnoDB 引擎层，binlog 才是 server 层日志**，所以崩溃恢复要靠 redo + binlog 的**两阶段提交**来保证一致。",
+    "tags": ["redo log", "undo log", "WAL"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3709,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "binlog 的 ROW 格式的特点是？",
+    "options": [
+      { "key": "A", "text": "记录每一行数据修改前后的值，主从一致性好，但日志体积大" },
+      { "key": "B", "text": "记录原始 SQL 语句，日志小，但含 `NOW()` 等不确定函数时可能主从不一致" },
+      { "key": "C", "text": "只记录表结构变更，不记录数据变更" },
+      { "key": "D", "text": "不记录任何数据变更，只用于审计登录" }
+    ],
+    "answer": ["A"],
+    "explanation": "**ROW 格式记录的是「哪一行的哪些列从什么值变成了什么值」**，因此不依赖 SQL 重放环境，`NOW()`、`UUID()`、随机数等不确定函数也不会让主从数据跑偏，是生产环境的首选。代价是**日志量大**（批量 UPDATE 十万行就记十万行的前后镜像），磁盘和网络开销高。\n\nB 项是 STATEMENT 格式：日志小，但不确定函数、触发器、LIMIT 无 ORDER BY 等场景容易主从不一致；MySQL 的 MIXED 会在检测到不安全语句时自动切换成 ROW。C、D 项都不成立——row 记录的是数据行的变更，不是表结构（表结构变更走 DDL 语句），更不是登录审计。",
+    "tags": ["binlog", "ROW格式", "主从复制"],
+    "frequency": "低频"
+  },
+  {
+    "id": 3710,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "要开启 MySQL 的慢查询日志，需要把哪个参数设为 `ON`？",
+    "options": [
+      { "key": "A", "text": "`slow_query_log`" },
+      { "key": "B", "text": "`general_log`" },
+      { "key": "C", "text": "`log_bin`" },
+      { "key": "D", "text": "`log_error`" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`slow_query_log = ON` 是慢查询日志的总开关**，再配合 `long_query_time`（默认 10 秒）设定阈值，超过阈值的 SQL 才会被记录；还可以开 `log_queries_not_using_indexes` 记录没走索引的语句。\n\n```sql\nSET GLOBAL slow_query_log = ON;\nSET GLOBAL long_query_time = 2;   -- 超过 2 秒才算慢\nSHOW VARIABLES LIKE 'slow_query_log_file';\n```\n\nB 项 `general_log` 记录**所有** SQL，开销极大，只在临时排查时短时开启；C 项 `log_bin` 是二进制日志（复制/恢复用，不筛慢 SQL）；D 项 `log_error` 只记错误。慢日志分析常用 `mysqldumpslow` 或 `pt-query-digest`。",
+    "tags": ["慢查询", "long_query_time", "性能排查"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3711,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "`EXPLAIN` 输出中 `type` 列的值为 `ALL` 表示？",
+    "options": [
+      { "key": "A", "text": "全表扫描，没有用到索引" },
+      { "key": "B", "text": "使用了唯一索引等值查询（const）" },
+      { "key": "C", "text": "使用了覆盖索引（Extra 里的 Using index）" },
+      { "key": "D", "text": "使用了索引范围扫描（range）" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`type=ALL` 就是全表扫描**，通常意味着没走索引或索引失效（函数包裹列、隐式类型转换、前导模糊 `LIKE '%x'`、违反最左前缀等），大表上是必须优化的信号。\n\n`type` 的性能排序（好→差）：\n\n```text\nsystem > const > eq_ref > ref > range > index > ALL\n```\n\nB 是 const；C 是 Extra 列的 `Using index`，不是 type；D 是 range。看执行计划时还要配合 **`key`（实际用的索引）、`rows`（预估扫描行数）、`Extra`（Using filesort / Using temporary 都是危险信号）** 一起判断。",
+    "tags": ["EXPLAIN", "执行计划", "全表扫描"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3712,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "InnoDB 中，`SELECT ... FOR UPDATE` 加的锁是？",
+    "options": [
+      { "key": "A", "text": "排他锁（X 锁）" },
+      { "key": "B", "text": "共享锁（S 锁）" },
+      { "key": "C", "text": "意向锁（IS/IX）" },
+      { "key": "D", "text": "不加锁，和普通 SELECT 一样" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`SELECT ... FOR UPDATE` 是当前读并加排他锁（X 锁）**，锁住的行在事务提交前别人不能改、也不能用 FOR UPDATE 再去锁，常用于「先查再改」的扣库存场景。\n\n对应关系：\n\n```sql\nSELECT ... FOR UPDATE;              -- X 锁（排他）\nSELECT ... LOCK IN SHARE MODE;      -- S 锁（共享，8.0 也可写 FOR SHARE）\nSELECT ...;                         -- 快照读，不加锁（MVCC）\n```\n\n在 REPEATABLE READ 下，范围条件还会加**间隙锁/临键锁（next-key lock）**来防幻读。D 项是常见误解：普通 SELECT 确实不加锁，但**加了 FOR UPDATE 就变成当前读 + 加锁**。",
+    "tags": ["锁", "排他锁", "FOR UPDATE"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3713,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "MySQL 主从复制中，从库（slave）上负责复制工作的两个线程是？",
+    "options": [
+      { "key": "A", "text": "IO 线程和 SQL 线程" },
+      { "key": "B", "text": "binlog dump 线程和 SQL 线程" },
+      { "key": "C", "text": "IO 线程和 binlog dump 线程" },
+      { "key": "D", "text": "只有一个 SQL 线程" }
+    ],
+    "answer": ["A"],
+    "explanation": "**主从复制一共三个线程：主库的 binlog dump 线程 + 从库的 IO 线程、SQL 线程。** 流程是：\n\n```text\n从库 IO 线程 → 连主库，请求 binlog → 写入本地 relay log\n从库 SQL 线程 → 读 relay log，重放成数据变更\n主库 binlog dump 线程 → 把 binlog 发给从库 IO 线程\n```\n\n所以从库上是 **IO 线程 + SQL 线程**两个；B、C 项把主库的 dump 线程算到了从库；D 项漏了 IO 线程。排查延迟时看 `SHOW SLAVE STATUS`（8.0.22+ 为 `SHOW REPLICA STATUS`）里的 `Slave_IO_Running` 和 `Slave_SQL_Running` 是否都为 Yes。",
+    "tags": ["主从复制", "IO线程", "SQL线程"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3714,
+    "type": "single",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "用 `mysqldump` 备份 InnoDB 表时，希望不锁表同时拿到一致性快照，应该加哪个参数？",
+    "options": [
+      { "key": "A", "text": "`--single-transaction`" },
+      { "key": "B", "text": "`--lock-all-tables`" },
+      { "key": "C", "text": "`--flush-logs`" },
+      { "key": "D", "text": "`--no-create-info`" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`--single-transaction` 会开启一个 REPEATABLE READ 事务来取快照，导出期间不锁表，业务可以正常读写。** 它只对 **InnoDB** 有效（靠 MVCC 一致性快照），对 MyISAM 无效——MyISAM 只能用 `--lock-all-tables`（全局读锁，会阻塞写入）。\n\n```bash\nmysqldump -uroot -p --single-transaction --master-data=2 \\\n  --databases shop > shop_$(date +%F).sql\n```\n\nC 项 `--flush-logs` 只是导出前切一次 binlog，便于配合位点恢复，本身不加锁也不保证快照；D 项 `--no-create-info` 表示不导出建表语句。**生产备份还常配 `--master-data=2`（记录 binlog 位点）**。",
+    "tags": ["mysqldump", "备份", "一致性快照"],
+    "frequency": "低频"
+  }
+]

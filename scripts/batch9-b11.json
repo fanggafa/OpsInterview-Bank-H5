@@ -1,0 +1,527 @@
+[
+  {
+    "id": 3300,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 的「无 agent」指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "不需要在目标机上安装客户端，只通过 SSH 连接执行"
+      },
+      {
+        "key": "B",
+        "text": "不需要控制机"
+      },
+      {
+        "key": "C",
+        "text": "不需要网络"
+      },
+      {
+        "key": "D",
+        "text": "不需要写配置文件"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Ansible 靠 SSH 通信，目标机只要有 SSH 和 Python（部分模块用 raw 可免 Python）即可**。这是它相比 Puppet/Chef（需要装 agent）最大的上手优势——**新机器不用先装客户端就能管**。代价是**大规模下 SSH 连接开销成为瓶颈**（要靠 forks + ControlPersist 优化）。",
+    "tags": [
+      "Ansible",
+      "无agent",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3301,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 的 inventory 是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "日志文件"
+      },
+      {
+        "key": "B",
+        "text": "任务列表"
+      },
+      {
+        "key": "C",
+        "text": "变量文件"
+      },
+      {
+        "key": "D",
+        "text": "主机清单（定义要管理哪些机器、如何分组）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**inventory = 主机清单**（ini 或 yaml 格式），定义主机、分组、连接参数（用户/端口/密钥）。**也支持动态 inventory**（从云 API/CMDB/K8s 拉取），云环境推荐动态，避免手工维护。**「inventory 写错导致跑错机器」是自动化事故的头号原因**，执行前用 `ansible-inventory --list` 确认目标。",
+    "tags": [
+      "Ansible",
+      "inventory",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3302,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "「幂等性」在 Ansible 里的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只能执行一次"
+      },
+      {
+        "key": "B",
+        "text": "每次执行都一定改变系统"
+      },
+      {
+        "key": "C",
+        "text": "同一个 playbook 执行一次和执行多次，最终结果相同"
+      },
+      {
+        "key": "D",
+        "text": "执行速度很快"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**幂等 = 反复执行结果一致**（如 `yum: name=nginx state=present`，已装就跳过）。**验收标准：连跑两次，第二次的 `changed=0`。** 这是自动化可重复执行的基础——**非幂等的脚本重跑会追加重复配置、报「已存在」错误、启动多个进程**。",
+    "tags": [
+      "Ansible",
+      "幂等",
+      "核心概念"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3303,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 的 handler 什么时候执行？",
+    "options": [
+      {
+        "key": "A",
+        "text": "每个 task 执行完立即执行"
+      },
+      {
+        "key": "B",
+        "text": "被 task notify 且该 task 状态为 changed 时，在 play 的 tasks 全部结束后执行"
+      },
+      {
+        "key": "C",
+        "text": "playbook 开始前执行"
+      },
+      {
+        "key": "D",
+        "text": "只在失败时执行"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**handler 是「延迟执行」的**：被 notify 后要等 play 的 tasks 结束才跑（或 `meta: flush_handlers` 强制触发）。**这正是它的价值——避免了「改了 5 个配置就重启 5 次服务」，多个 task notify 同一个 handler 时只执行一次。** 注意：只有 `changed` 的 task 才会触发 notify。",
+    "tags": [
+      "Ansible",
+      "handler",
+      "核心概念"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3304,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 的 role 目录下，`defaults/main.yml` 和 `vars/main.yml` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "B",
+        "text": "defaults 优先级最低（可被覆盖），vars 优先级很高（容易意外覆盖别处配置）"
+      },
+      {
+        "key": "C",
+        "text": "defaults 只能放数字"
+      },
+      {
+        "key": "D",
+        "text": "vars 会被忽略"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**给用户改的变量放 `defaults`（优先级最低，inventory/playbook 都能覆盖）；`vars` 优先级很高，会覆盖 inventory 的设置**。**「配置改了不生效」最常见的原因就是把可配置项写进了 `vars` 而不是 `defaults`。**",
+    "tags": [
+      "Ansible",
+      "role",
+      "变量"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3305,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "`ansible-playbook site.yml --check --diff` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "干跑：不真正修改，但显示「将会改什么内容」"
+      },
+      {
+        "key": "B",
+        "text": "强制执行并跳过确认"
+      },
+      {
+        "key": "C",
+        "text": "只检查语法"
+      },
+      {
+        "key": "D",
+        "text": "只列出主机"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`--check` 是 dry-run，`--diff` 显示具体差异（改前/改后内容）**。这是**生产变更前必做的一步**——能提前发现「这次会重启服务」「会覆盖 20 个文件」。**局限：依赖前置 task 结果的步骤在 check 模式下可能不准**，所以「check 通过」不等于「执行一定成功」，但「check 报错」几乎一定是真问题。",
+    "tags": [
+      "Ansible",
+      "check",
+      "dry-run"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3306,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 里 `serial: 2` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只选 2 台主机执行"
+      },
+      {
+        "key": "B",
+        "text": "并发 2 个 task"
+      },
+      {
+        "key": "C",
+        "text": "重试 2 次"
+      },
+      {
+        "key": "D",
+        "text": "分批执行，每批 2 台主机（做完一批再做下一批）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`serial` 是滚动变更的核心参数**：100 台机器 `serial: 10` 时会分 10 批执行，**任何时刻只有 10 台在变更**。**不做分批就会「所有机器同时重启」= 全站不可用**。常配合 `max_fail_percentage`（失败超阈值就停）。A 是 `--limit`。",
+    "tags": [
+      "Ansible",
+      "serial",
+      "滚动"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3307,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Terraform 和 Ansible 的核心分工是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Terraform 只能装软件"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价，可以互换"
+      },
+      {
+        "key": "C",
+        "text": "Terraform 创建/管理基础设施资源（有 state），Ansible 配置软件与服务"
+      },
+      {
+        "key": "D",
+        "text": "Ansible 有 state 文件"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**Terraform：从「无」到「有」**（创建 VPC、VM、LB、数据库实例），**靠 remote state 知道「我创建了什么」**。**Ansible：从「有」到「配置好」**（在机器上装软件、改配置、启服务），无 state，每次现场探测。**典型组合：Terraform 建资源 → 输出 IP 生成 inventory → Ansible 配服务。**",
+    "tags": [
+      "Terraform",
+      "Ansible",
+      "分工"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3308,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Terraform 的 state 文件为什么不能放本地？",
+    "options": [
+      {
+        "key": "A",
+        "text": "本地文件不能加密"
+      },
+      {
+        "key": "B",
+        "text": "本地文件太大"
+      },
+      {
+        "key": "C",
+        "text": "无法协作（多人各有一份会互相覆盖）、易丢失、无锁、且含敏感信息"
+      },
+      {
+        "key": "D",
+        "text": "Terraform 不支持本地文件"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**state 是 Terraform 的「记忆」**——记录「我管着哪些真实资源」。本地存放的四个问题：①**多人协作会互相覆盖**；②**误删 state 会导致重建资源（费用翻倍）**；③**无锁 → 两人同时 apply 会损坏状态**；④**含数据库密码等敏感信息**。正确做法：**远程后端（S3+GCS+PG）+ 状态锁（DynamoDB）+ 加密**。",
+    "tags": [
+      "Terraform",
+      "state",
+      "协作"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3309,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible Vault 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "备份 inventory"
+      },
+      {
+        "key": "B",
+        "text": "用密码加密敏感文件或变量（如数据库密码），可安全放进 Git"
+      },
+      {
+        "key": "C",
+        "text": "加速 playbook 执行"
+      },
+      {
+        "key": "D",
+        "text": "校验 YAML 语法"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**Vault 加密敏感数据**：可加密整个文件（`ansible-vault encrypt`），也可只加密某个值（`encrypt_string`，推荐——这样 `diff`/review 正常进行）。**密钥管理是关键**：生产应把 vault 密码放 CI 的 Secret 变量，用临时文件传入后立即删除。**注意 Vault 只保护静态文件，执行时的明文仍可能出现在日志（要配 `no_log: true`）。**",
+    "tags": [
+      "Ansible",
+      "Vault",
+      "安全"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3310,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 执行报 `UNREACHABLE`，最先应该做什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "手工用 SSH 连一下那台机器，确认网络与认证"
+      },
+      {
+        "key": "B",
+        "text": "重装 Ansible"
+      },
+      {
+        "key": "C",
+        "text": "修改 playbook 的语法"
+      },
+      {
+        "key": "D",
+        "text": "增加 forks 数量"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`UNREACHABLE` 是「连不上」**，比 task 失败更底层。**先手工 `ssh -v user@host` 验证**：能连 → Ansible 配置问题（用户/密钥/known_hosts）；不能连 → 网络或 sshd 问题。**Ansible 特有的高频原因：`ansible_python_interpreter` 指向不存在的 python**（新系统只有 python3）。诊断技巧：`-m raw -a 'echo hi'`（raw 不需要 python）。",
+    "tags": [
+      "Ansible",
+      "排障",
+      "UNREACHABLE"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3311,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "「配置漂移（configuration drift）」指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "配置项的顺序变了"
+      },
+      {
+        "key": "B",
+        "text": "配置文件被移动到别的目录"
+      },
+      {
+        "key": "C",
+        "text": "配置文件的编码变了"
+      },
+      {
+        "key": "D",
+        "text": "机器上的实际配置与代码/版本库中定义的配置不一致了"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**漂移的成因**：有人手工 SSH 改、自动化执行失败只改了一半、老机器没走自动化。**危害**：同一配置在不同机器上行为不一致、自动化执行时被覆写、故障时无法用代码解释现场。**治理三层**：预防（禁止手工改）+ 检测（每日 `--check` 报告、GitOps diff）+ 纠正（定期全量重跑，靠幂等性自动拉回目标状态）。",
+    "tags": [
+      "配置管理",
+      "漂移",
+      "治理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3312,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "`ansible all -m ping` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "安装 ping 命令"
+      },
+      {
+        "key": "B",
+        "text": "发送 ICMP 网络探测"
+      },
+      {
+        "key": "C",
+        "text": "重启所有主机"
+      },
+      {
+        "key": "D",
+        "text": "测试到所有主机的连通性（不是 ICMP ping，而是 SSH + Python 可用性）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`-m ping` 是 Ansible 的 ping 模块：验证「能 SSH 登录 + 目标机 Python 可用」**，不是网络层 ICMP。**返回 `pong` 说明整条链路（网络、认证、解释器）都通**。这是执行任何 playbook 前的例行检查。如果 ping 失败但 `raw` 模块能通，就是 Python 解释器路径的问题。",
+    "tags": [
+      "Ansible",
+      "ping",
+      "命令"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3313,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "「不可变基础设施」的核心思想是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只能用物理机"
+      },
+      {
+        "key": "B",
+        "text": "基础设施永不更新"
+      },
+      {
+        "key": "C",
+        "text": "机器创建后不再修改，变更时用新镜像重建替换，而不是原地改"
+      },
+      {
+        "key": "D",
+        "text": "配置必须手工写入"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**用「重建」代替「修补」**——所有机器都从同一个镜像来，改动就走新镜像。**解决的问题**：①配置漂移（同镜像=同环境）；②无法复现（随时用镜像重建）；③回滚困难（用旧镜像起新机器）；④补丁不统一。**常见实现**：容器镜像（最彻底）、Packer 烤 VM 镜像、cloud-init 初始化。",
+    "tags": [
+      "配置管理",
+      "不可变基础设施",
+      "理念"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3314,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 的 `template` 模块与 `copy` 模块的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "B",
+        "text": "template 会用 Jinja2 渲染变量/循环/条件后再复制；copy 原样复制"
+      },
+      {
+        "key": "C",
+        "text": "copy 支持变量替换"
+      },
+      {
+        "key": "D",
+        "text": "template 只能复制二进制文件"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`template` 用于「配置文件里要嵌入变量」的场景**（如 nginx.conf 的 upstream 列表要按 inventory 生成），**`copy` 用于静态文件**。**关键实践：改配置文件的 template 任务一定要配 `validate`**（如 `validate: 'nginx -t -c %s'`），验证失败时 Ansible 会保留原文件——这是「改坏了自动回滚」的机制。",
+    "tags": [
+      "Ansible",
+      "template",
+      "配置"
+    ],
+    "frequency": "高频"
+  }
+]

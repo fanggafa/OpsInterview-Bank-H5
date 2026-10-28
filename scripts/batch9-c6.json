@@ -1,0 +1,527 @@
+[
+  {
+    "id": 4700,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "与虚拟机相比，容器最本质的特点是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "与宿主机共享内核，靠命名空间和 cgroups 做隔离"
+      },
+      {
+        "key": "B",
+        "text": "每个容器都自带一套完整的操作系统内核"
+      },
+      {
+        "key": "C",
+        "text": "必须依赖 VMware 之类的虚拟化软件才能运行"
+      },
+      {
+        "key": "D",
+        "text": "容器内的进程运行在用户态，不占用宿主机资源"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "容器是进程级隔离：多个容器共用宿主机同一个内核，通过 namespace 隔开 PID、网络、文件系统视图，用 cgroups 限制 CPU、内存等资源，所以启动是秒级、开销小。B 恰好是虚拟机的做法（每台虚拟机有独立内核）；D 说「不占资源」明显不对，容器仍消耗宿主机的 CPU、内存和 IO。",
+    "tags": [
+      "容器",
+      "虚拟机",
+      "namespace"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4701,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Docker 镜像采用分层结构，最主要的目的是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把镜像自动加密，防止被拷贝"
+      },
+      {
+        "key": "B",
+        "text": "让每个镜像只能包含一个文件"
+      },
+      {
+        "key": "C",
+        "text": "使镜像在运行时可以被随意修改"
+      },
+      {
+        "key": "D",
+        "text": "复用只读层、减少存储占用并加快分发"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "镜像由多个只读层叠加而成，相同的层（尤其是基础镜像）在本地只需存一份，推拉时也只传缺失的层，因此省空间、省带宽、构建时还能命中缓存。容器启动时在顶部加一个可写层，下层只读。B、A 与分层机制无关；C 描述的是可写层的行为，而分层的意义在于只读复用。",
+    "tags": [
+      "镜像分层",
+      "Docker",
+      "只读层"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4702,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Dockerfile 中 RUN 和 CMD 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "两者完全等价，只是写法不同"
+      },
+      {
+        "key": "B",
+        "text": "RUN 在容器启动时执行，CMD 在构建时执行"
+      },
+      {
+        "key": "C",
+        "text": "RUN 在构建镜像时执行并产生新层，CMD 在容器启动时执行"
+      },
+      {
+        "key": "D",
+        "text": "RUN 只能执行一条命令，CMD 可以执行多条"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "RUN 属于构建期指令，每条 RUN 都会在当前层上执行命令并提交成一个新层，常用于装包、编译；CMD 是运行期指令，指定容器启动时的默认命令，只在启动那一刻生效。B 把两者颠倒；A 忽略了构建期与运行期的本质区别；D 说反了，多个 RUN 常见，而多个 CMD 只有最后一个生效。",
+    "tags": [
+      "Dockerfile",
+      "RUN",
+      "CMD"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4703,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Dockerfile 中同时写了 ENTRYPOINT 和 CMD 时，`docker run image myarg` 的实际执行效果是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "CMD 会覆盖 ENTRYPOINT，只执行 CMD"
+      },
+      {
+        "key": "B",
+        "text": "以 ENTRYPOINT 为固定命令，myarg 作为参数替换掉 CMD"
+      },
+      {
+        "key": "C",
+        "text": "ENTRYPOINT 和 CMD 会同时各执行一遍"
+      },
+      {
+        "key": "D",
+        "text": "命令冲突，容器直接启动失败"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "ENTRYPOINT 是容器的固定入口命令，只有在 `docker run --entrypoint` 时才能被覆盖；CMD 提供默认参数，run 时在镜像名后追加的内容会整体替换掉 CMD。所以 `ENTRYPOINT [\"nginx\"]` 加 `CMD [\"-h\"]`，运行 `docker run img -v` 实际执行的是 `nginx -v`。A、C、D 都不符合这两条指令的协作方式。",
+    "tags": [
+      "ENTRYPOINT",
+      "CMD",
+      "Dockerfile"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4704,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "启动容器时使用 `--network host` 模式，意味着什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "容器获得一个独立的桥接网络并自动分配 IP"
+      },
+      {
+        "key": "B",
+        "text": "容器直接使用宿主机的网络栈，不再有独立网络命名空间"
+      },
+      {
+        "key": "C",
+        "text": "容器只能访问宿主机本机的服务"
+      },
+      {
+        "key": "D",
+        "text": "容器完全不使用网络，等同断网运行"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "host 模式跳过网络隔离，容器与宿主机共用同一个网络命名空间，看到的网卡、IP 和端口都一致，容器内监听 80 就等同于宿主机监听 80，性能也最好，但端口会冲突、也没有跨主机隔离。A 是默认的 bridge 模式，C 是 none 或自定义网络的部分效果，D 描述的是 `--network none` 断网模式。",
+    "tags": [
+      "网络模式",
+      "host网络",
+      "Docker"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4705,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "关于 volume 和 bind mount，说法正确的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "volume 在宿主机上有受管理的位置，推荐用于持久化数据"
+      },
+      {
+        "key": "B",
+        "text": "volume 的内容会随容器删除而一起被删除"
+      },
+      {
+        "key": "C",
+        "text": "bind mount 的数据由 Docker 自动管理，跨主机可迁移"
+      },
+      {
+        "key": "D",
+        "text": "两者没有区别，只是命令写法不同"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "volume 由 Docker 创建和维护，位置在宿主机的数据目录下（如 /var/lib/docker/volumes），与容器生命周期解耦，容器删掉数据仍在，便于备份迁移，是持久化的首选。bind mount 直接把宿主机某个路径挂进容器，完全依赖宿主机目录结构、不便跨主机，C 把两者说反了。B 错在 volume 不会随容器删除而消失，D 忽略了二者的差异。",
+    "tags": [
+      "volume",
+      "bind mount",
+      "持久化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4706,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Kubernetes 中最小的调度和部署单元是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Node"
+      },
+      {
+        "key": "B",
+        "text": "容器"
+      },
+      {
+        "key": "C",
+        "text": "Deployment"
+      },
+      {
+        "key": "D",
+        "text": "Pod"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "Pod 是 K8s 中最小的可调度单元，一个 Pod 里可以有一个或多个共享网络与存储的容器，通常还带一个 pause 容器。容器本身不是调度单元，K8s 不会直接调度单个容器；Deployment 是管理 Pod 副本和滚动更新的控制器；Node 是运行 Pod 的主机，属于集群资源而非单元。",
+    "tags": [
+      "Pod",
+      "K8s对象",
+      "调度单元"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4707,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Deployment 在 K8s 中的主要职责是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把集群外部流量按域名转发到 Service"
+      },
+      {
+        "key": "B",
+        "text": "为每个 Pod 提供固定不变的网络标识和持久存储"
+      },
+      {
+        "key": "C",
+        "text": "管理无状态应用的副本数并支持滚动更新与回滚"
+      },
+      {
+        "key": "D",
+        "text": "调度 Pod 到合适的 Node 上运行"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "Deployment 通过 ReplicaSet 管理无状态 Pod 的副本数量，并负责滚动更新、暂停、回滚（undo），声明式地保证实际状态等于期望状态。B 说的是 StatefulSet，它才提供稳定有序的标识与持久卷；A 是 Ingress 的职责；D 由 kube-scheduler 完成，Deployment 不参与调度。",
+    "tags": [
+      "Deployment",
+      "控制器",
+      "滚动更新"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4708,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Service 的 `type: NodePort` 行为是怎样的？",
+    "options": [
+      {
+        "key": "A",
+        "text": "向云厂商申请负载均衡器并分配公网 IP"
+      },
+      {
+        "key": "B",
+        "text": "只在集群内部暴露一个虚拟 IP，不做外部访问"
+      },
+      {
+        "key": "C",
+        "text": "在每个节点上开放一个端口，把流量转发到对应 Pod"
+      },
+      {
+        "key": "D",
+        "text": "直接使用 Pod 的 IP 作为固定入口"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "NodePort 会在每个 Node 上监听一个 30000-32767 范围内的端口，外部通过「节点IP:端口」即可访问，再由 kube-proxy 转发到后端 Pod。B 是 ClusterIP（默认类型），A 是 LoadBalancer，D 不成立，Pod IP 会随重建变化，正是要靠 Service 做稳定入口。",
+    "tags": [
+      "Service",
+      "NodePort",
+      "K8s网络"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4709,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "容器启动慢、依赖初始化时才需要检测的探针是哪一种？",
+    "options": [
+      {
+        "key": "A",
+        "text": "livenessProbe（存活探针）"
+      },
+      {
+        "key": "B",
+        "text": "startupProbe（启动探针）"
+      },
+      {
+        "key": "C",
+        "text": "readinessProbe（就绪探针）"
+      },
+      {
+        "key": "D",
+        "text": "以上三种都不负责启动检测"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "startupProbe 专门判断容器是否已启动完成，成功后其余探针才开始工作，避免应用启动慢被 liveness 误杀。livenessProbe 判存活，失败就重启容器；readinessProbe 判就绪，失败只是从 Service Endpoints 里摘除、不重启。所以启动慢的应用应配 startupProbe 而不是一味调大 liveness 的初始延迟。",
+    "tags": [
+      "探针",
+      "startupProbe",
+      "K8s"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4710,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "readinessProbe 检测失败时，K8s 会怎么处理？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把该 Pod 从 Service 的后端列表移除，不重启容器"
+      },
+      {
+        "key": "B",
+        "text": "立即重启该 Pod 里的容器"
+      },
+      {
+        "key": "C",
+        "text": "删除该 Pod 并重建一个新的"
+      },
+      {
+        "key": "D",
+        "text": "对整个 Deployment 回滚到上一版本"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "readinessProbe 决定 Pod 是否准备好接流量：失败时把 Pod 从 Service 的 Endpoints 中摘除，请求就不再转发给它，容器本身不重启；恢复后自动加回。B、C 是 livenessProbe 失败后的行为（重启容器）；D 是 Deployment 的回滚动作，与探针无关。生产上常见「探针配太紧导致流量抖动」。",
+    "tags": [
+      "探针",
+      "readinessProbe",
+      "Service"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4711,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "ConfigMap 与 Secret 的主要区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "两者完全等价，只是名字不同"
+      },
+      {
+        "key": "B",
+        "text": "Secret 只能以文件形式挂载到容器"
+      },
+      {
+        "key": "C",
+        "text": "ConfigMap 可以自动加密，Secret 不能"
+      },
+      {
+        "key": "D",
+        "text": "Secret 用于存放敏感数据，默认以 base64 编码保存"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "ConfigMap 存非敏感配置（如 application.properties、环境变量），Secret 存口令、Token、证书等敏感信息，默认 base64 编码而非加密，因此要配合 RBAC 或启用加密存储才安全。B 错，二者都能挂载成文件或用 env 注入；C 说反了，ConfigMap 不负责加密；A 忽略了敏感性的区分。",
+    "tags": [
+      "ConfigMap",
+      "Secret",
+      "配置管理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4712,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "查看某个 Pod 里运行过容器的日志，应该用哪个命令？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`kubectl exec <pod> -- top`"
+      },
+      {
+        "key": "B",
+        "text": "`kubectl describe pod <pod>`"
+      },
+      {
+        "key": "C",
+        "text": "`kubectl get pods -o wide`"
+      },
+      {
+        "key": "D",
+        "text": "`kubectl logs <pod> -c <container>`"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "`kubectl logs` 读取容器标准输出，Pod 内有多个容器时用 `-c` 指定容器名，加 `-f` 可实时跟随，加 `--previous` 可看上一个崩溃实例的日志。describe 展示事件与状态而非日志；get pods 只列清单；exec 进容器执行命令，适合交互排查但不用于取日志。",
+    "tags": [
+      "kubectl",
+      "日志",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4713,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "把 Pod 内的 8080 端口转发到本机 9090，命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`kubectl exec mypod -- curl 9090`"
+      },
+      {
+        "key": "B",
+        "text": "`kubectl expose pod mypod --port 9090`"
+      },
+      {
+        "key": "C",
+        "text": "`kubectl port-forward pod/mypod 9090:8080`"
+      },
+      {
+        "key": "D",
+        "text": "`kubectl proxy mypod 9090:8080`"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "`kubectl port-forward` 的格式是「本地端口:远程端口」，所以 `9090:8080` 表示本机 9090 连容器 8080，常用于本地调试或临时连数据库。顺序写反是最常见的错误。expose 会创建 Service 不建隧道；exec 是在容器里执行命令；proxy 是起一个访问 API Server 的代理，参数格式也不对。",
+    "tags": [
+      "kubectl",
+      "port-forward",
+      "调试"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4714,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Deployment 滚动更新时，`maxUnavailable: 1` 的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "更新过程中最多同时新建 1 个新副本"
+      },
+      {
+        "key": "B",
+        "text": "更新过程中最多允许 1 个副本处于不可用状态"
+      },
+      {
+        "key": "C",
+        "text": "整个更新过程至少要失败 1 个 Pod 才算完成"
+      },
+      {
+        "key": "D",
+        "text": "最多允许 1 个节点故障不参与调度"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "maxUnavailable 控制更新期间允许的不可用副本上限，`1` 表示先下掉 1 个旧 Pod 再起新的，可保证不中断也能限制风险。与之对应的是 maxSurge（默认 25%），表示最多超出期望副本数的额外 Pod 数量，A 描述的其实是 maxSurge 的作用。设成百分比则按副本总数的比例取整计算。",
+    "tags": [
+      "滚动更新",
+      "maxUnavailable",
+      "Deployment"
+    ],
+    "frequency": "中频"
+  }
+]

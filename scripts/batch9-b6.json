@@ -1,0 +1,542 @@
+[
+  {
+    "id": 2300,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 消费者获取消息采用的是哪种方式？",
+    "options": [
+      {
+        "key": "A",
+        "text": "消费者主动向 broker 拉取（pull）"
+      },
+      {
+        "key": "B",
+        "text": "由生产者直接把消息转发给消费者"
+      },
+      {
+        "key": "C",
+        "text": "由 broker 主动推送给消费者（push）"
+      },
+      {
+        "key": "D",
+        "text": "由 ZooKeeper 通知消费者取数据"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Kafka 是 pull 模型：消费者按自己的节奏主动向 broker 拉取消息**，这样消费者不会被压垮，还能批量拉取提高吞吐；缺点是没有数据时会空转，所以用 `fetch.min.bytes`/`fetch.max.wait.ms` 让 broker 攒一批再返回。RabbitMQ 这类传统队列更偏 push（broker 主动投递），需要靠 prefetch 限流保护消费者。消息始终经由 broker 中转，生产者不会直接投递给消费者。",
+    "tags": [
+      "Kafka",
+      "消费者",
+      "pull",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2301,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 对消息顺序性的保证范围是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "整个 topic 全局严格有序"
+      },
+      {
+        "key": "B",
+        "text": "同一个消费组内全局有序"
+      },
+      {
+        "key": "C",
+        "text": "完全不保证顺序，消息随机排列"
+      },
+      {
+        "key": "D",
+        "text": "同一个 partition 内有序，不同 partition 之间不保证顺序"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**Kafka 只保证单个 partition 内消息按写入顺序被消费，跨 partition 没有全局顺序**。所以需要有序的业务（如订单状态流转）要指定同一个 key，让消息落到同一分区——相同 key 走同一个 partition 是 Kafka 的默认分区策略。若要求全局有序，只能把 topic 设为单分区，代价是彻底失去并行度。",
+    "tags": [
+      "Kafka",
+      "顺序性",
+      "partition",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2302,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 生产者参数 `acks=all`（即 `acks=-1`）表示什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只等 leader 写入本地日志就返回"
+      },
+      {
+        "key": "B",
+        "text": "发出后立即返回，不等待任何确认"
+      },
+      {
+        "key": "C",
+        "text": "等 ISR 中所有副本都写入成功后才返回确认"
+      },
+      {
+        "key": "D",
+        "text": "等包括落后副本在内的全部 broker 都确认"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`acks=all` 要求 leader 等到 ISR 中所有副本都同步成功才回 ack，是最不容易丢消息的配置**（配合 `min.insync.replicas>=2` 才有实际意义，否则 ISR 只剩 leader 时形同 `acks=1`）。`acks=1` 只等 leader 落盘（默认值，leader 挂可能丢）、`acks=0` 发出去就不管（可能丢）。D 错在「落后副本」：不在 ISR 里的副本本来就不参与确认。",
+    "tags": [
+      "Kafka",
+      "acks",
+      "可靠性",
+      "ISR"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2303,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 中「消费者组（consumer group）」的核心作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "组内多个消费者可以同时消费同一个 partition 以提高速度"
+      },
+      {
+        "key": "B",
+        "text": "组内一个 partition 只分给一个消费者，通过加消费者实现横向扩展"
+      },
+      {
+        "key": "C",
+        "text": "只用于在多个 broker 之间做负载均衡"
+      },
+      {
+        "key": "D",
+        "text": "决定消息在 broker 上的保留时长"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**同一个消费组内，一个 partition 只会分配给组内一个消费者**，所以增加消费者就能分摊分区、提升吞吐（消费者数超过分区数时，多出来的会空闲）。不同消费组互不影响，各自从自己的 offset 消费全量消息，这就是「一条消息被多个业务方各消费一次」的实现方式。A 会造成消费顺序错乱，Kafka 恰恰禁止；D 由 `log.retention.*` 控制。",
+    "tags": [
+      "Kafka",
+      "消费者组",
+      "partition",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2304,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "线上发现消息队列持续堆积，最常见的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "broker 磁盘写满，消息无法写入"
+      },
+      {
+        "key": "B",
+        "text": "消费者的处理速度跟不上生产速度"
+      },
+      {
+        "key": "C",
+        "text": "topic 的分区数设置得太多"
+      },
+      {
+        "key": "D",
+        "text": "消费者提交 offset 的频率太高"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**堆积的本质是「进得比出得快」**：消费逻辑变慢（下游接口超时、慢 SQL、同步调用外部服务）、消费者实例太少、消费线程数不足，或消费者频繁 rebalance 导致反复暂停消费。A 会导致生产端写失败而不是堆积；C 分区多反而提高并行度；D 提交频率影响的是重复消费风险，与堆积方向无关。排查时先看生产速率和消费速率两条曲线。",
+    "tags": [
+      "消息队列",
+      "消息堆积",
+      "排查",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2305,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "一条消息从生产到消费，可能在哪些环节丢失？",
+    "options": [
+      {
+        "key": "A",
+        "text": "生产端发送、broker 存储、消费端处理三个环节都可能丢"
+      },
+      {
+        "key": "B",
+        "text": "只会在 broker 存储环节丢"
+      },
+      {
+        "key": "C",
+        "text": "只要用了消息队列就一定不会丢消息"
+      },
+      {
+        "key": "D",
+        "text": "只会在消费端丢，生产端和 broker 是可靠的"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**消息丢失分三个环节，要逐层加固**：① 生产端——发送失败未重试、未确认就认为成功（对策：重试 + `acks=all`）；② broker 存储——未落盘就 ack、副本不足、刷盘策略不当（对策：多副本 + `min.insync.replicas`、同步刷盘）；③ 消费端——先提交 offset 后处理业务，处理失败或进程被 kill（对策：手动 ACK、处理成功后再提交）。只加固其中一环仍然会丢。",
+    "tags": [
+      "消息队列",
+      "消息丢失",
+      "可靠性",
+      "基础"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 2306,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "死信队列（Dead Letter Queue）通常用来存放什么消息？",
+    "options": [
+      {
+        "key": "A",
+        "text": "所有正常消费成功的消息备份"
+      },
+      {
+        "key": "B",
+        "text": "用于跨机房同步的复制消息"
+      },
+      {
+        "key": "C",
+        "text": "还没有被任何消费者领取的新消息"
+      },
+      {
+        "key": "D",
+        "text": "多次消费失败、过期或被拒绝的消息"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**死信队列收的是「无法正常处理」的消息**：重试达到上限仍失败、消息过期（TTL 到期）、被消费者显式拒绝（RabbitMQ 的 `basic.nack/reject` 且不重回队列）、或队列长度超限被丢弃的消息。它把异常消息隔离出来，避免阻塞正常队列，同时保留现场供人工排查和补偿。RabbitMQ 用 `x-dead-letter-exchange` 声明死信交换机，Kafka 一般由消费代码自己往 DLQ topic 投递。",
+    "tags": [
+      "消息队列",
+      "死信队列",
+      "重试",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2307,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "RabbitMQ 中 `fanout` 类型的 exchange 路由消息的规则是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "按 routing key 的通配符模式（`*`、`#`）匹配"
+      },
+      {
+        "key": "B",
+        "text": "routing key 与 binding key 完全相等时才路由"
+      },
+      {
+        "key": "C",
+        "text": "忽略 routing key，把消息广播给它绑定的所有队列"
+      },
+      {
+        "key": "D",
+        "text": "按消息头（headers）的键值匹配"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**fanout 是「广播」：不看 routing key，消息会复制到所有与它绑定的队列**，典型用途是通知类广播、缓存刷新。B 是 `direct`（完全匹配），A 是 `topic`（`*` 匹配一个词、`#` 匹配零到多个词），D 是 `headers`（按消息头匹配）。四种 exchange 类型是 RabbitMQ 最常考的基础点。",
+    "tags": [
+      "RabbitMQ",
+      "exchange",
+      "fanout",
+      "路由"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2308,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "RabbitMQ 中 `direct` 类型 exchange 的路由规则是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把消息广播给所有绑定队列"
+      },
+      {
+        "key": "B",
+        "text": "按通配符模式匹配 routing key"
+      },
+      {
+        "key": "C",
+        "text": "routing key 与队列的 binding key 完全相等时才投递"
+      },
+      {
+        "key": "D",
+        "text": "随机选择一个队列投递"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`direct` 做的是精确匹配：消息的 routing key 等于队列绑定的 binding key 才会被投递**，一个 key 可以绑多个队列（相当于按 key 分流）。A 是 `fanout`，B 是 `topic`（支持 `*`/`#` 通配），D 不存在这种内置语义。实际生产中常用 direct 按「错误日志/订单/支付」这类明确分类的 key 做分流。",
+    "tags": [
+      "RabbitMQ",
+      "exchange",
+      "direct",
+      "路由"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2309,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "RabbitMQ 消费者开启手动 ACK 后，消息在什么时候才算「消费成功」？",
+    "options": [
+      {
+        "key": "A",
+        "text": "消息一投递给消费者就算成功"
+      },
+      {
+        "key": "B",
+        "text": "消费者调用 `basic.ack` 之后"
+      },
+      {
+        "key": "C",
+        "text": "消息写入 broker 磁盘后就算成功"
+      },
+      {
+        "key": "D",
+        "text": "消费者建立连接后就算成功"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**手动 ACK 模式下，只有消费者显式调用 `basic.ack`，broker 才会把消息从队列删除、视为消费成功**；若消费者在处理过程中断开又没 ACK，消息会重新投递给其他消费者（因此可能重复消费，业务要做幂等）。A 是自动 ACK 的行为——投递即删除，进程崩了消息就丢了，风险很高。所以「先处理业务、再 ACK」是标准姿势。",
+    "tags": [
+      "RabbitMQ",
+      "ACK",
+      "可靠性",
+      "基础"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 2310,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 中 offset 的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "消息在 partition 内的唯一递增编号，用来标记消费进度"
+      },
+      {
+        "key": "B",
+        "text": "消息在 broker 磁盘上的字节偏移地址"
+      },
+      {
+        "key": "C",
+        "text": "消费者组在集群中的编号"
+      },
+      {
+        "key": "D",
+        "text": "broker 节点的 ID"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**offset 是消息在某个 partition 内的顺序编号（从 0 开始递增），消费者提交的 offset 表示「下一条要消费的位置」**，broker 据此判断该消费者组消费到哪。它只保证分区内有序，跨分区没有可比性。注意不要和「消息在日志文件中的物理字节位置」混淆——那是逻辑编号，不是物理偏移。消费进度提交错了就会重复消费或漏消费。",
+    "tags": [
+      "Kafka",
+      "offset",
+      "消费进度",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2311,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "「幂等消费」的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "消息队列保证不丢消息"
+      },
+      {
+        "key": "B",
+        "text": "消费者必须保证每条消息只被投递一次"
+      },
+      {
+        "key": "C",
+        "text": "生产端保证消息一定能送达"
+      },
+      {
+        "key": "D",
+        "text": "同一条消息被重复投递多次，对业务的影响与消费一次相同"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**幂等消费是指「重复消费不产生副作用」：同一条消息来 2 次、3 次，业务结果和来 1 次一样**。因为 MQ 的通常语义是 at-least-once（至少一次），重试、rebalance、ACK 丢失都会造成重复投递，所以必须由消费端做幂等：业务唯一键加唯一索引、去重表、Redis `SETNX`、或状态机校验。B 是 exactly-once 的目标（Kafka 要幂等生产者 + 事务才接近），C/A 讲的是投递可靠性，都不是幂等本身的定义。",
+    "tags": [
+      "消息队列",
+      "幂等",
+      "重复消费",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2312,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "关于 RocketMQ 的定位和特性，下列说法正确的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只支持点对点模式，不支持发布订阅"
+      },
+      {
+        "key": "B",
+        "text": "是 AMQP 协议的标准实现，与 RabbitMQ 协议兼容"
+      },
+      {
+        "key": "C",
+        "text": "消息只存在内存中，重启后无法恢复"
+      },
+      {
+        "key": "D",
+        "text": "阿里开源的消息中间件，支持事务消息、顺序消息和延迟消息"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**RocketMQ 由阿里开源、后捐给 Apache，主打高吞吐与金融级特性：事务消息（半消息 + 回查）、顺序消息、延迟消息、消息轨迹**，并同时支持集群消费和广播消费（即发布订阅）。它用的是自定义 remoting 协议而非 AMQP，所以 B 错；消息默认持久化到 CommitLog 文件，C 错；A 错在「只支持点对点」。",
+    "tags": [
+      "RocketMQ",
+      "定位",
+      "事务消息",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2313,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 中 ISR（In-Sync Replicas）指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "集群中所有 broker 的集合"
+      },
+      {
+        "key": "B",
+        "text": "落后太多、已经不同步的副本集合"
+      },
+      {
+        "key": "C",
+        "text": "与 leader 保持同步的副本集合，leader 挂掉时从其中选新 leader"
+      },
+      {
+        "key": "D",
+        "text": "一个 topic 下的所有 partition"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**ISR 是「跟得上 leader」的副本集合（含 leader 自身）**：副本落后时间超过 `replica.lag.time.max.ms` 就会被踢出 ISR。leader 故障时，新 leader 只能从 ISR 中选（配合 `unclean.leader.election.enable=false` 保证不丢消息）。B 描述的是 OSR（Out-of-Sync Replicas），正好相反；正因为 ISR 可能缩到只剩 leader，才需要 `min.insync.replicas` 兜底。",
+    "tags": [
+      "Kafka",
+      "ISR",
+      "副本",
+      "高可用"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2314,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "消息队列常说的「削峰填谷」是指什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把消息均匀地分配给所有 broker，避免单机热点"
+      },
+      {
+        "key": "B",
+        "text": "把突发流量先堆在队列里，让消费者按自身能力匀速处理"
+      },
+      {
+        "key": "C",
+        "text": "把消息压缩后再传输，节省网络带宽"
+      },
+      {
+        "key": "D",
+        "text": "定时清理过期消息，释放磁盘空间"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**「削峰」是把瞬时高并发的写请求缓冲到队列中，让后端按自己的处理能力匀速消费，从而保护数据库等下游系统**；「填谷」则是利用低峰期把积压的消息补处理掉。代价是响应变成异步，需要接受延迟并做好积压监控。A 讲的是负载均衡，C 是压缩，D 是消息保留策略，都不涉及流量整形。",
+    "tags": [
+      "消息队列",
+      "削峰填谷",
+      "异步",
+      "基础"
+    ],
+    "frequency": "低频"
+  }
+]

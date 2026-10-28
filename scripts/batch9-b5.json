@@ -1,0 +1,542 @@
+[
+  {
+    "id": 2100,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 属于哪一类数据库？",
+    "options": [
+      {
+        "key": "A",
+        "text": "文档型 NoSQL 数据库，数据以类 JSON 的文档存储"
+      },
+      {
+        "key": "B",
+        "text": "键值型数据库，只支持简单的 key-value 查询"
+      },
+      {
+        "key": "C",
+        "text": "关系型数据库，数据以二维表存储"
+      },
+      {
+        "key": "D",
+        "text": "列式存储数据库，专为大数据分析设计"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**MongoDB 是文档型（document-oriented）NoSQL 数据库**：数据以 BSON 文档存储，一个集合（collection）里的文档可以有不同字段，天然支持嵌套，schema 灵活。它和纯键值库的区别是能对文档内部字段建索引、做条件查询和聚合；和关系库的区别是没有强制的表结构和服务端 JOIN。列式存储是 ClickHouse/HBase 这类分析型数据库的路线。",
+    "tags": [
+      "MongoDB",
+      "文档型",
+      "NoSQL",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2101,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 内部实际使用的存储数据格式是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "纯文本 JSON"
+      },
+      {
+        "key": "B",
+        "text": "XML"
+      },
+      {
+        "key": "C",
+        "text": "CSV"
+      },
+      {
+        "key": "D",
+        "text": "BSON（二进制 JSON）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**MongoDB 内部以 BSON（Binary JSON）存储**：它是 JSON 的二进制扩展，支持 `Date`、`ObjectId`、`Decimal128`、二进制等原生 JSON 没有的类型，并且带长度前缀，解析和遍历比文本 JSON 更快、更省空间。用 `mongosh` 看到的、以及 `--eval` 里写的是 JSON 风格的语法，存盘时都被转成 BSON，所以不要以为磁盘上就是文本 JSON。",
+    "tags": [
+      "MongoDB",
+      "BSON",
+      "存储格式",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2102,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 中「集合（collection）」和「文档（document）」的关系，最准确的描述是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "文档是集合的容器，一个文档里可以包含多个集合"
+      },
+      {
+        "key": "B",
+        "text": "集合和文档是同一个概念，只是叫法不同"
+      },
+      {
+        "key": "C",
+        "text": "集合是文档的容器，类似关系库的表；文档是其中的一条数据，类似一行"
+      },
+      {
+        "key": "D",
+        "text": "集合是索引，文档是数据文件"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**层级是 数据库 → 集合 → 文档 → 字段**：集合（collection）相当于关系库的表，文档（document）相当于表里的一行，字段相当于列。区别在于集合不强制统一的 schema，同一集合里不同文档的字段可以不一样；文档还支持内嵌文档和数组，所以一行「表数据」在这里可以是一棵嵌套结构。A 把层级说反了。",
+    "tags": [
+      "MongoDB",
+      "集合",
+      "文档",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2103,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "如果插入文档时不指定 `_id` 字段，MongoDB 默认会给它生成什么类型的值？",
+    "options": [
+      {
+        "key": "A",
+        "text": "自增整数"
+      },
+      {
+        "key": "B",
+        "text": "ObjectId"
+      },
+      {
+        "key": "C",
+        "text": "UUID 字符串"
+      },
+      {
+        "key": "D",
+        "text": "当前时间戳（Date 类型）"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**不指定 `_id` 时，驱动会自动生成一个 `ObjectId`（12 字节：4 字节时间戳 + 5 字节随机 + 3 字节计数器），因此它不是自增的**。`_id` 是每个文档的唯一主键，MongoDB 会自动为它建唯一索引；由于前 4 字节是时间戳，ObjectId 大致能反映插入时间（`ObjectId(...).getTimestamp()`）。想要自增主键需要自己维护计数集合，UUID 则由应用自己生成。",
+    "tags": [
+      "MongoDB",
+      "_id",
+      "ObjectId",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2104,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 副本集（Replica Set）中唯一接受客户端写操作的节点角色是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Secondary"
+      },
+      {
+        "key": "B",
+        "text": "Primary"
+      },
+      {
+        "key": "C",
+        "text": "Arbiter"
+      },
+      {
+        "key": "D",
+        "text": "Config Server"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**副本集里只有 Primary 接受写操作**，Secondary 通过拉取 oplog 复制数据（默认不可写，只能按 readPreference 提供读），Arbiter 只参与选举投票、不存数据。Primary 挂了之后，剩下的多数派会重新选主。Config Server 属于分片集群的元数据组件，不是副本集里的角色，它本身通常也是以副本集形式部署的。",
+    "tags": [
+      "MongoDB",
+      "副本集",
+      "Primary",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2105,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "分片集群（Sharded Cluster）中，负责接收客户端请求并路由到对应分片的组件是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "mongos"
+      },
+      {
+        "key": "B",
+        "text": "shard"
+      },
+      {
+        "key": "C",
+        "text": "arbiter"
+      },
+      {
+        "key": "D",
+        "text": "config server"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**mongos 是查询路由（query router），客户端只连 mongos，由它根据 config server 中的分片元数据把请求转发到对应 shard 并汇总结果**。shard 真正存数据（通常是副本集），config server 存集群元数据与分片键范围（3.4 起也必须是副本集），arbiter 只是副本集里的投票节点。所以 mongos 本身近似无状态，可以部署多个做负载均衡。",
+    "tags": [
+      "MongoDB",
+      "分片",
+      "mongos",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2106,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 的写关注 `{ w: \"majority\" }` 表示什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只等主节点写入内存就返回"
+      },
+      {
+        "key": "B",
+        "text": "等所有节点确认写入后才返回"
+      },
+      {
+        "key": "C",
+        "text": "不等待任何确认，立即返回"
+      },
+      {
+        "key": "D",
+        "text": "等多数节点确认写入成功后才返回"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`w: \"majority\"` 表示写操作要被「多数派」节点确认后才算成功**，这样即使主节点立刻宕机，数据也不会因为没复制出去而回滚丢失，是生产推荐的取值。`w:1` 是默认值，只等主节点确认（宕机可能丢数据）；`w:0` 完全不等待确认；「所有节点」对应 `w: <副本集投票成员总数>`，代价最高。常与 `j:true` 组合成 `{w:\"majority\", j:true}`，连 journal 落盘一起保证。",
+    "tags": [
+      "MongoDB",
+      "写关注",
+      "w",
+      "副本集"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2107,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "想让某个字段的文档在指定时间后**自动过期删除**，应该建哪种索引？",
+    "options": [
+      {
+        "key": "A",
+        "text": "唯一索引（unique）"
+      },
+      {
+        "key": "B",
+        "text": "复合索引（compound）"
+      },
+      {
+        "key": "C",
+        "text": "TTL 索引（`expireAfterSeconds`）"
+      },
+      {
+        "key": "D",
+        "text": "文本索引（text）"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**TTL 索引基于日期字段（或数组中的日期），配合 `expireAfterSeconds` 让后台任务定期清理过期文档**，典型用途是会话、日志、验证码。写法：\n```\ndb.sessions.createIndex({ createdAt: 1 }, { expireAfterSeconds: 3600 })\n```\n注意：TTL 的后台清理线程**每 60 秒左右才跑一次**，不是精确到秒删除。唯一索引管的是字段值不重复，复合索引服务多字段查询，文本索引用于分词全文检索，都不会删除文档。",
+    "tags": [
+      "MongoDB",
+      "索引",
+      "TTL",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2108,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "想确认一条查询是否用上了索引、扫描了多少文档，应该用哪个方法？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`count()`"
+      },
+      {
+        "key": "B",
+        "text": "`getIndexes()`"
+      },
+      {
+        "key": "C",
+        "text": "`explain(\"executionStats\")`"
+      },
+      {
+        "key": "D",
+        "text": "`stats()`"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`explain(\"executionStats\")` 返回执行计划：赢了哪个索引（`winningPlan` 里的 `IXSCAN` 还是 `COLLSCAN`）、`nReturned` 与 `totalKeysExamined`/`totalDocsExamined` 的对比**。判断标准：出现 `COLLSCAN` 说明全集合扫描；`totalDocsExamined` 远大于 `nReturned` 说明索引选择性差。`getIndexes()` 只列出已建的索引清单，看不到某条查询是否命中；`count()` 和 `stats()` 也不包含执行计划信息。",
+    "tags": [
+      "MongoDB",
+      "explain",
+      "索引",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2109,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "备份和恢复 MongoDB 的逻辑备份工具组合是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`mongoexport` 备份、`mongoimport` 恢复"
+      },
+      {
+        "key": "B",
+        "text": "`mongodump` 备份、`mongorestore` 恢复"
+      },
+      {
+        "key": "C",
+        "text": "`mongostat` 备份、`mongotop` 恢复"
+      },
+      {
+        "key": "D",
+        "text": "`fsync` 备份、`journal` 恢复"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`mongodump` 把数据库导出为 BSON 文件（保留类型信息与索引定义），`mongorestore` 用于还原，是整库/整集合备份的标准组合**。A 里的 `mongoexport/mongoimport` 处理的是 JSON/CSV 文本，适合数据交换，会丢失部分类型信息和索引。`mongostat`/`mongotop` 是性能监控工具，与备份无关。生产上通常配合 `--oplog` 或文件系统快照保证一致性。",
+    "tags": [
+      "MongoDB",
+      "mongodump",
+      "备份恢复",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2110,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "`mongostat` 命令的主要作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "实时监控实例的增删改查次数、连接数、内存等运行指标"
+      },
+      {
+        "key": "B",
+        "text": "实时统计各集合的读写耗时排行"
+      },
+      {
+        "key": "C",
+        "text": "导出集合中的数据为 JSON"
+      },
+      {
+        "key": "D",
+        "text": "压缩并重建集合的索引"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`mongostat` 按行输出每秒的 `insert/query/update/delete`、`conn`、`mem`、`qrw`（读写队列长度）、`dirty`（脏页比例）等指标，用来快速判断实例整体压力**。B 描述的是 `mongotop`（按集合统计读写耗时）；导出数据用 `mongoexport`；重建索引用 `reIndex` 或重建 `createIndex`。两者都是排查「数据库到底忙不忙、谁在忙」的第一梯队工具。",
+    "tags": [
+      "MongoDB",
+      "mongostat",
+      "监控",
+      "排查"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 2111,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 副本集中的 oplog 是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "一份应用访问日志，仅用于审计"
+      },
+      {
+        "key": "B",
+        "text": "一个普通集合，用于保存慢查询记录"
+      },
+      {
+        "key": "C",
+        "text": "一份二进制全量备份文件"
+      },
+      {
+        "key": "D",
+        "text": "一个固定大小的 capped collection，记录主节点所有写操作供从节点重放"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**oplog（operations log）是 `local` 库下的一个 capped collection，按顺序记录每个写操作，Secondary 持续拉取并重放这些操作来实现复制**。它是**固定容量、循环覆盖**的，所以如果从节点落后太多、还没追上就被覆盖，复制就会中断，需要重新做全量同步——这也是「oplog 大小要按业务写入量估算」的原因。它只记录写操作，不做审计、也不是备份文件。",
+    "tags": [
+      "MongoDB",
+      "oplog",
+      "复制",
+      "副本集"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2112,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 副本集选主时，候选节点至少需要获得多少票才能当选？",
+    "options": [
+      {
+        "key": "A",
+        "text": "任意一票即可"
+      },
+      {
+        "key": "B",
+        "text": "必须全部成员一致同意"
+      },
+      {
+        "key": "C",
+        "text": "由 config server 指定"
+      },
+      {
+        "key": "D",
+        "text": "超过半数（多数派）成员的支持"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**选主采用多数派原则：候选节点需要获得「超过投票成员数一半」的票数（quorum = N/2 + 1）**。3 节点要 2 票，5 节点要 3 票。这正是副本集建议至少 3 个成员的原因：2 节点时任一节点挂掉都凑不够多数派，剩下的节点只能降级为只读。票数由 `votes` 控制，Arbiter 有投票权但不存数据。",
+    "tags": [
+      "MongoDB",
+      "选举",
+      "副本集",
+      "多数派"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2113,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 的读关注（readConcern）主要用来控制什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "读请求走哪个节点（Primary 还是 Secondary）"
+      },
+      {
+        "key": "B",
+        "text": "读操作最多能返回多少条文档"
+      },
+      {
+        "key": "C",
+        "text": "读到的数据在一致性/持久性上达到什么保证（如 local、majority）"
+      },
+      {
+        "key": "D",
+        "text": "是否为读操作添加索引提示"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**readConcern 管「读到什么样的数据」，可选 `local`（默认）/`available`/`majority`/`linearizable`/`snapshot`：`majority` 只返回已被多数派确认、不会回滚的数据**。A 描述的是 `readPreference`（primary/secondary/nearest 等），两者容易混淆但作用不同：readPreference 决定**去哪读**，readConcern 决定**读到的数据有多新、多可靠**。",
+    "tags": [
+      "MongoDB",
+      "读关注",
+      "readConcern",
+      "一致性"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 2114,
+    "type": "single",
+    "category": "MongoDB",
+    "difficulty": "简单",
+    "question": "MongoDB 的 journal 主要作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "记录客户端连接和认证信息，用于审计"
+      },
+      {
+        "key": "B",
+        "text": "预写日志，保证写入的持久性，异常宕机后可用于恢复"
+      },
+      {
+        "key": "C",
+        "text": "保存慢查询的执行计划历史"
+      },
+      {
+        "key": "D",
+        "text": "存储在副本集之间同步的 oplog"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**journal 是 WiredTiger 的预写日志（write-ahead log）：写入先落 journal，再在检查点时刷进数据文件**，这样即使进程崩溃或断电，重启后也能重放 journal 恢复最近的数据，保证持久性。WiredTiger 默认开启 journal 并周期性刷盘；设置 `writeConcern: {j:true}` 则要求等 journal 落盘才返回。oplog 是另一套东西（副本集复制用），不要和 journal 混为一谈。",
+    "tags": [
+      "MongoDB",
+      "journal",
+      "持久性",
+      "恢复"
+    ],
+    "frequency": "低频"
+  }
+]

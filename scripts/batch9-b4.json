@@ -1,0 +1,542 @@
+[
+  {
+    "id": 1900,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "JVM 运行时数据区中，几乎所有对象实例和数组都在哪个区域分配内存？",
+    "options": [
+      {
+        "key": "A",
+        "text": "堆（Heap）"
+      },
+      {
+        "key": "B",
+        "text": "虚拟机栈（VM Stack）"
+      },
+      {
+        "key": "C",
+        "text": "程序计数器（PC Register）"
+      },
+      {
+        "key": "D",
+        "text": "元空间（Metaspace）"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**堆是所有线程共享的区域，几乎所有的对象实例和数组都在这里分配**，因此它也是 GC 的主要战场。虚拟机栈存的是方法调用栈帧（局部变量表、操作数栈等），是线程私有的；程序计数器只记录当前线程执行到哪条字节码；元空间存的是类的元数据（类结构、方法字节码、常量池等），不是对象实例。",
+    "tags": [
+      "JVM",
+      "内存区域",
+      "堆",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1901,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "启动参数 `-Xmx` 的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "堆内存的初始值"
+      },
+      {
+        "key": "B",
+        "text": "年轻代的大小"
+      },
+      {
+        "key": "C",
+        "text": "元空间的初始大小"
+      },
+      {
+        "key": "D",
+        "text": "堆内存的最大值"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`-Xmx` 是堆的最大值（maximum），`-Xms` 才是堆的初始值**。`-Xmn` 设年轻代大小，`-XX:MetaspaceSize` 设元空间首次扩容阈值。生产上常见做法是把 `-Xms` 和 `-Xmx` 设成一样大，避免堆反复伸缩带来的抖动。配置示例：\n```\njava -Xms2g -Xmx2g -Xmn1g -jar app.jar\n```",
+    "tags": [
+      "JVM",
+      "启动参数",
+      "堆",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1902,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "堆的年轻代（Young Generation）由哪几部分组成？",
+    "options": [
+      {
+        "key": "A",
+        "text": "两个 Old 区 + 一个 Survivor 区"
+      },
+      {
+        "key": "B",
+        "text": "Eden 区 + 老年代"
+      },
+      {
+        "key": "C",
+        "text": "Eden 区 + 两个 Survivor 区（S0/S1）"
+      },
+      {
+        "key": "D",
+        "text": "Metaspace + 两个 Survivor 区"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**年轻代 = 1 个 Eden + 2 个 Survivor（默认比例 8:1:1）**。新对象先在 Eden 分配，Minor GC 后存活对象被复制到一个 Survivor；对象在 Survivor 之间来回「熬过」多次 GC 后晋升到老年代。老年代不是年轻代的一部分，Metaspace 更是堆外（本地内存）的区域。\n```\n堆 = 年轻代（Eden + S0 + S1）+ 老年代\n```",
+    "tags": [
+      "JVM",
+      "堆",
+      "分代",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1903,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "以下哪个运行时数据区是**线程私有**的？",
+    "options": [
+      {
+        "key": "A",
+        "text": "堆（Heap）"
+      },
+      {
+        "key": "B",
+        "text": "程序计数器（PC Register）"
+      },
+      {
+        "key": "C",
+        "text": "方法区（Method Area）"
+      },
+      {
+        "key": "D",
+        "text": "元空间（Metaspace）"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**线程私有的是：程序计数器、虚拟机栈、本地方法栈**；**线程共享的是：堆、方法区（JDK 8 起是元空间）**。程序计数器记录当前线程正在执行的字节码行号，每个线程必须独有一份，否则线程切换后无法恢复现场。堆和元空间都是所有线程共享的，所以它们的空间不足会导致所有线程一起 OOM。",
+    "tags": [
+      "JVM",
+      "内存区域",
+      "线程私有",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1904,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "JDK 8 之后，方法区是用哪个区域来实现的？",
+    "options": [
+      {
+        "key": "A",
+        "text": "永久代（PermGen），仍在堆内"
+      },
+      {
+        "key": "B",
+        "text": "元空间（Metaspace），使用本地内存"
+      },
+      {
+        "key": "C",
+        "text": "老年代（Old Generation）"
+      },
+      {
+        "key": "D",
+        "text": "Eden 区"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**JDK 8 移除了永久代，方法区改由元空间（Metaspace）实现，它使用的是本地内存而不是堆内存**。永久代受 `-XX:MaxPermSize` 限制、容易 `PermGen space` OOM；元空间默认只受机器物理内存限制，用 `-XX:MaxMetaspaceSize` 才能设上限。注意：JDK 8 里字符串常量池已经移到了堆中。",
+    "tags": [
+      "JVM",
+      "方法区",
+      "元空间",
+      "JDK8"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1905,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "CMS 收集器的主要设计目标是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "以最短停顿时间为目标（并发收集老年代），代价是产生内存碎片"
+      },
+      {
+        "key": "B",
+        "text": "以最大吞吐量为目标，尽量少占用 CPU"
+      },
+      {
+        "key": "C",
+        "text": "只收集年轻代，不处理老年代"
+      },
+      {
+        "key": "D",
+        "text": "单线程串行收集，适合客户端小程序"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**CMS 是「以最短回收停顿时间」为目标的老年代收集器，采用标记-清除算法、与用户线程并发执行**。它的缺点是：① 用标记-清除不压缩，会产生**内存碎片**，大对象可能因此提前触发 Full GC；② 并发阶段会产生**浮动垃圾**；③ 对 CPU 核数敏感。B 描述的是 Parallel Scavenge（吞吐量优先），C/D 都不符合 CMS 的定位。",
+    "tags": [
+      "JVM",
+      "GC",
+      "CMS",
+      "收集器"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1906,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "想快速列出当前机器上运行的所有 Java 进程及其主类，应该用哪个命令？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`jstat -gc`"
+      },
+      {
+        "key": "B",
+        "text": "`jmap -histo`"
+      },
+      {
+        "key": "C",
+        "text": "`jstack`"
+      },
+      {
+        "key": "D",
+        "text": "`jps -l`"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`jps`（JVM Process Status）用来列出当前用户的 Java 进程**，`-l` 额外显示主类全名或 jar 路径，`-v` 显示启动参数。`jstat` 看 GC 和内存统计，`jstack` 打印线程栈，`jmap -histo` 看对象直方图，它们都需要先知道 PID——所以排查的第一步通常是 `jps -l`。",
+    "tags": [
+      "JVM",
+      "jps",
+      "排查工具",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1907,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "要观察 Java 进程的 GC 次数、耗时和各代内存占用变化，最常用的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`jstack <pid>`"
+      },
+      {
+        "key": "B",
+        "text": "`jmap -dump:format=b,file=heap.hprof <pid>`"
+      },
+      {
+        "key": "C",
+        "text": "`jstat -gc <pid> 1000`"
+      },
+      {
+        "key": "D",
+        "text": "`jinfo -flags <pid>`"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`jstat -gc <pid> <间隔毫秒>` 按固定间隔输出 GC 统计**：`YGC/YGCT` 是年轻代次数与耗时，`FGC/FGCT` 是老年代（Full GC）次数与耗时，`S0U/S1U/EU/OU` 是各区的已用容量。数字一直涨而 `OU` 不下降，就要怀疑内存泄漏。`jstack` 看线程、`jmap` 导堆快照、`jinfo` 看参数，都不提供 GC 频次统计，`-Xlog:gc*` 是另一种看 GC 日志的方式。",
+    "tags": [
+      "JVM",
+      "jstat",
+      "GC",
+      "排查工具"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1908,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "线上 Java 进程 CPU 飙高、疑似死锁或线程卡住，第一步应该用哪个命令抓现场？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`jstat -class <pid>`"
+      },
+      {
+        "key": "B",
+        "text": "`jmap -histo <pid>`"
+      },
+      {
+        "key": "C",
+        "text": "`jstack <pid>`"
+      },
+      {
+        "key": "D",
+        "text": "`jps -m`"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`jstack <pid>` 打印所有线程的栈，能直接看到线程状态（RUNNABLE/BLOCKED/WAITING）和锁等待关系，死锁还会被明确标注 `Found one Java-level deadlock`**。CPU 高的常见组合是「`top -Hp <pid>` 找出高 CPU 线程 → 线程号转十六进制 → 在 `jstack` 输出里搜 `nid=0x...`」。`jmap -histo` 看对象数量，`jstat` 看统计，都定位不到具体卡住的代码行。",
+    "tags": [
+      "JVM",
+      "jstack",
+      "线程",
+      "死锁"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1909,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "怀疑内存泄漏、需要把堆快照导出后用 MAT 分析，正确的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`jstat -gcutil <pid> 1000`"
+      },
+      {
+        "key": "B",
+        "text": "`jmap -dump:format=b,file=heap.hprof <pid>`"
+      },
+      {
+        "key": "C",
+        "text": "`jstack -l <pid> > stack.txt`"
+      },
+      {
+        "key": "D",
+        "text": "`jinfo -sysprops <pid>`"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**导出堆快照用 `jmap -dump:format=b,file=heap.hprof <pid>`**（JDK 9+ 推荐 `jcmd <pid> GC.heap_dump /path/heap.hprof`），拿到 `.hprof` 后用 Eclipse MAT 或 VisualVM 分析对象占用与引用链。注意：dump 会 STW 暂停应用数秒，生产上建议加 `-XX:+HeapDumpOnOutOfMemoryError` 让它在 OOM 时自动导出，而不是随时手动 dump。",
+    "tags": [
+      "JVM",
+      "jmap",
+      "堆快照",
+      "内存泄漏"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1910,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "应用日志里出现 `java.lang.OutOfMemoryError: Metaspace`，说明什么资源不足？",
+    "options": [
+      {
+        "key": "A",
+        "text": "元空间不足，加载的类元数据太多"
+      },
+      {
+        "key": "B",
+        "text": "线程栈空间不足，线程太多"
+      },
+      {
+        "key": "C",
+        "text": "堆内存不足，对象太多"
+      },
+      {
+        "key": "D",
+        "text": "直接内存不足，NIO Buffer 太多"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`Metaspace` 类型的 OOM 表示类元数据区（元空间）被占满**，常见于反复热部署、动态生成类（CGLIB/字节码框架）、类加载器泄漏。对应的还有 `Java heap space`（堆不足）、`unable to create new native thread`（线程过多）、`Direct buffer memory`（直接内存）。排查方向不同：前两者调 `-Xmx`，Metaspace 要调 `-XX:MaxMetaspaceSize` 并查类加载泄漏。",
+    "tags": [
+      "JVM",
+      "OOM",
+      "元空间",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1911,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "Tomcat 8 及之后版本，Connector 默认使用的协议实现是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "BIO（阻塞 IO，每个连接一个线程）"
+      },
+      {
+        "key": "B",
+        "text": "APR（依赖本地库和 OpenSSL）"
+      },
+      {
+        "key": "C",
+        "text": "UDP 协议"
+      },
+      {
+        "key": "D",
+        "text": "NIO（非阻塞 IO，基于 Selector 复用线程）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**Tomcat 8 起默认是 NIO（`Http11NioProtocol`），用少量线程通过 Selector 处理大量连接**；Tomcat 7 及更早默认是 BIO，APR 需要额外装 `tcnative` 本地库（性能好但部署麻烦）。BIO 的「一连接一线程」在长连接多时线程数暴涨，是早年 Tomcat 撑不住高并发的主要原因。`server.xml` 里 `protocol=\"org.apache.coyote.http11.Http11NioProtocol\"` 就是显式指定 NIO。",
+    "tags": [
+      "Tomcat",
+      "Connector",
+      "NIO",
+      "基础"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1912,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "Tomcat Connector 的 `maxThreads` 参数含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "等待队列的最大长度"
+      },
+      {
+        "key": "B",
+        "text": "Connector 最大保持的连接数"
+      },
+      {
+        "key": "C",
+        "text": "单个连接的请求超时秒数"
+      },
+      {
+        "key": "D",
+        "text": "处理请求的最大工作线程数"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`maxThreads` 是请求处理线程池的上限（默认 200），`acceptCount` 才是内核等待队列的长度（默认 100），`maxConnections` 是同时保持的连接数**。三者关系：连接进来先到 `maxConnections` 限额，超出 `maxThreads` 的请求进 `acceptCount` 队列，队列也满了就开始拒绝/超时。所以「线程不够」时先看 `maxThreads`，而「排队超时」往往是 `acceptCount` 太小或处理太慢。",
+    "tags": [
+      "Tomcat",
+      "线程池",
+      "maxThreads",
+      "调优"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1913,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "`server.xml` 中 `<Context path=\"/app\" docBase=\"/opt/webapp\" />`，其中 `path` 的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "应用日志的输出目录"
+      },
+      {
+        "key": "B",
+        "text": "静态资源所在的磁盘目录"
+      },
+      {
+        "key": "C",
+        "text": "应用的访问上下文路径（URL 前缀）"
+      },
+      {
+        "key": "D",
+        "text": "JDK 的安装路径"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`path` 是 context path，即 URL 前缀**：`path=\"/app\"` 表示通过 `http://host:8080/app/...` 访问；`path=\"\"` 表示根路径。`docBase` 才是应用在磁盘上的实际目录（war 包或解压目录）。请求进来时 Tomcat 先按 context path 找到对应的 Web 应用，再去里面匹配 servlet。这也是为什么两个应用不能配同一个 `path`。",
+    "tags": [
+      "Tomcat",
+      "server.xml",
+      "context path",
+      "基础"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1914,
+    "type": "single",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "G1 收集器在内存管理上的典型特点是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "必须把 Eden/Survivor/Old 固定为三段连续内存"
+      },
+      {
+        "key": "B",
+        "text": "把堆划分为大小相等的 Region，按回收收益优先选择区域收集"
+      },
+      {
+        "key": "C",
+        "text": "整堆不分代，只有一块连续空间"
+      },
+      {
+        "key": "D",
+        "text": "以永久代作为主要回收区域"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**G1 把堆切分成大小相等的 Region（默认约 2048 个），逻辑上仍分代但物理上不连续，按「回收收益优先」挑选 Region 收集（Garbage First）**，并支持 `-XX:MaxGCPauseMillis` 设定停顿目标，因此适合大堆（数 GB 到数十 GB）场景，也是 JDK 9+ 的默认收集器。A 描述的是传统分代布局（如 Parallel/CMS 的连续分区），D 中永久代在 JDK 8 已被移除。",
+    "tags": [
+      "JVM",
+      "GC",
+      "G1",
+      "收集器"
+    ],
+    "frequency": "低频"
+  }
+]
