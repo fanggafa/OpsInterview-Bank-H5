@@ -244,31 +244,35 @@ const categoryChoice = computed(() => {
       </router-link>
     </div>
 
-    <!-- 设置入口：外观 / 默认练习方式 / 数据管理都收进设置页 -->
-    <router-link to="/settings" class="row row--entry card">
-      <span class="row__icon row__icon--indigo" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="17" height="17">
-          <path
-            d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-          />
-          <path
-            d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.4"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </span>
-      <div class="row__text">
-        <span class="row__title">设置</span>
-        <span class="row__desc">外观主题 · 默认练习方式 · 清空数据</span>
-      </div>
-      <span class="row__chev" aria-hidden="true">›</span>
-    </router-link>
+    <!-- 设置入口：外观 / 默认练习方式 / 数据管理都收进设置页。
+         外层用 .group 包裹（与「我的题目」完全相同的容器），
+         避免「独立 card + 自己加 padding」把卡片撑宽、与上面的卡对不齐。 -->
+    <div class="group card">
+      <router-link to="/settings" class="row">
+        <span class="row__icon row__icon--indigo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="17" height="17">
+            <path
+              d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+            />
+            <path
+              d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <div class="row__text">
+          <span class="row__title">设置</span>
+          <span class="row__desc">外观主题 · 默认练习方式 · 清空数据</span>
+        </div>
+        <span class="row__chev" aria-hidden="true">›</span>
+      </router-link>
+    </div>
 
     <Transition name="toast">
       <div v-if="toastText" class="toast" role="status">{{ toastText }}</div>
@@ -464,18 +468,9 @@ const categoryChoice = computed(() => {
  * 由 `.group` 提供 14px 内边距。这里的行是「独立一张卡」，没有 group 包着，
  * 所以必须自己补上左右 14px，否则图标会贴着卡片左边缘（截图里就是这样）。
  */
-.row--entry {
-  margin-top: 8px;
-  padding: 0 14px;
-  min-height: 58px;
-  border-bottom: none;
-  border-radius: var(--radius);
-  color: var(--c-text);
-}
-/* 独立卡片时，图标与文字仍按 group 内的一致间距排 */
-.row--entry .row__icon {
-  margin-left: 0;
-}
+/* 设置入口现在用 .group 包裹（与「我的题目」同一容器），
+   不需要单独的 .row--entry —— 曾用「独立 card + 自己加 padding」的方式，
+   结果卡片比上面那张宽出 28px（2×14px），与截图里对不齐的现象一致。 */
 .tile__label {
   font-size: 11.5px;
   color: var(--c-text-3);

@@ -156,19 +156,30 @@ describe('我的 · 分类图表默认折叠', () => {
   })
 })
 
-describe('我的 · 设置入口行的内边距', () => {
-  it('独立卡片的行自己补了左右内边距（否则图标贴边）', () => {
+describe('我的 · 设置入口与「我的题目」卡片对齐', () => {
+  it('设置入口也用 .group 容器包裹（宽度来源与上面的卡一致）', async () => {
+    const { wrapper } = await mountMe()
+    const groups = wrapper.findAll('.group')
+    // 「我的题目」一组 + 「设置」一组 = 2
+    expect(groups.length).toBe(2)
+
+    const settingsGroup = groups[1]
+    const entry = settingsGroup.find('a[href*="/settings"]')
+    expect(entry.exists()).toBe(true)
+    // 行本身不再自带左右 padding —— 交给 .group 统一提供
+    expect(entry.classes()).not.toContain('row--entry')
+  })
+
+  it('不再保留 .row--entry（曾导致卡片宽出 28px、与上图对不齐）', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
-    const block = src.slice(src.indexOf('.row--entry {'), src.indexOf('.tile__label {'))
-    // .row 本身 padding 左右是 0，所以 .row--entry 必须自己给 14px
-    expect(block).toMatch(/padding:\s*0 14px/)
+    expect(src).not.toMatch(/\.row--entry\s*\{/)
   })
 
   it('设置入口是一个可点的链接行，包含图标/标题/描述/箭头', async () => {
     const { wrapper } = await mountMe()
-    const entry = wrapper.find('.row--entry')
+    // 页头还有一个齿轮入口，这里要的是 .group 里的那一行
+    const entry = wrapper.find('.group a[href*="/settings"]')
     expect(entry.exists()).toBe(true)
-    expect(entry.attributes('href')).toContain('/settings')
     expect(entry.find('.row__icon').exists()).toBe(true)
     expect(entry.find('.row__title').text()).toBe('设置')
     expect(entry.find('.row__desc').exists()).toBe(true)
