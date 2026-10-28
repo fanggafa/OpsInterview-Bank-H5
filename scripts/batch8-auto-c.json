@@ -1,0 +1,103 @@
+[
+  {
+    "id": 3221,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 `register`、`when`、`failed_when`、`changed_when` 分别怎么用？",
+    "answer": "**四个配合解决「条件执行与结果改写」。**\n\n**1. `register`：把 task 结果存起来**\n```yaml\n- shell: ls /etc/app/config.yml\n  register: result\n  ignore_errors: true        # 不因失败中断\n\n- debug:\n    msg: \"文件存在\"\n  when: result.rc == 0\n```\n**常用字段**：`rc`（退出码）、`stdout`、`stderr`、`changed`、`failed`、`skipped`。\n\n**2. `when`：条件执行**\n```yaml\n- service: name=nginx state=started\n  when: ansible_os_family == \"RedHat\"\n\n- include_tasks: debian.yml\n  when: ansible_os_family == \"Debian\"\n\n# 多条件（且）\n  when:\n    - ansible_distribution_major_version | int >= 8\n    - nginx_installed\n\n# 或：用列表 + 或（需显式写）\n  when: nginx_installed or nginx_needed\n```\n\n**3. `changed_when`：改写「是否 changed」**\n```yaml\n# shell 模块总是报告 changed，实际可能没变\n- shell: /opt/check.sh\n  register: check\n  changed_when: false          # 这是一个「检查」操作，不该算变更\n\n# 按输出判断\n- shell: /opt/migrate.sh\n  register: migrate\n  changed_when: \"'migrations applied' in migrate.stdout\"\n```\n**`changed_when: false` 是让「查询类 task」不污染 changed 计数的标准做法**——否则幂等性检查（`changed=0`）永远不成立。\n\n**4. `failed_when`：改写「是否失败」**\n```yaml\n# 退出码 2 在本脚本里表示「无需变更」，不算失败\n- shell: /opt/apply.sh\n  register: apply\n  failed_when: \"apply.rc not in [0, 2]\"\n\n# 按输出判断失败\n- shell: /opt/health.sh\n  register: health\n  failed_when: \"'unhealthy' in health.stdout\"\n```\n\n**一个完整例子（幂等的迁移脚本）**：\n```yaml\n- name: 检查是否已迁移\n  stat: path=/var/lib/app/.migrated\n  register: marker\n\n- name: 执行迁移\n  shell: /opt/migrate.sh\n  when: not marker.stat.exists\n  register: migrate\n  changed_when: \"migrate.rc == 0\"\n  failed_when: \"migrate.rc not in [0, 1]\"\n\n- name: 打标记\n  file: path=/var/lib/app/.migrated state=touch\n  when: migrate is changed\n```\n\n**三个实践要点**：\n```\n1. 查询类 task 一律配 changed_when: false\n2. 自定义退出码的脚本用 failed_when 明确界定\n3. 复杂条件写成列表（更可读），别写成一长串 and\n```\n\n**最常见的误用**：**`ignore_errors: true` 用得太多**——它会把真正的失败也吞掉，导致后续步骤在错误状态上继续跑。**宁可显式写 `failed_when`，也不要 global 忽略错误。**"
+  },
+  {
+    "id": 3222,
+    "type": "multiple",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "关于「Ansible 的安全使用」，以下哪些做法是正确的？（多选）",
+    "options": [
+      { "key": "A", "text": "敏感变量用 Vault 加密，并对敏感 task 配 no_log: true" },
+      { "key": "B", "text": "生产环境用普通用户 + become（sudo），而不是直接 SSH 作为 root" },
+      { "key": "C", "text": "对生产执行变更前先 --check --diff 干跑" },
+      { "key": "D", "text": "为方便自动化，给所有机器配置免密 sudo 且不限制命令" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是常见的过度授权：**「NOPASSWD: ALL」等于把这个用户变成 root**，一旦控制端或 CI 被入侵，所有机器立即失守。正确做法是「只对需要的命令免密」（如 `NOPASSWD: /usr/bin/systemctl restart nginx`）。三项正确做法是基础安全实践。补充：④**`log_path` 记录所有执行**（审计）；⑤**禁止在命令行 `-e` 传密码**（会出现在进程列表和 shell history）；⑥**playbook 从 Git 拉取，不在控制端手工改**。"
+  },
+  {
+    "id": 3223,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 执行报 `UNREACHABLE`，怎么排查？",
+    "answer": "**`UNREACHABLE` = 连不上主机，比 task 失败更底层。**\n\n**四条排查顺序**：\n\n**1. 手工 SSH 试一下（最快）**\n```bash\nssh -v ops@10.0.0.1\n```\n**能连 → 是 Ansible 的配置问题（用户/key/参数）；不能连 → 是网络或 SSH 服务问题。**\n\n**2. 网络与端口**\n```bash\ntelnet 10.0.0.1 22\nnc -zv 10.0.0.1 22\n```\n```\n不通 → 安全组/防火墙/机器挂了\n通 → 继续查认证\n```\n\n**3. 认证相关的六个原因**\n\n| 原因 | 排查 |\n|---|---|\n| **key 不对/没权限** | `ansible -m ping -i inv --private-key=...` |\n| **用户名错** | inventory 的 `ansible_user` |\n| **known_hosts 拦截** | `host_key_checking = False`（或用 ssh-keyscan 预置） |\n| **密码认证被禁** | sshd 的 `PasswordAuthentication no` |\n| **目标机 sshd 未启动** | 登录控制台看 |\n| **fail2ban 封了控制端 IP** | 看目标机的 `/var/log/secure` |\n\n**4. Ansible 特有的三个原因**\n```\n① ansible_python_interpreter 指向了不存在的 python\n   → 新系统只有 python3，默认找 /usr/bin/python（python2）→ 报错\n   → 在 inventory 里设：ansible_python_interpreter=/usr/bin/python3\n\n② 目标机磁盘满/内存不足 → SSH 能连但 ansible 的临时模块传不下去\n\n③ become 密码错（UNREACHABLE 有时也会因为 become 失败而呈现）\n```\n**`ansible_python_interpreter` 是最经典的坑**——Ubuntu 20.04 之后没有 `python`，只有 `python3`。\n\n**诊断命令**：\n```bash\n# 带详细输出\nansible web1 -m ping -vvv\n\n# 只测连接\nansible web1 -m raw -a 'echo hi'      # raw 不需要 python\n```\n**`raw` 模块不依赖目标机的 python**——如果 `raw` 能通但 `ping` 不通，就是 python 解释器的问题。\n\n**批量排查（找出哪些机器不可达）**：\n```bash\nansible all -m ping -i inventories/prod 2>&1 | grep -E 'UNREACHABLE|SUCCESS' | sort\n```\n\n**一句话**：**`UNREACHABLE` 先手工 SSH 验证，再查「key/用户/known_hosts」和「python 解释器」——后者是新系统上最高频的原因。**"
+  },
+  {
+    "id": 3224,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 的 `become: yes` 等价于什么？",
+    "options": [
+      { "key": "A", "text": "以其他用户（默认 root）身份执行 task，通常通过 sudo" },
+      { "key": "B", "text": "以当前用户执行" },
+      { "key": "C", "text": "提升 Ansible 的并发数" },
+      { "key": "D", "text": "开启详细日志" }
+    ],
+    "answer": ["A"],
+    "explanation": "`become: yes` 让 task 通过 `sudo`（或其他 become 方法）以 `become_user`（默认 root）身份执行——**它替代了老版本的 `sudo: yes`**。需要目标机上有 sudo 权限（可能还要 `become_pass` 或 NOPASSWD）。B/C/D 都不对（并发是 `forks`，详细日志是 `-vvv`）。补充：`become_method` 可换成 `su`/`pbrun`/`doas`；`become_user` 可指定非 root 用户（如以 `app` 用户部署应用）。"
+  },
+  {
+    "id": 3225,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "困难",
+    "question": "配置管理工具（Ansible/Puppet/Chef/Salt）怎么选？",
+    "answer": "**2024 年的现实答案：中小规模用 Ansible，大规模 VM 用 Salt/Puppet，容器时代大量场景已不需要它们。**\n\n| | Ansible | Puppet | Chef | Salt |\n|---|---|---|---|---|\n| 架构 | **无 agent**（SSH） | agent | agent | agent（有 SSH 模式） |\n| 语言 | YAML | **自有 DSL** | Ruby | YAML + Python |\n| 学习曲线 | **低** | 中 | **高** | 中 |\n| 大规模性能 | 一般（SSH 并发受限） | **好** | 好 | **极好**（ZeroMQ） |\n| 幂等 | module 保证 | **强制** | 强制 | 强制 |\n| 生态 | **最活跃** | 成熟但下降 | 下降 | 中等 |\n\n**选择建议**：\n\n| 你的情况 | 推荐 |\n|---|---|\n| **< 500 台、想快速上手** | **Ansible** |\n| > 2000 台、要求强一致 | Salt 或 Puppet |\n| 已有 Ruby 团队 | Chef |\n| **K8s 为主** | **都不太需要**（用 GitOps） |\n\n**「为什么 Ansible 最流行」**：\n```\n1. 无 agent → 不用先装客户端（新机器直接能管）\n2. YAML 可读 → 运维能直接写，不用学 DSL\n3. 生态最好 → 几乎每个产品都有 module\n4. 既能 ad-hoc 又能 playbook → 从「临时操作」到「标准化」平滑过渡\n```\n\n**「为什么大规模下 Ansible 吃力」**：\n```\nSSH 连接开销：几千台并发需要调 forks + ControlPersist，控制端成为瓶颈\n→ Salt 用 ZeroMQ 长连接，几千台也能秒级响应\n→ 但代价是要装 agent\n```\n\n**关键认知：容器与 K8s 改变了格局**\n```\n过去：配置管理是运维的核心工具\n现在：\n  应用 → K8s + GitOps（ArgoCD/Flux）\n  OS 基线 → Packer 烤镜像\n  基础设施 → Terraform\n→ 配置管理工具的作用缩小到「VM 场景的服务配置 + 迁移期」\n```\n**「新项目还用不用上 Ansible」取决于：你还有多少台 VM 要手工配。**\n\n**混合使用的现实**：\n```\nTerraform 建资源 → Packer 烤镜像 → 少量 Ansible 做服务配置 → K8s 管应用\n```\n\n**三个选型的实用判断**：\n```\n1. 团队有多少人能写 Ruby/DSL？（Chef/Puppet 的门槛在这）\n2. 机器规模多大？（2000+ 考虑 Salt）\n3. 是否在迁 K8s？（在迁就别大投入 VM 配置管理）\n```"
+  },
+  {
+    "id": 3226,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "「配置中心」是什么？和 Ansible 管配置有什么区别？",
+    "answer": "**Ansible 管「机器上的配置文件」，配置中心管「应用运行时的配置」。**\n\n| | Ansible | 配置中心（Nacos/Apollo/Consul） |\n|---|---|---|\n| 对象 | 机器/系统层配置 | **应用的业务配置** |\n| 生效方式 | 执行 playbook 后生效 | **应用监听变更，秒级生效** |\n| 是否需要重启 | 常常需要 | **通常不需要**（支持热更新） |\n| 变更粒度 | 整份文件 | **单个 key** |\n| 谁能改 | 运维 | **开发/运维都能改**（有权限控制） |\n| 多环境 | inventory 区分 | **命名空间/环境隔离** |\n\n**为什么需要配置中心**：\n```\n✗ 业务开关（限流阈值、灰度比例）改一次就要「改配置文件 + 重启服务」\n→ 高峰期根本不敢调\n\n✓ 配置中心：改一个 key → 应用秒级生效 → 可随时调整\n```\n\n**典型使用场景**：\n```\n✓ 限流阈值、超时时间（需要随时调整）\n✓ 功能开关（灰度、降级）\n✓ 数据库连接池参数\n✗ 系统级配置（内核参数、nginx.conf）→ 仍用 Ansible/镜像\n```\n\n**三个关键能力**：\n\n**1. 变更推送（长轮询或 WebSocket）**\n```\n应用启动时拉全量配置，之后保持长连接监听变更\n→ 配置改了立即收到通知 → 更新内存中的配置\n```\n\n**2. 版本与回滚**\n```\n每次修改留历史版本 → 出问题一键回滚到上一版\n→ 这是「手工改配置」最缺的能力\n```\n\n**3. 灰度发布**\n```\n新配置先只对 10% 的实例生效 → 观察 → 全量\n→ 配置变更也需要灰度\n```\n\n**主流方案**：\n| 方案 | 特点 |\n|---|---|\n| **Nacos** | 阿里开源，配置 + 服务发现，国内主流 |\n| **Apollo** | 携程开源，界面友好，权限细 |\n| **Consul** | HashiCorp，KV + 服务发现 |\n| **etcd** | 轻量 KV，K8s 生态 |\n| **K8s ConfigMap** | 原生，但**更新不会自动重载应用** |\n\n**「K8s ConfigMap 的坑」值得单独说**：\n```\nConfigMap 更新后：\n- 挂载为文件：文件会更新（但有延迟，约 1 分钟），应用需自己 watch\n- 挂载为环境变量：**不会更新**（要重启 Pod）\n→ 所以「改 ConfigMap 就能热更新配置」是个常见误解\n```\n\n**一句话**：**Ansible 管「机器层的配置」（改了要重跑），配置中心管「应用层的配置」（改了秒级生效）——需要频繁调整的业务参数应该进配置中心。**"
+  },
+  {
+    "id": 3227,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "如何做「自动化脚本的测试」？Ansible role 怎么测？",
+    "answer": "**自动化代码也需要测试——否则「改了 playbook 不知道会不会炸」。**\n\n**三个层次的测试**：\n\n**1. 语法/风格检查（秒级，每次提交）**\n```bash\nansible-lint site.yml            # 规则检查（最佳实践）\nyamllint roles/                  # YAML 格式\nansible-playbook --syntax-check site.yml\n```\n**`ansible-lint` 能抓出很多问题**：用 shell 而不是专用模块、变量名不规范、task 没 name、`changed_when` 缺失。\n\n**2. 幂等性测试（关键，最有价值）**\n```bash\n# 跑两次，第二次必须 changed=0\nansible-playbook site.yml\nansible-playbook site.yml | tee run2.log\ngrep -q 'changed=0' run2.log || exit 1\n```\n**这是自动化代码的「单元测试」——它验证「重复执行不会产生副作用」。**\n\n**3. 容器化验证（Molecule，推荐）**\n```yaml\n# molecule/default/molecule.yml\nplatforms:\n  - name: instance\n    image: ubuntu:22.04\n    pre_build_image: true\nprovisioner:\n  name: ansible\nverifier:\n  name: ansible\n```\n```bash\nmolecule test          # 创建容器 → converge → idempotence → verify → destroy\n```\n**Molecule 的价值**：**在容器里真的跑一遍 role，并自动测幂等性**（第二次 converge 必须 no changes）。\n\n**测试金字塔（对自动化同样适用）**：\n```\n        ╱ 生产验证（--check + 灰度） ╲     少量\n      ╱ 集成测试（Molecule 容器）    ╲    中等\n    ╱ 静态检查 + 幂等测试           ╲   大量，秒级\n```\n\n**CI 里的最小配置**：\n```yaml\n# .gitlab-ci.yml\nlint:\n  script:\n    - ansible-lint site.yml\n    - ansible-playbook --syntax-check site.yml\n\nidempotence:\n  script:\n    - molecule test\n```\n\n**四个容易忽略的测试点**：\n```\n□ 变量未定义时能否给出清晰报错（而不是奇怪的类型错误）\n□ 目标机是「已配置状态」时能否正确跳过（幂等）\n□ 目标机是「半配置状态」时能否收敛（从坏状态修复）\n□ 不同 OS（CentOS/Ubuntu）都能跑通\n```\n**「半配置状态」最容易被忽略也最容易出事**——生产上机器往往不是「全新」也不是「完全配置好」。\n\n**生产验证的正确顺序**：\n```\n1. ansible-lint + syntax-check（CI，秒级）\n2. molecule test（CI，分钟级，容器里真跑）\n3. --check --diff（针对真实环境，干跑看差异）\n4. --limit 单台（真实环境，小范围验证）\n5. serial 分批全量\n```\n\n**一句话**：**自动化脚本的测试核心是「幂等性验证」——跑两遍第二次必须 changed=0，Molecule 能在容器里自动完成这套验证。**"
+  },
+  {
+    "id": 3228,
+    "type": "multiple",
+    "category": "自动化与配置管理",
+    "difficulty": "困难",
+    "question": "推进「运维自动化」时，以下哪些做法能提高成功率？（多选）",
+    "options": [
+      { "key": "A", "text": "从一个具体痛点切入（如「手工发布 30 分钟」），先做出可见收益" },
+      { "key": "B", "text": "先自动化「常用且低风险」的操作，积累信任后再动高风险变更" },
+      { "key": "C", "text": "让自动化「比手工更快更好用」，而不是「仅仅合规」" },
+      { "key": "D", "text": "一次性把所有手工操作都自动化，快速见效" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是自动化项目最常见的失败模式：**范围太大、周期太长、中途失去支持**，而且「同时对所有流程动手」意味着风险不可控。三项正确做法是渐进式推进的共同特征。补充：⑤**给自动化做监控**（工具本身挂了要知道）；⑥**保留手工通道**（自动化失效时的兜底）；⑦**度量收益**（省了多少人时、减少了多少次误操作）。核心：**自动化的敌人不是「技术难」，而是「没人用」——必须让它比手工更省事。**"
+  },
+  {
+    "id": 3229,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 `include_tasks`、`import_tasks`、`include_role`、`import_role` 有什么区别？",
+    "answer": "**核心区别：`import` 是「静态解析」（执行前展开），`include` 是「动态解析」（运行时才读）。**\n\n| | import_* | include_* |\n|---|---|---|\n| 解析时机 | **playbook 解析时** | **运行时** |\n| 是否支持变量路径 | ❌ 不行 | ✅ 可以 |\n| 是否支持 when | 整个文件都会加载 | ✅ 真正按需加载 |\n| `--list-tasks` 能否看到 | ✅ 能 | ❌ 看不到 |\n| 标签继承 | ✅ 自动继承 | 需要显式传 |\n| 循环 | ❌ 不支持 | ✅ 支持 |\n\n**实际影响（最重要的两点）**：\n\n**1. `import` + `when` 的陷阱**\n```yaml\n- import_tasks: redhat.yml\n  when: ansible_os_family == \"RedHat\"\n→ 文件「总会加载」，when 会被加到文件里的每个 task 上\n→ 如果文件里有引用未定义变量（Debian 专属变量），仍会报错\n\n✓ 用 include_tasks → 真正按需加载，不会因另一分支的变量报错\n```\n**「import + when 报变量未定义」是经典坑。**\n\n**2. `include_tasks` 不能用 `--list-tasks` 列出**\n```\nCI 里做「task 清单检查」时，include 的任务看不到\n→ 需要静态完整性检查时用 import\n```\n\n**选择规则（简单记）**：\n```\n文件路径是固定的、不需要条件 → import（静态、可检查）\n路径里有变量、或按条件加载不同文件 → include（动态）\n```\n\n**role 的两种引用**：\n```yaml\n# 静态（经典写法）\nroles:\n  - nginx\n\n# 动态（可传 vars、可条件）\n- include_role:\n    name: \"{{ role_name }}\"\n  vars:\n    nginx_port: 8080\n\n# 静态 import\n- import_role:\n    name: nginx\n```\n**`include_role` 才能传 `vars` 并支持循环**——这是它比 `roles:` 列表更灵活的原因。\n\n**四个实践建议**：\n```\n1. 主 playbook 用 import（结构清晰、可 --list-tasks）\n2. OS 分支用 include_tasks（避免 import+when 的变量问题）\n3. 需要传参/循环的 role 用 include_role\n4. import 的文件里不要引用「当前分支不存在的变量」\n```"
+  },
+  {
+    "id": 3230,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "「基础设施即代码」和「点击式运维」相比，最核心的收益是什么？",
+    "answer": "**核心收益是「可复现 + 可审计 + 可回滚」——这三点手工运维都做不到。**\n\n| 维度 | 点击式 | IaC |\n|---|---|---|\n| **可复现** | 无法重建「那个环境」 | 一条命令重建 |\n| **可审计** | 不知道谁改了什么 | Git 历史全记录 |\n| **可回滚** | 手工回退，风险高 | `revert` 即回滚 |\n| **可评审** | 无法事前 review | PR + plan 可审 |\n| **一致性** | 每台机器可能不同 | 同代码 = 同结果 |\n| **文档** | 靠记忆和 wiki | **代码就是文档** |\n\n**三个「只有 IaC 能做到」的典型场景**：\n```\n✓ 灾备演练：从零重建整套环境（手工要几天，IaC 要小时）\n✓ 环境一致性：开发/测试/生产用同一份代码\n✓ 变更审查：在 plan 阶段就发现「这次会删 3 台机器」\n```\n\n**「可复现」是最容易被低估的价值**：\n```\n线上出问题 → 想复现 → 手工环境无法重建\n→ 只能生产直接试 → 风险极高\n\nIaC：起一套一模一样的环境验证 → 安全\n```\n\n**代价（要诚实面对）**：\n```\n✗ 前期投入大（写代码、建流水线）\n✗ 学习曲线（团队要会 Terraform/Ansible）\n✗ 不适合「一次性、探索性」的操作\n✗ 代码维护本身也是工作（不是写完就完了）\n```\n\n**「什么时候不值得」**：\n```\n机器 < 10 台、变更很少、只有一个人维护\n→ 手工 + 文档可能更划算\n（但规模一旦上来就必须转）\n```\n\n**一句话**：**IaC 的核心不是「省事」，而是「让基础设施变得像代码一样可版本化、可审查、可回滚」——这是可靠性的基础。**"
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "id": 2830,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "Git 的「子模块（submodule）」和「subtree」有什么区别？什么时候用？",
+    "answer": "**子模块 = 引用另一个仓库的某个提交；subtree = 把另一个仓库的代码复制进来。**\n\n| | submodule | subtree |\n|---|---|---|\n| 存储方式 | **只存一个指向外部仓库的指针** | **把代码复制进当前仓库** |\n| clone 时 | 需要额外 `--recurse-submodules` | 一次性拿到（无额外步骤） |\n| 历史 | 不进入主仓库历史 | **进入主仓库历史** |\n| 更新 | `git submodule update --remote` | `git subtree pull` |\n| 提交 | 只记录 sha | 真正提交 |\n| 通俗理解 | **快捷方式** | **复制粘贴** |\n\n**子模块的经典痛点**：\n```\n✗ clone 时忘了 --recurse-submodules → 目录是空的\n✗ CI 里没配子模块 → 构建失败\n✗ 子模块更新后，主仓库要提交「新的 sha 指针」（容易忘）\n✗ 团队成员对「子模块该不该更新」常常很困惑\n```\n**「子模块的空目录」是新成员最常遇到的第一道坎。**\n\n**常用命令**：\n```bash\n# 添加\ngit submodule add <url> <path>\n# 克隆时带上\ngit clone --recurse-submodules <url>\n# 已有仓库补拉\ngit submodule update --init --recursive\n# 更新到上游最新\ngit submodule update --remote\n```\n\n**subtree 的用法**：\n```bash\ngit subtree add --prefix=lib/foo <url> main --squash\ngit subtree pull --prefix=lib/foo <url> main --squash\ngit subtree push --prefix=lib/foo <url> main\n```\n**`--squash` 很常用** —— 避免把上游的完整历史搬进来。\n\n**选择建议**：\n```\n✓ 外部依赖「独立演进、你要跟踪其版本」→ submodule\n✓ 外部代码「要一起改、改完还想推回去」→ subtree\n✓ 依赖能有包管理（npm/maven/go mod）→ **用包管理，别用这两个**\n```\n**「能用包管理器就不用子模块」是最实用的建议** —— 子模块的维护成本高于它的价值。\n\n**「现实中的替代方案」**：\n```\nmonorepo（都在一个仓库）→ 最简单，但仓库会变大\n包管理（npm/maven）→ 最适合「版本化的依赖」\nsubmodule/subtree → 只在「必须引用整个仓库」时才用\n```\n\n**一句话**：**子模块是快捷方式（省空间但步骤多），subtree 是复制粘贴（省步骤但历史混入）—— 能用包管理器就别用这两个。**"
+  },
+  {
+    "id": 2831,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "`git fetch` 之后执行 `git merge`，与直接 `git pull` 的区别是？",
+    "options": [
+      { "key": "A", "text": "fetch 只更新远端引用，可以先 review 差异再决定是否 merge" },
+      { "key": "B", "text": "两者完全等价" },
+      { "key": "C", "text": "pull 不会产生 merge 提交" },
+      { "key": "D", "text": "fetch 会自动合并" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`pull = fetch + merge`（或 rebase），但合并前你没有机会检查**。分开执行的价值是：①**看差异**（`git log HEAD..origin/main`、`git diff HEAD origin/main`）；②**确认是否要换策略**（有时会想 rebase 而不是 merge）；③**发现冲突时更从容**。B 错（pull 会立即合并）；C 错（pull 默认就是 merge，会产生 merge 提交，除非配 `pull.rebase=true`）；D 错（fetch 不合并）。**团队协作时推荐「先 fetch 看差异，再决定 merge 还是 rebase」。**"
+  },
+  {
+    "id": 2832,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "困难",
+    "question": "「Git 仓库被误 force push 覆盖了」，怎么恢复？",
+    "answer": "**分两种情况：本地还有那个提交（好办），或者只有远端有（难办）。**\n\n**情况 A：本地还有（最常见）**\n```bash\ngit reflog                    # 找到被覆盖前的提交\ngit push --force-with-lease origin <good-sha>:main\n```\n**`--force-with-lease` 比 `--force` 安全** —— 只在「远端没被别人改过」时才推送。\n\n**情况 B：本地也没有**\n```bash\n# 1. 如果远端有 reflog（部分 GitLab 支持）\n#    GitLab 管理员可以通过 API/后台恢复\n\n# 2. 如果有 MR 分支还保留着那个提交\ngit fetch origin <mr-branch>\n\n# 3. 从 CI 的构建产物/artifact 里找\ngit cat-file -p <sha>        # 如果对象还在\n\n# 4. 从其他开发者的本地仓库找（他们可能没 pull 过新分支）\ngit remote add colleague <url-of-their-repo>\ngit fetch colleague\n```\n\n**远端恢复的具体手段**：\n\n| 平台 | 手段 |\n|---|---|\n| **GitLab** | 仓库设置 → 有「Repair」；或管理员从备份恢复 |\n| **GitHub** | 通过 API 找「dangling commit」；或联系支持 |\n| **自建 Gitea** | 直接看 `.git` 目录里的对象 |\n\n**「预防」比恢复更重要（四条）**：\n\n**1. 保护分支**\n```\nGitLab/GitHub 的 Protected Branch：\n✓ 禁止 force push\n✓ 禁止直接 push（必须走 MR）\n```\n**这是唯一真正有效的防线** —— 开了保护分支就 force push 不了。\n\n**2. 用 `--force-with-lease`**\n```bash\n✗ git push --force\ngit push --force-with-lease    # 远端有变化时拒绝推送\n```\n\n**3. 所有关键分支都有备份**\n```\ngit push origin main:backup/main-20240115\n```\n\n**4. 仓库定期备份**\n```bash\ngit clone --mirror <url> /backup/repo.git\n```\n**`--mirror` 会复制所有引用（包括标签与所有分支）** —— 这是最完整的备份。\n\n**「force push 的常见触发场景」**：\n```\n✗ rebase 后想更新远端\n✗ 撤销了一个已经推送的提交\n✗ 本地「重来一次」（git reset 后强推）\n→ 这三种都该用「新分支 + MR」或 revert，而不是强推 main\n```\n\n**「团队协作的铁律」**：\n```\n✓ 功能分支可以 force push（只有你在用）\n✗ main/develop 绝不 force push（别人都在用）\n```\n\n**一句话**：**误 force push 后先看本地 reflog（多数能找回），再联系平台恢复；但真正的解法是「保护分支禁止 force push」—— 功能分支可强推，主分支绝不行。**"
+  },
+  {
+    "id": 2833,
+    "type": "multiple",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "关于「Git 提交规范」，以下哪些做法是有效的？（多选）",
+    "options": [
+      { "key": "A", "text": "用 Conventional Commits（feat/fix/docs/refactor 前缀）便于生成 changelog" },
+      { "key": "B", "text": "用 commitlint + husky 在本地拦截不规范提交" },
+      { "key": "C", "text": "一次提交只做一件事，避免「顺手改了 20 个文件」" },
+      { "key": "D", "text": "提交信息写「update」「fix bug」以节省时间" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是最常见但最有害的习惯：**「update」「fix bug」在三个月后完全无用**——排障时要靠 `git log` 找「哪次提交引入了问题」，模糊的提交信息等于让自己多花一小时。三项正确做法是提交规范的基石：①**Conventional Commits** 让 `feat:`/`fix:` 能被工具解析（自动生成 CHANGELOG、语义化版本）；②**commitlint** 自动拦截（比靠自觉可靠）；③**一次一事**（便于 cherry-pick、revert、review）。补充：④**提交信息要写「为什么」**（代码本身说明了「是什么」）。"
+  },
+  {
+    "id": 2834,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "Git 的 `cherry-pick` 和 `rebase` 分别什么时候用？",
+    "answer": "**`cherry-pick` = 挑「单个提交」挪到当前分支；`rebase` = 把「一串提交」整体搬到新基底。**\n\n| | cherry-pick | rebase |\n|---|---|---|\n| 移动对象 | **指定的一两个提交** | **整条分支的提交链** |\n| 典型场景 | 把 hotfix 同步到多个分支 | 把功能分支变基到最新 main |\n| 是否重写历史 | 新提交（新 sha） | **重写（全部新 sha）** |\n| 冲突处理 | 逐个解决 | 逐个提交解决 |\n\n**cherry-pick 的典型场景**：\n```bash\n# 修复在 main 上，要同步到 release 分支\ngit checkout release-1.2\ngit cherry-pick <fix-sha>\n\n# 挑多个\ngit cherry-pick <sha1> <sha2> <sha3>\n# 范围\ngit cherry-pick A..B              # 不含 A\ngit cherry-pick A^..B             # 含 A\n```\n\n**rebase 的典型场景**：\n```bash\n# 功能分支跟上 main 的最新进度\ngit checkout feature\ngit rebase main\n\n# 整理自己的提交（合并/改写）\ngit rebase -i HEAD~5\n```\n\n**三个关键注意点**：\n\n**1. cherry-pick 会产生新 sha**\n```\n同一个修改在两个分支上是「两个不同的提交」\n→ 将来合并时可能产生「重复的修改」（内容相同但 sha 不同）\n→ 大量 cherry-pick 会让历史混乱\n```\n\n**2. rebase 会重写历史（危险）**\n```\n✗ 对已经推送且别人在用的分支 rebase → 别人拉取时冲突\n✓ 只对自己的功能分支 rebase\n✓ 已经合并的提交不要再 rebase\n```\n\n**3. rebase 冲突要逐个提交解决**\n```bash\n# 冲突时\ngit status                     # 看哪个提交冲突\ngit add <file>\ngit rebase --continue\n# 或放弃\ngit rebase --abort\n```\n\n**「cherry-pick 冲突」的处理**：\n```bash\ngit cherry-pick <sha>\n# 冲突时\ngit add <file>\ngit cherry-pick --continue\n# 或跳过/放弃\ngit cherry-pick --skip\ngit cherry-pick --abort\n```\n\n**「用哪个」的判断**：\n```\n✓ 单个修复要同步到几个分支 → cherry-pick\n✓ 功能分支要跟上主干 → rebase（或 merge）\n✗ 用 cherry-pick 代替合并整个分支（会丢失提交关系）\n```\n\n**一句话**：**「单个提交挪地方用 cherry-pick，整条分支换基底用 rebase」——两者都会产生新 sha，别对已推送的公共分支用，且 cherry-pick 大量使用会让历史混乱。**"
+  }
+]

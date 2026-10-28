@@ -1,0 +1,110 @@
+[
+  {
+    "id": 3021,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "ES 查询「慢」怎么定位？慢查询日志怎么开？",
+    "answer": "**先分类：是「查询本身慢」还是「集群资源不足」。**\n\n**1. 开慢查询日志（第一步）**\n```json\nPUT logs-*/_settings\n{\n  \"index.search.slowlog.threshold.query.warn\": \"5s\",\n  \"index.search.slowlog.threshold.query.info\": \"1s\",\n  \"index.search.slowlog.threshold.fetch.warn\": \"1s\",\n  \"index.indexing.slowlog.threshold.index.warn\": \"10s\"\n}\n```\n日志落在 `<cluster>.log` 或 `_slowlog` 索引里，能看到**具体查询 DSL、耗时、分片数**。\n\n**2. 五个高频原因**\n\n| 原因 | 判断 | 优化 |\n|---|---|---|\n| **查询没有走 filter** | 查询慢且 CPU 高 | 精确条件放 filter |\n| **聚合 size 太大** | `circuit_breaking` 或内存高 | 减 size、用 composite |\n| **深度分页** | `from` 很大 | `search_after` |\n| **分片太多** | 单查询要合并很多分片结果 | 合并索引/reindex |\n| **通配符/正则查询** | `wildcard`、`regexp` 前缀含 `*` | 改用 ngram 或 keyword |\n\n**`wildcard` 是最容易被忽略的慢查询来源**：\n```\n✗ { \"wildcard\": { \"message\": \"*timeout*\" } }   # 前缀通配 = 全扫描\n✓ 用 match 分词查询，或用 keyword 的 prefix 查询（只支持前缀）\n```\n\n**3. Profile API（精确定位）**\n```json\nGET logs/_search\n{ \"profile\": true, \"query\": { ... } }\n```\n输出每个阶段的耗时与文档数，能看到：\n```\n- rewrite time（重写时间，wildcard 常在这里爆炸）\n- 每个 shard 的查询耗时（定位是否某个分片特别慢）\n- advance/next_doc 次数（扫描量）\n```\n\n**4. 集群层面的检查**\n```bash\nGET _cat/nodes?v&h=name,heap.percent,cpu,load_1m,disk.avail\nGET _nodes/stats/indices/search          # query_total / query_time_in_millis\nGET _tasks?actions=*search*&detailed     # 正在跑什么查询\n```\n\n**5. 三个「反直觉」的慢查询**\n```\n① 只查一条文档却很慢 → 可能是跨很多分片（分片过多）\n② 加了过滤条件反而更慢 → 过滤字段没有索引（mapping 没定义）\n③ 第一次查慢、后续快 → 是 OS page cache 生效（正常）\n```\n\n**优化优先级**：\n```\n1. 把精确条件改成 filter（零成本，收益大）\n2. 缩小时间范围（最直接）\n3. 减聚合 size / 用 composite\n4. 深分页改 search_after\n5. 长期：调整分片数、用 ILM 控制单索引大小\n```\n\n**一句话**：**慢查询先开 slowlog 拿到具体 DSL，再用 `profile: true` 看时间花在哪——多数「慢」是把条件写进了 must、聚合 size 太大、或用了前缀通配。**"
+  },
+  {
+    "id": 3022,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "Elasticsearch 中「按时间范围查日志」时，`range` 查询放在 `filter` 里最重要的好处是？",
+    "options": [
+      { "key": "A", "text": "结果可被 filter cache 缓存，且不计算相关性分数" },
+      { "key": "B", "text": "能查到更多数据" },
+      { "key": "C", "text": "能自动按时间排序" },
+      { "key": "D", "text": "可以省掉 mapping 定义" }
+    ],
+    "answer": ["A"],
+    "explanation": "`range` 是典型的「只需筛选、不需算分」条件，放进 `filter` 后：①**不参与 TF-IDF 算分**（省 CPU）；②**结果位图进 filter cache**，同一时间范围的重复查询直接命中。B/C/D 都不对——放哪都查得到同样的数据，排序要靠 `sort`，mapping 与查询上下文无关。**日志检索的正确姿势：`range` + `term` 全放 filter，只有 `match`（全文检索）放 must。**"
+  },
+  {
+    "id": 3023,
+    "type": "multiple",
+    "category": "日志与ELK",
+    "difficulty": "困难",
+    "question": "ES 集群要做容量规划，以下哪些因素必须考虑？（多选）",
+    "options": [
+      { "key": "A", "text": "原始日志量 × 索引放大系数（通常 1.5-3 倍，取决于字段数与分词）" },
+      { "key": "B", "text": "副本数（存储要乘以副本数）" },
+      { "key": "C", "text": "预留 15-20% 磁盘空间给段合并与临时空间" },
+      { "key": "D", "text": "只要磁盘够，节点数量可以随意减少" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是危险的误解：**节点过少会同时限制「写入吞吐」和「查询并发」**，而且副本无处分配（yellow）、恢复时一个节点挂了影响面过大。三项正确因素都是容量估算的核心：①**索引放大系数**最容易低估——带分词和多个 keyword 字段时，索引可能是原文的 2-3 倍；②副本让存储直接翻倍；③**段合并需要临时空间**，磁盘接近满时合并会失败，进而让写入变慢。补充：④还要算 **堆内存与分片数**（单节点分片上限约 20/GB 堆）。"
+  },
+  {
+    "id": 3024,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "日志级别怎么选？生产环境应该开哪个级别？",
+    "answer": "**五级从粗到细：ERROR > WARN > INFO > DEBUG > TRACE。**\n\n| 级别 | 什么时候用 | 生产是否开 |\n|---|---|---|\n| **ERROR** | 需要人介入的故障 | ✅ 必开 |\n| **WARN** | 异常但已自动恢复（重试成功、降级） | ✅ 开 |\n| **INFO** | 关键业务节点（请求进出、状态变更） | ✅ 开（但要控制量） |\n| **DEBUG** | 开发调试细节（变量值、分支走向） | ❌ **不开** |\n| **TRACE** | 极细粒度（每个方法进出） | ❌ 不开 |\n\n**生产环境：INFO（含 WARN/ERROR）**。DEBUG 只在排查特定问题时**临时**打开，且要限时关闭。\n\n**「DEBUG 日志打满磁盘」是运维经典事故**：\n```\n有人排查问题把日志调成 DEBUG，忘了改回来\n→ 日志量涨 10-50 倍 → 几天后磁盘满 → 全站不可用\n```\n**防御**：\n```\n1. 开 DEBUG 必须设「自动过期」（如通过配置中心设 2 小时后自动恢复）\n2. 磁盘水位告警（80% 就告警，不等满）\n3. 日志速率监控（rate 突增即告警）\n```\n\n**INFO 也要控制量**：\n```\n✗ 每个请求打 10 条 INFO → 高 QPS 下日志洪水\n✓ 只打「关键节点」（请求入口/出口、状态变更、外部调用结果）\n✓ 采样：高频正常请求按 1% 采样打印，错误全打\n```\n\n**三条实用规则**：\n```\n1. 错误必须打（宁可多不可少）\n2. 正常流程少打（尤其是循环里、高频路径）\n3. 敏感信息永不打（密码、token、身份证、手机号全量）\n```\n\n**「日志里出现密码」是最常见的合规事故**——量级比「DEBUG 忘关」更严重。"
+  },
+  {
+    "id": 3025,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "如何做「日志脱敏」？哪些字段必须处理？",
+    "answer": "**三类必须脱敏：「凭据、个人身份信息、业务敏感数据」。**\n\n| 类型 | 字段 |\n|---|---|\n| **凭据** | password、token、secret、accessKey、cookie、authorization |\n| **个人身份（PII）** | 手机号、身份证、银行卡、邮箱、地址、姓名 |\n| **业务敏感** | 金额、余额、订单详情、库存成本 |\n\n**三层实现**：\n\n**1. 应用层（最推荐，从源头拦）**\n```java\n// 日志框架的 filter / converter\nlog.info(\"user={} phone={}\", userId, mask(phone));\n// mask: 138****8888\n```\n或用 Logback 的 `PatternLayout` + 自定义 `MessageConverter`，**自动对匹配到的字段脱敏**（正则替换）。\n\n**2. 采集/处理层（Logstash / Filebeat）**\n```ruby\nfilter {\n  mutate {\n    gsub => [\n      \"message\", \"(password|token)=\\S+\", \"\\1=***\",\n      \"message\", \"1[3-9]\\d{9}\", \"1**********\"\n    ]\n  }\n}\n```\n**注意：这是「兜底」，不是唯一防线**——日志已经到了采集层，说明数据已经写出来了。\n\n**3. 存储/查询层（ES）**\n```\nES 的 field-level security（商业版）\n或 Kibana 的 role 里限制可查字段\n```\n**只能防「看到」，不能防「存进去」**，所以不如前两层。\n\n**四个高频泄漏点**：\n```\n✗ 打印完整请求体（含密码、手机号）\n✗ 异常堆栈里带拼接的 SQL（含参数值）\n✗ 第三方 SDK 打日志（不受你控制）\n✗ 调试日志里 dump 整个对象（toString 里有敏感字段）\n```\n**「debug 打印整个对象」是最常见的泄漏方式**——对象的 `toString()` 往往带全部字段。\n\n**验证方法（必做）**：\n```bash\n# 随机抽一段真实日志，grep 敏感模式\ngrep -E '[1-9]\\d{10}|password|token|\"\\d{15,19}\"' app.log\n```\n**这是最直接的自查手段**——不用工具，一条 grep 就能发现明显泄漏。\n\n**合规视角**：个人信息保护法要求「最小必要 + 访问审计」——**日志里存了手机号，这个日志平台的访问权限就要按敏感数据管理**，否则就是合规风险。"
+  },
+  {
+    "id": 3026,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "ES 索引的 `refresh_interval` 从 1s 改为 30s，主要影响是？",
+    "options": [
+      { "key": "A", "text": "写入吞吐提升、数据可见延迟增大（最多 30 秒才能在查询里看到）" },
+      { "key": "B", "text": "查询速度变慢" },
+      { "key": "C", "text": "数据会丢失" },
+      { "key": "D", "text": "副本数会自动减少" }
+    ],
+    "answer": ["A"],
+    "explanation": "**refresh 是「让新写入的数据变得可搜索」的动作，它会产生新 segment**。每秒 refresh 意味着每秒生成一个 segment → segment 数量暴涨 → merge 压力大 → 写入变慢。调到 30s 后 segment 生成频率降低 30 倍，写入吞吐明显提升，代价是「最近 30 秒的日志查不到」。**日志场景完全可接受这个延迟**（排障看的是几分钟前的事），所以这是日志索引最有效的单项优化。B/C/D 都不对——refresh 不影响查询本身的性能、不影响数据持久化（那是 translog 的事）。"
+  },
+  {
+    "id": 3027,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "困难",
+    "question": "ES 节点频繁 OOM 或反复重启，怎么排查？",
+    "answer": "**OOM 比「查询被熔断」严重得多——它会带走整个节点上的所有分片。**\n\n**Step 1：确认是哪个内存区域爆了**\n```bash\n# 看 GC 日志（jvm.options 里已默认开）\ntail -100 /var/log/elasticsearch/gc.log\n# 关键字：Full GC、OutOfMemoryError、GC overhead limit\ndmesg -T | grep -i 'killed process'    # 是否被内核 OOM Killer 杀掉\n```\n\n**Step 2：五个高频原因**\n\n**1. fielddata 被启用（最经典）**\n```json\n// 危险：text 字段开了 fielddata\n\"message\": { \"type\": \"text\", \"fielddata\": true }\n→ 排序/聚合时把全部词加载到堆 → 几十 GB 瞬间没了\n```\n**检查**：\n```bash\nGET _nodes/stats/indices/fielddata?fields=*\nGET _cat/fielddata?v\n```\n**修复**：`fielddata: false`（7.x 默认已关），改用 `keyword` 子字段。\n\n**2. 大聚合 / 大 terms size**\n```json\n{ \"terms\": { \"field\": \"client_ip\", \"size\": 100000 } }\n```\n→ 桶全放堆里。**解法：size ≤ 1000，用 composite 分页**。\n\n**3. 分片过多**\n```\n每分片占堆（segment 元数据、buffer）\n单节点分片数超过「20 × 堆GB数」就开始吃紧\n```\n**检查**：\n```bash\nGET _cat/allocation?v          # 每节点分片数\nGET _cluster/health | grep unassigned\n```\n\n**4. bulk 请求过大**\n```\n一个 bulk 100MB → 在内存里展开成很多对象 → 堆瞬时飙升\n→ 单个 bulk 控制在 5-15MB\n```\n\n**5. 内存配置错误**\n```yaml\n# 常见错误\n-Xms30g -Xmx30g     # 超过 31GB 拐点（虽然不超但接近）\n物理内存 64GB，堆设 48GB  # 超过 50% → 没有 page cache\n物理内存 16GB，堆设 12GB  # 同上\n```\n\n**Step 3：应急处理**\n```\n1. 先看是否还能响应：curl localhost:9200/_cluster/health\n2. 不能响应 → 重启节点（分片会重新分配，但会造成大量恢复 IO）\n3. 反复重启 → 先停写入（暂停 Logstash/Filebeat），让集群稳定\n4. 恢复后立刻查 _cat/fielddata 与分片数，找根因\n```\n**「反复重启」时不要急着加重启脚本**——那会让集群永远无法完成分片恢复。\n\n**Step 4：长期治理**\n| 措施 | 说明 |\n|---|---|\n| 堆 ≤ 31GB 且 ≤ 物理 50% | 铁律 |\n| 禁用 fielddata | 用 keyword 子字段 |\n| 限制 terms size | ≤ 1000 |\n| 控制分片数 | ILM rollover，别单索引过大 |\n| 监控堆使用率 | > 75% 告警 |\n| 关闭 swap | `bootstrap.memory_lock: true` |\n\n**监控指标（必须配）**：\n```\nGET _cat/nodes?v&h=name,heap.percent,ram.percent\nGET _nodes/stats/jvm\n→ heap_used_percent、gc.collectors.old.collection_time\n```"
+  },
+  {
+    "id": 3028,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "Kibana 里的索引模式（Index Pattern / Data View）是什么？为什么「看不到日志」常是它的问题？",
+    "answer": "**索引模式 = 告诉 Kibana「哪些索引算一类数据，时间字段是哪个」。**\n\n```\n创建时指定：logs-*  +  时间字段 @timestamp\n→ Kibana 才知道查哪些索引、按哪个字段过滤时间\n```\n**（7.x 叫 Index Pattern，8.x 改叫 Data View）**\n\n**「Kibana 看不到日志」的五个原因（索引模式占一半）**：\n\n| 原因 | 排查 |\n|---|---|\n| **索引模式没覆盖新索引** | `logs-*` 但实际索引叫 `app-logs-*` |\n| **时间字段选错** | 选了 `@timestamp` 但数据里只有 `timestamp` |\n| **时间范围不对** | 默认「最近 15 分钟」，日志在几小时前 |\n| **ES 里真的没数据** | `GET _cat/indices?v` 看索引是否存在 |\n| **权限不足** | Kibana 的 role 限制了索引访问 |\n\n**最快的排查顺序**：\n```bash\n# 1. 索引存在吗、有数据吗\nGET _cat/indices/logs-*?v&h=index,docs.count,store.size\n\n# 2. 文档的时间字段是什么\nGET logs-2024.01.15/_doc/1\nGET logs-*/_mapping | grep -A3 timestamp\n\n# 3. Kibana 的索引模式是否匹配（在 Stack Management → Data Views 里看）\n```\n\n**时间字段的常见错误**：\n```\n✗ 日志里是 \"timestamp\": \"2024-01-15 10:30:00\"（字符串）\n  而 Kibana 按 @timestamp（date 类型）过滤 → 匹配不上\n\n✓ 用 Logstash 的 date filter 把 timestamp 转成 @timestamp\n✓ 或在索引模式里选择正确的「时间字段」（可以有多个，但主过滤字段要选对）\n```\n\n**`time_zone` 的坑（国内环境高频）**：\n```\nLogstash/Filebeat 输出的 @timestamp 是 UTC\nKibana 显示时按浏览器时区转换（默认 UTC 或按 browser）\n→ 「日志时间差 8 小时」通常是这个原因\n→ 在 Stack Management → Advanced Settings 里设 timezone: Asia/Shanghai\n```\n\n**一句话**：**「Kibana 看不到日志」先查三件事：索引有没有数据（`_cat/indices`）、索引模式是否匹配、时间字段与时区对不对。**"
+  },
+  {
+    "id": 3029,
+    "type": "multiple",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "关于「日志保留策略」，以下哪些是正确的？（多选）",
+    "options": [
+      { "key": "A", "text": "核心业务日志保留 6-12 个月（合规要求常在 6 个月以上）" },
+      { "key": "B", "text": "DEBUG/访问日志可短期保留（如 7-30 天）" },
+      { "key": "C", "text": "用 ILM 自动降级到冷存储，而不是一直放热节点" },
+      { "key": "D", "text": "日志越多越好，全部永久保留以便将来分析" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 会导致成本失控且没有实际收益：**绝大多数日志在 30 天后就再也不会被查询**（可以统计 ES 的查询命中来验证），而永久保留意味着存储成本线性增长。三项正确做法是分层保留的标准实践。补充：④**按级别分层**（ERROR 保留久、DEBUG 放弃）；⑤**归档到对象存储**（超出 ES 保留期后压缩归档，按需取回）；⑥**保留期要「算得出成本」**（每天多少 GB × 保留天数 × 副本数）。核心：**保留期应由「合规要求 + 实际查询需求」决定，不是「硬盘有多少」。**"
+  },
+  {
+    "id": 3030,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "多个应用要往 ES 写日志，索引怎么规划？共用还是分开？",
+    "answer": "**核心原则：按「查询边界」分索引，不按「应用个数」硬分。**\n\n**三种方案**：\n\n| 方案 | 优点 | 缺点 |\n|---|---|---|\n| **全部写一个索引**（`logs-*`） | 跨服务查询方便 | 字段冲突、mapping 难统一、单索引过大 |\n| **每个应用一个索引**（`app-a-*`） | 隔离清晰 | 索引数量爆炸、跨应用查询要合成 |\n| **按「域/团队」分**（推荐） | 平衡 | 需要提前规划 |\n\n**推荐的规划方式**：\n```\nlogs-order-2024.01.15       # 业务域 = order\nlogs-payment-2024.01.15\nlogs-gateway-2024.01.15\n→ 别名 logs-*  统一查询，但底层按域分开\n```\n**好处**：\n- **mapping 可按域定制**（订单日志和网关日志字段不同）\n- 单索引大小可控（ILM 按域滚动）\n- 权限可按域隔离（订单团队只能查自己的日志）\n- 跨域查询仍可用 `logs-*`\n\n**字段冲突是最关键的问题**：\n```\n✗ 应用 A 的 status 是数字（HTTP 码），应用 B 的 status 是字符串（\"paid\"）\n→ 同一个索引里 type 冲突 → 写入直接被拒（illegal_argument_exception）\n```\n**「同一个字段在不同应用里含义不同」是共用索引的最大杀手**。\n\n**索引模板（index template）必须有**：\n```json\nPUT _index_template/logs\n{\n  \"index_patterns\": [\"logs-*\"],\n  \"template\": {\n    \"settings\": {\n      \"number_of_shards\": 3,\n      \"number_of_replicas\": 1,\n      \"refresh_interval\": \"30s\",\n      \"index.lifecycle.name\": \"logs-policy\",\n      \"index.lifecycle.rollover_alias\": \"logs\"\n    },\n    \"mappings\": {\n      \"properties\": {\n        \"@timestamp\": { \"type\": \"date\" },\n        \"level\":      { \"type\": \"keyword\" },\n        \"service\":    { \"type\": \"keyword\" },\n        \"trace_id\":   { \"type\": \"keyword\" },\n        \"message\":    { \"type\": \"text\", \"fields\": { \"keyword\": { \"type\": \"keyword\", \"ignore_above\": 1024 } } }\n      }\n    }\n  },\n  \"priority\": 200\n}\n```\n**`ignore_above: 1024` 很重要**——超长的 message 不建 keyword，避免索引爆炸。\n\n**三个实用建议**：\n```\n1. 所有应用统一字段名（level/service/trace_id/@timestamp）\n2. 所有应用统一 index template（不要每个应用自己定义）\n3. 新增应用只改采集配置，不改模板\n```"
+  }
+]

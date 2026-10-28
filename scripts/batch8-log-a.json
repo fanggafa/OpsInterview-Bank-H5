@@ -1,0 +1,104 @@
+[
+  {
+    "id": 3000,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ELK 里 Elasticsearch、Logstash、Kibana 各自负责什么？Filebeat 又是什么？",
+    "answer": "**四个组件，各管一段**：\n\n| 组件 | 职责 | 类比 |\n|---|---|---|\n| **Filebeat** | 采集：tail 日志文件，转发出去 | **搬运工** |\n| **Logstash** | 处理：解析、转换、过滤、拆分 | **加工厂** |\n| **Elasticsearch** | 存储与检索：倒排索引、聚合 | **仓库 + 检索机** |\n| **Kibana** | 展示：查询界面、图表、看板 | **前台** |\n\n**数据流**：\n```\n日志文件 → Filebeat → (Kafka) → Logstash → Elasticsearch → Kibana\n```\n\n**为什么 Filebeat 不用 Logstash 代替**：\n```\nLogstash 是 JVM 应用，单实例吃 1-2GB 内存\n在 100 台机器上都装一个，光内存就吃光了\n→ Filebeat 是 Go 写的单二进制，只吃几十 MB\n→ 轻量采集用 Filebeat，集中处理用 Logstash\n```\n\n**常见架构演进**：\n```\n小规模：Filebeat → Logstash → ES → Kibana\n中规模：Filebeat → Kafka → Logstash → ES → Kibana\n大规模：Filebeat → Kafka → 多组 Logstash → ES 热温冷 → Kibana\n```\n**加 Kafka 的作用是「削峰 + 解耦」**——ES 写入慢时不会把 Filebeat 堵死（Filebeat 会丢数据）。\n\n**容易混的两点**：\n1. **Kibana 只是前端**，它不存数据，所有数据在 ES\n2. **Logstash 不是必须的**——如果日志已经是 JSON（结构化），可以直接 Filebeat → ES"
+  },
+  {
+    "id": 3001,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "Elasticsearch 的「倒排索引」是什么？为什么它能做到全文检索很快？",
+    "answer": "**倒排索引 = 从「词」到「文档」的映射**（正排是「文档 → 词」）。\n\n```\n正排（像翻书）：文档1 → [elasticsearch, 很好用]\n                文档2 → [kibana, 很好用]\n\n倒排（像书后的索引页）：\nelasticsearch → [文档1]\n很好用        → [文档1, 文档2]\nkibana        → [文档2]\n```\n\n**为什么快**：\n```\n搜「很好用」→ 直接查倒排表 → 得到 [文档1, 文档2]\n→ O(1) 查找，而不是遍历所有文档\n```\n\n**倒排索引的组成**：\n\n| 部分 | 作用 |\n|---|---|\n| **Term Dictionary（词典）** | 所有词的有序列表（可用二分查找） |\n| **Term Index（词典索引）** | 词典的「前缀索引」，常驻内存（FST 结构） |\n| **Posting List（倒排表）** | 每个词对应的文档 ID 列表（**用 Roaring Bitmap 压缩**） |\n\n**三个关键优化**：\n1. **FST 压缩词词典**：把词典压进内存，百万级词也只需几 MB\n2. **跳表（Skip List）求交集**：多个词的倒排表求交集时快速跳过\n3. **分片（Shard）**：把一个索引的数据切到多个分片，查询并行\n\n**代价（面试常问的「为什么 ES 写慢、占空间大」）**：\n```\n每个字段都要建倒排索引 → 写入时要做分词、建索引\n→ 写入比 MySQL 慢得多，磁盘占用也大得多\n```\n**所以：不适合做「主数据库」**，只做「检索与分析」。\n\n**和 MySQL 索引的区别**：MySQL 的 B+Tree 索引是「精确匹配/范围」，ES 的倒排索引擅长「**文本分词后的模糊匹配**」——这是两者的根本分工。"
+  },
+  {
+    "id": 3002,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "ES 的 index、type、document、field、mapping 分别是什么？mapping 的作用是什么？",
+    "answer": "**ES 7.x 之后的层级**：\n```\nIndex（索引，相当于 MySQL 的「库/表」）\n  └─ Document（文档，相当于「一行」）\n       └─ Field（字段，相当于「一列」）\n```\n**Type 已被移除**（6.x 起废弃，7.x 完全删除）——早期一个 index 可以有多个 type，现在**一个 index 只有一种文档结构**。\n\n**Mapping = 字段的类型定义**（相当于 MySQL 的 schema）：\n```json\n{\n  \"mappings\": {\n    \"properties\": {\n      \"@timestamp\": { \"type\": \"date\" },\n      \"level\":      { \"type\": \"keyword\" },\n      \"message\":    { \"type\": \"text\" },\n      \"status\":     { \"type\": \"integer\" },\n      \"client_ip\":  { \"type\": \"ip\" }\n    }\n  }\n}\n```\n\n**最核心的三种字段类型**：\n\n| 类型 | 用途 | 例子 |\n|---|---|---|\n| **text** | **分词后全文检索** | 日志正文、文章内容 |\n| **keyword** | **不分词，精确匹配/聚合/排序** | level、service、IP、状态码 |\n| **date** | 时间 | @timestamp |\n\n**text vs keyword 是最常踩的坑**：\n```\n✗ 把 level 设成 text → 搜 \"ERROR\" 会命中 \"ERRORS\"，聚合会拆成奇怪的词\n✓ level 用 keyword → 精确匹配与聚合都正确\n```\n\n**mapping 的两个关键特性**：\n1. **Dynamic Mapping（默认）**：ES 自动猜类型（`\"123\"` 猜成 text 或 long）——**常常猜错，生产建议显式定义**\n2. **mapping 不可修改已有字段类型**：想改只能「新建索引 + reindex」\n\n**这是日志平台的经典事故**：\n```\n一开始 status 被自动猜成 text\n后来要按 status 聚合统计 → 发现聚合出的是分词后的碎片\n→ 只能重建索引 + reindex（几十 GB 要跑几小时）\n```\n**结论：日志索引的 mapping 一定要用模板（index template）提前定义好。**"
+  },
+  {
+    "id": 3003,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "ES 的分片（shard）和副本（replica）是什么？分片数怎么定？",
+    "answer": "**分片 = 索引的水平切分；副本 = 分片的拷贝。**\n\n```\nIndex（3 主分片 + 1 副本）\n  ├─ P0 → R0（在另一个节点）\n  ├─ P1 → R1\n  └─ P2 → R2\n```\n\n| 概念 | 作用 |\n|---|---|\n| **主分片（Primary）** | 存数据、承担写入；**数量创建后不可改** |\n| **副本（Replica）** | 冗余 + **分担读请求**；数量随时可改 |\n\n**分片数量怎么定（最关键的问题）**：\n```\n经验值：单个分片 10-50GB（日志类偏小，20-30GB 较好）\n分片数 = 预计数据总量 / 单分片目标大小\n```\n\n**但分片不是越多越好**：\n```\n每个分片都是一个 Lucene 索引 → 占文件句柄、堆内存、CPU\n分片过多 → cluster state 变大、查询要合并更多结果、master 压力大\n官方建议：单节点分片总数控制在 20 个/GB 堆内存 以内\n```\n\n**日志场景的标准做法：按天/按大小滚动索引 + 别名**\n```\nlogs-2024.01.15  (5 分片, 1 副本)\nlogs-2024.01.16  (5 分片, 1 副本)\n→ 用别名 logs-* 统一查询\n```\n**好处**：\n- 每天一个新索引，**删除旧数据只删整个索引**（比 delete by query 快得多）\n- 分片数固定不变（不用纠结总量增长）\n- 单索引不会无限膨胀\n\n**副本的作用不只是冗余**：\n```\n✓ 高可用（主分片挂了副本顶上）\n✓ 提升读吞吐（查询可以打到副本）\n✗ 不提升写入能力（写入要走主分片再同步副本，副本反而增加写开销）\n```\n**所以写多读少的场景，副本数不宜过多（1 个通常够）。**\n\n**一句话**：**日志用「按天滚动 + 固定分片数（3-5）+ 副本 1」是最稳的组合，别追求单个大索引。**"
+  },
+  {
+    "id": 3004,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "ES 的集群状态为什么会出现 yellow？red 又意味着什么？",
+    "answer": "**三色状态是「分片分配情况」的直接反映。**\n\n| 状态 | 含义 | 数据可用性 |\n|---|---|---|\n| **green** | 所有主分片和副本都正常分配 | 完全可用 |\n| **yellow** | 所有**主分片**已分配，但有**副本未分配** | **数据不丢，但无冗余** |\n| **red** | 有**主分片未分配** | **部分数据不可用** |\n\n**yellow 的四个常见原因**：\n\n**1. 单节点集群（最常见，且通常无需处理）**\n```\nindex.number_of_replicas: 1，但只有 1 个节点\n→ 副本无处可放 → yellow\n→ 单节点开发环境可以设 replicas: 0 变绿\n```\n\n**2. 节点数少于副本数**\n```\n3 个分片 × 2 副本需要至少 3 个数据节点\n只有 2 个节点 → 部分副本分配不了\n```\n\n**3. 磁盘水位触发**\n```\ncluster.routing.allocation.disk.watermark.low:  85%  → 不再分配新分片\ncluster.routing.allocation.disk.watermark.high: 90%  → 开始迁移分片走\ncluster.routing.allocation.disk.watermark.flood_stage: 95% → 索引变只读\n```\n**「磁盘接近满」是生产上 yellow 的头号原因。**\n\n**4. 分配规则限制**\n```\nshard_allocation 的 include/exclude、感知属性（同一机架不重复）\n→ 没有满足条件的节点\n```\n\n**排查命令**：\n```bash\nGET _cluster/health                          # 看状态与 unassigned_shards\nGET _cat/shards?v&h=index,shard,prirep,state,node,unassigned.reason\nGET _cluster/allocation/explain              # 直接告诉你「为什么这个分片没分配」\n```\n**`allocation/explain` 是最有用的**——它会明确列出候选节点及每个节点的拒绝理由。\n\n**red 的处置顺序**：\n```\n1. 先确认「是节点挂了还是数据损坏」\n2. 节点能恢复 → 等它回来（分片会自动分配）\n3. 节点永久丢失 → allocate_empty_primary（接受丢数据）或用 snapshot 恢复\n4. 数据损坏 → 用 snapshot restore\n```\n**red 时不要急着重启集群**——先搞清楚哪个索引的哪个主分片丢了。\n\n**一句话**：**yellow 多半是「副本放不下」（单节点/磁盘满），red 是「主分片丢了」——前者通常不影响读写，后者意味着数据不可用，要靠快照恢复。**"
+  },
+  {
+    "id": 3005,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "困难",
+    "question": "ES 集群写入变慢、出现 bulk 拒绝（rejected execution），怎么排查与优化？",
+    "answer": "**先看拒绝的是哪个线程池——不同线程池对应不同瓶颈。**\n\n```bash\nGET _cat/thread_pool?v&h=node_name,name,active,queue,rejected\n```\n\n| 线程池 | 拒绝原因 |\n|---|---|\n| **write** | 写入太猛（分片/节点跟不上） |\n| **search** | 查询太猛（大查询、聚合） |\n| **bulk** | 批量请求并发过高 |\n| **management** | cluster state 变更太频繁 |\n\n**write 队列被拒绝的四个原因**：\n\n**1. 写入量超出集群能力**\n```\n算一下：每秒写入文档数 × 平均大小 = 需要多少 MB/s\n对比节点数 × 单节点写入能力\n```\n\n**2. 分片数不合理**\n```\n分片太少 → 写入集中在少数分片\n分片太多 → 每个 bulk 请求要打到太多分片，协调开销大\n```\n**日志场景：bulk 请求应控制「每次写 5-15MB、几 MB 到 10MB 一个请求」。**\n\n**3. refresh 太频繁**\n```\nrefresh_interval: 1s（默认）→ 每秒生成一个新 segment\n写入大时 → segment 太多 → merge 压力大 → 越写越慢\n→ 日志索引可设 refresh_interval: 30s 或 -1（写时关闭，按需 refresh）\n```\n**这是日志场景最有效的单项优化。**\n\n**4. 磁盘 IO 瓶颈 / merge 跟不上**\n```bash\niostat -x 1 5              # await 高？\nGET _cat/segments?v        # segment 数量是否爆炸\nGET _nodes/stats/indices/merges\n```\n**merge 是大写入的隐形杀手**——它占大量 IO 与 CPU。\n\n**五个具体优化手段**：\n\n| 手段 | 效果 |\n|---|---|\n| **调大 refresh_interval**（30s / -1） | 显著减少 segment 生成 |\n| **调大 translog 刷盘间隔**（`index.translog.durability: async`） | 减少 fsync（**有丢数据风险，日志场景可接受**） |\n| **bulk 批量与并发调优** | 单次 5-15MB，并发按节点数 |\n| **副本数降为 1** | 减少写放大 |\n| **用 ILM 尽早滚动到新索引** | 避免单索引过大 |\n\n**bulk 请求的正确姿势**（客户端侧）：\n```\n✗ 每条日志一个 bulk 请求（网络开销大于数据本身）\n✗ 一个 bulk 塞 100MB（内存与超时风险）\n✓ 5-15MB 一批，多线程并发（每节点 2-4 个）\n✓ 收到 429（rejected）时「指数退避重试」，而不是硬顶\n```\n\n**先确认瓶颈在哪**：\n```\n节点 CPU 打满？   → 减少副本/加节点\n磁盘 await 高？   → 换 SSD、减少 merge 压力\nwrite 队列满？    → 降写入速率或加分片/节点\nmerge 慢？        → 调大 refresh_interval\n```\n**「加节点」不是万能药**——如果是 refresh/merge 配置问题，加节点只会让问题更分散。"
+  },
+  {
+    "id": 3006,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "ES 的 query 和 filter 有什么区别？为什么生产查询要用 filter？",
+    "answer": "**核心区别：filter 不算相关性分数，且结果可缓存。**\n\n| | query（must/should） | filter（filter/must_not） |\n|---|---|---|\n| 计算 `_score` | ✅ 算 | ❌ 不算 |\n| 结果缓存 | ❌ 不缓存 | ✅ **缓存（filter cache）** |\n| 性能 | 较慢 | **快** |\n| 适用 | 需要「相关性排序」 | 需要「精确筛选」 |\n\n**示例对比**：\n```json\n// 慢：所有条件都算分\n{ \"query\": { \"bool\": { \"must\": [\n    { \"match\": { \"message\": \"timeout\" } },\n    { \"term\": { \"level\": \"ERROR\" } },          // 不需要算分，却放进了 must\n    { \"range\": { \"@timestamp\": { \"gte\": \"now-1h\" } } }\n] } } }\n\n// 快：只有需要算分的放 must，其余放 filter\n{ \"query\": { \"bool\": {\n    \"must\":   [ { \"match\": { \"message\": \"timeout\" } } ],\n    \"filter\": [\n      { \"term\":  { \"level\": \"ERROR\" } },\n      { \"range\": { \"@timestamp\": { \"gte\": \"now-1h\" } } }\n    ]\n} } }\n```\n\n**为什么 filter 快**：\n1. **不算分**：省掉 TF-IDF 计算\n2. **可缓存**：相同 filter 的结果（文档位图）缓存在节点内存，**下次直接命中**\n3. **常用于「范围/精确值」**——这类条件的位图天然适合缓存\n\n**实践规则（背下来）**：\n```\n需要「打分排序」（按相关度）→ must / should\n只需要「筛掉不符合的」    → filter / must_not\n```\n**日志检索几乎都是「精确条件 + 时间范围」→ 全部用 filter。**\n\n**must_not 也属于 filter 上下文**（不算分），但**不能被缓存**（否定条件难以缓存位图）——所以 `must_not` 尽量少用。\n\n**一个常见误区**：\n```\n✗ 认为「filter 查不出数据」——filter 照样能查，只是不排序\n✗ 把 term 放 must 里（多花算分开销，还稀释了真正需要算分的字段）\n```\n\n**验证方式**：\n```json\nGET logs/_search\n{ \"profile\": true, ... }      // 看各阶段的耗时\n```\n或用 `_search?request_cache=true` 缓存整个查询结果。"
+  },
+  {
+    "id": 3007,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "Filebeat 的「至少一次」和「可能重复」怎么理解？如何避免丢数据与重复？",
+    "answer": "**Filebeat 保证「不丢」，但不保证「不重」——这是它的设计取舍。**\n\n**工作方式**：\n```\n1. 读文件（记录 offset，存在 registry 文件里）\n2. 发到输出（ES/Logstash/Kafka）\n3. 收到确认后才更新 registry 的 offset\n4. 如果发送失败/超时 → 重发（offset 未更新）→ **可能重复**\n```\n**「先发、后记 offset」保证了不丢，代价是可能重复。**\n\n**四种丢数据的真实原因（比重复更危险）**：\n\n**1. 输出端被堵死**\n```\nES 写入慢 → Filebeat 内部队列满 → 达到 max 后**丢弃**\n```\n```yaml\nqueue.mem:\n  events: 4096          # 默认 4096，增大可缓冲更多\n  flush.min_events: 512\n```\n**`output.elasticsearch` 直接连 ES 且 ES 抖动时，最易丢**。**加 Kafka 做缓冲是根治**。\n\n**2. 文件被轮转/删除太快**\n```\nlogrotate 把 app.log 改名为 app.log.1 后立即删除 → Filebeat 来不及读完\n```\n**解法**：\n```yaml\n# 1. 用 close_inactive/close_removed 控制\nclose_removed: true        # 文件被删后关闭（读完才关）\nclean_removed: true\n# 2. logrotate 配 delaycompress、保留足够时间\n```\n\n**3. 多行日志被截断**\n```\nJava 堆栈是多行的，默认按行采集 → 一个异常被拆成几十条\n```\n**必须配 `multiline`**：\n```yaml\nmultiline:\n  pattern: '^\\d{4}-\\d{2}-\\d{2}'   # 以时间开头的是新事件\n  negate: true\n  match: after\n```\n\n**4. 采集路径写错/权限不足**\n```\nFilebeat 以非 root 运行 → 读不到 /var/log/xxx\n→ 日志里报 permission denied（但没人看 Filebeat 自己的日志）\n```\n\n**重复的影响与处理**：\n```\n重复日志在 ES 里就是多了一条文档\n→ 用「时间 + 主机 + 内容哈希」在 Kibana 侧去重（成本高）\n→ 或接受重复（日志分析通常不要求精确计数）\n→ 或加 fingerprint（Filebeat 的 fingerprint 模式可去重）\n```\n\n**监控 Filebeat 自身（最容易被忽略）**：\n```\nGET _cat/indices/filebeat-*\n→ 看 filebeat-* 索引里有没有 output error / harvester 异常\n\n# 关键指标\nfilebeat_output_write_bytes / events_dropped\n```\n**「Filebeat 挂了没人知道」是日志平台最常见的静默故障。**"
+  },
+  {
+    "id": 3008,
+    "type": "multiple",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "以下哪些是「日志平台成本失控」的常见原因？（多选）",
+    "options": [
+      { "key": "A", "text": "DEBUG 级别日志全部采集，占了 80% 的量" },
+      { "key": "B", "text": "索引保留期无限制，或未配置 ILM" },
+      { "key": "C", "text": "把 user_id、request_id 等高基数字段作为 keyword 建索引" },
+      { "key": "D", "text": "给日志索引设置 1 个副本保证高可用" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是**合理做法**（副本 1 是日志场景的推荐值），不是成本失控原因——除非设成 2 个以上副本才值得优化。三项正确选项都是真实的高频浪费：①**DEBUG 日志占 80% 的量**，先关掉它是最大收益；②**没有 ILM** → 索引无限堆积，磁盘很快满；③**高基数 keyword 字段** → 倒排索引爆炸（每个不同的 user_id 都是一个 term），这是「索引比原始日志大 5-10 倍」的典型原因。补充：⑤日志采集了但没人查（要做使用率统计）；⑥同一个日志被多个 pipeline 重复采。"
+  },
+  {
+    "id": 3009,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "Logstash 的 filter 常用插件有哪些？grok 正则怎么写才不容易出错？",
+    "answer": "**五个最常用的 filter**：\n\n| 插件 | 用途 |\n|---|---|\n| **grok** | 用正则把非结构化日志解析成字段 |\n| **date** | 把字符串时间解析成 `@timestamp`（**必须配，否则时间是采集时间**） |\n| **mutate** | 类型转换、重命名、删除字段、改大小写 |\n| **json** | 解析 JSON 格式的 message |\n| **kv** | 解析 `k1=v1 k2=v2` 形式的键值对 |\n\n**grok 的本质**：`%{PATTERN:field}` 的模板，PATTERN 是预置正则。\n```\n%{IPORHOST:client_ip} %{HTTPDATE:timestamp} \"%{WORD:method} %{URIPATH:path}\"\n```\n\n**grok 最容易犯的三个错**：\n\n**1. 用错 pattern（全场灾难级的性能问题）**\n```\n✗ %{GREEDYDATA:message}   # 贪婪匹配，超大日志会 CATastrophic backtracking\n✓ 明确限定字段：%{WORD}、%{NUMBER}、%{IP}\n```\n**「grok 把 Logstash CPU 打满」几乎都是贪婪正则导致的回溯。**\n\n**2. 忘了 `_grokparsefailure`**\n```\n解析失败的日志会带 _grokparsefailure 标签\n→ 必须监控这个标签的数量，否则「解析全挂了」也不会有人知道\n```\n```json\n// 建议：解析失败的转到一个专门的索引\noutput {\n  if \"_grokparsefailure\" in [tags] { elasticsearch { index => \"failed-logs-%{+YYYY.MM.dd}\" } }\n  else { elasticsearch { index => \"logs-%{+YYYY.MM.dd}\" } }\n}\n```\n\n**3. pattern 太多导致维护混乱**\n```\n→ 用 patterns_dir 集中管理自定义 pattern\n→ 用 Grok Debugger（Kibana Dev Tools 里有）在线验证\n```\n\n**强烈建议：能用 JSON 就别用 grok**\n```\n✓ 应用直接输出结构化 JSON 日志 → Logstash 只需 json filter（快、不会解析失败）\n✗ 输出格式化文本 → 必须 grok → 慢、易碎、难维护\n```\n**「让应用打 JSON 日志」是投入产出比最高的一件事。**\n\n**date filter 必须配**：\n```ruby\nfilter {\n  date {\n    match => [\"timestamp\", \"ISO8601\", \"yyyy-MM-dd HH:mm:ss\"]\n    target => \"@timestamp\"\n  }\n}\n```\n**不配的话，`@timestamp` 是 Logstash 收到的时间——日志延迟上报时时间线全乱，排障会疯。**"
+  },
+  {
+    "id": 3010,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ES 里 `text` 和 `keyword` 两种字段类型的核心区别是？",
+    "options": [
+      { "key": "A", "text": "text 会分词后建倒排索引（可全文检索），keyword 不分词（精确匹配与聚合）" },
+      { "key": "B", "text": "keyword 只能存数字" },
+      { "key": "C", "text": "text 不占磁盘空间，keyword 占" },
+      { "key": "D", "text": "两者完全等价，只是名字不同" }
+    ],
+    "answer": ["A"],
+    "explanation": "**这是 ES 建模最核心的一个区分**。`text` 会经过分词器（中文还要装 IK 分词器）拆成词项，适合「搜内容」；`keyword` 原样存储，适合「精确值过滤、聚合、排序」（如 level、service、status、IP）。**混合场景用 multi-field**：`\"message\": {\"type\": \"text\", \"fields\": {\"keyword\": {\"type\": \"keyword\"}}}` —— 既能全文搜，也能精确聚合。B/C/D 都不对。"
+  }
+]

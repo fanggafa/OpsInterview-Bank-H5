@@ -1,0 +1,110 @@
+[
+  {
+    "id": 3031,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "日志平台「查不到历史日志」了，怎么排查？",
+    "answer": "**按「数据链路」从后往前查：ES 有没有 → 采集到了吗 → 应用还在打吗。**\n\n**Step 1：ES 里还有数据吗**\n```bash\nGET _cat/indices/logs-*?v&h=index,docs.count,store.size&s=index:desc | head\n```\n```\n没有索引 → ILM 已经删了（保留期到了）\n索引在但 docs.count=0 → 写入链路断了\n索引在且有数据，但查不到 → 查询条件/索引模式问题\n```\n\n**Step 2：是「保留期到了」还是「写入断了」**\n```bash\n# 看最早的索引日期\nGET _cat/indices/logs-*?v&h=index,creation.date.string | sort | head -3\n```\n**如果最早索引是 30 天前，恰好等于 ILM 保留期 → 就是正常过期，不是故障。**\n\n**Step 3：写入链路检查（三处）**\n```bash\n# 1. Filebeat 有没有在跑、有没有报错\nsystemctl status filebeat\njournalctl -u filebeat -n 50 | grep -i error\n\n# 2. Kafka 有没有积压（如果中间有 Kafka）\nkafka-consumer-groups.sh --describe --group logstash\n\n# 3. Logstash 有没有报错\n# 看 logstash-plain.log 里的 _grokparsefailure / ES 写入失败\n```\n\n**Step 4：应用还在打日志吗**\n```bash\nls -lh /var/log/app/\ntail -5 /var/log/app/app.log\n```\n**「应用日志没在增长」说明是应用侧问题**（日志级别被改、日志文件被轮转删除）。\n\n**四个高频原因**：\n\n| 原因 | 表现 |\n|---|---|\n| **ILM 正常过期** | 恰好是这个保留期 |\n| **Filebeat 挂了** | 所有机器的日志都停 |\n| **CSV/采集路径变了** | 新日志没被采集（如容器日志路径变了） |\n| **磁盘满导致写入被拒** | ES 报 `cluster_block_exception` |\n\n**`cluster_block_exception` 值得单独说**：\n```\n磁盘使用率超过 flood_stage（默认 95%）→ 所有索引变只读\n→ 日志写不进去，且没有任何数据丢失提示\n→ 只有一条 cluster block 日志\n\n解法：\n1. 清理磁盘/加容量\n2. 解除只读：PUT _all/_settings { \"index.blocks.read_only_allow_delete\": null }\n```\n**「磁盘满 → 索引只读 → 日志静默停止写入」是日志平台最隐蔽的故障。**\n\n**必须配的监控**：\n```\n□ ES 磁盘使用率（85% 告警）\n□ cluster_block_exception 计数\n□ Filebeat/Kafka 消费延迟\n□ 「最新日志的时间戳距现在多久」（最直接的健康指标）\n```\n**最后一条最实用**：只要「最近日志时间」超过 5 分钟，就说明链路断了。"
+  },
+  {
+    "id": 3032,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ES 中把 `level` 字段定义为 `keyword` 而 `message` 定义为 `text`，这样做的理由是？",
+    "options": [
+      { "key": "A", "text": "level 需要精确匹配与聚合（不分词），message 需要全文检索（分词）" },
+      { "key": "B", "text": "keyword 占空间更小" },
+      { "key": "C", "text": "text 查询速度更快" },
+      { "key": "D", "text": "keyword 支持中文分词" }
+    ],
+    "answer": ["A"],
+    "explanation": "**这是 ES 建模最基本的判断**：`level` 是枚举值（ERROR/WARN/INFO），要做 `term` 精确过滤与 `terms` 聚合，必须用 `keyword`；`message` 是要「搜内容」的，需要分词后建倒排索引，用 `text`。B/C/D 都不对——`keyword` 因为不分词反而更适合精确值但不等价于「占空间小」（它其实要额外存原始值）；`text` 查询因为要做分词匹配，通常比 `term` 慢。最佳实践是 **multi-field**：`message` 同时有 `text` 和 `message.keyword`（用于聚合），一个字段两种用途。"
+  },
+  {
+    "id": 3033,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "什么是「日志聚合」的采样？什么情况该采样、什么绝对不能采样？",
+    "answer": "**采样 = 只保留一部分日志，用「统计代表性」换「存储成本」。**\n\n**可以采样**：\n```\n✓ 高频 INFO 日志（如成功的请求日志）\n✓ 健康检查日志（每分钟几十条，没有信息量）\n✓ 访问日志中的正常请求（保留错误与慢请求）\n✓ 调试期间的 DEBUG 日志（保留 10% 即可看出趋势）\n```\n\n**绝对不能采样**：\n```\n✗ ERROR 日志（可能只出现一次，采样就丢了）\n✗ 审计日志（合规要求完整性）\n✗ 安全事件日志（登录失败、越权）\n✗ 资金/订单相关的关键操作\n✗ 告警规则依赖的指标来源\n```\n**原则：能用于「发现新问题」的日志不能采样；只用于「看整体趋势」的日志可以采样。**\n\n**四种采样方式**：\n\n| 方式 | 实现 |\n|---|---|\n| **按比例** | `if random() < 0.1` 保留 10% |\n| **按字段哈希** | `hash(trace_id) % 10 == 0`（同一请求的日志要么都留要么都丢） |\n| **头部采样** | 入口处决定，简单但可能漏掉慢请求 |\n| **尾部采样（推荐）** | 请求结束后按「是否慢/是否错」决定，**保留所有异常 + 部分正常** |\n\n**尾部采样是最优的**：\n```\n正常快请求 → 只留 1%（够看趋势）\n慢请求（>1s）→ 全留\n错误请求 → 全留\n→ 存储降 90%，排障价值不丢\n```\n**实现**：由应用/网关在请求结束时决定是否上报（需要在内存里暂存整个请求的日志）。\n\n**采样的两个陷阱**：\n```\n✗ 采样后仍然按「日志条数」做告警\n   → 采样 10% 后告警阈值也要除 10，否则永远不触发\n✗ 采样导致「同一 trace 的日志不完整」\n   → 必须按 trace_id 哈希采样，不能逐条随机\n```\n\n**先做「减少无用日志」再做「采样」**：\n```\n关掉 DEBUG（省 80%）→ 减少 INFO 的冗余（省 50%）→ 再考虑采样（再省 80%）\n→ 顺序反了会「采样了还在打垃圾日志」\n```"
+  },
+  {
+    "id": 3034,
+    "type": "multiple",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "排查「某台机器的日志在 Kibana 里查不到」，以下哪些步骤是对的？（多选）",
+    "options": [
+      { "key": "A", "text": "在该机器上确认日志文件在增长（应用还在打）" },
+      { "key": "B", "text": "检查 Filebeat 进程状态与其自身日志有无报错" },
+      { "key": "C", "text": "在 ES 里按 host.name 过滤，确认这台机器有没有数据进来" },
+      { "key": "D", "text": "直接重启 Kibana 试试" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 不对：**Kibana 只是查询前端**，它不可能「只对某一台机器」丢数据——如果 Kibana 坏了是所有人都看不到。三项正确步骤构成完整链路排查：①应用还在打日志吗；②采集端（Filebeat）正常吗；③数据到底有没有进 ES。补充：④**确认 Filebeat 采集路径是否包含这台机器的日志**（不同机器路径可能不同）；⑤**检查 ES 写入是否被拒**（mapping 冲突、磁盘只读会导致「部分机器数据丢失」）；⑥**该机器的 Filebeat 是否连不上 Kafka/ES**（网络策略、证书）。核心：**「单台机器无数据」一定是这条链路上该机器的某一环断了，从日志文件往上查。**"
+  },
+  {
+    "id": 3035,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "困难",
+    "question": "要从零搭一套日志平台（日写 100GB），说说你的方案与关键决策。",
+    "answer": "**日写 100GB 属于中大型规模，必须先算成本再选架构。**\n\n**Step 1：算容量**\n```\n原始日志 100GB/天\n× 索引放大 1.5（JSON 已结构化，字段不多）  = 150GB\n× 副本 1                                      = 300GB/天\n× 保留 30 天                                  = 9TB\n+ 预留 20%（merge 临时空间）                   = 约 11TB\n```\n**这是决策的基础——11TB 的 SSD 成本很高，所以必须做冷热分层。**\n\n**Step 2：架构选择**\n```\n方案 A（ELK + 冷热）：\n  Filebeat → Kafka → Logstash → ES(hot 7天/warm 23天) → Kibana\n\n方案 B（Loki）：\n  Promtail → Kafka → Loki → Grafana\n  成本约为 ES 的 1/3，但只支持 label 检索\n```\n**决策点**：是否需要「任意全文检索」。如果 90% 的查询是「按服务+时间+级别」，**Loki 更划算**；如果需要复杂分析（按错误类型聚合、多维统计），选 ELK。\n\n**Step 3：ELK 方案的关键配置**\n\n| 项 | 配置 | 理由 |\n|---|---|---|\n| **Kafka 分区** | 按日志量算出所需吞吐（如 12 分区） | 削峰 + 解耦 |\n| **索引滚动** | rollover 每 30GB 或 1 天 | 单索引可控 |\n| **分片数** | 3（每索引） | 30GB/3 = 10GB/分片，合理 |\n| **副本** | 1 | 写入开销与冗余的平衡 |\n| **refresh** | 30s | 提升写入吞吐 |\n| **translog** | `async` + 30s | 减少 fsync（日志可接受少量丢失） |\n| **ILM** | hot 7d → warm 23d → delete 30d | 成本控制 |\n| **forcemerge** | warm 阶段合并到 1 segment | 释放空间 |\n\n**Step 4：节点规划**\n```\n按 100GB/天、30 天保留：\n- hot 节点：3 台（SSD，各 2TB），承担 7 天热数据 + 写入\n- warm 节点：3 台（大容量 HDD，各 4TB），承担 23 天冷数据\n- master：3 台（小规格，专责）\n- Kibana：1-2 台\n```\n**hot/warm 分离是成本控制的核 心**——冷数据放 SSD 是巨大浪费。\n\n**Step 5：必须提前做的四件事**\n```\n1. index template（统一 mapping，避免字段冲突）\n2. 采集端限流（Filebeat 的 harvester limit，避免打爆）\n3. 磁盘水位告警（85% 就告警，防只读）\n4. 快照仓库 + SLM（备份 + 升级前保险）\n```\n\n**三个最容易后悔的决策**：\n```\n✗ 没上 Kafka → ES 抖一下就丢数据\n✗ 没做冷热分层 → 全 SSD 成本翻数倍\n✗ mapping 让 ES 自动猜 → 后期聚合不对，只能 reindex\n```"
+  },
+  {
+    "id": 3036,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "ES 的 `_reindex` 用来做什么？生产上执行要注意什么？",
+    "answer": "**`_reindex` = 把一个索引的数据「重新写入」另一个索引。**\n\n**四个典型用途**：\n```\n✓ 修改 mapping（ES 不能改已有字段类型，只能 reindex 到新索引）\n✓ 修改分片数（分片数不可改，只能重建）\n✓ 合并小索引 / 拆分大索引\n✓ 跨集群迁移（reindex from remote）\n```\n\n**基本用法**：\n```json\nPOST _reindex?wait_for_completion=false\n{\n  \"source\": { \"index\": \"logs-old\" },\n  \"dest\":   { \"index\": \"logs-new\" },\n  \"script\": {          // 可选：边迁移边改数据\n    \"source\": \"ctx._source.remove('deprecated_field')\",\n    \"lang\": \"painless\"\n  }\n}\n```\n**`wait_for_completion=false` 很重要**——大索引 reindex 要几小时，同步等待会 HTTP 超时。返回 `task` id，用 `GET _tasks/<task_id>` 看进度。\n\n**生产执行的五个注意点**：\n\n**1. 限速（最关键）**\n```json\n{ \"source\": { \"index\": \"logs-old\", \"size\": 1000 },\n  \"dest\": { \"index\": \"logs-new\" } }\n```\n**`size` 控制每批条数**（默认 1000），也可用 `slices` 并行：\n```json\n\"slices\": \"auto\"      // 按分片数并行处理\n```\n**不限速会打满集群 IO/CPU，影响线上查询**。\n\n**2. 先在低峰执行，并监控**\n```bash\nGET _tasks?actions=*reindex*&detailed\nGET _cat/thread_pool/write?v       # 看 write 队列是否被拒绝\n```\n\n**3. 目标索引要先建好 mapping + 关掉 refresh**\n```json\nPUT logs-new { \"settings\": { \"refresh_interval\": \"-1\", \"number_of_replicas\": 0 } }\n→ 迁完再改回来（迁移期间不需要刷新、不需要副本，快数倍）\n```\n**「先关 refresh 和副本，迁完再打开」是提速的关键技巧**。\n\n**4. 别在原地覆盖**\n```\n✗ reindex 到同一个索引名 → 数据混乱\n✓ 新旧索引名不同，迁完用别名切换：\n  POST _aliases { \"actions\": [{ \"remove\": {\"index\":\"logs-old\",\"alias\":\"logs\"} },\n                               { \"add\": {\"index\":\"logs-new\",\"alias\":\"logs\"} }] }\n```\n**别名切换是原子的**——应用完全无感知。\n\n**5. 确认迁完再删旧索引**\n```bash\nGET logs-old/_count\nGET logs-new/_count      # 数量对齐后再删\n```\n**「reindex 失败一半就删了旧索引」是最惨的事故**——旧索引是唯一的原始数据。\n\n**四个高频坑**：\n```\n✗ 磁盘不够（新旧索引同时存在，需要双倍空间）\n✗ mapping 不兼容（新索引字段类型冲突 → 部分文档被拒）\n✗ 忘了 wait_for_completion=false（HTTP 超时，但任务其实在跑）\n✗ 迁完忘了改回 refresh_interval 和副本数（性能异常）\n```"
+  },
+  {
+    "id": 3037,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "日志平台的磁盘使用率到达 ES 的 `flood_stage`（默认 95%）会发生什么？",
+    "options": [
+      { "key": "A", "text": "所有索引被设为只读（read_only_allow_delete），写入全部失败" },
+      { "key": "B", "text": "只是告警，不影响写入" },
+      { "key": "C", "text": "自动删除最老的索引" },
+      { "key": "D", "text": "自动扩容磁盘" }
+    ],
+    "answer": ["A"],
+    "explanation": "**这是日志平台最隐蔽的故障**：磁盘到 95% 时 ES 给所有索引打上 `index.blocks.read_only_allow_delete`，**写入静默失败**——应用侧看不到任何报错，只是日志平台「突然没有新日志了」。B 完全错；C 不会自动删（ILM 才会，且有延迟）；D 更不会。**处置**：①先清磁盘或加容量；②解除只读 `PUT _all/_settings {\"index.blocks.read_only_allow_delete\": null}`。**预防**：磁盘水位 85% 就告警，别等到 95%。"
+  },
+  {
+    "id": 3038,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "如何让「日志」和「链路追踪」串起来？trace_id 的作用是什么？",
+    "answer": "**trace_id 是把「一条日志」变成「一次请求的完整故事」的唯一手段。**\n\n**没有 trace_id 的痛点**：\n```\n用户报「下单体失败」\n→ 在 Kibana 搜「order」，出来 10 万条日志\n→ 分不清哪条属于这次请求\n→ 只能按时间猜，效率极低\n```\n\n**有 trace_id 之后**：\n```\n用户报错 → 拿到 trace_id（错误页显示 / 响应头返回）\n→ 搜 trace_id:abc123 → 一次请求跨 5 个服务的所有日志全出来\n→ 按时间排序就是完整的调用链\n```\n\n**三层要打通**：\n\n**1. 入口生成**\n```\n网关/LB 在收到请求时生成 trace_id（或用 W3C traceparent）\n→ 通过 header 传给下游\n```\n\n**2. 全程透传（最容易断的地方）**\n```\n✓ HTTP：X-Trace-Id / traceparent header\n✓ RPC（gRPC/Dubbo）：metadata\n✓ MQ：消息 header\n✗ 线程池、异步任务、定时任务 → 必须显式传递（用 MDC/context 传播）\n```\n**「异步任务里 trace_id 丢了」是最常见的断点**——要用 `TraceContext` 包装 Runnable/Callable。\n\n**3. 日志输出**\n```json\n{ \"@timestamp\": \"...\", \"level\": \"ERROR\", \"service\": \"order\",\n  \"trace_id\": \"abc123\", \"span_id\": \"def456\", \"message\": \"...\" }\n```\n**必须带 `trace_id` 和 `span_id`**——span_id 用于区分同一请求内的不同环节。\n\n**与链路追踪（Jaeger/SkyWalking）的关系**：\n```\nTracing：记录「调用关系与耗时」（结构化）\nLogging：记录「具体内容」（文本）\n两者共享同一个 trace_id → 在 Jaeger 里看到某个 span 慢，可以直接跳到 Kibana 查这个 trace_id 的日志\n```\n**这才是「可观测性三件套」真正串起来的样子。**\n\n**实现建议（Java 生态）**：\n```\n1. 用 Micrometer Tracing / OpenTelemetry Agent 自动注入\n2. Logback 的 pattern 里加 %X{trace_id}\n3. MDC 清理要放在 finally 里（线程复用会串）\n```\n\n**验证方法**：\n```bash\n# 随机取一个 trace_id，看能否查到「跨多个服务」的完整日志\nGET logs-*/_search { \"query\": { \"term\": { \"trace_id\": \"abc123\" } } }\n→ 如果只有一两个服务的日志，说明透传断了\n```"
+  },
+  {
+    "id": 3039,
+    "type": "multiple",
+    "category": "日志与ELK",
+    "difficulty": "困难",
+    "question": "ES 集群要升级大版本（如 7.x → 8.x），以下哪些是必须做的？（多选）",
+    "options": [
+      { "key": "A", "text": "升级前做完整快照（大版本不能直接回退）" },
+      { "key": "B", "text": "检查已废弃的 API 与 mapping 参数（如 _type、include_type_name）" },
+      { "key": "C", "text": "先升 Kibana/客户端库，再升 ES（或用兼容的客户端版本）" },
+      { "key": "D", "text": "跳过中间版本，直接从 7.x 升到 8.x 最新版以节省时间" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 违反 ES 的升级规则：**ES 支持「从上一个主版本」直接升级（如 7.x 任意版本 → 8.x），但 6.x 不能直接跳 8.x**（要先到 7.x）。同时 8.x 有个硬限制：**只能用「索引兼容版本」读取**（7.x 创建的索引在 8.x 上需要 `index.version.created` 在兼容范围内，否则要先 reindex）。三项正确做法都是必做项。补充：⑤**升级前用 Upgrade Assistant**（Kibana 里有）扫一遍废弃 API 与不兼容索引；⑥**滚动升级**（rolling upgrade）保持集群可用；⑦升级顺序是「Kibana → ES 节点（逐个）→ 客户端」。"
+  },
+  {
+    "id": 3040,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "日志平台的「健康度」应该看哪些指标？",
+    "answer": "**分三层：链路是否通、集群是否健康、成本是否可控。**\n\n**第一层：链路健康（最先看，最直接）**\n```\n★ 最新日志的时间戳距现在多久（> 5 分钟就是链路断了）\n★ 各采集端的心跳（Filebeat/Kafka 消费者是否在线）\n★ 采集速率是否正常（突然掉零 = 有问题）\n```\n**第一条是最有价值的**——它直接反映「用户能不能查到新日志」。\n\n**第二层：ES 集群健康**\n```bash\nGET _cluster/health          # status: green/yellow/red\nGET _cat/nodes?v&h=name,heap.percent,cpu,disk.avail\n```\n\n| 指标 | 告警阈值 |\n|---|---|\n| **集群状态** | yellow 持续 10 分钟 / red 立即 |\n| **磁盘使用率** | **85%**（不是 95%，要留处理时间） |\n| **堆使用率** | > 75% |\n| **write 线程池拒绝** | > 0 持续增长 |\n| **未分配分片** | > 0 |\n| **慢查询数** | 突增 |\n\n**第三层：成本与容量**\n```\n每天索引增长量（GB/天）\n存储使用趋势（多久到 85%）\n索引数量（是否有失控增长）\n各索引的查询频率（有没有「存着没人查」的索引）\n```\n**「存着没人查」的索引是最容易被忽略的成本浪费**——可以统计 Kibana 的查询日志或 ES 的 `_field_usage_stats` 来发现。\n\n**必须配的四条告警**：\n```\n1. 最新日志时间 > 5 分钟        （链路断）\n2. ES 磁盘 > 85%                （即将只读）\n3. 集群状态非 green 持续 10 分钟  （分片问题）\n4. write 队列拒绝 > 0           （写入跟不上）\n```\n\n**「日志平台自己挂了没人知道」的经典场景**：\n```\nES 磁盘到 95% → 索引只读 → 日志停止写入\n但没有任何告警（因为告警系统本身依赖这个日志平台）\n→ 一周后要排障时才发现「这一个月的日志全没有」\n```\n**所以「最新日志时间」这条告警必须独立于日志平台本身**（用 Prometheus + 直接查 ES 计数）。\n\n**一句话**：**日志平台的健康度第一指标不是「ES 状态」，而是「最新日志距今多久」——它直接回答「现在能不能查日志」。**"
+  }
+]

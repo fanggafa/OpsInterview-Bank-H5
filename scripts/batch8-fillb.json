@@ -1,0 +1,125 @@
+[
+  {
+    "id": 2436,
+    "type": "short",
+    "category": "存储与备份",
+    "difficulty": "中等",
+    "question": "校验和在存储中有什么作用？为什么大存储系统都要做？",
+    "answer": "**校验和 = 数据的指纹，用来发现位翻转这类静默错误。**\n\n**它防的是什么**：\n```\n✗ 磁盘坏了 → 报错（这个不用校验和也能发现）\n★ 位翻转（bit rot）→ 数据悄悄变了，磁盘却报告读取成功\n→ 不校验就永远发现不了，直到备份恢复时发现数据是坏的\n```\n**静默损坏（silent data corruption）是存储最可怕的故障** —— 它不报错。\n\n**各层的校验和**：\n\n| 层 | 机制 |\n|---|---|\n| **磁盘扇区** | 硬件 ECC（盘内自纠错） |\n| **文件系统** | ZFS/Btrfs 的 checksum（每次读都验证） |\n| **对象存储** | ETag（MD5 或分片校验） |\n| **传输** | TCP 校验和、TLS |\n| **应用** | 自己算 MD5/SHA256 |\n| **备份** | 备份文件的校验和 |\n\n**为什么普通文件系统（ext4/XFS）不做**：\n```\next4/XFS 只有元数据校验（journal 的 crc32c），数据块没有校验和\n→ 数据块损坏时无法发现（除非应用自己校验）\n→ 这就是 ZFS/Btrfs 的核心优势之一：数据块也有校验\n```\n\n**实践上的四个应用**：\n\n**1. 备份必须带校验和**\n```bash\n# 备份时生成\nsha256sum backup.tar.gz > backup.sha256\n# 恢复前验证\nsha256sum -c backup.sha256\n```\n**备份时算、恢复时验是备份可靠性的基础** —— 否则你不知道备份文件是否损坏。\n\n**2. 大规模数据迁移后校验**\n```bash\n# 源端与目标端各算一遍，对比\nfind /data -type f -exec md5sum {} \\; | sort > /tmp/src.md5\n# 目标端同样操作，然后 diff\n```\n**迁移后不校验是数据丢失的常见来源。**\n\n**3. 对象存储的 ETag**\n```bash\n# 上传后对比 ETag（注意分片上传的 ETag 不是文件 MD5）\naws s3api head-object --bucket b --key k --query ETag\n```\n**注意：分片上传的 ETag 是把各分片 md5 拼接后再算 md5，末尾带分片数；它不等于文件 MD5** —— 这是个常见坑。\n\n**4. 定期数据刷洗（scrub）**\n```bash\n# ZFS\nzpool scrub tank\n# Ceph\nceph osd scrub all\n```\n**定期刷洗能主动发现静默损坏并用副本修复** —— 否则要等读到坏块才发现。\n\n**校验和的代价**：\n```\nCPU 开销（算哈希）、存储开销（存校验值）\n→ ZFS/Btrfs 因此比 ext4 慢一些\n→ 但换来能发现静默损坏，值\n```\n\n**一句话**：**校验和防的是静默损坏（磁盘说读成功但数据已变）——备份要算+验、迁移后要对比、存储层用 ZFS/Btrfs 或定期 scrub。**"
+  },
+  {
+    "id": 2437,
+    "type": "single",
+    "category": "存储与备份",
+    "difficulty": "中等",
+    "question": "做数据迁移后，验证「数据完整」最可靠的方式是？",
+    "options": [
+      { "key": "A", "text": "对比源与目标的文件数、总大小，并抽样做内容校验和比对" },
+      { "key": "B", "text": "看迁移工具报告成功" },
+      { "key": "C", "text": "看两边目录名一致" },
+      { "key": "D", "text": "迁移工具没报错就行" }
+    ],
+    "answer": ["A"],
+    "explanation": "**文件数 + 总大小能发现大部分遗漏，但不能发现内容损坏**——一个文件大小对但内容是坏的，只有校验和能发现。所以三层验证最可靠：①数量与大小（快速发现遗漏）；②抽样校验和（发现内容问题）；③关键数据全量校验和。B/D 是最危险的：**迁移工具报成功但实际有文件失败是常见情况**（尤其是权限不足、网络中断、特殊字符文件名）。C 完全没有意义。补充：迁移后还要验证权限、属主、时间戳是否保留（只有 rsync -a 这类带属性同步的才会全部保留）。"
+  },
+  {
+    "id": 2438,
+    "type": "multiple",
+    "category": "存储与备份",
+    "difficulty": "中等",
+    "question": "关于「存储性能」的估算，以下哪些说法正确？（多选）",
+    "options": [
+      { "key": "A", "text": "机械盘的顺序读写远大于随机读写（差 100 倍以上）" },
+      { "key": "B", "text": "RAID 卡的缓存（带电池）能把随机小写合并成顺序写，显著提升写性能" },
+      { "key": "C", "text": "SSD 的随机读性能远好于机械盘，但随机写受写放大影响" },
+      { "key": "D", "text": "容量越大的磁盘，随机 IOPS 也一定越高" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是错的：**机械盘的 IOPS 主要由转速决定（7200rpm 约 75-100 IOPS），与容量无关**——容量大只是每磁道数据更密，顺序带宽略高，但随机寻道时间不变。SSD 的 IOPS 与容量有一定关系（容量大意味着更多闪存通道），但不是一定更高。三项正确说法是存储性能的基础认知：①机械盘顺序可达 100-200MB/s，随机 4K 只有几十 IOPS；②RAID 卡缓存是机械盘做数据库的关键（把随机写合并）；③SSD 的写放大会消耗寿命与性能。"
+  },
+  {
+    "id": 2439,
+    "type": "short",
+    "category": "存储与备份",
+    "difficulty": "困难",
+    "question": "「存储扩容」时怎么做到业务无感知？有哪些前提？",
+    "answer": "**能否无感知，取决于存储架构——从下到上盘点。**\n\n**四种扩容场景**：\n\n| 场景 | 是否无感知 | 关键前提 |\n|---|---|---|\n| **云盘扩容** | ✅ 分分钟 | 支持在线扩容 + 文件系统能 grow |\n| **LVM 扩容** | ✅ 在线 | VG 有余量或能加 PV |\n| **RAID 扩容** | ⚠️ 有风险 | 控制器支持在线扩容，且要重构（IO 极高） |\n| **替换整块盘** | ❌ 要停机 | 需要数据迁移或副本切换 |\n\n**云盘/LVM 在线扩容的完整步骤**：\n```bash\n# 1. 扩块设备（云控制台或 lvextend）\nlvextend -l +100%FREE /dev/vg/lv\n# 2. 让内核重读\npartprobe /dev/sdb        # 或 growpart\n# 3. 扩文件系统\nxfs_growfs /data          # XFS\nresize2fs /dev/vg/lv      # ext4\n# 4. 验证\ndf -h /data\n```\n**扩了 LV 但没扩文件系统，df 没变化是最常见的困惑。**\n\n**无感知的四个前提**：\n\n**1. 文件系统支持在线扩容**\n```\n✓ XFS：可在线扩，不能缩\n✓ ext4：可在线扩，缩要卸载\n✗ 某些文件系统需要卸载\n```\n\n**2. 底层存储支持在线扩容**\n```\n✓ 云盘、LVM、Ceph（加 OSD）\n✗ 部分 RAID 控制器、部分 SAN\n```\n\n**3. 应用不持有已打开的大文件句柄**\n```\n某些应用（如老版本数据库）扩容后需要重启才能识别新空间\n→ 要查应用的兼容性\n```\n\n**4. 有监控验证**\n```\n扩容后要确认应用真的用上了新空间\n→ 不是 df 显示大了就完事\n```\n\n**五个高频坑**：\n```\n✗ 忘了扩文件系统（只扩了 LV）\n✗ 分区在磁盘中间（无法扩容，只能重建分区表——高危）\n✗ RAID 在线扩容时重构 IO 打满，业务受影响\n✗ 云盘扩容后没重启，某些应用看不到新容量\n✗ 扩容前没备份（分区表操作有风险）\n```\n\n**磁盘空间告警的正确阈值**：\n```\n不是 95%（那时已经来不及）\n✓ 80% 告警 → 有 1-2 天时间处理（申请/扩容/清理）\n✓ 且要监控增长趋势（predict_linear 预测何时满）\n```\n\n**一句话**：**云盘/LVM 的在线扩容是扩块设备 → 扩分区 → 扩文件系统三步，业务无感知——但忘了第三步和分区不在末尾是两个最常见的坑。**"
+  },
+  {
+    "id": 2632,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "虚拟机「CPU 绑核」有什么好处和风险？什么场景该用？",
+    "answer": "**绑核 = 把 vCPU 固定到物理核，VM 不再被调度到其他核。**\n\n**三个好处**：\n```\n✓ 消除调度开销（vCPU 不必在物理核间迁移）\n✓ 缓存亲和（同一核的 L1/L2 缓存命中率高）\n✓ 消除抖动（不受其他 VM 抢占影响）\n```\n\n**三个风险**：\n```\n✗ 失去弹性（宿主机上其他核空闲，绑定的 VM 也用不了）\n✗ 不能热迁移到核数不足的宿主机\n✗ 绑核配置错误（把两个 VM 绑到同一核）反而更慢\n```\n\n**该用的场景**：\n```\n✓ 延迟敏感的数据库（MySQL/Redis）\n✓ 实时性要求高的服务\n✓ 基准测试（要稳定可复现的性能）\n✓ 已知坚持不绑核性能不达标的场景\n```\n\n**不该用的场景**：\n```\n✗ 一般 Web 应用（弹性比稳定更重要）\n✗ 资源利用率优先的场景\n✗ VM 数量远多于物理核（绑不过来）\n```\n\n**KVM 的配置方式**：\n```xml\n<vcpu placement='static'>4</vcpu>\n<cputune>\n  <vcpupin vcpu='0' cpuset='2'/>\n  <vcpupin vcpu='1' cpuset='3'/>\n  <vcpupin vcpu='2' cpuset='4'/>\n  <vcpupin vcpu='3' cpuset='5'/>\n  <emulatorpin cpuset='0-1'/>\n</cputune>\n```\n**emulatorpin 容易被忽略**——QEMU 自身的模拟线程如果不隔离，会和 vCPU 抢同一个核。\n\n**绑核与 NUMA 的配合（重要）**：\n```\n绑核要绑在同一个 NUMA 节点内\n✗ vCPU 0-1 在 Node0，vCPU 2-3 在 Node1 → 跨节点访存，更慢\n✓ 全绑在 Node0 的核上，且内存也绑到 Node0\n```\n\n**验证绑核是否生效**：\n```bash\nvirsh vcpuinfo <vm>            # 看 CPU 亲和性\nps -o psr,comm -p <qemu-pid>   # 看进程在哪个核\ncat /proc/<pid>/status | grep Cpus_allowed_list\n```\n\n**绑核前先确认真的需要**：\n```\n很多场景感觉慢其实是 IO 或 GC 问题，绑核解决不了\n→ 先用 steal time、await 等指标确认瓶颈\n→ 盲目绑核会降低整体资源利用率\n```\n\n**一句话**：**绑核换来性能稳定的代价是失去弹性——只给延迟敏感的数据库/实时服务用，且要绑在同一 NUMA 节点、别忘了 emulatorpin。**"
+  },
+  {
+    "id": 2633,
+    "type": "multiple",
+    "category": "虚拟化",
+    "difficulty": "中等",
+    "question": "虚拟化平台的「日常巡检」应该检查哪些项？（多选）",
+    "options": [
+      { "key": "A", "text": "宿主机资源水位（CPU 超分比、内存余量、存储池容量）" },
+      { "key": "B", "text": "遗留快照（长期未删的快照会拖慢性能、占空间）" },
+      { "key": "C", "text": "虚拟机是否都有备份，且备份最近成功过" },
+      { "key": "D", "text": "只检查平台管理界面显示正常即可" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是典型的形式主义：**管理界面通常只显示连接状态，不显示快照遗留、备份失败、超分过度这类真正的问题**。三项正确项都是界面不显示但会出事的项。补充：④集群 HA/DRS 配置是否还在（有人可能关掉了）；⑤许可证到期时间（VMware 过期会无法启动新 VM）；⑥宿主机补丁与固件版本；⑦VM 的 VMware Tools 或 virtio 驱动版本。核心：**巡检要查会导致事故但界面不报警的项。**"
+  },
+  {
+    "id": 2634,
+    "type": "short",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "「虚拟机模板」怎么用？有什么好处？",
+    "answer": "**模板 = 预装好系统与基础配置的半成品虚拟机，用来批量创建标准 VM。**\n\n**工作方式**：\n```\n物理机/VM 装好 OS + 基础软件 + 安全基线\n  ↓ 转为模板（template / image）\n从模板克隆 → 新 VM（秒级到分钟级）\n  ↓ 首次启动时个性化（cloud-init / sysprep：主机名、IP、密钥）\n```\n\n**五个好处**：\n```\n✓ 部署快（不用每次装系统）\n✓ 基线一致（所有 VM 从同一模板来，配置不会漂移）\n✓ 安全可控（模板里已加固，不用事后补）\n✓ 可版本化（v1、v2，能追溯）\n✓ 减少人为错误（不用手工点点点）\n```\n\n**模板 + cloud-init 的配合**：\n```yaml\n#cloud-config\nhostname: web-01\nfqdn: web-01.example.com\nusers:\n  - name: ops\n    ssh_authorized_keys: [ssh-ed25519 AAAA...]\nnetwork:\n  version: 2\n  ethernets:\n    eth0:\n      addresses: [10.0.1.11/24]\n      gateway4: 10.0.1.1\n```\n**模板不写死 IP，靠 cloud-init 注入是关键** —— 否则每台都要手工改。\n\n**四个实践要点**：\n\n**1. 模板要先清理再转**\n```\n✓ 清理日志、临时文件、history\n✓ 清空 machine-id（否则克隆出来的 machine-id 相同）\n✓ 重置 cloud-init 状态（否则不会重新执行）\n✗ 带着生产数据/密钥转模板（泄漏）\n```\n**machine-id 相同会导致某些软件异常**（如监控 agent 认为它们是同一台）。\n\n**2. 定期重建模板**\n```\n模板会过期（缺最新补丁）\n→ 每月重建一次，配合定期滚动重建实例\n```\n\n**3. 模板要版本化**\n```\n✗ base-template（不知道哪一版）\n✓ base-template-20240115\n```\n\n**4. 别在模板里装应用**\n```\n✗ 模板里装好 Nginx + 应用代码 → 应用更新要重建整个模板\n✓ 模板只装 OS + 基础 agent，应用用 Ansible/K8s 部署\n```\n**模板管 OS 基线，应用交给配置管理/容器是清晰的分工。**\n\n**模板的现代替代**：\n```\nPacker（构建镜像）+ Terraform（创建实例）+ cloud-init（初始化）\n→ 比手工做模板更可重复、可版本化\n```\n\n**一句话**：**模板的价值是基线一致 + 部署快，关键是清理后再转、靠 cloud-init 个性化、定期重建、只装 OS 不装应用。**"
+  },
+  {
+    "id": 2826,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "Git 的「引用日志（reflog）」是什么？为什么它能救命？",
+    "answer": "**reflog = HEAD 与分支的移动历史，记录了每次引用的变化。**\n\n```bash\ngit reflog\n# a1b2c3d HEAD@{0}: commit: feat: 新功能\n# d4e5f6a HEAD@{1}: reset: moving to HEAD~2      ← 这里能找回被 reset 掉的提交\n# 9f8e7d6 HEAD@{2}: checkout: moving from main to dev\n```\n\n**为什么能救命**：\n```\n✗ git reset --hard HEAD~3   → 三个提交看起来消失了\n✓ 但它们还在 reflog 里（默认保留 90 天）\n→ git reset --hard HEAD@{1}  就能找回\n```\n**git 几乎不真正删除提交（除非 gc 之后），reflog 是最后的保险。**\n\n**四个救命场景**：\n\n**1. 误 reset**\n```bash\ngit reflog\n# 找到 reset 之前的位置\ngit reset --hard HEAD@{2}\n```\n\n**2. 误删分支**\n```bash\ngit reflog\n# 或者\ngit branch recovered <commit-sha>\n```\n\n**3. rebase 搞乱了**\n```bash\ngit reflog\n# 回到 rebase 之前\ngit reset --hard HEAD@{5}\n```\n**rebase 前先看一眼 reflog 记下位置是个好习惯** —— 或者用 git rebase --abort。\n\n**4. 误 commit 到错误分支**\n```bash\ngit log --oneline -3          # 找到提交 sha\ngit checkout right-branch\ngit cherry-pick <sha>         # 挪过去\n```\n\n**三个实用变体**：\n```bash\ngit reflog show main           # 只看某个分支的 reflog\ngit reflog --date=iso          # 带时间（更易辨认）\ngit log -g --oneline           # 等价于 git reflog\ngit fsck --lost-found          # 连 dangling commit 都能找出来\n```\n\n**reflog 的局限**：\n```\n✗ reflog 只在本地！远程没有 reflog\n→ 另一台机器上推错了用 reflog 救不了（要 git revert）\n✗ 默认保留 90 天，gc 之后会清理\n✗ 未 commit 的工作区文件 reflog 救不了（那要靠 stash/编辑器）\n```\n**reflog 只在本地是最需要知道的** —— 遇到远程只保留 reflog 会白忙一场。\n\n**两个高频的误以为**：\n```\n✗ 误删了文件想用 reflog 找回 → 应该用 git checkout -- <file>（未提交时是恢复工作区）\n✗ 误 push 了想用 reflog 撤 → 必须 git revert 或 force push（要做好沟通）\n```\n\n**一句话**：**reflog 记录了所有 reset/checkout/commit 的历史——误 reset、误删分支、rebase 搞乱都能从里面找回，但它只在本地且只保留 90 天。**"
+  },
+  {
+    "id": 2827,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git reset --soft`、`--mixed`、`--hard` 的区别是？",
+    "options": [
+      { "key": "A", "text": "soft 只移动 HEAD（保留改动在暂存区），mixed 保留在 workdir，hard 全部丢弃" },
+      { "key": "B", "text": "三者完全相同" },
+      { "key": "C", "text": "hard 最安全" },
+      { "key": "D", "text": "soft 会删除文件" }
+    ],
+    "answer": ["A"],
+    "explanation": "**三者的差别在动多少位置**：①`--soft` 只移动 HEAD，改动仍在暂存区（相当于撤销 commit 但保留暂存）——**安全，适合 commit 了但想重新组织提交**；②`--mixed`（默认）移动 HEAD 并重置暂存区，改动留在工作区——**适合撤销 commit 并重新选择要提交的文件**；③`--hard` 连工作区一起重置——**改动全部丢失，最危险**。C 完全说反了（hard 最危险）；D 错（soft 不动工作区）。补充：`--hard` 后如果后悔，用 `git reflog` 找回。"
+  },
+  {
+    "id": 2828,
+    "type": "short",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "GitLab CI 的 `.gitlab-ci.yml` 结构是什么？stages、jobs、rules 怎么用？",
+    "answer": "**CI 配置 = 分阶段（stages）+ 任务（jobs）+ 触发条件（rules）。**\n\n**基本结构**：\n```yaml\nstages:\n  - test\n  - build\n  - deploy\n\nvariables:\n  IMAGE_TAG: $CI_COMMIT_SHORT_SHA\n\n# 一个 job\nunit-test:\n  stage: test\n  script:\n    - npm ci\n    - npm test\n  cache:\n    paths: [node_modules/]\n\nbuild-image:\n  stage: build\n  script:\n    - docker build -t $CI_REGISTRY_IMAGE:$IMAGE_TAG .\n    - docker push $CI_REGISTRY_IMAGE:$IMAGE_TAG\n\n# 只在 main 分支手动部署\n.deploy-template:\n  stage: deploy\n  script:\n    - ./deploy.sh $IMAGE_TAG\n  rules:\n    - if: $CI_COMMIT_BRANCH == \"main\"\n      when: manual\n```\n\n**关键概念**：\n\n| 概念 | 说明 |\n|---|---|\n| **stage** | 顺序执行；同一 stage 的 job 并行 |\n| **job** | 最小执行单元，必须有 script |\n| **rules** | 控制何时执行（替代老旧的 only/except） |\n| **needs** | 跳过 stage 顺序，直接依赖某个 job（DAG） |\n| **extends** | 复用配置模板 |\n| **artifacts** | 把 job 的产物传给后续 job |\n| **cache** | 跨 pipeline 的缓存（如 node_modules） |\n\n**rules 的常见写法**：\n```yaml\nrules:\n  # main 分支自动部署\n  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n    when: on_success\n  # MR 时只跑测试\n  - if: $CI_PIPELINE_SOURCE == \"merge_request_event\"\n  # 其他情况不跑\n  - when: never\n```\n\n**needs（DAG，提速的关键）**：\n```yaml\nbuild:\n  stage: build\n  needs: [\"unit-test\"]        # 不等 test 阶段的其它 job\n  script: []\n```\n**用 needs 可以跳过 stage 顺序，让无关的 job 并行** —— 大 pipeline 提速明显。\n\n**四个高频配置错误**：\n\n**1. cache vs artifacts 混淆**\n```\ncache：跨 pipeline 复用（依赖包）；不保证一定命中\nartifacts：同一次 pipeline 内传给后续 job；一定存在\n→ 上一个 job 产生的文件用 artifacts，不是 cache\n```\n\n**2. only/except 已过时**\n```\n✗ only: [main]\n✓ rules: [if: $CI_COMMIT_BRANCH == \"main\"]\n```\n**新项目一律用 rules**（only/except 在复杂场景下语义混乱）。\n\n**3. 变量在 script 里没有引号**\n```yaml\nscript:\n  - echo $VAR                    # 某些 shell 下会出问题\n  - echo \"$VAR\"                  # 更安全\n  - echo \"${VAR}\"                # 明确边界（推荐）\n```\n\n**4. secrets 硬编码**\n```yaml\n✗ script: - curl -u admin:Passw0rd ...\n✓ 用 CI/CD Variables（masked + protected）\n```\n\n**一句话**：**「stages 定顺序、jobs 定任务、rules 定触发、needs 提速、artifacts 传产物、cache 存依赖」——新项目别用 only/except，secrets 一律进 CI 变量。**"
+  },
+  {
+    "id": 2829,
+    "type": "multiple",
+    "category": "Git/GitLab",
+    "difficulty": "中等",
+    "question": "GitLab CI 流水线「很慢」，以下哪些优化是有效的？（多选）",
+    "options": [
+      { "key": "A", "text": "用 cache 缓存依赖（node_modules、~/.m2、pip 缓存）" },
+      { "key": "B", "text": "用 needs 构建 DAG，让无依赖的 job 并行" },
+      { "key": "C", "text": "用 rules 让无关的 job 不执行（如只改文档时跳过测试）" },
+      { "key": "D", "text": "把所有 job 都设为 manual，由人来点以节省资源" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 不是优化而是倒退：**manual 只是把等待时间从程序等待变成人等**，总时长反而更长，且容易忘记点。三项正确做法是 CI 提速的标准手段：①cache 能省最多时间（依赖下载常占一半以上）；②needs/DAG 打破 stage 串行（大 pipeline 提速明显）；③rules 避免不必要的执行（只改 README 不该跑全量测试）。补充：④并行拆分测试（parallel 参数）；⑤用更小的镜像（alpine）；⑥docker layer cache（cache-from）；⑦Runner 的并发数要够（concurrent 配置）。"
+  }
+]

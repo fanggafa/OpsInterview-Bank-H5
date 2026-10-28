@@ -1,0 +1,96 @@
+[
+  {
+    "id": 3011,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "ES 的 ILM（索引生命周期管理）四个阶段分别做什么？日志场景怎么配？",
+    "answer": "**四个阶段：hot → warm → cold → delete。**\n\n| 阶段 | 状态 | 典型动作 |\n|---|---|---|\n| **hot** | 正在写入、频繁查询 | 滚动（rollover）、高配硬件 |\n| **warm** | 只读、偶尔查询 | 减副本、段合并（forcemerge）、迁到普通节点 |\n| **cold** | 很少查询 | 迁到廉价存储、可冻结（frozen） |\n| **delete** | 过期 | 删除整个索引 |\n\n**日志场景的标准策略**：\n```json\n{\n  \"policy\": {\n    \"phases\": {\n      \"hot\":    { \"actions\": { \"rollover\": { \"max_size\": \"30gb\", \"max_age\": \"1d\" } } },\n      \"warm\":   { \"min_age\": \"2d\",  \"actions\": { \"shrink\": { \"number_of_shards\": 1 },\n                                                   \"forcemerge\": { \"max_num_segments\": 1 } } },\n      \"cold\":   { \"min_age\": \"7d\",  \"actions\": { \"freeze\": {} } },\n      \"delete\": { \"min_age\": \"30d\", \"actions\": { \"delete\": {} } }\n    }\n  }\n}\n```\n\n**三个最值得做的事**：\n\n**1. rollover（滚动）—— 避免单索引过大**\n```\n按「30GB 或 1 天」滚动（先到先滚）\n→ 每个索引大小可控，删除也快（删整个索引）\n→ 必须是「别名 + 写别名」，不能手写固定索引名\n```\n\n**2. forcemerge（段合并）—— 释放空间 + 提升查询**\n```\nwarm 阶段合并到 1 个 segment\n→ 已不再写入的索引做合并才有意义（hot 阶段合并会被新写入打乱）\n→ 代价是 IO 极高，要在低峰做\n```\n**合并能显著减少 segment 数量，查询更快、占空间更小。**\n\n**3. 冷热架构分离（hot/warm/cold 节点）**\n```\n用 node.roles: [data_hot] / [data_warm] / [data_cold] 标记\nILM 自动把老索引迁到廉价节点\n→ 热数据用 SSD，冷数据用大容量 HDD，成本差数倍\n```\n\n**四个高频坑**：\n```\n✗ 没配 rollover，一个索引写到几个 TB（查询慢、删不掉、reindex 要命）\n✗ forcemerge 在 hot 阶段执行（刚合并完又有新写入，白做还占 IO）\n✗ delete 阶段设太短（日志还没排障就没了）\n✗ 忘了 ILM 也要监控（policy 执行失败是静默的）\n```\n\n**监控 ILM**：\n```bash\nGET logs-*/_ilm/explain          # 看每个索引当前在哪个阶段、有没有报错\nGET _ilm/status                  # 看 ILM 服务是否 RUNNING\n```\n**「ILM 卡住不动」是常见问题**——通常是某个 action 报错（如 forcemerge 失败），要用 `_ilm/explain` 定位。"
+  },
+  {
+    "id": 3012,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "困难",
+    "question": "ES 集群「堆内存」怎么配？为什么堆不能超过 32GB？",
+    "answer": "**两个硬规则：不超过物理内存的 50%，且不超过 31GB。**\n\n**规则一：堆 ≤ 物理内存的 50%**\n```\n剩下的 50% 要给「文件系统缓存」（Lucene 靠 OS page cache 加速读）\n→ 堆给太多 → 没有 page cache → 查询全走磁盘 → 慢到无法接受\n```\n**ES 和数据库相反：数据库要给足 cache，ES 是「OS cache 越大多越好」。**\n\n**规则二：堆 ≤ 31GB（约 32GB）—— 指针压缩**\n```\nJVM 在堆 < 32GB 时启用「压缩普通对象指针」（Compressed OOPs）\n→ 对象引用从 8 字节变 4 字节 → 同样内存能装更多对象\n\n一旦超过 32GB → 指针压缩关闭 → 有效内存反而变少\n→ 40GB 堆可能比 31GB 堆装的对象还少\n```\n**这就是「31GB 是性价比拐点」的原因。**\n\n**推荐配置**：\n```yaml\n# jvm.options\n-Xms16g\n-Xmx16g          # 必须相等，避免运行时扩容触发 Full GC\n```\n| 物理内存 | 堆 |\n|---|---|\n| 16GB | 8GB |\n| 32GB | 16GB |\n| 64GB | **31GB**（不是 32GB） |\n| 128GB | **31GB**（剩余给 page cache） |\n\n**「物理内存很大时怎么办」**：**多节点，而不是单节点大堆**。\n```\n128GB 的机器 → 跑 2 个 ES 节点（各 31GB 堆），而不是 1 个节点 64GB 堆\n→ 堆小、GC 快、还能多一个分片副本位置\n```\n\n**五个堆相关的运维问题**：\n\n**1. 堆内存泄漏（最常见）**\n```\nGET _nodes/stats/jvm         # 看 heap_used_percent 是否持续上升\nGET _cat/nodes?v&h=name,heap.percent,heap.current\n```\n**长期 > 75% 就要警惕**——可能是 fielddata 未禁用、聚合太多、bulk 太大。\n\n**2. 禁止 fielddata**\n```json\n\"mapping\": { \"properties\": { \"message\": { \"type\": \"text\", \"fielddata\": false } } }\n```\n**`fielddata` 会把分词后的词加载到堆里**，是堆爆炸的头号原因（7.x 默认已关闭 text 的 fielddata）。\n\n**3. 关闭 swapping（必须）**\n```bash\nswapoff -a\n# 或 bootstrap.memory_lock: true（锁定内存，防止换出）\n```\n**ES 一旦被 swap，延迟从毫秒变秒级。**\n\n**4. GC 选择**\n```\n堆 < 32GB → G1GC（默认，7.x 起）\n禁用 CMS（已在 JDK 14 移除）\n```\n\n**5. 大聚合要开 allow_partial_search_results**\n```\n超大聚合会把中间结果放堆里 → OOM\n→ 用 composite aggregation 分页，或用 ES 的 transform\n```\n\n**一句话**：**「堆 ≤ 31GB 且 ≤ 物理内存 50%」是 ES 的铁律——物理内存更大就多开节点，不要堆一个大堆。**"
+  },
+  {
+    "id": 3013,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "如何用 ES 做「日志告警」？Watcher 和第三方方案怎么选？",
+    "answer": "**三方案，按成本与灵活性排序。**\n\n**1. ES 自带 Watcher（商业 license）**\n```json\nPUT _watcher/watch/error_spike\n{\n  \"trigger\": { \"schedule\": { \"interval\": \"1m\" } },\n  \"input\": {\n    \"search\": { \"request\": {\n      \"indices\": [\"logs-*\"],\n      \"body\": { \"query\": { \"bool\": { \"filter\": [\n        { \"term\": { \"level\": \"ERROR\" } },\n        { \"range\": { \"@timestamp\": { \"gte\": \"now-1m\" } } }\n      ] } } }\n    } }\n  },\n  \"condition\": { \"compare\": { \"ctx.payload.hits.total\": { \"gt\": 100 } } },\n  \"actions\": { \"send_email\": { \"email\": { \"to\": \"ops@example.com\" } } }\n}\n```\n**优点**：不用额外组件。**缺点**：需要商业版；条件表达能力弱；告警管理（静默/抑制）能力差。\n\n**2. ElastAlert（Python，老牌开源）**\n```yaml\nname: Error spike\ntype: frequency\nindex: logs-*\nnum_events: 100\ntimeframe:\n  minutes: 1\nfilter:\n- term:\n    level: ERROR\nalert:\n- \"slack\"\n```\n**优点**：规则灵活（频率/尖峰/基数异常）。**缺点**：**单点、性能一般、维护停滞**（社区活跃度下降）。\n\n**3. 转成指标 + Prometheus 告警（推荐）**\n```\nLogstash 的 metrics filter / 或定期查询 ES 计数 → 暴露成 Prometheus 指标\n→ 用 Alertmanager 做告警（分组/抑制/静默都是成熟能力）\n```\n**优点**：**告警全链路成熟**（分组、抑制、静默、值班）。**缺点**：多一跳，延迟稍高。\n\n**推荐的组合（生产）**：\n```\n高频可枚举的错误 → 转成指标 → Prometheus 告警（主力）\n低频但严重的错误（OOM/panic）→ 直接查 ES 告警（补充）\n「ERROR 日志速率突增」→ 指标化后做速率告警（性价比最高）\n```\n\n**告警设计的三条原则**（与指标告警一致）：\n```\n1. 必须有「频率条件」（5 分钟内 > N 条），否则单条 ERROR 也会告警\n2. 必须能区分「新问题」与「老问题」（同一错误刷屏不该反复告警）\n3. 必须有 Runbook 链接（收到告警知道去哪查）\n```\n\n**一个高频误用**：\n```\n✗ 给每条 ERROR 都配告警 → 一天几百条 → 关静音 → 真故障看不到\n✓ 「ERROR 数量环比突增 3 倍」→ 一条告警覆盖所有未知错误\n```\n\n**告警的「查询成本」也要注意**：每分钟跑一次大范围聚合查询本身会给 ES 压力——**用预聚合（transform / 定时 rollup）或限制查询时间范围**。"
+  },
+  {
+    "id": 3014,
+    "type": "multiple",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "关于「结构化日志」，以下哪些做法是正确的？（多选）",
+    "options": [
+      { "key": "A", "text": "用 JSON 格式输出，而不是拼字符串" },
+      { "key": "B", "text": "统一字段名（如都用 timestamp、level、service、trace_id）" },
+      { "key": "C", "text": "把异常堆栈完整记录（多行），并配 multiline 采集规则" },
+      { "key": "D", "text": "为了排查方便，把请求体、响应体完整打印到日志" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 要谨慎：**完整打印请求/响应体会导致日志量暴涨、磁盘打满，还会把敏感数据（手机号、密码、金额）写进日志**——这是数据泄漏的高频来源。正确做法是「按需打印关键字段 + 敏感字段脱敏」。三项正确做法都是结构化日志的核心：JSON（可被 ES 直接解析，不用 grok）、统一字段名（跨服务能关联查询）、堆栈完整（排障必需，但必须配 multiline 才不会拆散）。补充：⑤**trace_id 必须进日志**，这是微服务排障的基础。"
+  },
+  {
+    "id": 3015,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "ES 查询超时、返回 `circuit_breaking_exception`，是什么问题？怎么解决？",
+    "answer": "**`circuit_breaking_exception` = 熔断器触发，本质是「这个查询太吃内存」。**\n\n**ES 的熔断器（Circuit Breaker）**：\n```\nparent breaker：整个 JVM 堆的 95%\nfielddata breaker：堆的 40%\nrequest breaker：堆的 60%\n→ 某个查询预估需要的内存超过阈值 → 直接拒绝，保护节点不 OOM\n```\n**这是保护机制，不是 bug**——拒绝比 OOM 好（OOM 会让整个节点挂掉，影响所有索引）。\n\n**四个高频原因**：\n\n**1. 超大聚合（最常见）**\n```json\n// 危险：一次性统计所有 user_id\n{ \"aggs\": { \"users\": { \"terms\": { \"field\": \"user_id\", \"size\": 100000 } } } }\n```\n**`terms` 聚合的 size 太大会把全部桶放堆里**。\n**解法**：\n```\n✓ terms 聚合 size 控制在 1000 以内（默认 10）\n✓ 需要全量统计用 composite aggregation 分页\n✓ 或用 transform 预聚合\n```\n\n**2. 深度分页**\n```json\n{ \"from\": 10000, \"size\": 100 }    // 已超 max_result_window 默认 10000\n```\n**解法**：`search_after`（推荐）或 `scroll`（导出场景）。\n\n**3. 大范围时间 + 高基数字段聚合**\n```\n查 30 天的日志并按 client_ip 聚合\n→ 几十万个桶 → 堆爆\n```\n**解法**：缩小时间范围、用 sampled 数据、或预聚合。\n\n**4. fielddata 被启用**\n```json\n\"message\": { \"type\": \"text\", \"fielddata\": true }   // ⚠️ 会把所有词加载到堆\n```\n**text 字段排序/聚合必须用 `keyword` 子字段，不要开 fielddata。**\n\n**排查顺序**：\n```bash\nGET _nodes/stats/breaker                    # 看哪个熔断器触发、当前占用\nGET _cat/nodes?v&h=name,heap.percent        # 堆是否已高\nGET _tasks?actions=*search*&detailed        # 找正在跑的大查询\n```\n\n**诊断具体查询**：\n```json\nGET logs/_search\n{ \"profile\": true, \"query\": {...} }   // 看各阶段内存与耗时\n```\n\n**长期治理**：\n| 手段 | 说明 |\n|---|---|\n| **控制 terms size** | ≤ 1000，超过用 composite |\n| **避免深度分页** | 用 `search_after` |\n| **预聚合** | transform / rollup 把常用统计先算好 |\n| **缩小时间范围** | 用 ILM 的 delete 控制数据量 |\n| **必要时调大 breaker** | `indices.breaker.request.limit: 70%`（治标） |\n\n**一句话**：**`circuit_breaking` 是「查询要的内存超过堆的承受能力」——先看是哪个熔断器，再针对性缩小聚合范围或改成分页/预聚合。**"
+  },
+  {
+    "id": 3016,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "日志采集链路里加 Kafka 的主要作用是？",
+    "options": [
+      { "key": "A", "text": "削峰与解耦：ES 写入慢时不会把 Filebeat 堵死导致丢数据" },
+      { "key": "B", "text": "让日志查询更快" },
+      { "key": "C", "text": "减少日志的存储空间" },
+      { "key": "D", "text": "替代 Logstash 做解析" }
+    ],
+    "answer": ["A"],
+    "explanation": "**直接 Filebeat → ES 的最大风险是「背压传导」**：ES 抖动时 Filebeat 内部队列满就开始丢数据。加 Kafka 后，Filebeat 只负责快速写入 Kafka（吞吐高、非常稳），Logstash 从 Kafka 按自己的节奏消费——**生产者与消费者解耦，任一环节抖动都不会丢数据**。B/C/D 都不对：Kafka 不加速查询、不压缩日志、也不做解析（解析仍是 Logstash 的活）。附加价值：**可以多消费者**（一份日志同时进 ES 和实时计算）。"
+  },
+  {
+    "id": 3017,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "Kibana 里怎么按「错误日志突增」做可视化与排查？",
+    "answer": "**核心是「先看趋势，再下钻」**。\n\n**1. 突增检测（最常用）**\n```\nKibana → Discover → 查询：level: ERROR\n时间范围：最近 24h，间隔（interval）选 Auto\n→ 折线图里突增的时段一眼可见\n```\n**关键技巧：用「Date Histogram」聚合 + 打开「分屏对比」**\n```\n对比「今天同时段」vs「昨天同时段」\n→ 排除正常潮汐，只看真实异常\n```\n\n**2. 下钻定位（三步）**\n```\n① 按 service 聚合 → 是哪个服务报错\nağgs: { services: { terms: { field: \"service.keyword\", size: 10 } } }\n\n② 按 message 聚合 → 是哪种错误在刷\n注意：message 若为 text，要聚合 message.keyword 子字段\n\n③ 抽样看原始文档 → 看具体堆栈与上下文\n```\n\n**3. 四个常用的 Kibana 可视化**\n\n| 图表 | 用途 |\n|---|---|\n| **折线图（Date Histogram）** | 错误量趋势、突增检测 |\n| **饼图/条形图（Terms）** | 按 service / level / 错误类型分布 |\n| **数据表（Table）** | 按「错误信息 + 次数」排序，找 Top 错误 |\n| **区域图（分堆叠）** | 各服务的错误量占比变化 |\n\n**4. 「Top 错误」的实用查询**\n```json\nGET logs-*/_search\n{\n  \"size\": 0,\n  \"query\": { \"bool\": { \"filter\": [\n    { \"term\": { \"level\": \"ERROR\" } },\n    { \"range\": { \"@timestamp\": { \"gte\": \"now-1h\" } } }\n  ] } },\n  \"aggs\": {\n    \"top_errors\": {\n      \"terms\": { \"field\": \"message.keyword\", \"size\": 20, \"order\": { \"_count\": \"desc\" } }\n    }\n  }\n}\n```\n**`message.keyword` 里要有 message 的 keyword 子字段**（mapping 用 multi-field），否则无法聚合。\n\n**5. 保存成 Dashboard + 告警**\n```\n把「错误量趋势 + Top 错误 + 服务分布」拼成一个 Dashboard\n→ 值班时一屏看完\n→ Dashboard 可以生成短链接，告警消息里直接附上\n```\n\n**一个高频问题**：\n```\n「Kibana 里看不到最新日志」\n→ 检查 refresh_interval（日志索引可能设了 30s/-1）\n→ 手动 POST logs-*/_refresh\n```\n**这是「日志延迟」最常见的原因——不是采集慢，是索引没 refresh。**\n\n**排障顺序**：**趋势（是否异常）→ 分布（哪个服务）→ Top 错误（哪种错误）→ 抽样（具体上下文）**。"
+  },
+  {
+    "id": 3018,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "困难",
+    "question": "ES 快照（snapshot）怎么用？为什么它是「备份」而「副本」不是？",
+    "answer": "**副本是「高可用」，快照才是「备份」——因为副本和原数据在同一个集群里。**\n\n**两者的本质区别**：\n\n| | 副本（Replica） | 快照（Snapshot） |\n|---|---|---|\n| 位置 | **同一集群** | **独立仓库**（S3/NFS/HDFS） |\n| 防什么 | 节点故障 | **集群故障、误删、版本升级失败** |\n| 误删索引 | 副本一起消失 | 快照还在 |\n| 跨版本恢复 | 不行 | 可以（快照可跨小版本恢复） |\n\n**配置快照仓库**：\n```json\nPUT _snapshot/my_backup\n{\n  \"type\": \"s3\",\n  \"settings\": {\n    \"bucket\": \"es-backup\",\n    \"base_path\": \"snapshots\",\n    \"max_snapshot_bytes_per_sec\": \"200mb\",\n    \"max_restore_bytes_per_sec\": \"200mb\"\n  }\n}\n```\n**`max_*_bytes_per_sec` 限速很重要**——不限速会打满带宽，影响集群正常读写。\n\n**快照的特点**：\n```\n✓ 增量快照：第一次全量，后续只存变化的部分（省空间）\n✓ 每个快照逻辑上都是「全量」（可独立恢复）\n✓ 可以只恢复某个索引，也可以改索引名恢复\n```\n\n**核心命令**：\n```bash\n# 创建快照（wait_for_completion=false 异步，避免超时）\nPUT _snapshot/my_backup/snap-2024.01.15?wait_for_completion=false\n{ \"indices\": \"logs-*\", \"include_global_state\": false }\n\n# 查看进度\nGET _snapshot/my_backup/snap-2024.01.15/_status\n\n# 恢复（可改索引名，避免覆盖线上）\nPOST _snapshot/my_backup/snap-2024.01.15/_restore\n{ \"indices\": \"logs-2024.01.15\", \"rename_pattern\": \"(.+)\", \"rename_replacement\": \"restored-$1\" }\n```\n\n**生产上的四个关键实践**：\n\n**1. 用 SLM（Snapshot Lifecycle Management）自动化**\n```json\nPUT _slm/policy/daily-snapshot\n{\n  \"schedule\": \"0 30 2 * * ?\",\n  \"name\": \"<daily-snap-{now/d}>\",\n  \"repository\": \"my_backup\",\n  \"config\": { \"indices\": [\"logs-*\"], \"include_global_state\": false },\n  \"retention\": { \"expire_after\": \"30d\", \"min_count\": 5, \"max_count\": 50 }\n}\n```\n\n**2. 恢复演练（必做）**\n```\n「没验证过的快照等于没有备份」\n→ 定期在隔离集群真的恢复一次\n→ 记录耗时（几十 GB 可能要小时级）\n```\n\n**3. 别把快照仓库放在同一个存储上**\n```\n✗ NFS 仓库和 ES 数据在同一台存储 → 存储挂了两个都没\n✓ 对象存储（S3/OSS）+ 版本锁定（防删除）\n```\n\n**4. 升级前必须快照**\n```\n大版本升级（如 7.x → 8.x）不能直接回退\n→ 升级前快照是唯一的退路\n```\n\n**一句话**：**「副本防节点故障，快照防集群级灾难」——快照要放独立仓库、要限速、要自动化、要演练，这才是真正的备份。**"
+  },
+  {
+    "id": 3019,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "Loki 和 ELK 有什么区别？什么场景该用 Loki？",
+    "answer": "**核心区别：Loki 只索引 label，不索引日志内容。**\n\n| | ELK | Loki |\n|---|---|---|\n| 索引 | **全文倒排索引** | **只索引 label** |\n| 存储成本 | 高（索引可能比原文还大） | **低（压缩后接近原文大小）** |\n| 全文检索 | 强（快） | 弱（要扫描 + 过滤，慢） |\n| 查询方式 | Query DSL（复杂） | LogQL（类 PromQL） |\n| 运维复杂度 | 高（ES 集群要调优） | **低**（单二进制可跑） |\n| 生态 | 极成熟 | 与 Prometheus/Grafana 天然集成 |\n\n**Loki 的设计哲学**：\n```\n「像对待指标一样对待日志」\n→ 用 label 定位（service=order, level=error）\n→ 内容压缩存储，查询时流式扫描 + grep\n```\n\n**Loki 适合的场景**：\n```\n✓ 故障排查（「查某个服务最近 1 小时的错误」）——占日志使用场景的 90%\n✓ 已有 Prometheus + Grafana 的团队（同一套 label、同一个界面）\n✓ 日志量大但不需要复杂全文检索\n✓ 团队不想维护 ES 集群\n```\n\n**Loki 不适合的场景**：\n```\n✗ 复杂的全文检索（「搜包含某段文本的所有日志」→ 要扫全部数据，很慢）\n✗ 日志做数据分析/聚合统计（terms 聚合这类）\n✗ 合规审计要求「任意字段可检索」\n```\n\n**关键约束：label 基数必须低**\n```\n✗ {user_id=\"12345\"} 作为 label → 每个用户一条流 → 爆炸\n✓ label 只用 service / namespace / level / env 这类有限枚举\n✓ 高基数字段放日志内容里，用 | json | field==\"xxx\" 过滤\n```\n**「Loki label 基数爆炸」和 ES 的「高基数 keyword」是同一类错误。**\n\n**选型建议**：\n| 你的情况 | 推荐 |\n|---|---|\n| 已在用 Prometheus + Grafana | **Loki**（一体化） |\n| 需要复杂检索与分析 | ELK |\n| 团队小、不想运维重型组件 | **Loki** |\n| 日志要长期保存 + 合规审计 | ELK 或对象存储归档 |\n\n**也可以混用**：**Loki 做日常排查，ELK 做深度分析**——但两套都要成本，多数团队选一个。"
+  },
+  {
+    "id": 3020,
+    "type": "short",
+    "category": "日志与ELK",
+    "difficulty": "中等",
+    "question": "应用日志该输出到 stdout 还是写文件？K8s 环境下怎么采集？",
+    "answer": "**K8s 环境下：输出到 stdout，由容器运行时落盘，再由 DaemonSet 采集。**\n\n**为什么不写文件**：\n```\n✗ 容器重启/重建后文件丢失\n✗ 要额外挂卷、管理轮转\n✗ 多副本时日志分散在各 Pod 里\n✓ stdout → 容器运行时统一收集 → kubectl logs 能看 → 采集器统一采\n```\n\n**K8s 下的日志路径**：\n```\n/var/log/pods/<namespace>_<pod>_<uid>/<container>/0.log\n/var/log/containers/<pod>_<namespace>_<container>-<id>.log  （软链接）\n```\n**采集器（Filebeat/Fluent-bit）以 DaemonSet 挂在 `/var/log/containers/*.log` 即可。**\n\n**但容器日志有两个坑**：\n\n**1. 日志轮转要配在 runtime 侧**\n```yaml\n# containerd 的 /etc/containerd/config.toml\n[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.runc.options]\n  # 默认 log 无限增长！必须配\n[plugins.\"io.containerd.grpc.v1.cri\"]\n  max_container_log_line_size = 16384\n  [plugins.\"io.containerd.grpc.v1.cri\".containerd]\n    [plugins.\"io.containerd.grpc.v1.cri\".containerd.log]\n      max_size = \"100Mi\"\n      max_file = 5\n```\n**不配就会「节点磁盘被日志打满」**——这是 K8s 节点 DiskPressure 的常见原因。\n\n**2. 多行日志（Java 堆栈）**\n```\nstdout 是流式的，一行一个事件\n→ Java 堆栈会被拆成几十行\n→ 必须在采集端配 multiline，或用「JSON 日志 + 堆栈放一个字段」\n```\n**「应用输出 JSON，异常堆栈作为一个字段」是最稳的方案**——根本不用 multiline。\n\n**什么时候还是该写文件**：\n```\n✓ 应用本身要读自己的日志（如审计日志）\n✓ 日志量极大且需要本地轮转控制（如网关访问日志）\n✓ 容器运行时日志有大小限制，超大日志会被截断\n```\n**这种场景用 emptyDir/挂载卷 + 采集器 tail 文件**。\n\n**统一建议（最省事）**：\n```\n1. 应用输出 JSON 到 stdout\n2. 容器运行时配日志轮转（max_size）\n3. DaemonSet 采集 /var/log/containers/*.log\n4. 直接进 Loki 或 Kafka → ES\n```\n**这样不需要管文件、不需要 multiline、重启不丢日志。**"
+  }
+]
