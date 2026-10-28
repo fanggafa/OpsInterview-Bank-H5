@@ -1,0 +1,527 @@
+[
+  {
+    "id": 1300,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "把访问本机 80 端口的流量 DNAT 到内网服务器，规则应写在哪个链？",
+    "options": [
+      {
+        "key": "A",
+        "text": "nat 表的 PREROUTING 链"
+      },
+      {
+        "key": "B",
+        "text": "nat 表的 POSTROUTING 链"
+      },
+      {
+        "key": "C",
+        "text": "filter 表的 INPUT 链"
+      },
+      {
+        "key": "D",
+        "text": "filter 表的 OUTPUT 链"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**DNAT 要改的是目的地址，而目的地址必须在路由决策之前就定下来**，所以规则写在 nat 表的 `PREROUTING` 链。本机自己产生的包（很少见）走 nat 表的 `OUTPUT`。`POSTROUTING` 是 SNAT 的位置，`INPUT`/`OUTPUT` 在 filter 表里只做放行/拒绝，不做地址转换。",
+    "tags": [
+      "iptables",
+      "DNAT",
+      "链"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1301,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "`iptables -L -n` 不加 `-t` 参数时，默认列出的是哪张表？",
+    "options": [
+      {
+        "key": "A",
+        "text": "raw 表"
+      },
+      {
+        "key": "B",
+        "text": "nat 表"
+      },
+      {
+        "key": "C",
+        "text": "mangle 表"
+      },
+      {
+        "key": "D",
+        "text": "filter 表"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "`iptables` 的默认表就是 **filter**，它负责放行与拒绝，日常「防火墙规则」基本都在这里。要看别的表必须显式加 `-t`，例如 `iptables -t nat -L -n -v`。注意 `-L` 会做 DNS 反解，所以排查时几乎总配 `-n` 关掉反解。",
+    "tags": [
+      "iptables",
+      "filter表",
+      "查看规则"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1302,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "想把一条新规则插到链的最前面，应该用哪个参数？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`-D`（DELETE，删除规则）"
+      },
+      {
+        "key": "B",
+        "text": "`-A`（APPEND，追加到链尾）"
+      },
+      {
+        "key": "C",
+        "text": "`-I`（INSERT，默认插到链首）"
+      },
+      {
+        "key": "D",
+        "text": "`-P`（POLICY，设置默认策略）"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "iptables 规则**按顺序匹配，命中即结束**。`-C` 是追加到末尾，只有在前面所有规则都不匹配时才会轮到它；`-I` 默认插到链首，`-I 3` 可指定插到第 3 条。所以「新规则加进去了却不生效」多半是位置问题，而不是写法问题。",
+    "tags": [
+      "iptables",
+      "规则顺序",
+      "参数"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1303,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "客户端访问一个没开放的端口，一直等到超时也不报错，最可能是规则用了哪个动作？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`-j REJECT`"
+      },
+      {
+        "key": "B",
+        "text": "`-j DROP`"
+      },
+      {
+        "key": "C",
+        "text": "`-j ACCEPT`"
+      },
+      {
+        "key": "D",
+        "text": "`-j LOG`"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`DROP` 静默丢弃报文、不给任何回应**，客户端只能靠重传最终超时；`REJECT` 默认回一个 `icmp-port-unreachable`（对 TCP 可配 `--reject-with tcp-reset`），客户端会立刻看到 connection refused。所以「想藏住端口」用 DROP，「想让对方尽快死心」用 REJECT。`LOG` 只记日志不决定放行，`ACCEPT` 是放行。",
+    "tags": [
+      "iptables",
+      "DROP",
+      "REJECT"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1304,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "`-m state --state ESTABLISHED,RELATED -j ACCEPT` 这条规则放行的是什么流量？",
+    "options": [
+      {
+        "key": "A",
+        "text": "所有新建的连接请求"
+      },
+      {
+        "key": "B",
+        "text": "已建立连接的回包，以及与之关联的连接（如 FTP 数据连接、ICMP 错误报文）"
+      },
+      {
+        "key": "C",
+        "text": "只放行本机主动发起的连接"
+      },
+      {
+        "key": "D",
+        "text": "只把流量记进日志，不改变放行结果"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**状态匹配依赖 conntrack 连接跟踪表**：`NEW` 是新连接，`ESTABLISHED` 是双向都确认过的连接，`RELATED` 是由已建立连接派生出来的新连接（典型是 FTP 的 data 连接、ICMP 差错）。这条规则通常写在链的前部，配合默认 DROP 实现「只放行必要的新连接，回包自动通过」。注意它必须在 conntrack 未被跳过时才有效。",
+    "tags": [
+      "iptables",
+      "状态匹配",
+      "conntrack"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1305,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "SNAT（源地址转换）的规则应写在哪个链？",
+    "options": [
+      {
+        "key": "A",
+        "text": "nat 表的 POSTROUTING 链"
+      },
+      {
+        "key": "B",
+        "text": "filter 表的 INPUT 链"
+      },
+      {
+        "key": "C",
+        "text": "nat 表的 PREROUTING 链"
+      },
+      {
+        "key": "D",
+        "text": "filter 表的 FORWARD 链"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**SNAT 改源地址，必须发生在路由决策之后、报文出网卡之前**，所以是 nat 表的 `POSTROUTING`。反过来 DNAT 改目的地址，要在路由之前，放在 `PREROUTING`。内网共享上网的经典写法是 `iptables -t nat -C POSTROUTING -s 192.168.1.0/24 -j MASQUERADE`，同时还要 `net.ipv4.ip_forward=1`。",
+    "tags": [
+      "iptables",
+      "SNAT",
+      "链"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1306,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "把 INPUT 链默认策略改成 DROP 之前，最需要先确认的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "已经清空所有旧的规则"
+      },
+      {
+        "key": "B",
+        "text": "机器上已经装好 firewalld"
+      },
+      {
+        "key": "C",
+        "text": "内核已经开启 ip_forward"
+      },
+      {
+        "key": "D",
+        "text": "已放行 SSH（22）和 ESTABLISHED 状态的流量，否则会把自己锁在服务器外面"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "设置默认策略等于给「所有没被匹配的入站流量」判死刑。正确顺序是**先 `-A INPUT ... -j ACCEPT` 放行 SSH 和 `ESTABLISHED,RELATED`，再 `-P INPUT DROP`**。ip_forward 只与转发有关，和本机入站无关；清空旧规则反而可能把已有放行也一起删掉。真被锁住只能靠控制台/带外恢复。",
+    "tags": [
+      "iptables",
+      "默认策略",
+      "踩坑"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1307,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "firewalld 中 zone（区域）的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "一块网卡的别名"
+      },
+      {
+        "key": "B",
+        "text": "一张独立的路由表"
+      },
+      {
+        "key": "C",
+        "text": "一组按信任级别划分的规则集合，网卡或来源网段可以绑定到某个 zone"
+      },
+      {
+        "key": "D",
+        "text": "SELinux 的进程标签"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "`firewalld` 用 **zone 表达「这块入口我信任到什么程度」**：默认 zone 是 `public`，`trusted` 全放行，`drop` 静默丢弃。入站流量先按接收网卡或来源地址归入某个 zone，再套用该 zone 的规则。查看网卡归属用 `firewall-cmd --get-active-zones`，改默认 zone 用 `firewall-cmd --set-default-zone=...`。",
+    "tags": [
+      "firewalld",
+      "zone",
+      "概念"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1308,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "`firewall-cmd --add-port=80/tcp` 执行成功且当前能访问，重启 firewalld 后规则却没了，原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "少了 `--reload`，命令根本没执行"
+      },
+      {
+        "key": "B",
+        "text": "80 端口是系统保留端口，firewalld 不允许放行"
+      },
+      {
+        "key": "C",
+        "text": "没有加 `--permanent`，规则只写进了 runtime 配置"
+      },
+      {
+        "key": "D",
+        "text": "必须重启操作系统规则才会写入磁盘"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "firewalld 有 **runtime 和 permanent 两套配置**：不加 `--permanent` 只改内存里的 runtime，服务重启就丢；加了 `--permanent` 才会写进 `/etc/firewalld/zones/*.xml`，但要以 `--reload` 加载后才作用于 runtime。已经改好的 runtime 配置可以用 `firewall-cmd --runtime-to-permanent` 一次性固化，避免重敲。",
+    "tags": [
+      "firewalld",
+      "permanent",
+      "持久化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1309,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "用 `--permanent` 改完 firewalld 配置后，让它立即作用于运行时的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`firewall-cmd --list-all`"
+      },
+      {
+        "key": "B",
+        "text": "`firewall-cmd --reload`"
+      },
+      {
+        "key": "C",
+        "text": "`firewall-cmd --get-default-zone`"
+      },
+      {
+        "key": "D",
+        "text": "`systemctl reload iptables`"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "`--permanent` 只是写磁盘，**必须 `--reload` 才会重新加载到 runtime 生效**。`--list-all` 和 `--get-default-zone` 都是只读查询。要注意 `--reload` 会丢弃所有未固化的 runtime 改动（比如之前不带 `--permanent` 加的端口），所以改配置时最好一次性都带上 `--permanent`。",
+    "tags": [
+      "firewalld",
+      "reload",
+      "生效"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1310,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "让 iptables 规则在服务器重启后依然生效，标准做法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "用 `iptables-save` 导出到文件，开机时用 `iptables-restore` 恢复"
+      },
+      {
+        "key": "B",
+        "text": "执行一次 `iptables -L -n` 查看即可"
+      },
+      {
+        "key": "C",
+        "text": "iptables 规则默认就会持久化，不用做任何事"
+      },
+      {
+        "key": "D",
+        "text": "把规则文本写进 `/etc/hosts`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**iptables 规则只存在于内核内存，重启即丢**。持久化就是 `iptables-save > /etc/iptables.rules`，再通过开机脚本或 `iptables-services`/`netfilter-persistent` 在启动时 `iptables-restore < /etc/iptables.rules`。排查「重启后防火墙规则全空了」时，先看有没有做这一步。",
+    "tags": [
+      "iptables",
+      "iptables-save",
+      "持久化"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1311,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "一个数据包同时能被同一条链里的 ACCEPT 规则和 DROP 规则匹配，最终结果是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "DROP 优先级总是高于 ACCEPT"
+      },
+      {
+        "key": "B",
+        "text": "ACCEPT 优先级总是高于 DROP"
+      },
+      {
+        "key": "C",
+        "text": "随机选一条规则生效"
+      },
+      {
+        "key": "D",
+        "text": "按链内顺序从上往下匹配，第一条命中的规则生效，后面的不再看"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "iptables 是**顺序匹配、命中即终止**，动作本身没有优先级。所以把 `/24` 网段整体 ACCEPT 放在一条更精确的 DROP 之前，DROP 永远不会命中——顺序错了规则就等于没写。`LOG` 是例外，它记录日志后继续往下匹配。",
+    "tags": [
+      "iptables",
+      "匹配顺序",
+      "规则"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1312,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "只放行 `10.0.0.0/24` 网段访问本机 22 端口，正确的规则是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`iptables -A INPUT -d 10.0.0.0/24 -p tcp --dport 22 -j ACCEPT`"
+      },
+      {
+        "key": "B",
+        "text": "`iptables -A INPUT -s 10.0.0.0/24 -p tcp --sport 22 -j ACCEPT`"
+      },
+      {
+        "key": "C",
+        "text": "`iptables -A INPUT -s 10.0.0.0/24 -p tcp --dport 22 -j DROP`"
+      },
+      {
+        "key": "D",
+        "text": "`iptables -A INPUT -s 10.0.0.0/24 -p tcp --dport 22 -j ACCEPT`"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "`-s` 是**源地址**（客户端网段），`-d` 是目的地址（就是本机），`--dport` 是目的端口（服务端口 22）。A 把网段写到了目的地址上，方向反了；B 用了 `--sport`，那是客户端随机源端口，永远匹配不上；C 动作用成了 DROP，等于把该网段直接封掉。",
+    "tags": [
+      "iptables",
+      "网段",
+      "端口匹配"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1313,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "mangle 表的主要用途是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "做源地址/目的地址转换"
+      },
+      {
+        "key": "B",
+        "text": "维护连接跟踪状态表"
+      },
+      {
+        "key": "C",
+        "text": "修改 IP 头字段（TOS、TTL、MARK 等），常用于策略路由和打标记"
+      },
+      {
+        "key": "D",
+        "text": "按 MAC 地址过滤报文"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "四张表分工不同：**raw 做 NOTRACK、mangle 改包头/打 MARK、nat 做地址转换、filter 做放行拒绝**。mangle 改的是 TOS、TTL、MARK 这类字段，配合 `ip rule`/策略路由用得多。MAC 过滤要用 `-m mac`，连接跟踪由 conntrack 内核模块维护，都不是 mangle 的职责。",
+    "tags": [
+      "iptables",
+      "mangle表",
+      "四表"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1314,
+    "type": "single",
+    "category": "iptables/firewalld",
+    "difficulty": "简单",
+    "question": "raw 表的主要用途是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "做源地址转换，实现内网共享上网"
+      },
+      {
+        "key": "B",
+        "text": "在连接跟踪之前用 NOTRACK 让指定流量跳过 conntrack"
+      },
+      {
+        "key": "C",
+        "text": "记录每条连接的访问日志"
+      },
+      {
+        "key": "D",
+        "text": "做端口映射与反向代理"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "表的处理优先级是 **raw → mangle → nat → filter**，raw 在 conntrack 之前执行，所以只有它能对指定流量打 `NOTRACK`、跳过连接跟踪。大流量转发场景下跳过 conntrack 可以显著减轻 `nf_conntrack` 表压力（表满会报 `nf_conntrack: table full, dropping packet`）。地址转换在 nat 表，日志用 `-j LOG`。",
+    "tags": [
+      "iptables",
+      "raw表",
+      "NOTRACK"
+    ],
+    "frequency": "低频"
+  }
+]

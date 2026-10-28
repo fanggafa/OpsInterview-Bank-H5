@@ -1,0 +1,527 @@
+[
+  {
+    "id": 4500,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "IP 地址与路由选择属于 OSI 参考模型的哪一层？",
+    "options": [
+      {
+        "key": "A",
+        "text": "网络层（第三层）"
+      },
+      {
+        "key": "B",
+        "text": "数据链路层（第二层）"
+      },
+      {
+        "key": "C",
+        "text": "传输层（第四层）"
+      },
+      {
+        "key": "D",
+        "text": "应用层（第七层）"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "网络层负责逻辑寻址（IP 地址）和路由选路，跨网段转发靠的就是这一层。数据链路层用 MAC 地址在同一链路上逐跳传输；传输层用 TCP/UDP 提供端到端的端口寻址与可靠性；应用层是 HTTP、DNS 等协议。口诀「物数网传会表应」，IP 和路由都在第三层。",
+    "tags": [
+      "OSI七层",
+      "网络层",
+      "IP"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4501,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP/IP 四层模型中，HTTP、DNS、SSH 属于哪一层？",
+    "options": [
+      {
+        "key": "A",
+        "text": "网络接口层"
+      },
+      {
+        "key": "B",
+        "text": "传输层"
+      },
+      {
+        "key": "C",
+        "text": "网络层"
+      },
+      {
+        "key": "D",
+        "text": "应用层"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "TCP/IP 四层是网络接口层、网络层（IP/ICMP）、传输层（TCP/UDP）和应用层，OSI 的会话层、表示层、应用层被合并进这最后一层，所以 HTTP、DNS、SSH、FTP 都算应用层。传输层只管 TCP/UDP 的端口与可靠性，不认具体业务协议。HTTPS 也不是独立一层，仍在应用层。",
+    "tags": [
+      "TCP/IP四层",
+      "应用层",
+      "协议栈"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4502,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "视频直播、在线游戏这类对延迟敏感、能容忍少量丢包的业务，通常选哪个传输层协议？",
+    "options": [
+      {
+        "key": "A",
+        "text": "ICMP"
+      },
+      {
+        "key": "B",
+        "text": "TCP"
+      },
+      {
+        "key": "C",
+        "text": "UDP"
+      },
+      {
+        "key": "D",
+        "text": "ARP"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "UDP 无连接、不重传、不保证顺序，头部只有 8 字节开销，延迟低，丢一点数据最多花屏或卡顿一下，正适合直播和实时游戏。TCP 有三次握手、确认重传、拥塞控制，可靠但延迟和抖动更大，追平一个丢包可能造成长时间卡顿。ICMP 用于探测，ARP 用于解析 MAC，都不是业务传输协议。",
+    "tags": [
+      "TCP",
+      "UDP",
+      "传输层"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4503,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP 建立连接要三次握手，主要目的是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "协商加密算法与会话密钥"
+      },
+      {
+        "key": "B",
+        "text": "确认双方收发能力正常并同步初始序列号"
+      },
+      {
+        "key": "C",
+        "text": "选择最优的网络传输路径"
+      },
+      {
+        "key": "D",
+        "text": "压缩后续要传输的数据"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "三次握手的 SYN、SYN+ACK、ACK 让双方各自确认「我能发、你能收」，并交换初始序列号（ISN），后续数据据此编号排序，同时避免网络中滞留的旧 SYN 建立一条错误的连接。加密密钥由 TLS 握手协商，选路是 IP 层和路由协议的事，压缩由应用层负责，都不是 TCP 握手的职责。",
+    "tags": [
+      "三次握手",
+      "TCP",
+      "序列号"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4504,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP 断开连接需要四次挥手而不是两次，根本原因是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "因为每次挥手都要等 2MSL 超时后才能继续"
+      },
+      {
+        "key": "B",
+        "text": "TCP 是全双工，一方的 FIN 只表示自己不再发数据，仍需接收对方数据"
+      },
+      {
+        "key": "C",
+        "text": "因为 TCP 断开时必须重新握一次手"
+      },
+      {
+        "key": "D",
+        "text": "因为 FIN 报文在网络中一定会丢失，需要重传两次"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "TCP 连接是全双工的两个方向。主动关闭方发 FIN 只是说「我这边的数据发完了」，此时它仍能接收数据，所以对端要先回 ACK，等自己的数据也发完再发 FIN，最后本方再 ACK，共四次。A 混淆了 TIME_WAIT 的等待；C、D 都不符合协议语义，FIN 丢包靠重传解决而非固定多发。",
+    "tags": [
+      "四次挥手",
+      "全双工",
+      "FIN"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4505,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "主动关闭连接的一方进入 TIME_WAIT 并等待 2MSL，主要原因是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "保证最后的 ACK 能重发，并让本连接的旧报文在网络中消亡"
+      },
+      {
+        "key": "B",
+        "text": "等待服务器把剩余数据全部发完"
+      },
+      {
+        "key": "C",
+        "text": "等待对方发起新的连接请求"
+      },
+      {
+        "key": "D",
+        "text": "为了加速端口释放、提高并发"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "2MSL 有两个作用：一是最后的 ACK 若丢失，对端会重发 FIN，本方还在 TIME_WAIT 就能再回一次 ACK 并重置计时；二是让本次连接的滞留报文在网络中彻底消失，避免被复用同一四元组的新连接收到。B 是 CLOSE_WAIT 阶段的事；C、D 相反，TIME_WAIT 会占用端口，短连接高并发时正是它导致端口耗尽的根源。",
+    "tags": [
+      "TIME_WAIT",
+      "2MSL",
+      "四次挥手"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4506,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "HTTPS 服务默认监听的端口是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "3306"
+      },
+      {
+        "key": "B",
+        "text": "80"
+      },
+      {
+        "key": "C",
+        "text": "22"
+      },
+      {
+        "key": "D",
+        "text": "443"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "443 是 HTTPS 的默认端口，80 是 HTTP，22 是 SSH，3306 是 MySQL，8080 常作 Tomcat/应用的备用 HTTP 端口，6379 是 Redis，27017 是 MongoDB。牢记这些端口，排障时看 `ss -lntp` 一眼就能判断服务起没起。注意端口只是默认约定，配置里可以改。",
+    "tags": [
+      "端口",
+      "HTTPS",
+      "常见服务"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4507,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "打开 Nginx 页面提示 502 Bad Gateway，通常说明什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "客户端没有通过身份认证"
+      },
+      {
+        "key": "B",
+        "text": "客户端请求的 URL 路径不存在"
+      },
+      {
+        "key": "C",
+        "text": "Nginx 做代理时从上游后端收到无效响应，后端多半挂了"
+      },
+      {
+        "key": "D",
+        "text": "后端处理超时，一直没返回响应"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "502 是网关/代理类错误：Nginx 把请求转发给上游，上游进程退出、端口没监听、返回了非法响应或提前断开连接，都会得到 502。D 描述的是 504 Gateway Timeout，即上游连上了但超时没响应；B 是 404，A 是 401。排障先看 `ss -lntp` 确认后端端口，再看 Nginx error_log。",
+    "tags": [
+      "HTTP状态码",
+      "502",
+      "Nginx"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4508,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "站点从 http 永久迁移到 https，做跳转时应该用哪个状态码？",
+    "options": [
+      {
+        "key": "A",
+        "text": "304"
+      },
+      {
+        "key": "B",
+        "text": "302"
+      },
+      {
+        "key": "C",
+        "text": "301"
+      },
+      {
+        "key": "D",
+        "text": "307"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "301 Moved Permanently 表示永久重定向，浏览器和搜索引擎会缓存并更新索引，权重也能传递，所以域名或协议永久变更用它。302/307 是临时跳转，不该被缓存，适合登录后跳转等场景；304 是协商缓存命中，告诉客户端用本地副本即可，并不改变地址。这是 HTTP 语义题，不是技术细节题。",
+    "tags": [
+      "HTTP状态码",
+      "301",
+      "重定向"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4509,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "关于 GET 与 POST 的说法，正确的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "POST 比 GET 更安全，因为它天然加密传输"
+      },
+      {
+        "key": "B",
+        "text": "GET 参数放在 URL 上、可缓存可收藏；POST 数据在 body 中"
+      },
+      {
+        "key": "C",
+        "text": "GET 请求不能携带任何参数"
+      },
+      {
+        "key": "D",
+        "text": "POST 是幂等的，重复提交不会产生副作用"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "GET 把参数拼在 URL 查询串里，属于安全幂等方法，可被缓存、可收藏、可重复请求；POST 把数据放在请求体，一般不被缓存。A 是典型误解：POST 不加密，明文 HTTP 下一样能被抓包，加密靠 HTTPS。C 错，GET 用 query string 传参；D 恰好相反，POST 通常非幂等，刷新页面重复下单就是它。",
+    "tags": [
+      "GET",
+      "POST",
+      "HTTP方法"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4510,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "用 dig 查询域名，本地 DNS 缓存未命中时，递归解析器最先向谁发起查询？",
+    "options": [
+      {
+        "key": "A",
+        "text": "根域名服务器"
+      },
+      {
+        "key": "B",
+        "text": "该域名的权威 DNS 服务器"
+      },
+      {
+        "key": "C",
+        "text": "本机 /etc/hosts"
+      },
+      {
+        "key": "D",
+        "text": "网关路由器"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "标准递归解析链路是：本地 DNS 先看自身缓存，未命中就问根服务器，根只返回 .com 等顶级域的地址；再问顶级域服务器，得到该域权威服务器的地址；最后问权威服务器拿到 A 记录。B 是链路末端而不是起点。hosts 文件由系统解析器优先查，但它不是 DNS 服务器；DNS 查询不经过网关转发。",
+    "tags": [
+      "DNS",
+      "递归解析",
+      "根服务器"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4511,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "ARP 协议的作用是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "用 MAC 地址反查 IP 地址"
+      },
+      {
+        "key": "B",
+        "text": "把域名解析成 IP 地址"
+      },
+      {
+        "key": "C",
+        "text": "在路由器之间交换路由表"
+      },
+      {
+        "key": "D",
+        "text": "在同一广播域内用 IP 地址查询对应的 MAC 地址"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "主机发包前要知道下一跳的 MAC，ARP 会广播「谁是 192.168.1.1」，目标主机单播应答自己的 MAC，结果缓存在 ARP 表里。B 是 DNS 的职责，C 是 OSPF/BGP 等路由协议。A 说的是 RARP，现已基本被 DHCP 取代。跨网段时解析到的其实是网关的 MAC，不是最终目标的 MAC。",
+    "tags": [
+      "ARP",
+      "MAC地址",
+      "二层"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4512,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "网段 192.168.1.0/24 中可分配给主机的 IP 地址共有多少个？",
+    "options": [
+      {
+        "key": "A",
+        "text": "253 个"
+      },
+      {
+        "key": "B",
+        "text": "256 个"
+      },
+      {
+        "key": "C",
+        "text": "255 个"
+      },
+      {
+        "key": "D",
+        "text": "254 个"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "/24 的主机位有 8 位，共 2^8 = 256 个地址，必须扣掉网络地址 192.168.1.0 和广播地址 192.168.1.255，剩下 254 个可分配。B 忘了扣网络与广播地址；C 只扣了一个；A 多扣一个。通用公式是 2^(32-掩码位数) - 2，例如 /28 就是 16-2 = 14 个。",
+    "tags": [
+      "子网掩码",
+      "CIDR",
+      "可用地址"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4513,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "ping 命令基于哪个协议工作？",
+    "options": [
+      {
+        "key": "A",
+        "text": "UDP"
+      },
+      {
+        "key": "B",
+        "text": "TCP"
+      },
+      {
+        "key": "C",
+        "text": "ICMP"
+      },
+      {
+        "key": "D",
+        "text": "ARP"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "ping 发送 ICMP Echo Request，等对方回 Echo Reply，据此判断主机是否可达并算出往返时延。因为是 ICMP 而非 TCP/UDP，只验证三层可达性，不代表业务端口可用：ping 通但 80 端口被拦的情况很常见。云主机安全组、防火墙常直接禁 ICMP，所以 ping 不通也不能断定机器宕机。",
+    "tags": [
+      "ping",
+      "ICMP",
+      "连通性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4514,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "远端 SSH 连不上，想确认 22 端口是否开放，最直接有效的做法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`ping 10.0.0.1` 通了就说明端口没问题"
+      },
+      {
+        "key": "B",
+        "text": "`telnet 10.0.0.1 22` 看能否建立连接"
+      },
+      {
+        "key": "C",
+        "text": "`nslookup 10.0.0.1` 查主机名"
+      },
+      {
+        "key": "D",
+        "text": "`ifconfig` 查看本机网卡状态"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "telnet 到指定端口能连上就说明链路、防火墙和端口监听都没问题，看到 `SSH-2.0-...` 字样即成功；nc 的 `nc -zv host 22` 效果类似。A 是误区：ICMP 通只证明三层可达，端口照样可能被安全组拦截。C 是域名查询，D 只看本机网卡，都验证不到对端端口。",
+    "tags": [
+      "telnet",
+      "端口连通性",
+      "排障命令"
+    ],
+    "frequency": "中频"
+  }
+]

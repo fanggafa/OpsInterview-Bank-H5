@@ -1,0 +1,527 @@
+[
+  {
+    "id": 2700,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "KVM 属于哪种虚拟化类型？",
+    "options": [
+      {
+        "key": "A",
+        "text": "裸金属型（Type-1，直接跑在硬件上，是 Linux 内核模块）"
+      },
+      {
+        "key": "B",
+        "text": "宿主型（Type-2，需要先装一个完整操作系统）"
+      },
+      {
+        "key": "C",
+        "text": "容器型（共享内核的进程隔离）"
+      },
+      {
+        "key": "D",
+        "text": "硬件模拟型（纯软件模拟全部指令）"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**KVM 是 Type-1（裸金属）**：它以内核模块（`kvm.ko`）的形式直接跑在 Linux 内核里，配合 QEMU 做设备模拟。所以严格说是「Linux 内核 + KVM + QEMU」三件套。B 是 VirtualBox/VMware Workstation 那类，C 是 Docker/LXC，D 是 QEMU 纯软件模拟（不开启 KVM 加速时）。",
+    "tags": [
+      "虚拟化",
+      "KVM",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2701,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "虚拟机 CPU「超分（overcommit）比例为 1:2」的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "保留一半 CPU 给宿主机"
+      },
+      {
+        "key": "B",
+        "text": "每台虚拟机有 2 个 vCPU"
+      },
+      {
+        "key": "C",
+        "text": "物理 CPU 性能是虚拟机的 2 倍"
+      },
+      {
+        "key": "D",
+        "text": "所有虚拟机的 vCPU 总数是物理核数的 2 倍"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**超分 = 超额分配 vCPU**：物理 16 核，分配出去 32 个 vCPU，就是 1:2。**超分的前提是「大部分 VM 不会同时满载」**——如果同时满载，每个 VM 都会变慢（表现为 `steal time` 升高）。CPU 超分一般可以到 1:2~1:4，**内存超分要谨慎得多**（会触发 swap，性能崩溃）。",
+    "tags": [
+      "虚拟化",
+      "超分",
+      "CPU"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2702,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "虚拟机里的 `st`（steal time）指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "内存交换时间"
+      },
+      {
+        "key": "B",
+        "text": "磁盘等待时间"
+      },
+      {
+        "key": "C",
+        "text": "本想运行、但被宿主机（或被其他 VM）抢走的时间"
+      },
+      {
+        "key": "D",
+        "text": "网络重传时间"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`st` 是「被偷走的 CPU 时间」**——虚拟机明明有活要干，但物理 CPU 被别的 VM 占着，只能等着。**`st` 高说明「宿主机超分过度或有邻居 VM 抢占」**，这时在虚拟机内部做任何优化都没用（要么迁移 VM，要么让宿主机减少超分）。这是虚拟化环境独有的指标。",
+    "tags": [
+      "虚拟化",
+      "steal",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2703,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "虚拟机的「内存气球（ballooning）」技术的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "给虚拟机增加内存"
+      },
+      {
+        "key": "B",
+        "text": "宿主机内存紧张时，让虚拟机「归还」一部分内存给宿主机"
+      },
+      {
+        "key": "C",
+        "text": "把内存压缩后存到磁盘"
+      },
+      {
+        "key": "D",
+        "text": "加速内存访问"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**气球驱动 = 宿主机回收虚拟机空闲内存的机制**：宿主机需要内存时，通过气球驱动「膨胀」让 guest OS 释放一部分内存页（guest 会回收自己的缓存）。好处是提高内存利用率，**坏处是 guest 突然「内存变少」**——如果 guest 本身内存吃紧，会触发 guest 内部 swap，性能急剧下降。所以生产上要监控 balloon 的大小。",
+    "tags": [
+      "虚拟化",
+      "内存",
+      "balloon"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2704,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "虚拟机的「热迁移（live migration）」指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把虚拟机的磁盘从一个存储迁到另一个存储（停机的）"
+      },
+      {
+        "key": "B",
+        "text": "在不停机的情况下，把运行中的虚拟机从一台宿主机迁到另一台"
+      },
+      {
+        "key": "C",
+        "text": "把物理机转换成虚拟机"
+      },
+      {
+        "key": "D",
+        "text": "给虚拟机打快照"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**热迁移（live migration）= 运行中迁移，业务几乎无感知**：先同步内存页，最后短暂暂停（毫秒级）切换。它要求：**共享存储（或块迁移）**、**CPU 特性兼容**、**源与目标网络互通**。A 是存储迁移（storage migration），C 是 P2V，D 是快照。**热迁移最常见的失败原因是 CPU 型号不兼容**（可用 `host-model`/`host-passthrough` 缓解）。",
+    "tags": [
+      "虚拟化",
+      "热迁移",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2705,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "qcow2 磁盘格式相比 raw 的主要优势是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "支持稀疏分配与快照（按实际写入增长，不预先占满空间）"
+      },
+      {
+        "key": "B",
+        "text": "性能一定比 raw 高"
+      },
+      {
+        "key": "C",
+        "text": "不能做快照"
+      },
+      {
+        "key": "D",
+        "text": "只能在 Windows 上使用"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**qcow2 是「写时分配」的格式**：创建一个 100GB 的盘文件可能只占几百 KB，随写入增长；**支持内部快照、压缩、加密**。代价是**多一层元数据与 qcow2 管理开销，性能略低于 raw**。所以：**开发测试/需要快照 → qcow2；极致性能/数据库数据盘 → raw（或直通/裸设备）**。",
+    "tags": [
+      "虚拟化",
+      "qcow2",
+      "存储格式"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2706,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "「P2V」指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把磁盘格式从 qcow2 转 raw"
+      },
+      {
+        "key": "B",
+        "text": "把虚拟机迁移成物理机"
+      },
+      {
+        "key": "C",
+        "text": "把虚拟机从一个宿主机迁到另一个"
+      },
+      {
+        "key": "D",
+        "text": "把物理机迁移（转换）成虚拟机"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**P2V = Physical to Virtual**（物理机 → 虚拟机），**V2V = Virtual to Virtual**（虚拟机之间迁移，常涉及不同虚拟化平台如 VMware → KVM）。P2V 的关键注意点：**驱动的处理**（原物理机的专有驱动可能与虚拟硬件不兼容）、**停机窗口**、**数据一致性**（建议先在源机上停服务或做只读快照）。",
+    "tags": [
+      "虚拟化",
+      "P2V",
+      "迁移"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2707,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "虚拟机「磁盘占用持续增长，但 guest 内实际数据没那么多」，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "guest 内的 du 统计错误"
+      },
+      {
+        "key": "B",
+        "text": "磁盘正在损坏"
+      },
+      {
+        "key": "C",
+        "text": "qcow2/精简置备盘「只增不减」，删除文件后空间不会自动回收"
+      },
+      {
+        "key": "D",
+        "text": "快照占了双倍空间以外没有其他原因"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**精简置备（thin provision）的盘文件「只长长、不缩回」**：guest 内删了文件，宿主上的 qcow2 文件不会变小（那些块已被分配）。**解决**：①guest 内用 `fstrim`（丢弃未用块）；②宿主上 `qemu-img convert` 重建成新文件（需要停机/大幅写放大）；③长期方案：让 guest 定期 fstrim。**注意「qcow2 只增不减」是设计如此，不是故障。**",
+    "tags": [
+      "虚拟化",
+      "磁盘",
+      "qcow2"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2708,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "`virsh list --all` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "列出所有存储池"
+      },
+      {
+        "key": "B",
+        "text": "列出所有物理网卡"
+      },
+      {
+        "key": "C",
+        "text": "列出本宿主机上所有虚拟机（含已关机但已定义的）"
+      },
+      {
+        "key": "D",
+        "text": "删除所有虚拟机"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`virsh list` 只显示运行中的；`--all` 会连「已定义但关机」的一起显示**。常用命令：`virsh start/shutdown/destroy`（destroy 是强制断电）、`virsh dominfo`、`virsh dumpxml`、`virsh edit`。**排障第一步通常是 `virsh list --all` 确认 VM 到底存不存在、是关机还是崩了。**",
+    "tags": [
+      "虚拟化",
+      "virsh",
+      "命令"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2709,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "什么是「裸金属（Bare Metal）」服务器？",
+    "options": [
+      {
+        "key": "A",
+        "text": "没有任何操作系统的服务器"
+      },
+      {
+        "key": "B",
+        "text": "不经过虚拟化层，直接跑在物理硬件上的服务器"
+      },
+      {
+        "key": "C",
+        "text": "只有 CPU 没有内存的服务器"
+      },
+      {
+        "key": "D",
+        "text": "一种容器运行时"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**裸金属 = 直接使用物理机，中间没有 hypervisor**。选择理由：①**极致性能**（无虚拟化开销，尤其对 IO 与延迟敏感的场景）；②**特定硬件要求**（GPU 直通、特殊网卡）；③**合规隔离**（不同租户物理隔离）。云上也提供「裸金属实例」（物理机按需租用），兼顾弹性与性能。",
+    "tags": [
+      "虚拟化",
+      "裸金属",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2710,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "虚拟机的「快照」为什么不能长期保留？",
+    "options": [
+      {
+        "key": "A",
+        "text": "快照链越长，每次读写要穿越更多层，性能下降且占用持续增长"
+      },
+      {
+        "key": "B",
+        "text": "快照会自动删除数据"
+      },
+      {
+        "key": "C",
+        "text": "快照只能保留 1 小时"
+      },
+      {
+        "key": "D",
+        "text": "快照会破坏磁盘"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**快照不是「副本」，而是「写时复制的差异层」**：之后的写入都进新层，原层变成只读。**快照链越长 → 读要逐层查找 → 性能越差；且删除快照时需要合并（commit）大量数据，耗时极长**。所以规范是：**快照只用于「变更前的临时回滚点」，用完尽快删除或合并**；长期保留要用真正的备份。",
+    "tags": [
+      "虚拟化",
+      "快照",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2711,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "虚拟机「时间越走越偏」（时钟漂移），最常见的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "网络丢包"
+      },
+      {
+        "key": "B",
+        "text": "硬盘坏了"
+      },
+      {
+        "key": "C",
+        "text": "内存不足"
+      },
+      {
+        "key": "D",
+        "text": "未启用时间同步，或虚拟机时钟源（kvm-clock/TSC）在负载下不精确"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**虚拟机的时钟由宿主提供（如 kvm-clock / TSC），CPU 调度延迟会让它漂移**。解决：①**启用 NTP/chrony 定期同步**（这是根本方案）；②宿主机也要配好时间同步；③高精度场景用 `ptp_kvm` 或禁用 TSC 不稳定检测。**漂移的危害**：分布式系统日志对不上、TLS 证书校验失败、分布式锁与事务异常。",
+    "tags": [
+      "虚拟化",
+      "时间同步",
+      "NTP"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2712,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "`lscpu` 输出里 NUMA 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "显示 CPU 型号"
+      },
+      {
+        "key": "B",
+        "text": "统计 CPU 温度"
+      },
+      {
+        "key": "C",
+        "text": "限制 CPU 频率"
+      },
+      {
+        "key": "D",
+        "text": "把 CPU 与内存分组，让 CPU 优先访问「本地」内存以减少延迟"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**NUMA（非统一内存访问）把 CPU 和内存分到多个节点，每个 CPU 访问本地内存快、访问其他节点的内存慢**。对虚拟化的影响：**vCPU 与内存要尽量绑在同一个 NUMA 节点**，否则跨节点访存会让性能明显下降（这就是「绑定大内存 VM 后性能反而差」的原因）。`numactl --hardware` 可查看节点分布。",
+    "tags": [
+      "虚拟化",
+      "NUMA",
+      "性能"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2713,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "虚拟机「无法启动」，先用哪个命令查看失败原因？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`free -g`"
+      },
+      {
+        "key": "B",
+        "text": "`df -h`"
+      },
+      {
+        "key": "C",
+        "text": "`virsh start <vm>` 报错 + 查看 `/var/log/libvirt/qemu/<vm>.log`"
+      },
+      {
+        "key": "D",
+        "text": "`ip addr`"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**KVM/libvirt 的启动失败日志在 `/var/log/libvirt/qemu/<域名>.log`**（也可 `journalctl -u libvirtd`）。常见原因：①磁盘文件路径不存在/权限不对（AppArmor/SELinux 拒绝）；②内存不足；③XML 配置损坏；④端口/网桥冲突。**`virsh start` 的错误信息往往很简略，一定要看 QEMU 的日志才能定位到具体原因。**",
+    "tags": [
+      "虚拟化",
+      "排障",
+      "virsh"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2714,
+    "type": "single",
+    "category": "虚拟化",
+    "difficulty": "简单",
+    "question": "虚拟机里「IO 性能很差」，最容易忽略的一个环节是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "CPU 型号"
+      },
+      {
+        "key": "B",
+        "text": "磁盘缓存策略（cache=none/writeback）与 IO 调度器配置"
+      },
+      {
+        "key": "C",
+        "text": "网卡速率"
+      },
+      {
+        "key": "D",
+        "text": "内存频率"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`cache=none`（直通，推荐用于数据库，数据安全）vs `cache=writeback`（走宿主缓存，写快但断电可能丢数据）**——选错会让性能差数倍，或带来数据风险。另外**IO 调度器**（宿主用 `none`/`mq-deadline`，guest 内用 `noop`）也会影响，**巫毒配置（双重缓存）会造成严重性能问题**。排查顺序：宿主 `iostat` → VM 的 `cache` 模式 → 调度器 → 存储池带宽/IOPS 限制。",
+    "tags": [
+      "虚拟化",
+      "IO",
+      "性能"
+    ],
+    "frequency": "中频"
+  }
+]

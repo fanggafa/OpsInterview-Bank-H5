@@ -1,0 +1,528 @@
+[
+  {
+    "id": 3100,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ELK 三个字母分别代表？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Elasticsearch（存储检索）、Logstash（处理）、Kibana（可视化）"
+      },
+      {
+        "key": "B",
+        "text": "Elastic、Linux、Kafka"
+      },
+      {
+        "key": "C",
+        "text": "Email、Log、Kernel"
+      },
+      {
+        "key": "D",
+        "text": "Elastic、Log、Kubernetes"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**ELK = Elasticsearch + Logstash + Kibana**。加上采集端 Filebeat 后常写作 **ELK Stack / Elastic Stack**。数据流：`日志文件 → Filebeat → (Kafka) → Logstash → ES → Kibana`。",
+    "tags": [
+      "ELK",
+      "组件",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3101,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "Filebeat 相比 Logstash，最大的优势是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "能替代 Kibana"
+      },
+      {
+        "key": "B",
+        "text": "解析能力更强"
+      },
+      {
+        "key": "C",
+        "text": "可以直接做复杂聚合"
+      },
+      {
+        "key": "D",
+        "text": "极轻量（Go 编写，几十 MB 内存），适合部署在每台业务机上"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**Logstash 是 JVM 应用（单实例 1-2GB 内存），不适合装在上百台机器上；Filebeat 是 Go 单二进制、内存占用小**，所以分工是「**Filebeat 采集，Logstash 集中处理**」。如果你的日志已经是结构化 JSON，甚至可以 **Filebeat 直接写 ES，省掉 Logstash**。",
+    "tags": [
+      "Filebeat",
+      "Logstash",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3102,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ES 中 `text` 和 `keyword` 两种字段类型，哪个适合做「精确匹配与聚合」？",
+    "options": [
+      {
+        "key": "A",
+        "text": "两者都可以，没有区别"
+      },
+      {
+        "key": "B",
+        "text": "text（分词后存）"
+      },
+      {
+        "key": "C",
+        "text": "keyword（不分词，原样存储）"
+      },
+      {
+        "key": "D",
+        "text": "都不行，要用 integer"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`keyword` 不分词，适合「精确值过滤、聚合、排序」**（如 level、service、状态码）；**`text` 会分词，适合全文检索**（如日志正文）。**把 level 设成 text 是经典错误**——搜 `ERROR` 会命中 `ERRORS`，聚合会拆成奇怪的词。最佳实践用 **multi-field**：正文既是 `text` 又有 `keyword` 子字段。",
+    "tags": [
+      "ES",
+      "mapping",
+      "text",
+      "keyword"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3103,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ES 集群状态 `yellow` 的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "所有分片都正常，完全健康"
+      },
+      {
+        "key": "B",
+        "text": "所有主分片已分配，但有副本未分配（数据不丢，但没有冗余）"
+      },
+      {
+        "key": "C",
+        "text": "有主分片未分配，部分数据不可用"
+      },
+      {
+        "key": "D",
+        "text": "集群正在关闭"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**三色状态**：`green`（主副本全就位）、**`yellow`（主分片都在，副本没分配完）**、`red`（有主分片丢失，数据不可用）。**yellow 最常见的原因是「单节点集群」或「磁盘水位触发」**——单节点开发环境把副本设成 0 就变绿了。",
+    "tags": [
+      "ES",
+      "集群状态",
+      "yellow"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3104,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ES 索引的 `refresh_interval` 默认值是多少？",
+    "options": [
+      {
+        "key": "A",
+        "text": "30 秒"
+      },
+      {
+        "key": "B",
+        "text": "1 秒"
+      },
+      {
+        "key": "C",
+        "text": "5 分钟"
+      },
+      {
+        "key": "D",
+        "text": "不刷新（-1）"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**默认 1 秒**（近实时：写入后最多 1 秒可被搜索到）。**每次 refresh 都会生成新 segment，写入量大时会导致 segment 暴涨、merge 压力大、写入变慢**。所以日志场景常调到 **30s 或 -1**，用「数据可见延迟」换「写入吞吐」。",
+    "tags": [
+      "ES",
+      "refresh",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3105,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ES 的 `query`（如 must）与 `filter` 的主要区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "filter 不计算相关性分数，且结果可被缓存（更快）"
+      },
+      {
+        "key": "B",
+        "text": "filter 查不出数据"
+      },
+      {
+        "key": "C",
+        "text": "query 不参与排序"
+      },
+      {
+        "key": "D",
+        "text": "两者完全等价"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**filter 上下文：不算 `_score`、结果进 filter cache → 更快**。**query 上下文：计算相关性分数 → 慢一些，但能按相关度排序**。实践规则：**需要打分排序的放 must/should，只是「筛掉不符合的」放 filter**。日志检索（时间范围 + level + service）几乎全用 filter。",
+    "tags": [
+      "ES",
+      "query",
+      "filter"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3106,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "Logstash 的 `grok` 插件的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "生成可视化图表"
+      },
+      {
+        "key": "B",
+        "text": "压缩日志"
+      },
+      {
+        "key": "C",
+        "text": "把日志写入 Kafka"
+      },
+      {
+        "key": "D",
+        "text": "用正则模板把非结构化的文本日志解析成结构化字段"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**grok 用 `%{PATTERN:field}` 模板解析文本日志**（如把一行 access log 拆成 ip/时间/状态码）。**注意两个坑**：①`%{GREEDYDATA}` 这类贪婪匹配在超大日志上会导致「正则回溯」，把 CPU 打满；②解析失败会打上 `_grokparsefailure` 标签，**必须监控这个标签的数量**。**更好的做法是让应用直接输出 JSON**，用 `json` filter，省掉 grok。",
+    "tags": [
+      "Logstash",
+      "grok",
+      "解析"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3107,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ES 集群磁盘使用率达到 `flood_stage`（默认 95%）会发生什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "自动扩容磁盘"
+      },
+      {
+        "key": "B",
+        "text": "自动删除最老的索引"
+      },
+      {
+        "key": "C",
+        "text": "所有索引被设为只读，写入失败（但不会自动删除数据）"
+      },
+      {
+        "key": "D",
+        "text": "只是告警，不影响写入"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**磁盘到 95% 时 ES 给所有索引打上 `read_only_allow_delete`，写入静默失败**——日志平台会「突然没有新日志了」且没有任何明显报错。**这是日志平台最隐蔽的故障**。处置：清理磁盘/扩容，然后解除只读：\n```\nPUT _all/_settings\n{ \"index.blocks.read_only_allow_delete\": null }\n```\n**预防：磁盘 85% 就告警，别等 95%。**",
+    "tags": [
+      "ES",
+      "磁盘",
+      "只读"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3108,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ILM（索引生命周期管理）的四个阶段依次是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "primary → replica → backup → delete"
+      },
+      {
+        "key": "B",
+        "text": "new → old → archive → delete"
+      },
+      {
+        "key": "C",
+        "text": "hot → warm → cold → delete"
+      },
+      {
+        "key": "D",
+        "text": "write → read → compress → drop"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**hot（写入+查询）→ warm（只读，减副本/合并段）→ cold（极少查，迁廉价存储）→ delete（删除）**。日志场景的标准策略：hot 按 30GB 或 1 天滚动 → warm 减副本并 forcemerge → cold 冻结 → 30 天删除。**「按天滚动索引 + 删整个索引」比 delete by query 快得多。**",
+    "tags": [
+      "ES",
+      "ILM",
+      "生命周期"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3109,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "「日志级别」中，生产环境通常开启哪一级及以上？",
+    "options": [
+      {
+        "key": "A",
+        "text": "DEBUG"
+      },
+      {
+        "key": "B",
+        "text": "INFO（含 WARN/ERROR）"
+      },
+      {
+        "key": "C",
+        "text": "TRACE"
+      },
+      {
+        "key": "D",
+        "text": "ALL"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**生产开 INFO**（DEBUG/TRACE 只在排查具体问题时临时开，且要限时关闭）。原因：**DEBUG 日志量可能是 INFO 的 10-50 倍**，「开了 DEBUG 忘关 → 磁盘被打满 → 全站不可用」是运维经典事故。防御：①DEBUG 必须设自动过期；②磁盘 80% 就告警；③监控日志速率突增。",
+    "tags": [
+      "日志级别",
+      "生产",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3110,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "「日志脱敏」中，下面哪类字段必须处理？",
+    "options": [
+      {
+        "key": "A",
+        "text": "密码、token、手机号、身份证号、银行卡号"
+      },
+      {
+        "key": "B",
+        "text": "请求的 URL 路径"
+      },
+      {
+        "key": "C",
+        "text": "HTTP 状态码"
+      },
+      {
+        "key": "D",
+        "text": "线程名"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**三类必须脱敏：凭据（密码/token/secret/accessKey）、个人身份信息（手机号/身份证/银行卡/邮箱）、业务敏感数据（金额/余额）**。最常见的泄漏方式是「debug 打印整个对象」——对象的 `toString()` 往往带全部字段。**自查最简单的方法**：随机抽一段真实日志 `grep -E '1[3-9]\\d{9}|password|token'`。",
+    "tags": [
+      "日志",
+      "脱敏",
+      "安全"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3111,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "ES 里「倒排索引」的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把索引文件倒过来存"
+      },
+      {
+        "key": "B",
+        "text": "从文档 ID 映射到文档内容"
+      },
+      {
+        "key": "C",
+        "text": "按时间倒序排列的索引"
+      },
+      {
+        "key": "D",
+        "text": "从「词」映射到「包含该词的文档 ID 列表」，实现快速全文检索"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**倒排索引 = 「词 → 文档」的映射**（像书后的人名索引页）。搜一个词时直接查到包含它的文档列表，无需遍历所有文档。B 是「正排」（文档 → 内容）。倒排索引是 ES 检索快的根本原因，**代价是写入时要分词建索引，所以 ES 写比 MySQL 慢且占空间大**——这也是它不适合做主数据库的原因。",
+    "tags": [
+      "ES",
+      "倒排索引",
+      "原理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3112,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "日志采集链路里加 Kafka 的主要作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "替代 Logstash 做解析"
+      },
+      {
+        "key": "B",
+        "text": "让日志查询更快"
+      },
+      {
+        "key": "C",
+        "text": "压缩日志体积"
+      },
+      {
+        "key": "D",
+        "text": "削峰与解耦——ES 抖动时不会把采集端堵死导致丢日志"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**Filebeat 直连 ES 的最大风险是「背压传导」**：ES 写入慢 → Filebeat 内部队列满 → 开始丢数据。**加 Kafka 后生产者与消费者解耦**，任一环节抖动都不丢数据。附加好处：**一份日志可以有多个消费者**（同时进 ES 和实时计算）。B/C/A 都不对。",
+    "tags": [
+      "Kafka",
+      "日志",
+      "架构"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3113,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "「日志平台看不见新日志」最简单的健康判断指标是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Kibana 的版本号"
+      },
+      {
+        "key": "B",
+        "text": "ES 的 CPU 使用率"
+      },
+      {
+        "key": "C",
+        "text": "最新一条日志的时间戳距现在多久（超过 5 分钟即链路可能断了）"
+      },
+      {
+        "key": "D",
+        "text": "磁盘的品牌"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**「最新日志时间距现在多久」是最直接的健康指标**——它直接回答「现在能不能查到新日志」，比任何资源指标都贴近用户感受。**这条告警必须独立于日志平台本身**（比如用 Prometheus 直接查 ES 计数），否则「日志平台挂了，连告警都发不出来」。",
+    "tags": [
+      "日志",
+      "监控",
+      "健康度"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3114,
+    "type": "single",
+    "category": "日志与ELK",
+    "difficulty": "简单",
+    "question": "Loki 相比 ELK 最大的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Loki 不支持查询"
+      },
+      {
+        "key": "B",
+        "text": "只索引 label（如 service/level），不索引日志内容，因此存储成本低得多"
+      },
+      {
+        "key": "C",
+        "text": "Loki 是商业软件"
+      },
+      {
+        "key": "D",
+        "text": "Loki 只能存 1 天日志"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**Loki 的设计是「像对待指标一样对待日志」**：只给 label 建索引，内容压缩存储，查询时流式扫描 + grep。**代价是「复杂全文检索慢」**——它适合「按服务+时间+级别查日志」（占日志使用场景 90%），不适合复杂文本分析与聚合。**label 基数必须低**（不能把 user_id 做 label）。",
+    "tags": [
+      "Loki",
+      "日志",
+      "选型"
+    ],
+    "frequency": "中频"
+  }
+]

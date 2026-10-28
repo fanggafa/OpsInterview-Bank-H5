@@ -1,0 +1,527 @@
+[
+  {
+    "id": 1100,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "DNS 默认使用哪个端口？",
+    "options": [
+      {
+        "key": "A",
+        "text": "53"
+      },
+      {
+        "key": "B",
+        "text": "22"
+      },
+      {
+        "key": "C",
+        "text": "80"
+      },
+      {
+        "key": "D",
+        "text": "443"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "DNS 服务默认监听 **53**：查询走 UDP 53，区域传送（AXFR）走 TCP 53。22 是 SSH，80 是 HTTP，443 是 HTTPS。",
+    "tags": [
+      "DNS",
+      "端口",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1101,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "把域名解析成 IPv4 地址，用到的是哪种记录类型？",
+    "options": [
+      {
+        "key": "A",
+        "text": "TXT 记录"
+      },
+      {
+        "key": "B",
+        "text": "CNAME 记录"
+      },
+      {
+        "key": "C",
+        "text": "MX 记录"
+      },
+      {
+        "key": "D",
+        "text": "A 记录"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**A 记录**存域名 → IPv4；AAAA 存域名 → IPv6。CNAME 是别名（指向另一个域名），MX 是邮件服务器，TXT 存任意文本（常用于 SPF/DKIM 验证）。",
+    "tags": [
+      "DNS",
+      "记录类型",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1102,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "域名解析时，本机的哪个文件会**优先于** DNS 服务器被查询？",
+    "options": [
+      {
+        "key": "A",
+        "text": "/etc/nsswitch.conf"
+      },
+      {
+        "key": "B",
+        "text": "/etc/resolv.conf"
+      },
+      {
+        "key": "C",
+        "text": "/etc/hosts"
+      },
+      {
+        "key": "D",
+        "text": "/etc/hostname"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`/etc/hosts` 是本地静态映射，优先级高于任何 DNS 查询**（由 `nsswitch.conf` 里 `hosts: files dns` 的顺序决定）。`resolv.conf` 配 DNS 服务器地址，`hostname` 只是本机名。排查「某域名解析结果不对」时，先看 hosts 有没有被人改过。",
+    "tags": [
+      "DNS",
+      "hosts",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1103,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "排查域名解析问题，能逐级显示「从根服务器到权威服务器」查询过程的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "ping example.com"
+      },
+      {
+        "key": "B",
+        "text": "dig +trace example.com"
+      },
+      {
+        "key": "C",
+        "text": "nslookup example.com"
+      },
+      {
+        "key": "D",
+        "text": "host example.com"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`dig +trace`** 会从根域开始逐级查询，能看出「断在哪一层」（根、顶级域、权威）。`ping` 只告诉你通不通，`nslookup`/`host` 只能拿到最终结果。",
+    "tags": [
+      "DNS",
+      "dig",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1104,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "DNS 记录的 TTL 字段的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "连接超时的秒数"
+      },
+      {
+        "key": "B",
+        "text": "告诉解析器和客户端「这条记录可以缓存多久」"
+      },
+      {
+        "key": "C",
+        "text": "记录的版本号"
+      },
+      {
+        "key": "D",
+        "text": "权威服务器的数量"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**TTL 决定缓存时长**。TTL 越长，解析压力越小，但「换 IP 后生效越慢」；TTL 越短，切换越快，但解析请求更多。所以**计划迁移前应提前把 TTL 调小**（如 60 秒），迁移后再调回来。",
+    "tags": [
+      "DNS",
+      "TTL",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1105,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "把多个 IP 都配给同一个域名（如 `www` 指向 3 台服务器），用的是哪种方式？",
+    "options": [
+      {
+        "key": "A",
+        "text": "同一个域名配多条 A 记录"
+      },
+      {
+        "key": "B",
+        "text": "配一条 CNAME 记录"
+      },
+      {
+        "key": "C",
+        "text": "配 MX 记录"
+      },
+      {
+        "key": "D",
+        "text": "把 TTL 设为 0"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**多条 A 记录 = DNS 层的简单轮询**。但 DNS 轮询有几个局限：①客户端和中间解析器会缓存，负载未必均摊；②不会做健康检查，一台挂了仍会返回它的 IP；③无法按「连接数/延迟」调度。所以**真正的负载均衡要用 SLB/LVS**，DNS 轮询只适合做粗粒度的多机房分流。",
+    "tags": [
+      "DNS",
+      "负载均衡",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1106,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "CNAME 记录的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "反查 IP 对应的域名"
+      },
+      {
+        "key": "B",
+        "text": "把一个域名指向一个 IP"
+      },
+      {
+        "key": "C",
+        "text": "指定邮件服务器"
+      },
+      {
+        "key": "D",
+        "text": "把一个域名指向另一个域名（别名）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**CNAME 是「别名」**：`www.example.com` → `example.cdn.com`，解析器会继续追一层。**注意：CNAME 不能用在根域（裸域）上**（`example.com` 不能设 CNAME，因为根域必须同时有 SOA/NS 记录），所以裸域通常用 A 记录或厂商的 ALIAS/ANAME 特殊记录。",
+    "tags": [
+      "DNS",
+      "CNAME",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1107,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "`/etc/resolv.conf` 里的 `search` 参数会造成什么常见现象？",
+    "options": [
+      {
+        "key": "A",
+        "text": "强制使用 IPv6"
+      },
+      {
+        "key": "B",
+        "text": "让 DNS 查询走 TCP"
+      },
+      {
+        "key": "C",
+        "text": "短域名会被自动补上后缀尝试解析，可能拖慢或解析到意外地址"
+      },
+      {
+        "key": "D",
+        "text": "禁用缓存"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`search` 域会让「不带点的名字」逐个拼上后缀去试**（如 `api` → `api.default.svc.cluster.local` → `api.example.com` → ...）。在 K8s 里尤其明显：`ndots: 5` 时，即使你写了 `api.example.com`，只要点数不足 5，也会先试一堆内部后缀，**导致解析变慢甚至解析到错误的内部服务**。解法：用绝对域名（末尾加点 `api.example.com.`）或调小 `ndots`。",
+    "tags": [
+      "DNS",
+      "resolv.conf",
+      "K8s"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1108,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "DNS 查询默认使用 UDP 还是 TCP？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只用 UDP"
+      },
+      {
+        "key": "B",
+        "text": "默认 TCP 53"
+      },
+      {
+        "key": "C",
+        "text": "默认 UDP 53，响应被截断时才改用 TCP"
+      },
+      {
+        "key": "D",
+        "text": "只用 TCP"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**查询走 UDP（快、无连接开销）；响应超过 512 字节（或超过 EDNS 协商的缓冲区大小）时，服务器会置 TC 标志，客户端改用 TCP 重试**。区域传送（AXFR/IXFR）则强制走 TCP。这就是「防火墙只放了 UDP 53 就偶尔解析失败」的原因——大响应时需要 TCP。",
+    "tags": [
+      "DNS",
+      "UDP",
+      "TCP"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1109,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "`nslookup` 和 `dig` 相比，主要劣势是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "不能查 A 记录"
+      },
+      {
+        "key": "B",
+        "text": "输出信息少，不易看到 TTL、权威服务器、flags 等细节"
+      },
+      {
+        "key": "C",
+        "text": "必须用 root 才能运行"
+      },
+      {
+        "key": "D",
+        "text": "只能查 IPv6"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`dig` 输出完整（TTL、权威段 AUTHORITY、ADDITIONAL、flags、查询耗时），更适合排障**；`nslookup` 输出简洁但信息少。生产排查建议统一用 `dig`（`dig +short` 看结果、`dig +trace` 看链路、`dig @8.8.8.8` 指定服务器对比）。",
+    "tags": [
+      "DNS",
+      "dig",
+      "工具"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1110,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "「DNS 缓存投毒」指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "向解析器注入伪造的解析结果，让用户访问到错误的 IP"
+      },
+      {
+        "key": "B",
+        "text": "把 DNS 服务器磁盘写满"
+      },
+      {
+        "key": "C",
+        "text": "让 DNS 服务器拒绝所有查询"
+      },
+      {
+        "key": "D",
+        "text": "删除域名的所有记录"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**缓存投毒 = 让解析器把攻击者的伪造结果缓存下来，之后所有用户都会被导向恶意 IP**。防御手段：①用 DNSSEC（签名验证）；②用加密 DNS（DoH/DoT）；③限制递归解析器只对可信网段开放（开放递归是投毒与放大的温床）。",
+    "tags": [
+      "DNS",
+      "安全",
+      "缓存"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1111,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "PTR 记录用来做什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "域名所有权验证"
+      },
+      {
+        "key": "B",
+        "text": "正向解析：用域名查 IP"
+      },
+      {
+        "key": "C",
+        "text": "指定邮件服务器优先级"
+      },
+      {
+        "key": "D",
+        "text": "反向解析：用 IP 查域名"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**PTR 是反向解析（IP → 域名）**，存放在 `x.y.z.in-addr.arpa` 区里。主要用途：①**邮件服务器反垃圾**（很多收件方要求发信 IP 有正确的 PTR，否则被判垃圾）；②日志里把 IP 还原成主机名；③部分风控系统校验。查询命令：`dig -x 1.2.3.4`。",
+    "tags": [
+      "DNS",
+      "PTR",
+      "反向解析"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1112,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "「权威 DNS」和「递归 DNS」的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "递归必须有公网 IP"
+      },
+      {
+        "key": "B",
+        "text": "两者功能完全相同"
+      },
+      {
+        "key": "C",
+        "text": "权威只能查 A 记录"
+      },
+      {
+        "key": "D",
+        "text": "权威是域名的最终数据源，递归是替客户端逐级查询的代理"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**权威服务器（Authoritative）持有某个域名的真实记录，是最终答案来源**（如 `example.com` 的 NS 指向的那几台）。**递归解析器（Recursive）替客户端跑腿**：从根问到顶级域再问权威，然后把结果缓存起来（如 8.8.8.8、公司内网的 DNS）。排查时要分清：**「权威里没有这条记录」和「递归没查到」是两回事**，用 `dig @<权威IP>` 直查权威即可确认。",
+    "tags": [
+      "DNS",
+      "权威",
+      "递归"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1113,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "「DNS 解析慢」定位时，最该先确认的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把 TTL 调到最大"
+      },
+      {
+        "key": "B",
+        "text": "直接重启网络服务"
+      },
+      {
+        "key": "C",
+        "text": "是哪一段慢：本机 hosts/resolv.conf 配置、内网 DNS、还是权威服务器"
+      },
+      {
+        "key": "D",
+        "text": "换一个浏览器"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**先分段，再优化**：①`cat /etc/resolv.conf` 看配了哪些 DNS（配置了不可达的 DNS 会导致每次超时等待）；②`dig example.com` 看 Query time；③`dig @<内网DNS> example.com` 与 `dig @8.8.8.8 example.com` 对比，判断是内网 DNS 慢还是公网链路慢；④`dig +trace` 看逐级耗时。**最常见的两个原因：resolv.conf 里有不可用的 DNS、search 域导致重复尝试。**",
+    "tags": [
+      "DNS",
+      "排障",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1114,
+    "type": "single",
+    "category": "DNS",
+    "difficulty": "简单",
+    "question": "域名换 IP 后「部分用户还是访问旧地址」，最主要的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "服务器网卡坏了"
+      },
+      {
+        "key": "B",
+        "text": "各层 DNS 缓存尚未过期（受 TTL 影响）"
+      },
+      {
+        "key": "C",
+        "text": "DNS 记录类型选错了"
+      },
+      {
+        "key": "D",
+        "text": "客户端浏览器缓存了一定会过期"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**DNS 是多级缓存的**：浏览器 → 本机 → 内网 DNS → 运营商 DNS，每级都按 TTL 缓存。所以换 IP 后「生效时间 = TTL × 各级缓存」。正确的迁移姿势：**提前 1-2 天把 TTL 改小（如 60s）→ 等旧 TTL 过期 → 再切 IP → 观察一段时间后把 TTL 调回**。另外注意「本地运营商 DNS 可能不严格遵守 TTL」，所以切换期最好让**新旧 IP 同时可用一段时间**。",
+    "tags": [
+      "DNS",
+      "TTL",
+      "迁移"
+    ],
+    "frequency": "高频"
+  }
+]

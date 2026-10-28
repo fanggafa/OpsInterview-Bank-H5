@@ -1,0 +1,257 @@
+[
+  {
+    "id": 3900,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 不属于五种基本数据类型的是？",
+    "options": [
+      { "key": "A", "text": "bitmap（位图）" },
+      { "key": "B", "text": "hash（哈希）" },
+      { "key": "C", "text": "zset（有序集合）" },
+      { "key": "D", "text": "list（列表）" }
+    ],
+    "answer": ["A"],
+    "explanation": "**Redis 五种基本类型是 string、list、hash、set、zset**。bitmap 是基于 string 实现的**扩展/特殊类型**（HyperLogLog、GEO、Stream 也属扩展类型），底层仍是 string 的位操作，所以不属于「五种基本类型」。\n\n典型场景对照：\n\n```text\nstring → 缓存、计数器、分布式锁\nlist   → 消息队列、最新 N 条\nhash   → 对象属性存储\nset    → 去重、共同好友\nzset   → 排行榜、延迟队列\n```\n\nB、C、D 三项（hash、zset、list）都是基本五类之内，只有 A 项的 bitmap 不属于。注意 bitmap 很实用（签到、UV 统计、布隆过滤器），面试常问，但「类型归属」这个考点要答基本五类。",
+    "tags": ["数据类型", "bitmap", "基础"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3901,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "用 Redis 实现分布式锁时，`SETNX` 的含义是？",
+    "options": [
+      { "key": "A", "text": "key 存在时才设置成功" },
+      { "key": "B", "text": "key 不存在时才设置成功，可用于抢占锁" },
+      { "key": "C", "text": "设置成功并自动删除 key" },
+      { "key": "D", "text": "比较 key 的旧值后再设置（类似 CAS）" }
+    ],
+    "answer": ["B"],
+    "explanation": "**SETNX = SET if Not eXists：key 不存在时设置成功返回 1，已存在则返回 0**，所以「设置成功的那个客户端」才拿到锁，其他客户端直接失败。\n\n但**只用 SETNX 不严谨**，生产上更推荐一条命令搞定原子性 + 过期时间：\n\n```bash\nSET lock:order:1001 <requestId> NX PX 30000\n```\n\n原因是 `SETNX` + 单独的 `EXPIRE` 是两条命令，中间宕机会留下**没有过期时间的死锁**；释放锁时要先校验 value 再删，避免误删别人的锁（通常用 Lua 保证原子）。A 项是普通 SET 的行为，D 项是 CAS/`GETDEL` 之类的思路，都不是 SETNX；C 项描述也不成立。",
+    "tags": ["SETNX", "分布式锁", "原子操作"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3902,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "缓存穿透、缓存击穿、缓存雪崩的区别，下列描述正确的是？",
+    "options": [
+      { "key": "A", "text": "穿透是查不存在的数据绕过缓存打到 DB；击穿是单个热点 key 失效；雪崩是大量 key 同时失效" },
+      { "key": "B", "text": "穿透是大量 key 同时失效；击穿是热点 key 失效；雪崩是查不存在的数据" },
+      { "key": "C", "text": "三者是完全相同的现象，只是叫法不同" },
+      { "key": "D", "text": "穿透指 Redis 宕机；击穿指网络抖动；雪崩指磁盘写满" }
+    ],
+    "answer": ["A"],
+    "explanation": "**三个概念按「数据存不存在 / 失效规模」区分：**\n\n- **穿透**：请求的数据**根本不存在**（如恶意用不存在的 id 刷接口），缓存永远命中不了，每次都落到 DB。对策：**布隆过滤器、缓存空值**、参数校验；\n- **击穿**：**单个热点 key 过期**的瞬间，海量并发同时回源。对策：**互斥锁重建**、热点 key **逻辑过期/不设过期时间**；\n- **雪崩**：**大批 key 同一时间失效**（或 Redis 整体挂掉），请求整体压到 DB。对策：**过期时间加随机值打散**、多级缓存、集群高可用、限流降级。\n\nB 项把三者的定义打乱了；C、D 项的描述都不成立。",
+    "tags": ["缓存穿透", "缓存击穿", "缓存雪崩"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3903,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "RDB 与 AOF 持久化的主要区别是？",
+    "options": [
+      { "key": "A", "text": "RDB 追加写命令日志，AOF 生成快照" },
+      { "key": "B", "text": "RDB 按时间点生成数据快照（二进制、文件小、恢复快但可能丢最近数据）；AOF 追加写命令日志（更完整但文件大、恢复慢）" },
+      { "key": "C", "text": "两者完全一样，只是文件后缀不同" },
+      { "key": "D", "text": "RDB 只能手动触发，AOF 只能自动触发" }
+    ],
+    "answer": ["B"],
+    "explanation": "**RDB = 快照**：`save`/`bgsave` 把内存数据 fork 子进程写成紧凑二进制文件，体积小、恢复快，但两次快照之间的数据会丢（取决于 `save` 频率）。**AOF = 命令日志**：把每条写命令追加进文件，`appendfsync` 控制刷盘（always/everysec/no），丢数据窗口小，但文件更大、恢复时要重放。\n\n```conf\nsave 900 1              # RDB：900 秒内至少 1 次修改就快照\nappendonly yes          # AOF 开关\nappendfsync everysec    # 每秒刷盘（常用，最多丢 1 秒）\nauto-aof-rewrite-percentage 100   # AOF 重写压缩\n```\n\nA 项说反了；C 项不成立；D 项错误——RDB 也能按 `save` 规则自动触发。**4.0+ 推荐两者都开（混合持久化）**，重启时优先用 AOF 恢复，兼顾完整性和速度。",
+    "tags": ["RDB", "AOF", "持久化"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3904,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 的过期键删除策略是？",
+    "options": [
+      { "key": "A", "text": "只靠定时器，每个 key 到点精确删除" },
+      { "key": "B", "text": "完全不删除，只等内存淘汰" },
+      { "key": "C", "text": "惰性删除（访问时才检查）+ 定期删除（周期性抽样清理）" },
+      { "key": "D", "text": "由客户端负责删除过期 key" }
+    ],
+    "answer": ["C"],
+    "explanation": "**Redis 采用「惰性删除 + 定期删除」的组合：**\n\n- **惰性删除**：key 过期后不立刻删，等下次被访问时检查，过期就删并返回 nil——省 CPU，但过期 key 可能长期占内存；\n- **定期删除**：后台周期性随机抽样检查过期字典，删掉过期 key——`hz`（默认 10）控制频率，每次抽样有上限，避免卡住主线程。\n\nA 项不现实：给几千万 key 各挂一个精确定时器，CPU 和内存都扛不住；B 项会内存泄漏——**淘汰策略只在内存达到 `maxmemory` 时才触发**，不能替代过期删除；D 项 Redis 的过期由服务端负责，客户端无法感知。",
+    "tags": ["过期策略", "惰性删除", "定期删除"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3905,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "内存达到 `maxmemory` 时，`maxmemory-policy` 设为 `allkeys-lru` 的行为是？",
+    "options": [
+      { "key": "A", "text": "在所有 key 中按 LRU 近似算法淘汰最近最少使用的 key 来腾空间" },
+      { "key": "B", "text": "只在设置了过期时间的 key 中淘汰最久未使用的" },
+      { "key": "C", "text": "超过内存后直接返回 OOM 错误，不淘汰任何 key" },
+      { "key": "D", "text": "随机删除一半的 key" }
+    ],
+    "answer": ["A"],
+    "explanation": "**`allkeys-lru`：从全部 key 里挑最近最少使用的淘汰**（Redis 用采样近似 LRU，不是链表精确 LRU，为了省内存）。这是纯缓存场景最常用的策略。\n\n易混项：\n\n```text\nallkeys-lru      全部 key 中按 LRU 淘汰\nvolatile-lru     只从「设置了过期时间」的 key 中按 LRU 淘汰\nallkeys-random   全部 key 中随机淘汰\nvolatile-ttl     优先淘汰快要过期的\nnoeviction       不淘汰，写操作直接报 OOM 错误（默认值）\n```\n\nB 是 volatile-lru，C 是 noeviction（默认策略，写满后写命令报错），D 没有这种策略。注意：**如果 key 都没设过期时间，volatile-* 系列会退化成「无法淘汰」而报错**，这是线上常见事故。",
+    "tags": ["淘汰策略", "maxmemory-policy", "LRU"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3906,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 单线程（指命令执行）还能很快，主要原因是？",
+    "options": [
+      { "key": "A", "text": "因为 Redis 会把请求批量丢给数据库处理" },
+      { "key": "B", "text": "Redis 底层用了多线程并行执行命令" },
+      { "key": "C", "text": "因为 Redis 把命令都编译成了机器码" },
+      { "key": "D", "text": "纯内存操作 + IO 多路复用，命令执行避免锁和上下文切换开销" }
+    ],
+    "answer": ["D"],
+    "explanation": "**「单线程」指命令处理是单线程串行执行的，快的原因是：**\n\n1. **纯内存操作**，避免磁盘 IO；\n2. **IO 多路复用**（epoll/kqueue）用一个线程同时监听大量连接，不必为每个连接开线程；\n3. **没有锁竞争和线程上下文切换**，数据结构实现也不用考虑并发安全；\n4. 协议简单、命令高效。\n\n补充：**Redis 6.0 起「IO 多线程」只用于网络读写（读请求/写回复），命令执行仍是单线程**——所以不能拿「多线程」当性能原因，B 项正是典型误解。另外，**单线程意味着一条慢命令（`KEYS *`、大 key 的 `DEL`）会阻塞所有请求**，这是它的代价。A、C 项的描述都与 Redis 的事实不符。",
+    "tags": ["单线程", "IO多路复用", "性能"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3907,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 主从、哨兵（Sentinel）、集群（Cluster）三者的区别，下列正确的是？",
+    "options": [
+      { "key": "A", "text": "集群不能做主从复制，只能单机" },
+      { "key": "B", "text": "哨兵支持数据分片，集群只做复制" },
+      { "key": "C", "text": "主从只做数据复制不自动故障转移；哨兵在主从之上提供自动故障转移；集群额外支持数据分片" },
+      { "key": "D", "text": "三者都支持自动分片和故障转移，没有区别" }
+    ],
+    "answer": ["C"],
+    "explanation": "**三层演进关系：**\n\n- **主从复制**：一主多从，从库同步数据、可分担读，但**主库挂了不会自动切换**，需要人工或外部脚本介入；\n- **哨兵**：监控主从，**主库故障时自动选一个从库提升为主**并通知客户端（客户端连哨兵拿新地址），解决高可用，但**数据仍在一台主库上，容量受单机内存限制**；\n- **集群（Cluster）**：**16384 个哈希槽分片**，数据分布在多个主节点上，每个主节点可带从库，**同时解决容量和可用性**，代价是跨槽的多 key 操作受限（要用 hash tag）。\n\nB 项把分片能力说反了；A 项错误——集群的每个分片本身也是一主多从；D 项忽略了前两者的能力边界。",
+    "tags": ["主从复制", "哨兵", "Cluster"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3908,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "想快速查看 Redis 的内存使用、连接数、命中率等运行指标，应该用哪个命令？",
+    "options": [
+      { "key": "A", "text": "`MONITOR`" },
+      { "key": "B", "text": "`INFO`" },
+      { "key": "C", "text": "`KEYS *`" },
+      { "key": "D", "text": "`FLUSHDB`" }
+    ],
+    "answer": ["B"],
+    "explanation": "**`INFO` 返回服务端各项指标**，分 server、clients、memory、persistence、stats、replication、keyspace 等段落，常用关注项：\n\n```bash\nredis-cli INFO memory        # used_memory / mem_fragmentation_ratio\nredis-cli INFO stats         # keyspace_hits / keyspace_misses（算命中率）\nredis-cli INFO clients       # connected_clients / blocked_clients\nredis-cli INFO replication   # 主从角色、offset 差距\n```\n\n- A 项 `MONITOR` 实时打印所有命令，**开销大，线上禁止长时间开**；\n- C 项 `KEYS *` 会**阻塞主线程**，线上要用 `SCAN` 渐进遍历；\n- D 项 `FLUSHDB` 是清库，属于危险操作。",
+    "tags": ["INFO", "监控指标", "redis-cli"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3909,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "什么是 Redis 的「大 key」？",
+    "options": [
+      { "key": "A", "text": "key 的字符串长度很长，超过 64 字节" },
+      { "key": "B", "text": "访问频率最高的 key" },
+      { "key": "C", "text": "设置了最长过期时间的 key" },
+      { "key": "D", "text": "单个 key 对应的 value 体积很大（如几百 KB 到 MB 级），或集合类 key 的元素数量极多" }
+    ],
+    "answer": ["D"],
+    "explanation": "**大 key 指 value 过大或集合元素过多**（一般经验：string 超过 10KB、集合元素超过几千个就该警惕，具体阈值看业务），危害是：\n\n- **读写阻塞**：单线程下大 key 的 `GET`/`DEL`/`HGETALL` 会卡住所有请求；\n- **网络与内存倾斜**：集群里大 key 全落在一个分片，造成热点和内存不均；\n- **持久化与迁移变慢**：RDB fork、主从全量同步、扩容迁移都被拖慢。\n\n排查与治理：\n\n```bash\nredis-cli --bigkeys          # 扫描各类型最大的 key\nredis-cli memory usage k1    # 单个 key 占用\n# 删除大 key 用 SCAN + 分批 UNLINK（异步删除），不要直接 DEL\n```\n\nA 项把「key 名长」误当大 key（key 名长只是浪费内存，危害小得多）；B 项是**热 key** 的概念；C 项与大小无关。",
+    "tags": ["大key", "热key", "性能优化"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3910,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis pipeline（管道）的作用是？",
+    "options": [
+      { "key": "A", "text": "把多条命令一次性打包发送、一次读取回复，减少网络往返（RTT）" },
+      { "key": "B", "text": "把多条命令作为一个原子事务一起执行" },
+      { "key": "C", "text": "把命令放到后台异步执行，立即返回结果" },
+      { "key": "D", "text": "把命令持久化到 AOF 后才返回" }
+    ],
+    "answer": ["A"],
+    "explanation": "**pipeline 是客户端侧的批量优化**：把 N 条命令连续写入 socket 再统一读回复，把 N 次 RTT 压成 1 次，吞吐能提升几倍到十几倍。\n\n但要注意三点：\n\n1. **pipeline 不保证原子性**——中间命令失败不会回滚，别的客户端命令也可能插进来（要原子性得用 `MULTI/EXEC` 事务或 Lua）；\n2. **一次不能塞太多**（如分批 500~1000 条），否则服务端要缓冲大量回复，内存和阻塞风险都会上升；\n3. 它不改变「命令是串行执行」的事实，只是省了网络等待。\n\nB 项说的是事务（MULTI/EXEC）；C 项 Redis 命令是同步语义，pipeline 也还是等回复，不是后台异步；D 项是 `appendfsync always` 的持久化语义，与 pipeline 无关。",
+    "tags": ["pipeline", "RTT", "批量优化"],
+    "frequency": "低频"
+  },
+  {
+    "id": 3911,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 中 `SET key value` 与 `SET key value EX 60` 的区别是？",
+    "options": [
+      { "key": "A", "text": "两者等价，EX 只是注释" },
+      { "key": "B", "text": "后者 60 秒后自动删除该 key 的所有副本" },
+      { "key": "C", "text": "后者只有 60 秒内才能被读取，之后变成只读" },
+      { "key": "D", "text": "后者的 key 会在 60 秒后自动过期，前者没有过期时间" }
+    ],
+    "answer": ["D"],
+    "explanation": "**`EX seconds` 在设置值的同时设置过期时间，是原子的一条命令**；不带 EX 的 `SET` 会创建一个**永久 key**（除非之后单独 `EXPIRE`）。\n\n```bash\nSET token abc EX 60     # 60 秒后自动过期\nTTL token               # 返回剩余秒数，-1 表示没有过期时间，-2 表示 key 不存在\nSET lock:1 v NX PX 30000   # 分布式锁常用写法\n```\n\n常见坑：**先 `SET` 再 `EXPIRE` 是两条命令，中间宕机就留下永久 key**；另外 `SET` 覆盖一个已有 TTL 的 key 时**会清掉原来的过期时间**，除非显式带 `KEEPTTL`。B、C 项都不是 Redis 的语义；A 项错误。",
+    "tags": ["SET", "EXPIRE", "TTL"],
+    "frequency": "低频"
+  },
+  {
+    "id": 3912,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "用 Redis 的 list 做简单消息队列，生产消息和消费消息分别用哪组命令？",
+    "options": [
+      { "key": "A", "text": "`SET` 生产、`GET` 消费" },
+      { "key": "B", "text": "`LPUSH` 生产、`BRPOP` 消费" },
+      { "key": "C", "text": "`ZADD` 生产、`ZRANGE` 消费" },
+      { "key": "D", "text": "`HSET` 生产、`HGETALL` 消费" }
+    ],
+    "answer": ["B"],
+    "explanation": "**经典做法：生产者 `LPUSH queue msg` 从左边入队，消费者 `BRPOP queue timeout` 从右边阻塞弹出**，先进先出；`BRPOP` 的阻塞特性避免了消费者空轮询浪费 CPU。\n\n但 list 队列**功能有限**：没有 ACK 和消息确认，`BRPOP` 弹出后进程崩溃消息就丢了，也没有消费组和多播能力。生产级场景推荐 **Stream（`XADD`/`XREADGROUP`，支持消费组和 ACK）** 或用专业 MQ（Kafka/RabbitMQ）。\n\nA 是 string 键值、C 是 zset 排行榜/延迟队列用法、D 是 hash 存对象，都不是队列语义。",
+    "tags": ["list", "消息队列", "BRPOP"],
+    "frequency": "低频"
+  },
+  {
+    "id": 3913,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 的 hash 类型最适合的场景是？",
+    "options": [
+      { "key": "A", "text": "存储对象的多个字段（如用户信息），可单独读写某个字段" },
+      { "key": "B", "text": "做全局排行榜（按分数排序）" },
+      { "key": "C", "text": "做实时去重统计（集合运算）" },
+      { "key": "D", "text": "做延时队列（按时间排序消费）" }
+    ],
+    "answer": ["A"],
+    "explanation": "**hash 是「field → value」的映射，天然适合存对象**：把 user:1001 的 name、age、city 放在一个 hash 里，用 `HSET`/`HGET`/`HMGET` 只改或只读需要的字段，比整个 JSON 存成 string 更省网络、还能避免并发覆盖。\n\n```bash\nHSET user:1001 name tom age 20 city shanghai\nHGET user:1001 name          # tom\nHINCRBY user:1001 age 1      # 单字段自增\n```\n\nB 项排行榜要用 **zset**（按 score 排序）；C 项去重/交并差要用 **set**；D 项延时队列通常用 **zset**（score 存到期时间戳）。注意：**hash 字段特别多时也算大 key**，`HGETALL` 要慎用，按需 `HMGET`。",
+    "tags": ["hash", "对象存储", "数据类型"],
+    "frequency": "中频"
+  },
+  {
+    "id": 3914,
+    "type": "single",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 的 `zset`（有序集合）靠什么实现按分数排序？",
+    "options": [
+      { "key": "A", "text": "B+Tree" },
+      { "key": "B", "text": "红黑树" },
+      { "key": "C", "text": "跳表（skiplist）+ 哈希表" },
+      { "key": "D", "text": "普通数组，插入时整体排序" }
+    ],
+    "answer": ["C"],
+    "explanation": "**zset 内部同时用两张结构：跳表负责按 score 排序和范围查询，哈希表负责 O(1) 按成员名查 score。** 跳表通过多层索引把查找做到接近 O(log N)，且实现比平衡树简单、范围遍历更高效。\n\n```bash\nZADD rank 95 tom 88 jerry\nZREVRANGE rank 0 9 WITHSCORES   # 取前 10 名\nZRANGEBYSCORE rank 80 100       # 按分数区间取\n```\n\nA 项 B+Tree 是 MySQL InnoDB 的索引结构；B 项红黑树不是 zset 的实现；D 项数组有序插入是 O(N)，不可能支撑排行榜。**zset 是按分数排名的首选结构**（排行榜、延时队列都用它）。",
+    "tags": ["zset", "跳表", "排行榜"],
+    "frequency": "中频"
+  }
+]

@@ -1,0 +1,527 @@
+[
+  {
+    "id": 2900,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "Git 的三个工作区域分别是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "工作区（workdir）、暂存区（index/stage）、版本库（repository）"
+      },
+      {
+        "key": "B",
+        "text": "本地、远程、备份"
+      },
+      {
+        "key": "C",
+        "text": "主干、分支、标签"
+      },
+      {
+        "key": "D",
+        "text": "提交、推送、拉取"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**三个区域的流转**：\n```\n工作区 --git add--> 暂存区 --git commit--> 版本库\n```\n`git status` 就是告诉你「三个区域之间的差异」。理解这三层，就能看懂 `reset --soft/--mixed/--hard` 各自动了哪一层。",
+    "tags": [
+      "Git",
+      "基础",
+      "工作区"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2901,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git commit` 之前必须先执行什么，才能把改动放进这次提交？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`git branch`"
+      },
+      {
+        "key": "B",
+        "text": "`git push`"
+      },
+      {
+        "key": "C",
+        "text": "`git pull`"
+      },
+      {
+        "key": "D",
+        "text": "`git add`（把改动放入暂存区）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`git commit` 只提交「暂存区里的内容」**，未 `git add` 的改动不会被提交（除非用 `git commit -a`，只对已跟踪文件生效）。**这也是「我明明改了却提交不上」的常见原因**——漏了 `add`，或者文件在 `.gitignore` 里。",
+    "tags": [
+      "Git",
+      "add",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2902,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git fetch` 和 `git pull` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "pull 只下载不合并"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "C",
+        "text": "fetch 只更新远端引用（不合并），pull = fetch + merge/rebase"
+      },
+      {
+        "key": "D",
+        "text": "fetch 会修改工作区文件"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`fetch` 是「安全地看一眼」**：把远端的新提交拉到本地引用（`origin/main`），但不动你的工作区与当前分支。**`pull` 会立即合并（或 rebase）**到当前分支——有冲突时直接进入冲突状态。**团队协作推荐「先 fetch 看差异，再决定 merge 还是 rebase」。**",
+    "tags": [
+      "Git",
+      "fetch",
+      "pull"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2903,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git revert` 和 `git reset` 的核心区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "B",
+        "text": "revert 生成一个新提交来「反向抵消」（不改历史，可安全用于已推送）；reset 是抹掉提交（重写历史）"
+      },
+      {
+        "key": "C",
+        "text": "revert 会删除文件"
+      },
+      {
+        "key": "D",
+        "text": "reset 只能用于远程仓库"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**这是「共享分支上撤销提交」的关键区别**：\n- **`git revert <sha>`**：新增一个「反向修改」的提交 → 历史保留、别人拉取不受影响（**用于已推送的公共分支**）\n- **`git reset`**：把分支指针退回去，历史被改写 → 别人拉取会冲突（**只能用于本地或自己的功能分支**）\n\n**「已经 push 到 main 的提交不能用 reset 撤」**——必须用 revert。",
+    "tags": [
+      "Git",
+      "revert",
+      "reset"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2904,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`.gitignore` 里已经写了某个文件，但 `git status` 还在显示它被修改，原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`.gitignore` 语法写错了"
+      },
+      {
+        "key": "B",
+        "text": "该文件已被 Git 跟踪，`.gitignore` 只对未跟踪文件生效"
+      },
+      {
+        "key": "C",
+        "text": "必须重启终端"
+      },
+      {
+        "key": "D",
+        "text": "需要先 push 一次"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`.gitignore` 只对「尚未被跟踪」的文件生效**。已经 `git add` 过的文件必须先从索引里移除：\n```bash\ngit rm --cached <file>        # 保留本地文件，仅停止跟踪\ngit rm -r --cached <dir>/\n```\n然后就会按 `.gitignore` 规则被忽略。**这也是「密钥文件已经进了仓库」的处理方式**——但注意历史里仍然有，要清理历史才行。",
+    "tags": [
+      "Git",
+      "gitignore",
+      "排障"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2905,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git stash` 的用途是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "临时收起未提交的改动，把工作区变干净（之后可恢复）"
+      },
+      {
+        "key": "B",
+        "text": "永久删除未提交的改动"
+      },
+      {
+        "key": "C",
+        "text": "把改动提交到远程"
+      },
+      {
+        "key": "D",
+        "text": "创建新分支"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`stash` 用于「改到一半需要切分支/拉代码」的场景**：\n```bash\ngit stash                 # 收起\ngit stash list            # 查看\ngit stash pop             # 恢复并删除记录\ngit stash apply           # 恢复但保留记录\n```\n**注意：`stash` 不包含「未跟踪的新文件」**（需 `-u`），这是很多人「stash 后新文件还在」的原因。",
+    "tags": [
+      "Git",
+      "stash",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2906,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git merge` 和 `git rebase` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "merge 会删除原分支"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "C",
+        "text": "rebase 不会改变 commit sha"
+      },
+      {
+        "key": "D",
+        "text": "merge 保留分叉并生成合并提交；rebase 把提交「搬」到新基底，历史成一条直线"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**merge**：两个分支的历史都保留，多一个 merge commit（真实反映「何时合并」）。\n**rebase**：把你的提交逐个「重放」到目标分支最新提交之后，历史变成直线，但**每个提交的 sha 都会变**。\n\n**实践规则**：公共分支用 merge（不改历史），自己的功能分支在提交 PR 前用 rebase 整理。**已经推送且别人在用的分支绝对不要 rebase。**",
+    "tags": [
+      "Git",
+      "merge",
+      "rebase"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2907,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "Git 的「分支」在实现上其实是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把文件复制到另一个目录"
+      },
+      {
+        "key": "B",
+        "text": "把整个仓库完整复制一份"
+      },
+      {
+        "key": "C",
+        "text": "一个指向某个提交的「可变指针」（引用），创建分支成本极低"
+      },
+      {
+        "key": "D",
+        "text": "一个数据库表"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**Git 的分支只是一个「指向 commit 的 41 字节文件」**，所以创建/切换分支几乎零成本——这是 Git 相比 SVN（分支=复制目录）的最大优势，也是「随时开分支」工作流的基础。**HEAD 则是指向「当前分支」的指针**。",
+    "tags": [
+      "Git",
+      "分支",
+      "原理"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2908,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git log --oneline --graph` 中 `--graph` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只显示一个提交"
+      },
+      {
+        "key": "B",
+        "text": "按时间排序"
+      },
+      {
+        "key": "C",
+        "text": "用 ASCII 图形显示分支与合并的分叉结构"
+      },
+      {
+        "key": "D",
+        "text": "显示文件差异"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`--graph` 画出提交的分叉与汇合**，配合 `--oneline --all --decorate` 是「看清分支结构」的常用组合：\n```bash\ngit log --oneline --graph --all --decorate\n```\n排查「分支为什么分叉了」「merge 是怎么发生的」时非常有用。",
+    "tags": [
+      "Git",
+      "log",
+      "命令"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2909,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "「detached HEAD」状态指的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "仓库损坏了"
+      },
+      {
+        "key": "B",
+        "text": "HEAD 直接指向某个提交而不是分支，此时提交的改动不属于任何分支"
+      },
+      {
+        "key": "C",
+        "text": "没有网络连接"
+      },
+      {
+        "key": "D",
+        "text": "HEAD 文件丢失"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`git checkout <sha>` 或 `<tag>` 会让 HEAD 指向具体提交**，处于「分离头指针」状态。此时提交的改动**不属于任何分支**，切走后很容易丢失（只能靠 `git reflog`/`git branch` 找回）。**如果只是想看看，看完切回分支即可；如果需要保留改动，立刻 `git checkout -b new-branch`。**",
+    "tags": [
+      "Git",
+      "HEAD",
+      "基础"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2910,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "GitLab CI 的配置文件叫什么？放在哪里？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`.gitlab-ci.yml`，放在仓库根目录"
+      },
+      {
+        "key": "B",
+        "text": "`jenkinsfile`，放在根目录"
+      },
+      {
+        "key": "C",
+        "text": "`.github/workflows/ci.yml`"
+      },
+      {
+        "key": "D",
+        "text": "`ci.config`，放在 `.gitlab/` 下"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**GitLab CI 读仓库根目录的 `.gitlab-ci.yml`**（也可以在设置里指定其他路径）。C 是 GitHub Actions，B 是 Jenkins。**「文件不在根目录」或「YAML 语法错误」是流水线不触发的最常见原因**——在 GitLab 的 CI Lint 页面可以先校验语法。",
+    "tags": [
+      "GitLab",
+      "CI",
+      "基础"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2911,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "GitLab Runner 的 `tags` 配置的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "指定 Docker 镜像"
+      },
+      {
+        "key": "B",
+        "text": "给代码打版本标签"
+      },
+      {
+        "key": "C",
+        "text": "设置流水线超时时间"
+      },
+      {
+        "key": "D",
+        "text": "限定 job 由「带对应标签的 Runner」执行（实现任务路由）"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**Runner 注册时可以打标签（如 `docker`、`prod`、`gpu`），job 里写 `tags: [docker]` 就只会被这类 Runner 接手**。这是「让构建跑在 Docker Runner、部署跑在内网 Runner」的实现方式。**「job 一直 pending」最常见的原因就是「没有匹配标签的 Runner 在线」**。",
+    "tags": [
+      "GitLab",
+      "Runner",
+      "CI"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2912,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "GitLab 的 Merge Request（MR）与直接 push 到 main 相比，主要价值是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "可以跳过代码审查"
+      },
+      {
+        "key": "B",
+        "text": "合并速度更快"
+      },
+      {
+        "key": "C",
+        "text": "不需要跑 CI"
+      },
+      {
+        "key": "D",
+        "text": "变更可评审、可跑 CI 门禁、有审计记录，且能限制谁能合并"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**MR 的价值是「在变更进入主干之前拦住问题」**：①**评审**（别人看代码）；②**CI 门禁**（测试/构建/扫描必须通过）；③**审计**（谁批准、何时合并）；④**权限控制**（保护分支可禁止直接 push）。**「开发直接 push main」是事故的主要来源之一**——保护分支 + MR 是基础治理。",
+    "tags": [
+      "GitLab",
+      "MR",
+      "流程"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2913,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "「保护分支（Protected Branch）」能做什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "自动备份分支"
+      },
+      {
+        "key": "B",
+        "text": "给分支加密"
+      },
+      {
+        "key": "C",
+        "text": "禁止直接 push/force push，要求走 MR 并通过审批与 CI 才能合并"
+      },
+      {
+        "key": "D",
+        "text": "限制分支的数量"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**保护分支是 Git 平台最重要的治理机制**：可配置「谁能 push、谁能 merge、是否允许 force push、必须几个审批、必须哪些 CI 通过」。**它防的正是两类高频事故：误 force push 覆盖历史、未审查的代码直接进主干。** 注意：单仓库单人项目不要配「Require approvals」（否则自己无法合并）。",
+    "tags": [
+      "GitLab",
+      "保护分支",
+      "治理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2914,
+    "type": "single",
+    "category": "Git/GitLab",
+    "difficulty": "简单",
+    "question": "`git clone --depth 1` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只克隆第一个文件"
+      },
+      {
+        "key": "B",
+        "text": "浅克隆：只拉最近 1 个提交，不下载完整历史（大幅加快速度、减小体积）"
+      },
+      {
+        "key": "C",
+        "text": "克隆后自动切到第一个分支"
+      },
+      {
+        "key": "D",
+        "text": "只读克隆"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`--depth 1` 只保留最后一次提交的历史**，大仓库的 CI 构建常用它来加速（几个 GB 的仓库可能从几分钟降到几秒）。**局限**：无法查看历史、不能 `git log` 完整追溯、rebase/cherry-pick 受限。需要历史时用 `git fetch --unshallow` 补全。",
+    "tags": [
+      "Git",
+      "clone",
+      "性能"
+    ],
+    "frequency": "中频"
+  }
+]

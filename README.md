@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**1060 题**（726 简答 + 167 单选 + 167 多选），23 个分类**全部达标**
+- 题库：**1430 题**（726 简答 + 537 单选 + 167 多选），23 个分类；含 **21 张内联 SVG 图解**（24 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -72,7 +72,7 @@ npm run dev          # http://127.0.0.1:5273
 ```
 ops-interview-h5/
 ├── docs/ops-interview-bank-PRD.md   # 产品需求文档
-├── public/data/questions.json       # 题库（1060 题）
+├── public/data/questions.json       # 题库（1430 题）
 ├── scripts/
 │   ├── validate-data.mjs            # 题库结构校验
 │   └── measure.mjs                  # 移动端布局实测（CDP，需本地起 dev）
@@ -139,7 +139,7 @@ ops-interview-h5/
 
 ## 维护题库
 
-题库共 **1060 题**：726 道简答题 + 167 道单选题 + 167 道多选题，分布在 23 个分类中。
+题库共 **1430 题**：726 道简答题 + 537 道单选题 + 167 道多选题，分布在 23 个分类中。
 
 ### 当前进度
 
@@ -848,7 +848,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图
+### 已注册的插图（21 张）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -857,14 +857,42 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `iptables-chain-flow` | iptables 五链数据包流向 | 题 1201 |
 | `nginx-location-match` | Nginx location 匹配优先级 | 题 1401 |
 | `nginx-proxy-pass` | proxy_pass 斜杠差异对比 | 题 1402 |
+| `raid-levels` | RAID 0/1/5/6/10 容量与容错对比 | 题 2400 |
+| `backup-321` | 备份 3-2-1 原则与勒索时代的补充 | 题 2401 |
+| `mysql-replication-flow` | MySQL 主从三线程与复制延迟 | 题 3606 |
+| `es-shard-replica` | ES 分片副本分布与 green/yellow/red | 题 3003 |
+| `multi-az-arch` | 多可用区架构与「伪双活」断点 | 题 3404 |
+| `k8s-rolling-update` | K8s 滚动更新与三种探针 | 题 47 |
+| `tcp-handshake` | 三次握手/四次挥手、半连接队列、TIME_WAIT | 题 16 |
+| `lvs-modes` | LVS 四种转发模式对比 | 题 1601 |
+| `redis-persistence` | RDB/AOF 对比与淘汰策略 | 题 34 |
+| `monitor-layers` | 监控四层指标与只看资源的盲区 | 题 54 |
+| `container-vs-vm` | 容器与虚拟机的隔离层次 | 题 41 |
+| `cpu-bottleneck-tree` | CPU 高时按 us/sy/wa/st/si 定位 | 题 6 |
+| `jvm-memory-areas` | JVM 内存区域与四种 OOM 对照 | 题 1801、1821 |
+| `mq-delivery` | 消息在三段链路上的丢失与重复 | 题 2203、2215 |
+| `mongo-replica-shard` | 副本集高可用 vs 分片水平扩展 | 题 2011 |
+| `deploy-strategies` | 滚动/蓝绿/灰度三种发布策略 | 题 49 |
+
+> 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
+> **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
+> 选择题的图放在 `explanation` 里（`answer` 是选项数组，没有位置），测试同时扫描这两个字段。
 
 ### 新增一张插图
 
 1. 在 `src/components/figures/` 下新建 `.vue` 组件（照抄现有文件的结构）
 2. 在 `src/components/figures/index.js` 的 `FIGURES` 里登记一行
-3. 在题目答案里写 `[[图:你的-id]]`
+3. 在题目答案里写 `[[图:你的-id]]`（选择题写到 `explanation` 里）
 
 **id 只允许小写字母、数字和连字符**（正则 `[a-z0-9-]+`）。写错或未注册的 id 会原样显示成文本，不会注入任何 HTML。
+
+### 插图设计约定
+
+- **必须能表达「文字难说清」的东西**：流程、链路、优先级、对比、状态机。不要为了配图而配图。
+- 每张图配 **一句结论式 `figcaption`**，写明「这张图想让人记住的判断」。
+- SVG 里的文字要**短**（单行不超过 ~30 个全角字符），否则窄屏会溢出。
+- 用 `--fig-node-a/b/c/d` 四个语义色区分层次，**不要用 `currentColor`**（深色主题下全灰看不清）。
+- **图不要塞进选择题**——选择题的答案位是选项 key，图只能进解析，靠 `explanation` 开头。
 
 ### 安全设计（重要）
 

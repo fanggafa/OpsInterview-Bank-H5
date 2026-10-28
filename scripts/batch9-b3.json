@@ -1,0 +1,527 @@
+[
+  {
+    "id": 1700,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 DR 模式最核心的特点是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "请求报文只改写目的 MAC 后转给 RS，RS 直接把响应回给客户端，Director 不处理响应"
+      },
+      {
+        "key": "B",
+        "text": "请求和响应都要经过 Director，由它做双向地址转换"
+      },
+      {
+        "key": "C",
+        "text": "用 IP 隧道把报文再封装一层发往 RS"
+      },
+      {
+        "key": "D",
+        "text": "Director 代替客户端与 RS 建立 TCP 连接，做完整的七层代理"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**DR（Direct Routing）的关键是「只进不出」**：Director 改写目的 MAC 把数据帧转到同一广播域内的 RS，RS 用自己身上的 VIP 作源地址直接把响应发给客户端，所以 Director 只承担入向流量，吞吐最高、延迟最低。「请求和响应都经过 Director」是 NAT 模式，「IP 隧道再封装一层」是 TUN 模式，「代替客户端建连」是 HAProxy/Nginx 这类七层代理。",
+    "tags": [
+      "LVS",
+      "DR模式",
+      "四层负载均衡"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1701,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "DR 模式下必须在 RS 上抑制 ARP 响应，原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "避免 VIP 与局域网内其他主机发生 IP 地址冲突"
+      },
+      {
+        "key": "B",
+        "text": "减少 ARP 广播报文数量以提升转发性能"
+      },
+      {
+        "key": "C",
+        "text": "因为 RS 上不能配置 VIP，只能靠清除网关的 ARP 缓存生效"
+      },
+      {
+        "key": "D",
+        "text": "VIP 同时存在于 Director 和 RS 上，若 RS 应答 VIP 的 ARP，网关会把流量直接发给 RS，绕过 Director"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "DR 要求 **Director 和所有 RS 都持有同一个 VIP**，这样才能用 VIP 作源地址回包。但若 RS 也去应答 VIP 的 ARP 请求，网关/客户端的 ARP 表就会把 VIP 指向 RS 的 MAC，请求直接打到 RS、完全绕过 Director——负载均衡就失效了。所以 RS 上要设 `arp_ignore=1`、`arp_announce=2` 并把 VIP 配到 lo。减少广播不是目的，RS 上确实要配 VIP（否则回包源地址不对）。",
+    "tags": [
+      "LVS",
+      "DR模式",
+      "ARP抑制"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1702,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS DR 模式下，VIP 在 RS（真实服务器）上通常配置在哪里？",
+    "options": [
+      {
+        "key": "A",
+        "text": "配在对外服务的物理网卡上，例如 `eth0`"
+      },
+      {
+        "key": "B",
+        "text": "RS 上不需要 VIP，只有 Director 需要"
+      },
+      {
+        "key": "C",
+        "text": "配在回环接口上，例如 `ip addr add 10.0.0.100/32 dev lo`"
+      },
+      {
+        "key": "D",
+        "text": "配在上联交换机的 VLAN 接口上"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "RS 需要 VIP 是为了**用 VIP 作源地址回包**，但绝不能让它出现在物理网卡上对外应答 ARP，所以配在 **lo（回环）**上，再配合 `arp_ignore=1`、`arp_announce=2`。配在 eth0 上会导致 ARP 冲突、流量绕过 Director；RS 完全不配 VIP 则回包源地址不对，客户端会丢弃；交换机接口更不是主机能配 VIP 的地方。",
+    "tags": [
+      "LVS",
+      "VIP",
+      "lo接口"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1703,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 NAT 模式相比 DR 模式的主要劣势是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "RS 必须支持 IPIP 隧道协议，部署复杂"
+      },
+      {
+        "key": "B",
+        "text": "请求和响应都必须经过 Director 做地址转换，Director 容易成为带宽与性能瓶颈"
+      },
+      {
+        "key": "C",
+        "text": "RS 必须和客户端处在同一个物理网段"
+      },
+      {
+        "key": "D",
+        "text": "只能支持三台以内的后端服务器"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**NAT 模式是双向经过 Director**：入向改目的地址、出向改源地址，所以 Director 的带宽要承载「进 + 出」两份流量，大流量场景容易先撑不住；DR 只处理入向，因此性能更好。「RS 要支持 IPIP」是 TUN 模式的限制，「RS 必须和客户端同网段」不成立（NAT 恰恰可以跨网段），「最多三台」纯属编造。",
+    "tags": [
+      "LVS",
+      "NAT模式",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1704,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 TUN 模式区别于 DR 模式的关键点是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只改写目的 MAC 地址，要求所有节点在同一广播域"
+      },
+      {
+        "key": "B",
+        "text": "在原始 IP 报文外再封装一层 IP 隧道（IPIP），因此 RS 可以跨网段、跨机房部署"
+      },
+      {
+        "key": "C",
+        "text": "同时改写源地址和目的地址，RS 上不需要配置 VIP"
+      },
+      {
+        "key": "D",
+        "text": "工作在七层，可以按 URL 路径转发"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**TUN 用 IP 隧道把原始报文整包封装后再发给 RS**，所以不再受「同一广播域」限制，RS 可以分布在不同网段甚至机房，代价是 RS 要支持 IPIP 隧道协议、且多一层封装开销。「只改目的 MAC」是 DR 的描述，「同时改源和目的地址」是 FULLNAT 的特征，「按 URL 转发」是 HAProxy 这类七层代理才有的能力（LVS 是四层）。",
+    "tags": [
+      "LVS",
+      "TUN模式",
+      "IP隧道"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1705,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的 FULLNAT 模式（同时改写源和目的地址）带来的好处是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "RS 上不必配置 VIP、也可以跨网段部署，便于与 LVS 部署在不同 VLAN"
+      },
+      {
+        "key": "B",
+        "text": "不需要在 Director 上做任何地址转换，纯二层转发"
+      },
+      {
+        "key": "C",
+        "text": "可以按 HTTP 头部内容做路由决策"
+      },
+      {
+        "key": "D",
+        "text": "请求只经过 Director 一次，响应由 RS 直接返回客户端"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "FULLNAT 在入向和出向都改地址，**RS 侧完全看不到 VIP**，因此不需要把 VIP 配到 lo、也不受「RS 必须与 Director 同网段」的限制（这是 DR/TUN 的硬约束），组网最灵活，典型用于 LVS 与业务机器跨 VLAN 的场景。代价是回包也要经过 Director，且 RS 上看到的源地址不是真实客户端 IP（需额外手段透传）。「响应由 RS 直接返回」是 DR 的特性。",
+    "tags": [
+      "LVS",
+      "FULLNAT",
+      "组网"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1706,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 调度算法 `wlc` 的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "源地址哈希（source hash）"
+      },
+      {
+        "key": "B",
+        "text": "加权轮询（weighted round robin），按权重依次分发"
+      },
+      {
+        "key": "C",
+        "text": "最少连接（least connection），完全不看权重"
+      },
+      {
+        "key": "D",
+        "text": "加权最少连接（weighted least connection），按权重与当前连接数的比值选节点"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`wlc` = weighted least connection**，是 LVS 的默认算法之一，选「权重 / 当前连接数」最大的节点，兼顾处理能力与实时负载，适合后端性能不一致且长连接较多的场景。`wrr` 是加权轮询（只按权重、不看实时连接），`lc` 是最少连接（忽略权重），源地址哈希是 `sh`。",
+    "tags": [
+      "LVS",
+      "wlc",
+      "调度算法"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1707,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "LVS 的调度算法 `sh` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把请求转发给当前响应时间最短的节点"
+      },
+      {
+        "key": "B",
+        "text": "完全随机地挑选一台后端节点"
+      },
+      {
+        "key": "C",
+        "text": "把同一源 IP 的请求固定分发到同一台 RS，实现会话保持"
+      },
+      {
+        "key": "D",
+        "text": "按节点权重做最少连接分配"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`sh` 是源地址哈希**：对源 IP 做哈希映射到固定 RS，用于无共享 session 时的会话保持，也让缓存命中更稳定。缺点是 NAT 后大量用户共用一个出口 IP 会严重倾斜，且节点增减会导致映射漂移。最短响应时间是 `srt`（部分版本支持），随机是 `random`，按权重最少连接是 `wlc`。",
+    "tags": [
+      "LVS",
+      "sh",
+      "会话保持"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1708,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "HAProxy 配置中 `frontend` 段的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "定义后端服务器列表与负载均衡算法"
+      },
+      {
+        "key": "B",
+        "text": "只用于配置健康检查参数和故障摘除策略"
+      },
+      {
+        "key": "C",
+        "text": "定义监听的地址与端口、匹配规则，并把请求分派到某个 backend"
+      },
+      {
+        "key": "D",
+        "text": "定义全局进程数、日志和最大连接数"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**frontend 是「入口」**：`bind` 决定监听哪里，`acl`/`use_backend` 决定把请求交给哪个 backend；**backend 才是「出口」**：列 `server`、定 `balance`、配 `check` 健康检查。所以「后端服务器列表与算法」属于 backend，「全局进程数与最大连接数」属于 `global` 段。指向不存在的 backend 是 `haproxy -c` 能查出的典型错误。",
+    "tags": [
+      "HAProxy",
+      "frontend",
+      "配置结构"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1709,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "HAProxy 配置里的 `listen` 段相当于？",
+    "options": [
+      {
+        "key": "A",
+        "text": "等同于 `global` 段，用来配全局参数"
+      },
+      {
+        "key": "B",
+        "text": "把 frontend 与 backend 写在一起的合并写法"
+      },
+      {
+        "key": "C",
+        "text": "专门用于定义 stats 统计页面"
+      },
+      {
+        "key": "D",
+        "text": "专门用于配置 SSL 证书"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`listen` 同时具备 frontend（bind）和 backend（server/balance）的能力**，适合「一个入口只对应一组后端」的简单场景，配置更精简；复杂场景（多个 backend 分流、共用后端）还是拆成 frontend + backend 更清晰。stats 页面是靠 `stats enable` / `stats uri` 开启的，与是否用 `listen` 无关。",
+    "tags": [
+      "HAProxy",
+      "listen",
+      "配置结构"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1710,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "HAProxy 的 backend 里不写 `balance` 时，使用的默认算法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`roundrobin`（轮询）"
+      },
+      {
+        "key": "B",
+        "text": "`source`（源地址哈希）"
+      },
+      {
+        "key": "C",
+        "text": "`leastconn`（最少连接）"
+      },
+      {
+        "key": "D",
+        "text": "`random`（随机）"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**HAProxy 的默认 `balance` 就是 `roundrobin`**，带权重的静态轮询。`leastconn` 适合长连接（如数据库、SSE）场景，`source` 用于会话保持，`random` 适合超大规模后端以降低同步开销；但它们都必须显式声明才会生效。",
+    "tags": [
+      "HAProxy",
+      "balance",
+      "调度算法"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1711,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "HAProxy 中 `server web1 10.0.0.11:80 check inter 2000 fall 3 rise 2`，其中 `fall 3 rise 2` 表示？",
+    "options": [
+      {
+        "key": "A",
+        "text": "每 3 秒失败 2 次就摘除节点"
+      },
+      {
+        "key": "B",
+        "text": "失败后最多重试 3 次，成功 2 次判为恢复"
+      },
+      {
+        "key": "C",
+        "text": "失败率低于 3% 摘除，高于 2% 恢复"
+      },
+      {
+        "key": "D",
+        "text": "连续 3 次健康检查失败才标记为不可用，连续 2 次成功才恢复为可用"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`fall` 是「连续失败次数阈值」，`rise` 是「连续成功次数阈值」**，用连续计数是为了避免网络抖动导致频繁摘除/恢复（抖动比宕机更伤业务）。`inter 2000` 是检查间隔 2000 毫秒，所以一台机器真正挂掉后，最坏要等 `fall × inter`（约 6 秒）才被摘除；要更快摘除就调小 `inter` 或 `fall`。题干里没有「失败率」这种百分比语义。",
+    "tags": [
+      "HAProxy",
+      "健康检查",
+      "fall/rise"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1712,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "只校验 HAProxy 配置文件语法、不真正启动服务的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`haproxy -db -f /etc/haproxy/haproxy.cfg`"
+      },
+      {
+        "key": "B",
+        "text": "`haproxy -v`"
+      },
+      {
+        "key": "C",
+        "text": "`systemctl reload haproxy`"
+      },
+      {
+        "key": "D",
+        "text": "`haproxy -c -f /etc/haproxy/haproxy.cfg`"
+      }
+    ],
+    "answer": [
+      "D"
+    ],
+    "explanation": "**`-c` 是 check 模式：只解析并校验配置，输出 `Configuration file is valid` 后退出**，不影响线上；`-f` 指定配置文件。`-v` 只看版本，`reload` 是真正生效（配置有错可能起不来），`-db` 是禁用后台模式（前台运行），都不做纯校验。规范流程：先 `-c`，通过后再 `reload`。",
+    "tags": [
+      "HAProxy",
+      "配置校验",
+      "haproxy -c"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 1713,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "HAProxy 中 `maxconn` 参数的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "限制单个客户端 IP 的最大连接数"
+      },
+      {
+        "key": "B",
+        "text": "限制可配置的后端服务器数量"
+      },
+      {
+        "key": "C",
+        "text": "限制最大并发连接数，达到上限后新连接排队或被拒绝"
+      },
+      {
+        "key": "D",
+        "text": "限制每秒的最大请求数（限速）"
+      }
+    ],
+    "answer": [
+      "C"
+    ],
+    "explanation": "**`maxconn` 是并发连接数上限**：写在 `global` 段限制整个进程（同时影响可打开的文件描述符数量），写在 `backend`/`server` 上则限制该后端或该节点的并发。超限后请求进入队列（受 `timeout queue` 影响），队列也满了才拒绝。单 IP 限制要用 `stick-table` 配合 `conn_cur`，限速率用 `rate-limit sessions`。",
+    "tags": [
+      "HAProxy",
+      "maxconn",
+      "并发"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1714,
+    "type": "single",
+    "category": "LVS/HAProxy",
+    "difficulty": "简单",
+    "question": "HAProxy 中 `mode http` 与 `mode tcp` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`mode http` 只能代理 HTTP/1.0，`mode tcp` 支持 HTTP/2"
+      },
+      {
+        "key": "B",
+        "text": "`mode http` 工作在七层，能解析 URL/Header 做内容路由；`mode tcp` 只做四层字节流转发"
+      },
+      {
+        "key": "C",
+        "text": "`mode tcp` 也能根据 URL 路径选择 backend"
+      },
+      {
+        "key": "D",
+        "text": "两者只是日志格式不同，转发行为完全一致"
+      }
+    ],
+    "answer": [
+      "B"
+    ],
+    "explanation": "**`mode http` 是七层代理**：能解析请求行与头部，因此支持 `acl path_beg`、`hdr()`、cookie 会话保持、`option httplog` 等；**`mode tcp` 是四层转发**：只搬运字节流，看不到 URL，但能代理任意 TCP 协议（MySQL、Redis、MQ）且开销更小。想在 tcp 模式按 URL 路由是不可能的——这正是七层代理存在的意义。",
+    "tags": [
+      "HAProxy",
+      "四层",
+      "七层"
+    ],
+    "frequency": "中频"
+  }
+]
