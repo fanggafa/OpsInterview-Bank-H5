@@ -52,8 +52,13 @@ const category = computed(() =>
 
 const queue = ref([])
 const cursor = ref(0)
+/** 本次是否从断点继续（仅用于触发浮层提示，不参与渲染判断） */
 const resumed = ref(false)
 const ready = ref(false)
+
+/** 「已从上次位置继续」的浮层提示（2 秒后自动消失，不常驻占位） */
+const resumeToast = ref('')
+let resumeTimer = null
 
 /**
  * 是否已进入「刷题中」。
@@ -119,6 +124,21 @@ function build() {
   )
   cursor.value = start.index
   resumed.value = start.resumed
+
+  /**
+   * 「已从上次位置继续」改成 2 秒的浮层提示，而不是常驻一行。
+   *
+   * 常驻一行（约 22px）每天都在占位置，但它只在「刚进来」这一瞬有意义，
+   * 看完就该消失，把高度还给题目与答案。
+   */
+  if (start.resumed) {
+    resumeToast.value = `已从第 ${start.index + 1} 题继续`
+    clearTimeout(resumeTimer)
+    resumeTimer = setTimeout(() => {
+      resumeToast.value = ''
+    }, 2000)
+  }
+
   // 背题模式默认展开答案（它的用途就是「看题背答案」）；
   // 刷题模式仍默认收起，先自己想再看
   expanded.value = studyMode.value === 'memorize'
@@ -439,45 +459,75 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 
 <template>
   <div class="page practice page--fill">
-    <AppHeader :title="headerTitle" :back="false">
-      <template #right>
-        <!-- 模式切换：像切换主题一样，点一下切到另一种练习方式
-             做得比「图标按钮」更醒目一些：40px 高、有底色，避免用户以为它只是个标签 -->
-        <button
-          v-if="started && !finished"
-          class="practice__mode-btn"
-          :class="`practice__mode-btn--${studyMode}`"
-          :aria-label="`当前${STUDY_MODE_LABEL[studyMode]}，点击切换`"
-          :title="`点击切换到${STUDY_MODE_LABEL[studyMode === 'practice' ? 'memorize' : 'practice']}`"
-          @click="switchStudyMode(studyMode === 'practice' ? 'memorize' : 'practice')"
+    <!--
+      刷题中不显示大标题栏（"运维面试题库 / 刷题"那种），改成 44px 的紧凑顶栏：
+      左退出 · 中进度 · 右模式切换。省下来的高度全给题目与答案。
+
+      选择页/完成页仍用 AppHeader —— 那些页面本来就没多少内容，标题有意义。
+    -->
+    <header v-if="started && !finished" class="ptop">
+      <button class="ptop__exit" aria-label="退出刷题" @click="router.push('/bank')">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path
+            d="M7 7l10 10M17 7L7 17"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
+      </button>
+
+      <div class="ptop__center">
+        <div class="ptop__row">
+          <!-- 题目顺序：从整行收成两个小字开关 -->
+          <button
+            v-for="opt in modeOptions"
+            :key="opt.value"
+            class="ptop__order"
+            :class="{ 'ptop__order--on': mode === opt.value }"
+            @click="switchMode(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+          <span class="ptop__count">{{ progressText }}</span>
+        </div>
+        <div
+          class="ptop__bar"
+          role="progressbar"
+          :aria-valuenow="answeredCount"
+          :aria-valuemin="0"
+          :aria-valuemax="total"
         >
-          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
-            <!-- 刷题：闪电；背题：书本 -->
-            <path
-              v-if="studyMode === 'practice'"
-              d="M13 3 5 14h5l-1 7 8-11h-5l1-7z"
-              fill="currentColor"
-            />
-            <path
-              v-else
-              d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5v-13zM14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14V4z"
-              fill="currentColor"
-            />
-          </svg>
-          <span class="practice__mode-text">{{ STUDY_MODE_LABEL[studyMode] }}</span>
-          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" class="practice__mode-chev">
-            <path
-              d="M7 9l5 5 5-5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </button>
-      </template>
-    </AppHeader>
+          <div class="ptop__fill" :style="{ width: total ? (answeredCount / total) * 100 + '%' : '0%' }" />
+        </div>
+      </div>
+
+      <!-- 模式切换：点一下切到另一种练习方式 -->
+      <button
+        class="practice__mode-btn practice__mode-btn--compact"
+        :class="`practice__mode-btn--${studyMode}`"
+        :aria-label="`当前${STUDY_MODE_LABEL[studyMode]}，点击切换`"
+        :title="`点击切换到${STUDY_MODE_LABEL[studyMode === 'practice' ? 'memorize' : 'practice']}`"
+        @click="switchStudyMode(studyMode === 'practice' ? 'memorize' : 'practice')"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+          <path
+            v-if="studyMode === 'practice'"
+            d="M13 3 5 14h5l-1 7 8-11h-5l1-7z"
+            fill="currentColor"
+          />
+          <path
+            v-else
+            d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5v-13zM14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14V4z"
+            fill="currentColor"
+          />
+        </svg>
+        <span class="practice__mode-text">{{ STUDY_MODE_LABEL[studyMode] }}</span>
+      </button>
+    </header>
+
+    <AppHeader v-else :title="headerTitle" :back="false" />
 
     <!-- 选择页：两个居中按钮，选定后才进入刷题 -->
     <section v-if="!started && !finished" class="picker">
@@ -521,33 +571,11 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 
     <!-- 刷题中：只在 started 之后渲染 -->
     <template v-if="started">
-    <!-- 题目顺序 -->
-    <div class="modes" role="radiogroup" aria-label="题目顺序">
-      <button
-        v-for="opt in modeOptions"
-        :key="opt.value"
-        class="modes__item"
-        :class="{ 'modes__item--on': mode === opt.value }"
-        role="radio"
-        :aria-checked="mode === opt.value"
-        @click="switchMode(opt.value)"
-      >
-        {{ opt.label }}
-      </button>
-      <span class="modes__count muted">{{ progressText }}</span>
-    </div>
-
-    <div
-      class="bar"
-      role="progressbar"
-      :aria-valuenow="answeredCount"
-      :aria-valuemin="0"
-      :aria-valuemax="total"
-    >
-      <div class="bar__fill" :style="{ width: total ? (answeredCount / total) * 100 + '%' : '0%' }" />
-    </div>
-
-    <p v-if="resumed && !finished" class="hint">已从上次位置继续（第 {{ cursor + 1 }} 题）</p>
+    <!-- 注意：题目顺序、进度条都收进了顶部 ptop 栏，这里不再单独占行 -->
+    <!-- 「续刷」提示改为浮层，2 秒后自动消失，不占常驻高度 -->
+    <Transition name="toast">
+      <div v-if="resumeToast && !finished" class="resume-toast" role="status">{{ resumeToast }}</div>
+    </Transition>
 
     <!-- loading -->
     <div v-if="!ready || bank.loading" class="skeleton card" aria-busy="true" />
@@ -746,6 +774,8 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   flex: 1 1 auto;
   min-height: 0;
   padding-bottom: 0;
+  /* 续刷提示用 absolute 定位在顶栏下方 */
+  position: relative;
 }
 
 .practice__fav {
@@ -886,51 +916,110 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   text-align: center;
 }
 
-/* ---------- 题目顺序按钮 ---------- */
-.modes {
+/**
+ * 刷题中的紧凑顶栏（44px）。
+ *
+ * 取代原来的 AppHeader（52px 大标题 + 题目顺序行 30px + 进度条 11px ≈ 93px），
+ * 现在只剩 44px：左退出、中顺序+进度、右模式切换。
+ * 省下的约 50px 全部给题目与答案。
+ */
+.ptop {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-top: 2px;
-}
-.modes__item {
-  height: 26px;
+  gap: 8px;
+  height: 44px;
+  margin: 0 -16px;
   padding: 0 10px;
-  border-radius: 13px;
-  font-size: 12px;
-  color: var(--c-text-2);
-  background: var(--c-card);
-  border: 1px solid var(--c-border);
+  background: var(--c-bg);
 }
-.modes__item--on {
-  color: #fff;
-  background: var(--c-primary);
-  border-color: var(--c-primary);
+.ptop__exit {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-3);
+  border-radius: 50%;
 }
-.modes__count {
-  margin-left: auto;
-  font-size: 12px;
+.ptop__exit:active {
+  background: var(--c-border);
 }
 
-.bar {
+.ptop__center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ptop__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* 题目顺序：从 26px 胶囊收成纯文字开关，占位极小 */
+.ptop__order {
+  padding: 0;
+  font-size: 11.5px;
+  color: var(--c-text-3);
+  white-space: nowrap;
+}
+.ptop__order--on {
+  color: var(--c-primary);
+  font-weight: 600;
+}
+.ptop__count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ptop__bar {
   height: 3px;
-  margin: 8px 0 0;
   background: var(--c-border);
   border-radius: 2px;
   overflow: hidden;
 }
-.bar__fill {
+.ptop__fill {
   height: 100%;
   background: var(--c-primary);
   border-radius: 2px;
   transition: width 0.3s ease;
 }
 
-.hint {
-  margin: 6px 0 0;
+/* 紧凑模式按钮：与顶栏同高，去掉「刷题模式」里的多余右侧箭头 */
+.practice__mode-btn--compact {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 12px;
+  gap: 4px;
+}
+
+/* 续刷浮层提示：2 秒后消失，不占常驻高度 */
+.resume-toast {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 16px;
   font-size: 11.5px;
-  color: var(--c-primary);
-  text-align: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 20;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.2s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
 }
 
 .skeleton {

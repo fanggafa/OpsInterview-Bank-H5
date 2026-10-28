@@ -129,16 +129,40 @@ describe('刷题页 · 选择页（两个居中按钮）', () => {
   })
 })
 
-describe('刷题页 · 进入后仍可切换', () => {
-  it('题卡页顶部只有「题目顺序」，练习方式收进右上角', async () => {
+describe('刷题页 · 进入后的紧凑顶栏', () => {
+  it('刷题中不再显示大标题栏，改为 44px 紧凑顶栏', async () => {
     const { wrapper } = await mountPractice()
     await pick(wrapper, '刷题模式')
 
-    // 练习方式不再是页面里的一行按钮，而是页头右上角一个切换按钮
-    expect(wrapper.find('[aria-label="练习方式"]').exists()).toBe(false)
-    expect(wrapper.find('.practice__mode-btn').exists()).toBe(true)
-    // 题目顺序仍在
-    expect(wrapper.find('[aria-label="题目顺序"]').exists()).toBe(true)
+    // 大标题栏（AppHeader）不在了
+    expect(wrapper.find('.header').exists()).toBe(false)
+    // 换成 ptop 紧凑顶栏
+    expect(wrapper.find('.ptop').exists()).toBe(true)
+  })
+
+  it('题目顺序收进顶栏，不再单独占一行', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+
+    // 不再有独立的 radiogroup 行
+    expect(wrapper.find('[aria-label="题目顺序"]').exists()).toBe(false)
+    // 顶栏里有两个纯文字开关
+    const orders = wrapper.findAll('.ptop__order')
+    expect(orders.map((o) => o.text())).toEqual(['顺序', '随机'])
+  })
+
+  it('练习方式仍收在右上角一个按钮', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+    expect(wrapper.find('.ptop .practice__mode-btn').exists()).toBe(true)
+  })
+
+  it('顶栏带退出按钮与进度条', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+    expect(wrapper.find('.ptop__exit').exists()).toBe(true)
+    expect(wrapper.find('.ptop__bar').exists()).toBe(true)
+    expect(wrapper.find('.ptop__count').text()).toContain('第 1 / 3 题')
   })
 
   it('点右上角模式按钮会切到另一种练习方式', async () => {
@@ -184,12 +208,12 @@ describe('刷题页 · 进入后仍可切换', () => {
     expect(wrapper.find('.qcard-p__meta .qcard-p__fav').exists()).toBe(true)
   })
 
-  it('题卡页点「随机」写入 mode=random', async () => {
+  it('顶栏点「随机」写入 mode=random', async () => {
     const { wrapper, router } = await mountPractice()
     await pick(wrapper, '刷题模式')
 
-    const btns = wrapper.find('[aria-label="题目顺序"]').findAll('.modes__item')
-    await btns[1].trigger('click')
+    const orders = wrapper.findAll('.ptop__order')
+    await orders[1].trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query.mode).toBe('random')
   })
