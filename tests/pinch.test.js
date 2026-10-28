@@ -4,6 +4,7 @@ import {
   distance,
   keepFocusScrollLeft,
   pinchScale,
+  wheelScale,
   MAX_PINCH_SCALE,
   MIN_PINCH_SCALE,
   PINCH_DEADZONE_RATIO,
@@ -132,6 +133,46 @@ describe('pinchScale · 比例计算与夹取', () => {
     expect(PINCH_MIN_START_DISTANCE).toBeGreaterThan(40)
     expect(PINCH_DEADZONE_RATIO).toBeGreaterThan(0)
     expect(PINCH_SENSITIVITY).toBeLessThan(1)
+  })
+})
+
+describe('wheelScale · 桌面滚轮缩放', () => {
+  it('向上滚（deltaY 为负）放大', () => {
+    expect(wheelScale({ scale: 1, deltaY: -100 })).toBeGreaterThan(1)
+  })
+
+  it('向下滚（deltaY 为正）缩小', () => {
+    expect(wheelScale({ scale: 1, deltaY: 100 })).toBeLessThan(1)
+  })
+
+  it('是乘性步长：1→2 与 3→6 的相对变化一致', () => {
+    const a = wheelScale({ scale: 1, deltaY: -100 }) / 1
+    const b = wheelScale({ scale: 3, deltaY: -100 }) / 3
+    expect(a).toBeCloseTo(b, 5)
+  })
+
+  it('滚一格的幅度适中（不会一闪就过）', () => {
+    const next = wheelScale({ scale: 1, deltaY: -100 })
+    expect(next).toBeGreaterThan(1)
+    expect(next).toBeLessThan(1.35)
+  })
+
+  it('受上下限夹取', () => {
+    expect(wheelScale({ scale: 1, deltaY: -100000 })).toBe(MAX_PINCH_SCALE)
+    expect(wheelScale({ scale: 1, deltaY: 100000 })).toBe(MIN_PINCH_SCALE)
+  })
+
+  it('deltaY 为 0 时不变', () => {
+    expect(wheelScale({ scale: 2, deltaY: 0 })).toBe(2)
+  })
+
+  it('非法输入不产生 NaN（比例非法时按 1 起算）', () => {
+    const fromNaN = wheelScale({ scale: NaN, deltaY: -100 })
+    expect(Number.isFinite(fromNaN)).toBe(true)
+    expect(fromNaN).toBeGreaterThan(1) // 按 1 起算，滚轮增量照常生效
+
+    // deltaY 非法则完全不变
+    expect(wheelScale({ scale: 2, deltaY: NaN })).toBe(2)
   })
 })
 

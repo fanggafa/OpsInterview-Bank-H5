@@ -109,6 +109,36 @@ export function pinchScale(startDistance, currentDistance, options = {}) {
 }
 
 /**
+ * 滚轮缩放的比例步长（每一格）。
+ *
+ * 用「乘性」步长而不是「加性」：从 1 倍到 2 倍，和从 3 倍到 4 倍，
+ * 手感应该一样——那只有乘法能做到。0.0018 是按「滚一格约 1.9%」调的，
+ * 一次滚三五格能看到明显变化，又不会一闪就过。
+ */
+export const WHEEL_ZOOM_STEP = 0.0018
+
+/**
+ * 由滚轮事件算出新的缩放比例。
+ *
+ * @param {Object} input
+ * @param {number} input.scale 当前比例
+ * @param {number} input.deltaY 滚轮增量（向上为负、向下为正）
+ * @param {number} [input.step]
+ * @param {number} [input.min]
+ * @param {number} [input.max]
+ * @returns {number} 夹取后的新比例
+ */
+export function wheelScale({ scale = 1, deltaY = 0, step = WHEEL_ZOOM_STEP, min = MIN_PINCH_SCALE, max = MAX_PINCH_SCALE } = {}) {
+  const base = Number.isFinite(scale) && scale > 0 ? scale : 1
+  if (!Number.isFinite(deltaY) || deltaY === 0) return base
+
+  // deltaY < 0（向上滚）放大；> 0 缩小
+  const next = base * Math.exp(-deltaY * step)
+  if (!Number.isFinite(next)) return base
+  return Math.min(max, Math.max(min, next))
+}
+
+/**
  * 缩放到某个比例后，保持「两指中点下的内容」不跑掉。
  *
  * 不做这一步的话，每次缩放都会从左上角开始变，用户的视线要重新找位置。
@@ -127,7 +157,7 @@ export function keepFocusScrollLeft({
 }
 
 /**
- * 绑定双指缩放到元素。
+ * 绑定缩放到元素：桌面用滚轮，移动端用双指。
  *
  * @param {HTMLElement} el
  * @param {Object} handlers
@@ -140,6 +170,7 @@ export function keepFocusScrollLeft({
  * @param {number} [handlers.minStart]
  * @param {number} [handlers.deadzone]
  * @param {number} [handlers.sensitivity]
+ * @param {number} [handlers.wheelStep] 滚轮每格的缩放步长
  * @returns {() => void} 解绑函数
  */
 export function attachPinch(el, handlers = {}) {
@@ -155,6 +186,7 @@ export function attachPinch(el, handlers = {}) {
     minStart = PINCH_MIN_START_DISTANCE,
     deadzone = PINCH_DEADZONE_RATIO,
     sensitivity = PINCH_SENSITIVITY,
+    wheelStep = WHEEL_ZOOM_STEP,
   } = handlers
 
   /** @type {Map<number, {x:number, y:number}>} */
@@ -328,10 +360,45 @@ export function attachPinch(el, handlers = {}) {
     window.removeEventListener('pointercancel', onCancel)
   }
 
+  /**
+   * 桌面端：滚轮缩放。
+   *
+   * 这是看图/看表的通行做法（浏览器看 PDF、地图、图片查看器都是滚轮缩放），
+   * 比「点个按钮切档位」自然得多。触控板双指捏合在浏览器里也会派发
+   * wheel 事件（带 ctrlKey），这里同样接住，所以触控板也能捏。
+   *
+   * passive: false 是必须的：不 preventDefault 的话，页面会跟着滚，
+   * 图放大了却滚走了。
+   */
+  const onWheel = (e) => {
+    if (!e.deltaY) return
+    const scale = wheelScale({
+      scale: Number(getScale()) || 1,
+      deltaY: e.deltaY,
+      step: wheelStep,
+      min,
+      max,
+    })
+    // 已经到头了就放行，让浏览器正常滚页面（不然滚到底会被完全吃掉）
+    if (scale === (Number(getScale()) || 1)) return
+
+    if (e.cancelable) e.preventDefault()
+
+    // 以光标位置为焦点缩放：指着哪块就放哪块
+    const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0 }
+    const midX = e.clientX - (rect.left || 0)
+    const midY = e.clientY - (rect.top || 0)
+    if (typeof onChange === 'function') {
+      onChange({ scale, midX, midY, baseScale: Number(getScale()) || 1 })
+    }
+  }
+
   el.addEventListener('pointerdown', onPointerDown)
+  el.addEventListener('wheel', onWheel, { passive: false })
 
   return () => {
     el.removeEventListener('pointerdown', onPointerDown)
+    el.removeEventListener('wheel', onWheel)
     detachWindow()
     pointers.clear()
     pinching = false

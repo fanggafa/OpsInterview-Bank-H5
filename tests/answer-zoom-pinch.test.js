@@ -113,34 +113,62 @@ describe('图解查看层 · 双指缩放接线', () => {
     wrapper.unmount()
   })
 
-  it('「看全」按钮把缩放拉到整张图可见的档位', async () => {
-    const { wrapper, canvas } = await openZoomLayer()
-    await pinch(canvas, 100, 300)
-    expect(currentZoom()).toBeGreaterThan(1)
-
-    document.querySelector('.ans-zoom__fit').click()
-    await nextTick()
-
-    const zoom = currentZoom()
-    expect(zoom).toBeLessThan(1)
-    expect(zoom).toBeGreaterThan(0.3)
-    expect(document.querySelector('.ans-zoom__fit').className).toContain('ans-zoom__fit--on')
+  it('「看全」按钮已移除（缩放交给滚轮/双指，不靠切档位按钮）', async () => {
+    const { wrapper } = await openZoomLayer()
+    expect(document.querySelector('.ans-zoom__fit')).toBeNull()
+    expect(document.querySelector('.ans-zoom__reset')).toBeNull()
     wrapper.unmount()
   })
 
-  it('双击在「看全」与「放大」之间切换', async () => {
+  it('桌面滚轮向上滚放大、向下滚缩小', async () => {
     const { wrapper, canvas } = await openZoomLayer()
 
-    // 初始是放大态 → 双击变看全
-    canvas.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }))
     await nextTick()
-    expect(currentZoom()).toBeLessThan(1)
+    expect(currentZoom()).toBeGreaterThan(1)
 
-    // 再双击回放大基准
+    const bigger = currentZoom()
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }))
+    await nextTick()
+    expect(currentZoom()).toBeLessThan(bigger)
+
+    wrapper.unmount()
+  })
+
+  it('滚轮缩放调用 preventDefault（不然图放大时页面也跟着滚）', async () => {
+    const { wrapper, canvas } = await openZoomLayer()
+    const e = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true })
+    canvas.dispatchEvent(e)
+    await nextTick()
+    expect(e.defaultPrevented).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('滚轮到底后放行，让浏览器正常滚页面', async () => {
+    const { wrapper, canvas } = await openZoomLayer()
+    // 一路缩到下限
+    for (let i = 0; i < 40; i++) {
+      canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }))
+    }
+    await nextTick()
+    expect(currentZoom()).toBe(MIN_PINCH_SCALE)
+
+    // 已经在下限，再滚应放行（不 preventDefault）
+    const e = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true })
+    canvas.dispatchEvent(e)
+    expect(e.defaultPrevented).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('双击复位回基准尺寸', async () => {
+    const { wrapper, canvas } = await openZoomLayer()
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: -300, bubbles: true, cancelable: true }))
+    await nextTick()
+    expect(currentZoom()).toBeGreaterThan(1)
+
     canvas.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
     await nextTick()
     expect(currentZoom()).toBe(1)
-
     wrapper.unmount()
   })
 
