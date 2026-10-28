@@ -70,6 +70,14 @@ const dailyState = computed(() => {
 /** 题干摘要：卡片只放一行半，太长会把下面的内容顶出首屏 */
 const dailySummary = computed(() => (daily.value ? truncate(daily.value.question, 46) : ''))
 
+/** 错题本数量：错题复习入口据此决定是否可用 */
+const wrongCount = computed(() => study.wrongList.length)
+
+/** 进入复习赛（一次性题组，与刷题页的连续队列不同） */
+function startReview(kind) {
+  router.push({ path: '/practice', query: { review: kind } })
+}
+
 /** 卡片右上角的日期，让「每日」这个语义看得出来 */
 const dateText = computed(() => {
   const d = new Date()
@@ -181,6 +189,51 @@ function openDaily() {
         <span class="daily__arrow" aria-hidden="true">→</span>
       </div>
     </button>
+
+    <!-- 两种复习：一次性题组，练完即止，与「连续刷」互补 -->
+    <h2 class="section-title">复习巩固</h2>
+    <div class="reviews">
+      <button class="review" @click="startReview('daily')">
+        <span class="review__icon review__icon--daily" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="19" height="19">
+            <path
+              d="M12 4a8 8 0 1 0 7.5 10.5M12 4a8 8 0 0 1 7 4.3M19 4v4.5h-4.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <span class="review__text">
+          <span class="review__title">每日复习</span>
+          <span class="review__desc">随机 15 题 · 巩固已学</span>
+        </span>
+        <span class="review__arrow" aria-hidden="true">→</span>
+      </button>
+
+      <button class="review" :disabled="!wrongCount" @click="startReview('wrong')">
+        <span class="review__icon review__icon--wrong" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="19" height="19">
+            <path
+              d="M12 7v6M12 16.5v.5M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 0 0-15 0z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
+        <span class="review__text">
+          <span class="review__title">错题复习</span>
+          <span class="review__desc">
+            {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 10)} 题 · 连对 3 次移出` : '错题本是空的' }}
+          </span>
+        </span>
+        <span class="review__arrow" aria-hidden="true">→</span>
+      </button>
+    </div>
 
     <p class="home-foot">
       共 {{ bank.total }} 题（简答 {{ study.shortTotal }} · 选择 {{ study.choiceTotal }}）
@@ -432,6 +485,72 @@ function openDaily() {
   color: var(--c-text-3);
 }
 .daily__arrow {
+  flex-shrink: 0;
+  font-size: 15px;
+  color: var(--c-primary);
+}
+
+/* ---------- 复习入口 ---------- */
+.reviews {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.review {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+.review:active:not(:disabled) {
+  transform: scale(0.985);
+  box-shadow: var(--shadow-lift);
+}
+/* 错题本为空时置灰：看起来像禁用，而不是点了才发现没题 */
+.review:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.review__icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.review__icon--daily {
+  background: var(--grad-indigo);
+}
+.review__icon--wrong {
+  background: linear-gradient(135deg, #f0736f, #d64b52);
+}
+.review__text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.review__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.review__desc {
+  font-size: 11px;
+  color: var(--c-text-3);
+}
+.review__arrow {
   flex-shrink: 0;
   font-size: 15px;
   color: var(--c-primary);

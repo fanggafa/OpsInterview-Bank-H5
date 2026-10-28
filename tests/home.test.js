@@ -238,3 +238,71 @@ describe('首页 · 不再承载「继续上次」', () => {
     expect(wrapper.text()).not.toContain('继续上次')
   })
 })
+
+describe('首页 · 复习入口', () => {
+  it('渲染两个复习入口：每日复习 / 错题复习', async () => {
+    const { wrapper } = await mountHome()
+    const items = wrapper.findAll('.review')
+    expect(items).toHaveLength(2)
+    expect(items[0].text()).toContain('每日复习')
+    expect(items[1].text()).toContain('错题复习')
+  })
+
+  it('每日复习显示「随机 15 题」', async () => {
+    const { wrapper } = await mountHome()
+    expect(wrapper.findAll('.review')[0].text()).toContain('15 题')
+  })
+
+  it('点每日复习跳到 review=daily', async () => {
+    const { wrapper, router } = await mountHome()
+    await wrapper.findAll('.review')[0].trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/practice')
+    expect(router.currentRoute.value.query.review).toBe('daily')
+  })
+
+  it('错题本为空时错题复习置灰不可点，并说明原因', async () => {
+    const { wrapper } = await mountHome()
+    const wrongBtn = wrapper.findAll('.review')[1]
+    expect(wrongBtn.attributes('disabled')).toBeDefined()
+    expect(wrongBtn.text()).toContain('错题本是空的')
+  })
+
+  it('有错题时可点，且文案带上实际抽题数', async () => {
+    study.markUnknown(1)
+    study.markUnknown(2)
+    const { wrapper, router } = await mountHome()
+    const wrongBtn = wrapper.findAll('.review')[1]
+    expect(wrongBtn.attributes('disabled')).toBeUndefined()
+    expect(wrongBtn.text()).toContain('抽 2 题')
+
+    await wrongBtn.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.review).toBe('wrong')
+  })
+
+  it('错题超过 10 道时文案显示抽 10 题', async () => {
+    // FIXTURE 只有 4 题，这里补到 12 道错题
+    bank.questions = [
+      ...FIXTURE,
+      ...Array.from({ length: 8 }, (_, i) => ({
+        id: 100 + i,
+        type: 'short',
+        category: 'Linux基础',
+        difficulty: '中等',
+        question: `q${100 + i}`,
+        answer: 'a',
+        frequency: '高频',
+      })),
+    ]
+    bank.questions.forEach((q) => study.markUnknown(q.id))
+    const { wrapper } = await mountHome()
+    expect(wrapper.findAll('.review')[1].text()).toContain('抽 10 题')
+  })
+
+  it('错题复习入口说明「连对 3 次移出」', async () => {
+    study.markUnknown(1)
+    const { wrapper } = await mountHome()
+    expect(wrapper.findAll('.review')[1].text()).toContain('连对 3 次移出')
+  })
+})

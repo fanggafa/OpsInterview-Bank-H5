@@ -196,8 +196,12 @@ describe('错题本 · 分页边界', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.find('.pager__info').text()).toContain('第 2 / 2 页')
 
-    // 把第 2 页的题全部改判为答对，只剩第 1 页的 PAGE_SIZE 条 → 恰好一页
-    for (let i = PAGE_SIZE + 1; i <= OVER_ONE_PAGE; i++) study.markKnow(i)
+    // 把第 2 页的题全部连对 3 次移出错题本，只剩第 1 页的 PAGE_SIZE 条 → 恰好一页
+    for (let i = PAGE_SIZE + 1; i <= OVER_ONE_PAGE; i++) {
+      study.markKnow(i)
+      study.markKnow(i)
+      study.markKnow(i)
+    }
     await wrapper.vm.$nextTick()
 
     // 只剩一页时分页控件整体隐藏，列表回退到第 1 页

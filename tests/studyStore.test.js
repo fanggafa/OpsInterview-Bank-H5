@@ -101,14 +101,54 @@ describe('统计口径（PRD §五.4）', () => {
 })
 
 describe('错题本派生', () => {
-  it('最近一次自评 unknown 才在错题本', () => {
+  it('答错（自评不会）后进入错题本', () => {
     study.markUnknown(1)
     expect(study.wrongList.map((q) => q.id)).toEqual([1])
   })
 
-  it('改判 know 后自动移出', () => {
+  /**
+   * 回归：错题本不再是「最近一次答错」的实时镜像。
+   *
+   * 用户要求：答错和自评不会的都记录进去，但之后任意方式刷到后，
+   * 累计三次都对就自动剔除。所以答对一次不该立刻移出。
+   */
+  it('答对一次不会立刻移出（要连对 3 次）', () => {
     study.markUnknown(1)
     study.markKnow(1)
+    expect(study.wrongList.map((q) => q.id)).toEqual([1])
+    expect(study.streakOf(1)).toBe(1)
+  })
+
+  it('连对 3 次后自动移出错题本', () => {
+    study.markUnknown(1)
+    study.markKnow(1)
+    study.markKnow(1)
+    expect(study.wrongList.map((q) => q.id)).toEqual([1])
+
+    study.markKnow(1) // 第 3 次
+    expect(study.wrongList).toHaveLength(0)
+    expect(study.isWrong(1)).toBe(false)
+  })
+
+  it('中途答错会把连对计数清零，重新数', () => {
+    study.markUnknown(1)
+    study.markKnow(1)
+    study.markKnow(1)
+    study.markUnknown(1) // 又错一次
+    expect(study.streakOf(1)).toBe(0)
+
+    study.markKnow(1)
+    study.markKnow(1)
+    expect(study.wrongList.map((q) => q.id)).toEqual([1])
+    study.markKnow(1)
+    expect(study.wrongList).toHaveLength(0)
+  })
+
+  it('本来就不在错题本的题，答对多少次都不会进错题本', () => {
+    study.markKnow(2)
+    study.markKnow(2)
+    study.markKnow(2)
+    expect(study.isWrong(2)).toBe(false)
     expect(study.wrongList).toHaveLength(0)
   })
 
@@ -116,6 +156,18 @@ describe('错题本派生', () => {
     study.markUnknown(3)
     study.markUnknown(1)
     expect(study.wrongList.map((q) => q.id)).toEqual([1, 3])
+  })
+
+  it('已毕业的题再次答错，重新进入错题本并从 0 开始数', () => {
+    study.markUnknown(1)
+    study.markKnow(1)
+    study.markKnow(1)
+    study.markKnow(1)
+    expect(study.isWrong(1)).toBe(false)
+
+    study.markUnknown(1)
+    expect(study.isWrong(1)).toBe(true)
+    expect(study.streakOf(1)).toBe(0)
   })
 })
 
@@ -178,16 +230,39 @@ describe('localStorage 持久化', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.FAVORITES))).toEqual([1])
   })
 
-  it('损坏的记录数据被忽略并回退为空', async () => {
+  it('损坏的记录数据被忽略（坏 status 不进 records）', async () => {
     localStorage.setItem(STORAGE_KEYS.RECORDS, '{"1": {"status": "bogus"}}')
-    const { __resetPending, readJSON } = await import('@/utils/storage')
+    const { __resetPending } = await import('@/utils/storage')
     __resetPending()
     setActivePinia(createPinia())
     const freshBank = useBankStore()
     freshBank.questions = FIXTURE
     const fresh = useStudyStore()
+    // 归一化时坏记录被丢弃，store 里是空对象
     expect(fresh.records).toEqual({})
-    expect(readJSON(STORAGE_KEYS.RECORDS, {})).toEqual({})
+  })
+
+  it('旧的记录结构（没有 streak / inWrong）自动补齐字段', async () => {
+    // 老版本只存 status/times/lastReviewed
+    localStorage.setItem(
+      STORAGE_KEYS.RECORDS,
+      JSON.stringify({
+        1: { status: STATUS.UNKNOWN, times: 2, lastReviewed: 1700000000000 },
+        2: { status: STATUS.KNOW, times: 3, lastReviewed: 1700000000000 },
+      })
+    )
+    const { __resetPending } = await import('@/utils/storage')
+    __resetPending()
+    setActivePinia(createPinia())
+    const freshBank = useBankStore()
+    freshBank.questions = FIXTURE
+    const fresh = useStudyStore()
+
+    // 答错的进错题本、连对数为 0；答对的不在错题本
+    expect(fresh.recordOf(1)).toMatchObject({ streak: 0, inWrong: true })
+    expect(fresh.recordOf(2)).toMatchObject({ streak: 0, inWrong: false })
+    // 统计仍按原口径
+    expect(fresh.reviewedCount).toBe(2)
   })
 })
 
