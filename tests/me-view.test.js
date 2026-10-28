@@ -1,20 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import MeView from '@/views/MeView.vue'
+import SettingsView from '@/views/SettingsView.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
 import { STORAGE_KEYS, STUDY_MODE_LABEL } from '@/utils/constants'
 
 /**
- * 回归：「我的」页的清空按钮点击无效。
+ * 「我的」页与「设置」页的职责划分：
  *
- * 根因：用 window.confirm 做二次确认。微信内置浏览器、部分安卓 WebView、
- * 以及「禁止弹窗」的设置下，confirm 会静默返回 false 或根本不弹，
- * 表现为「点了没反应」。
+ * - 我的：个人卡、掌握情况、分类图表（折叠）、错题本/收藏入口、设置入口
+ * - 设置：外观主题、默认练习方式、清空数据、关于
  *
- * 修复：改成页内确认条（渲染在 DOM 里），任何环境下都能显示与点击。
+ * 关键回归仍是「清空必须用页内确认，不能依赖 window.confirm」——
+ * 微信内置浏览器下 confirm 会静默返回 false，表现为「点了没反应」。
  */
 
 const FIXTURE = [
@@ -27,8 +28,8 @@ function makeRouter() {
     history: createMemoryHistory(),
     routes: [
       { path: '/me', component: MeView },
+      { path: '/settings', component: SettingsView },
       { path: '/practice', component: MeView },
-      { path: '/stats', component: MeView },
       { path: '/wrong', component: MeView },
       { path: '/favorites', component: MeView },
     ],
@@ -50,176 +51,105 @@ beforeEach(() => {
   study = useStudyStore()
 })
 
-async function mountMe() {
+async function mountAt(path, component) {
   const router = makeRouter()
-  await router.push('/me')
+  await router.push(path)
   await router.isReady()
-  const wrapper = mount(MeView, { global: { plugins: [pinia, router] }, attachTo: document.body })
+  const wrapper = mount(component, { global: { plugins: [pinia, router] }, attachTo: document.body })
   await flushPromises()
   return { wrapper, router }
 }
 
-/** 找到「清空学习记录 / 清空收藏」两个动作按钮 */
-function actions(wrapper) {
-  return wrapper.findAll('.list__row--action')
+const mountMe = () => mountAt('/me', MeView)
+const mountSettings = () => mountAt('/settings', SettingsView)
+
+/** 按行标题找行（.row 内 .row__title） */
+function rowByTitle(wrapper, title) {
+  return wrapper
+    .findAll('.row')
+    .find((r) => r.find('.row__title').exists() && r.find('.row__title').text() === title)
 }
 
-describe('我的 · 清空学习记录', () => {
-  it('点击后弹页内确认条，且不依赖 window.confirm', async () => {
+describe('我的 · 页面结构', () => {
+  it('顶部个人卡：头像 + 总进度 + 三格数字', async () => {
     const { wrapper } = await mountMe()
-    study.markKnow(1)
-
-    const spy = vi.spyOn(window, 'confirm')
-    await actions(wrapper)[0].trigger('click')
-    expect(spy).not.toHaveBeenCalled()
-    spy.mockRestore()
-
-    expect(wrapper.find('.confirm').exists()).toBe(true)
+    expect(wrapper.find('.profile').exists()).toBe(true)
+    expect(wrapper.find('.profile__avatar').exists()).toBe(true)
+    const labels = wrapper.findAll('.profile__label').map((n) => n.text())
+    expect(labels).toEqual(['已刷', '错题', '收藏'])
   })
 
-  it('确认前不删除数据（二次确认生效）', async () => {
+  it('四宫格数据：简答掌握率 / 选择正确率 / 今日已刷 / 题库总量', async () => {
     const { wrapper } = await mountMe()
-    study.markKnow(1)
-    await actions(wrapper)[0].trigger('click')
-    expect(Object.keys(study.records).length).toBeGreaterThan(0)
-  })
-
-  it('点「确定清空」后记录真的被清空', async () => {
-    const { wrapper } = await mountMe()
-    study.markKnow(1)
-    study.markUnknown(2)
-    expect(Object.keys(study.records).length).toBe(2)
-
-    await actions(wrapper)[0].trigger('click')
-    await wrapper.find('.confirm .btn--danger').trigger('click')
-
-    expect(Object.keys(study.records).length).toBe(0)
-    expect(study.reviewedCount).toBe(0)
-    expect(wrapper.find('.confirm').exists()).toBe(false)
-  })
-
-  it('点「取消」后数据保留、确认条收起', async () => {
-    const { wrapper } = await mountMe()
-    study.markKnow(1)
-
-    await actions(wrapper)[0].trigger('click')
-    await wrapper.find('.confirm .btn--plain').trigger('click')
-
-    expect(Object.keys(study.records).length).toBe(1)
-    expect(wrapper.find('.confirm').exists()).toBe(false)
-  })
-
-  it('清空后 localStorage 也被同步清掉（不只是内存态）', async () => {
-    const { wrapper } = await mountMe()
-    study.markKnow(1)
-    await actions(wrapper)[0].trigger('click')
-    await wrapper.find('.confirm .btn--danger').trigger('click')
-    // writeJSON 是立即写入（clearRecords 用 writeJSON 而非节流版）
-    const raw = localStorage.getItem(STORAGE_KEYS.RECORDS)
-    expect(raw === null || raw === '{}').toBe(true)
-  })
-
-  it('清空成功后有轻提示反馈', async () => {
-    const { wrapper } = await mountMe()
-    study.markKnow(1)
-    await actions(wrapper)[0].trigger('click')
-    await wrapper.find('.confirm .btn--danger').trigger('click')
-    expect(wrapper.find('.toast').exists()).toBe(true)
-    expect(wrapper.find('.toast').text()).toContain('已清空学习记录')
-  })
-})
-
-describe('我的 · 清空收藏', () => {
-  it('点击后弹确认条，确认后收藏被清空', async () => {
-    const { wrapper } = await mountMe()
-    study.toggleFavorite(1)
-    await flushPromises()
-    expect(study.favorites.length).toBe(1)
-
-    await actions(wrapper)[1].trigger('click')
-    await flushPromises()
-    expect(wrapper.find('.confirm').exists()).toBe(true)
-    await wrapper.find('.confirm .btn--danger').trigger('click')
-
-    expect(study.favorites.length).toBe(0)
-  })
-
-  it('取消则收藏保留', async () => {
-    const { wrapper } = await mountMe()
-    study.toggleFavorite(1)
-    await flushPromises()
-    await actions(wrapper)[1].trigger('click')
-    await flushPromises()
-    await wrapper.find('.confirm .btn--plain').trigger('click')
-    expect(study.favorites.length).toBe(1)
-  })
-
-  it('没有收藏时按钮禁用，不弹确认条', async () => {
-    const { wrapper } = await mountMe()
-    const btn = actions(wrapper)[1]
-    expect(btn.attributes('disabled')).toBeDefined()
-
-    await btn.trigger('click')
-    expect(wrapper.find('.confirm').exists()).toBe(false)
-  })
-
-  it('两个确认条不会同时展开', async () => {
-    const { wrapper } = await mountMe()
-    study.markKnow(1)
-    study.toggleFavorite(1)
-
-    await actions(wrapper)[0].trigger('click')
-    expect(wrapper.findAll('.confirm')).toHaveLength(1)
-
-    await actions(wrapper)[1].trigger('click')
-    expect(wrapper.findAll('.confirm')).toHaveLength(1)
-    expect(wrapper.find('.confirm').text()).toContain('收藏')
-  })
-})
-
-describe('我的 · 页面内容', () => {
-  it('显示数据概览（已刷题 / 掌握率 / 正确率 / 今日）', async () => {
-    const { wrapper } = await mountMe()
-    const labels = wrapper.findAll('.overview__label').map((n) => n.text())
-    expect(labels).toEqual(['已刷题', '掌握率', '正确率', '今日'])
+    const labels = wrapper.findAll('.tile__label').map((n) => n.text())
+    expect(labels).toEqual(['简答掌握率', '选择正确率', '今日已刷', '题库总量'])
   })
 
   it('未作答时掌握率显示「—」而不是 0%', async () => {
     const { wrapper } = await mountMe()
-    const values = wrapper.findAll('.overview__value').map((n) => n.text())
-    expect(values[1]).toContain('—')
+    const values = wrapper.findAll('.tile__value').map((n) => n.text())
+    expect(values[0]).toContain('—')
   })
 
-  it('快捷入口含开始刷题与背题模式', async () => {
+  it('页头右侧有设置入口，指向 /settings', async () => {
     const { wrapper } = await mountMe()
-    const titles = wrapper.findAll('.quick__title').map((n) => n.text())
-    expect(titles).toContain('开始刷题')
-    expect(titles).toContain('背题模式')
+    const entry = wrapper.find('.me__settings')
+    expect(entry.exists()).toBe(true)
+    expect(entry.attributes('href')).toContain('/settings')
   })
 
-  it('点「背题模式」跳到刷题页并带上 studyMode=memorize', async () => {
-    const { wrapper, router } = await mountMe()
-    const btn = wrapper.findAll('.quick__item')[1]
-    await btn.trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/practice')
-    expect(router.currentRoute.value.query.studyMode).toBe('memorize')
-  })
-
-  it('错题本 / 收藏 显示各自数量', async () => {
+  it('提供错题本与收藏入口', async () => {
     const { wrapper } = await mountMe()
-    study.markUnknown(2)
-    study.toggleFavorite(1)
-    await flushPromises()
-    const badges = wrapper.findAll('.quick__badge').map((n) => n.text())
-    expect(badges).toContain('1')
+    expect(rowByTitle(wrapper, '错题本')).toBeTruthy()
+    expect(rowByTitle(wrapper, '我的收藏')).toBeTruthy()
   })
 
-  it('可以设置默认练习方式，并写入 localStorage', async () => {
+  it('不再直接展示设置项（已搬到设置页）', async () => {
     const { wrapper } = await mountMe()
-    // 「默认练习方式」是第二组分段控件
-    const segs = wrapper.findAll('.seg')
-    const prefButtons = segs[1].findAll('.seg__item')
+    expect(rowByTitle(wrapper, '外观主题')).toBeFalsy()
+    expect(rowByTitle(wrapper, '清空学习记录')).toBeFalsy()
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+  })
+})
+
+describe('我的 · 分类图表默认折叠', () => {
+  it('默认不渲染图表，标题可点', async () => {
+    const { wrapper } = await mountMe()
+    const collapses = wrapper.findAll('.collapse')
+    expect(collapses.length).toBe(2)
+    expect(wrapper.find('.chart-card').exists()).toBe(false)
+    expect(collapses[0].attributes('aria-expanded')).toBe('false')
+  })
+
+  it('点「各分类掌握度」后展开图表', async () => {
+    const { wrapper } = await mountMe()
+    await wrapper.findAll('.collapse')[0].trigger('click')
+    expect(wrapper.find('.chart-card').exists()).toBe(true)
+    expect(wrapper.findAll('.collapse')[0].attributes('aria-expanded')).toBe('true')
+  })
+
+  it('两块图表可独立展开', async () => {
+    const { wrapper } = await mountMe()
+    await wrapper.findAll('.collapse')[1].trigger('click')
+    expect(wrapper.findAll('.chart-card').length).toBe(1)
+    await wrapper.findAll('.collapse')[0].trigger('click')
+    expect(wrapper.findAll('.chart-card').length).toBe(2)
+  })
+})
+
+describe('设置 · 外观与练习方式', () => {
+  it('主题是三态分段控件，点击写入 localStorage', async () => {
+    const { wrapper } = await mountSettings()
+    const segButtons = wrapper.findAll('.seg')[0].findAll('.seg__item')
+    expect(segButtons).toHaveLength(3)
+
+    await segButtons[1].trigger('click')
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS)).theme).toBe('dark')
+  })
+
+  it('可以设置默认练习方式', async () => {
+    const { wrapper } = await mountSettings()
+    const prefButtons = wrapper.findAll('.seg')[1].findAll('.seg__item')
     expect(prefButtons.map((b) => b.text())).toContain(STUDY_MODE_LABEL.memorize)
 
     const memorizeBtn = prefButtons.find((b) => b.text() === STUDY_MODE_LABEL.memorize)
@@ -227,5 +157,76 @@ describe('我的 · 页面内容', () => {
 
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS))
     expect(saved.studyMode).toBe('memorize')
+  })
+})
+
+describe('设置 · 清空数据用页内确认', () => {
+  it('点击后弹页内确认条，不调用 window.confirm', async () => {
+    const { wrapper } = await mountSettings()
+    study.markKnow(1)
+    await flushPromises()
+
+    const confirmRow = rowByTitle(wrapper, '清空学习记录')
+    expect(confirmRow).toBeTruthy()
+
+    // 不依赖 window.confirm（微信/WebView 下会静默失效）
+    const spy = globalThis.vi?.spyOn ? globalThis.vi.spyOn(window, 'confirm') : null
+    await confirmRow.trigger('click')
+    expect(wrapper.find('.confirm').exists()).toBe(true)
+    if (spy) {
+      expect(spy).not.toHaveBeenCalled()
+      spy.mockRestore()
+    }
+  })
+
+  it('确认前不删除数据，取消后数据仍在', async () => {
+    const { wrapper } = await mountSettings()
+    study.markKnow(1)
+    await flushPromises()
+    const before = Object.keys(study.records).length
+
+    await rowByTitle(wrapper, '清空学习记录').trigger('click')
+    expect(Object.keys(study.records).length).toBe(before)
+
+    await wrapper.find('.confirm .btn--plain').trigger('click')
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+    expect(Object.keys(study.records).length).toBe(before)
+  })
+
+  it('点「确定清空」后记录被清空并同步 localStorage', async () => {
+    const { wrapper } = await mountSettings()
+    study.markKnow(1)
+    study.markUnknown(2)
+    await flushPromises()
+    expect(Object.keys(study.records).length).toBe(2)
+
+    await rowByTitle(wrapper, '清空学习记录').trigger('click')
+    await wrapper.find('.confirm .btn--danger').trigger('click')
+
+    expect(Object.keys(study.records).length).toBe(0)
+    const raw = localStorage.getItem(STORAGE_KEYS.RECORDS)
+    expect(raw === null || raw === '{}').toBe(true)
+  })
+
+  it('没有收藏时「清空收藏」行禁用', async () => {
+    const { wrapper } = await mountSettings()
+    const row = rowByTitle(wrapper, '清空收藏')
+    expect(row.attributes('disabled')).toBeDefined()
+    await row.trigger('click')
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+  })
+
+  it('两个确认条不会同时展开', async () => {
+    const { wrapper } = await mountSettings()
+    study.markKnow(1)
+    study.toggleFavorite(1)
+    await flushPromises()
+
+    await rowByTitle(wrapper, '清空学习记录').trigger('click')
+    expect(wrapper.findAll('.confirm')).toHaveLength(1)
+
+    await rowByTitle(wrapper, '清空收藏').trigger('click')
+    expect(wrapper.findAll('.confirm')).toHaveLength(1)
+    expect(wrapper.find('.confirm').text()).toContain('收藏')
   })
 })

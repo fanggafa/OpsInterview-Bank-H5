@@ -41,12 +41,6 @@ const items = computed(() => TAB_ITEMS)
         <template v-else-if="item.icon === 'practice'">
           <path d="M13 3 5 14h5l-1 7 8-11h-5l1-7z" fill="currentColor" />
         </template>
-        <!-- 统计：柱状 -->
-        <template v-else-if="item.icon === 'stats'">
-          <rect x="4" y="13" width="4" height="7" rx="1" fill="currentColor" opacity=".5" />
-          <rect x="10" y="8" width="4" height="12" rx="1" fill="currentColor" opacity=".8" />
-          <rect x="16" y="4" width="4" height="16" rx="1" fill="currentColor" />
-        </template>
         <!-- 我的：人形 -->
         <template v-else>
           <circle cx="12" cy="8" r="3.5" fill="currentColor" />

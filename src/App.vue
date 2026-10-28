@@ -5,15 +5,15 @@ import TabBar from '@/components/TabBar.vue'
 
 const route = useRoute()
 
-/** 底部 TabBar 在 5 个一级页面显示（含首页，否则无法从其他 Tab 回到首页） */
-const TAB_ROUTES = ['/', '/bank', '/practice', '/stats', '/me']
+/** 底部 TabBar 在 4 个一级页面显示（含首页，否则无法从其他 Tab 回到首页） */
+const TAB_ROUTES = ['/', '/bank', '/practice', '/me']
 const showTab = computed(() => TAB_ROUTES.includes(route.path))
 
 /**
  * 沉浸式页面：自己占满可视高度，内部滚动。
- * 刷题页（题卡占满一屏、操作栏吸底）与面试答题页同构。
+ * 刷题页（题卡占满一屏、操作栏吸底）属于这一类。
  */
-const FULL_ROUTES = ['/practice', '/interview/run']
+const FULL_ROUTES = ['/practice']
 const isFull = computed(() => FULL_ROUTES.includes(route.path))
 </script>
 

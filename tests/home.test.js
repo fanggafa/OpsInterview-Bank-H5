@@ -121,27 +121,21 @@ describe('首页 · 今日文案', () => {
   })
 })
 
-describe('首页 · 快捷入口', () => {
-  it('渲染刷题与模拟面试两个入口', async () => {
+describe('首页 · 快捷入口已移除', () => {
+  it('不再渲染「开始刷题 / 模拟面试」快捷卡片（改为底部 Tab 进入）', async () => {
     const { wrapper } = await mountHome()
-    const entries = wrapper.findAll('.entry')
-    expect(entries).toHaveLength(2)
-    expect(entries[0].text()).toContain('开始刷题')
-    expect(entries[1].text()).toContain('模拟面试')
+    expect(wrapper.findAll('.entry')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('模拟面试')
   })
 
-  it('点「开始刷题」进入刷题页', async () => {
-    const { wrapper, router } = await mountHome()
-    await wrapper.findAll('.entry')[0].trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/practice')
+  it('不再渲染「继续上次」卡片（续刷入口放在刷题页内）', async () => {
+    const { wrapper } = await mountHome()
+    expect(wrapper.find('.continue').exists()).toBe(false)
   })
 
-  it('点「模拟面试」进入面试设置页', async () => {
-    const { wrapper, router } = await mountHome()
-    await wrapper.findAll('.entry')[1].trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/interview')
+  it('首页仍保留分类入口（可直达对应分类）', async () => {
+    const { wrapper } = await mountHome()
+    expect(wrapper.findAll('.cats__item').length).toBeGreaterThan(0)
   })
 
   it('右上角按钮直接切换主题，不跳转页面', async () => {
@@ -220,23 +214,17 @@ describe('首页 · 分类入口', () => {
   })
 })
 
-describe('首页 · 继续上次', () => {
-  it('无进度时不显示', async () => {
+describe('首页 · 不再承载「继续上次」', () => {
+  it('无进度时不显示续刷卡片', async () => {
     const { wrapper } = await mountHome()
     expect(wrapper.find('.continue').exists()).toBe(false)
   })
 
-  it('有进度时显示，点击跳刷题页（模式在刷题页的面板里选）', async () => {
+  it('有进度时首页也不显示（续刷入口只在刷题页内）', async () => {
     study.saveProgress({ mode: 'random', studyMode: 'memorize', category: 'MySQL', index: 1 })
-    const { wrapper, router } = await mountHome()
-
-    // 文案里带上练习模式，让用户知道上次在练什么
-    expect(wrapper.find('.continue__desc').text()).toContain('MySQL')
-    expect(wrapper.find('.continue__desc').text()).toContain('背题')
-
-    await wrapper.find('.continue').trigger('click')
-    await flushPromises()
-    // 统一进刷题页，不再把 mode/category 塞进 URL——由刷题页的模式面板决定
-    expect(router.currentRoute.value.path).toBe('/practice')
+    const { wrapper } = await mountHome()
+    expect(wrapper.find('.continue').exists()).toBe(false)
+    // 首页文本里不应出现「继续上次」这类入口文案
+    expect(wrapper.text()).not.toContain('继续上次')
   })
 })

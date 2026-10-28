@@ -35,46 +35,29 @@ const routes = [
     meta: { title: '刷题' },
   },
   {
-    path: '/interview',
-    name: 'interview',
-    component: () => import('@/views/InterviewSetupView.vue'),
-    meta: { title: '模拟面试' },
-  },
-  {
-    path: '/interview/run',
-    name: 'interview-run',
-    component: () => import('@/views/InterviewRunView.vue'),
-    meta: { title: '面试进行中', parent: '/interview' },
-  },
-  {
-    path: '/interview/result',
-    name: 'interview-result',
-    component: () => import('@/views/InterviewResultView.vue'),
-    meta: { title: '面试评估', parent: '/interview' },
-  },
-  {
-    path: '/stats',
-    name: 'stats',
-    component: () => import('@/views/StatsView.vue'),
-    meta: { title: '统计' },
-  },
-  {
     path: '/favorites',
     name: 'favorites',
     component: () => import('@/views/FavoritesView.vue'),
-    meta: { title: '收藏', parent: '/stats' },
+    // 收藏 / 错题本都从「我的」进入，所属 Tab 因而指向 /me
+    meta: { title: '收藏', parent: '/me' },
   },
   {
     path: '/wrong',
     name: 'wrong',
     component: () => import('@/views/WrongView.vue'),
-    meta: { title: '错题本', parent: '/stats' },
+    meta: { title: '错题本', parent: '/me' },
   },
   {
     path: '/me',
     name: 'me',
     component: () => import('@/views/MeView.vue'),
     meta: { title: '我的' },
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: () => import('@/views/SettingsView.vue'),
+    meta: { title: '设置', parent: '/me' },
   },
   {
     path: '/:pathMatch(.*)*',
@@ -103,23 +86,6 @@ const router = createRouter({
 })
 
 const APP_NAME = '运维面试题库'
-
-router.beforeEach(async (to) => {
-  // 面试流程守卫：无会话/无结果时跳回设置页
-  if (to.name === 'interview-run') {
-    const { useInterviewStore } = await import('@/stores/interviewStore')
-    const interview = useInterviewStore()
-    if (!interview.active) return { name: 'interview', replace: true }
-    // 已答完还停在 run 页（如手动改地址）→ 直接去结果页
-    if (interview.isFinished) return { name: 'interview-result', replace: true }
-  }
-  if (to.name === 'interview-result') {
-    const { useInterviewStore } = await import('@/stores/interviewStore')
-    const interview = useInterviewStore()
-    if (!interview.result) return { name: 'interview', replace: true }
-  }
-  return true
-})
 
 router.afterEach((to) => {
   const title = to.meta?.title

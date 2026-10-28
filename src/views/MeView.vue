@@ -1,288 +1,244 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
-import Ring from '@/components/Ring.vue'
-import { useSettingsStore } from '@/stores/settingsStore'
-import {
-  THEMES,
-  STORAGE_KEYS,
-  STUDY_MODE_LABEL,
-  STUDY_MODES,
-  DEFAULT_STUDY_MODE,
-} from '@/utils/constants'
+import BarChart from '@/components/BarChart.vue'
 import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
 import { formatPercent } from '@/utils/format'
-import { readJSON, writeJSON, isStorageAvailable } from '@/utils/storage'
 
-const router = useRouter()
-const settings = useSettingsStore()
+/**
+ * 「我的」页：只做「看我自己的数据 + 快速进入错题/收藏」。
+ *
+ * 外观主题、默认练习方式、清空数据这些配置项都移到了 /settings，
+ * 页头右上角一个齿轮按钮进入——避免主页面被设置项撑得太长。
+ */
+
 const study = useStudyStore()
 const bank = useBankStore()
 
-const THEME_LABEL = { light: '浅色', dark: '深色', system: '跟随系统' }
-
-const themeOptions = computed(() => THEMES.map((t) => ({ value: t, label: THEME_LABEL[t] })))
-
-// ---------- 页内二次确认（替代 window.confirm） ----------
-/**
- * 为什么不用 window.confirm：
- * 微信内置浏览器、部分安卓 WebView、以及某些「禁止弹窗」的设置下，
- * window.confirm 会**静默返回 false 或直接不弹**，
- * 表现为「点了清空按钮毫无反应」——这是本页此前的真实 bug。
- * 改用页内确认条：渲染在页面上，任何环境都能显示与点击。
- */
-const confirming = reactive({ records: false, favorites: false })
-
-function askConfirm(kind) {
-  // 一次只弹一个，避免两个确认条同时铺开
-  confirming.records = false
-  confirming.favorites = false
-  confirming[kind] = true
-}
-
-function cancelConfirm(kind) {
-  confirming[kind] = false
-}
-
-function confirmClearRecords() {
-  study.clearRecords()
-  confirming.records = false
-  toast('已清空学习记录')
-}
-
-function confirmClearFavorites() {
-  study.clearFavorites()
-  confirming.favorites = false
-  toast('已清空收藏')
-}
-
-// ---------- 轻提示 ----------
-const toastText = ref('')
-let toastTimer = null
-
-function toast(text) {
-  toastText.value = text
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => {
-    toastText.value = ''
-  }, 1800)
-}
-
-// ---------- 数据概览 ----------
-
 const masteryText = computed(() => formatPercent(study.masteryRate))
 const choiceText = computed(() => formatPercent(study.choiceRate))
-
-const statsCards = computed(() => [
-  { label: '已刷题', value: study.reviewedCount, unit: `/ ${bank.total || '—'}`, to: '/stats' },
-  { label: '掌握率', value: masteryText.value, unit: '简答', to: '/stats' },
-  { label: '正确率', value: choiceText.value, unit: '选择', to: '/stats' },
-  { label: '今日', value: study.todayReviewedCount, unit: '题', to: '/practice' },
-])
-
 const favCount = computed(() => study.favorites.length)
 const wrongCount = computed(() => study.wrongList.length)
+const percentText = computed(() => formatPercent(study.progressRate))
 
-// ---------- 默认练习模式偏好 ----------
+/** 头部三格数据 */
+const summary = computed(() => [
+  { label: '已刷', value: study.reviewedCount, to: '/practice' },
+  { label: '错题', value: wrongCount.value, to: '/wrong' },
+  { label: '收藏', value: favCount.value, to: '/favorites' },
+])
 
-const prefMode = computed({
-  get() {
-    const saved = readJSON(STORAGE_KEYS.SETTINGS, {})
-    return STUDY_MODES.includes(saved?.studyMode) ? saved.studyMode : DEFAULT_STUDY_MODE
-  },
-  set(next) {
-    if (!STUDY_MODES.includes(next)) return
-    const saved = readJSON(STORAGE_KEYS.SETTINGS, {})
-    writeJSON(STORAGE_KEYS.SETTINGS, { ...saved, studyMode: next })
-    toast(`默认模式：${STUDY_MODE_LABEL[next]}`)
-  },
-})
+/** 分类图表默认折叠（页面太长，点开再看细节） */
+const expandedMastery = ref(false)
+const expandedChoice = ref(false)
 
-const prefOptions = computed(() =>
-  STUDY_MODES.map((m) => ({ value: m, label: STUDY_MODE_LABEL[m] }))
+/** 各分类掌握度（仅简答题） */
+const categoryMastery = computed(() =>
+  study.categoryStats
+    .filter((s) => s.shortTotal > 0)
+    .map((s) => ({
+      label: s.category,
+      count: s.know,
+      total: s.know + s.unknown,
+      percent: s.mastery,
+    }))
 )
 
-// ---------- 其他 ----------
-
-const storageOk = computed(() => isStorageAvailable())
-
-const appVersion = '0.1.0'
-
-function goPractice(mode) {
-  router.push({ path: '/practice', query: mode ? { studyMode: mode } : {} })
-}
+/** 各分类选择题正确率 */
+const categoryChoice = computed(() => {
+  const map = new Map()
+  Array.from(study.choiceIds).forEach((id) => {
+    const q = bank.questionMap.get(id)
+    if (!q) return
+    if (!map.has(q.category)) map.set(q.category, { know: 0, unknown: 0 })
+    const s = map.get(q.category)
+    if (study.recordOf(id).status === 'know') s.know += 1
+    else s.unknown += 1
+  })
+  return Array.from(map.entries()).map(([label, s]) => ({
+    label,
+    count: s.know,
+    total: s.know + s.unknown,
+    percent: s.know + s.unknown ? Math.round((s.know / (s.know + s.unknown)) * 100) : null,
+  }))
+})
 </script>
 
 <template>
   <div class="page">
-    <AppHeader title="我的" :back="false" />
+    <AppHeader title="我的" :back="false">
+      <template #right>
+        <router-link to="/settings" class="me__settings" aria-label="设置">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path
+              d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+            />
+            <path
+              d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </router-link>
+      </template>
+    </AppHeader>
 
-    <!-- 数据概览：四个数字 + 总进度环 -->
-    <section class="overview card">
-      <div class="overview__ring">
-        <Ring :percent="study.progressRate" :size="72" label="总进度" />
+    <!-- 个人卡：头像 + 总体进度 + 三格数字 -->
+    <section class="profile">
+      <div class="profile__top">
+        <div class="profile__avatar" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26">
+            <path
+              d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c0-3.6 3.4-6 7.5-6s7.5 2.4 7.5 6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+        </div>
+        <div class="profile__info">
+          <p class="profile__name">运维刷题备考</p>
+          <p class="profile__sub">
+            总进度 {{ percentText }} · {{ study.reviewedCount }} / {{ bank.total }} 题
+          </p>
+        </div>
       </div>
-      <div class="overview__grid">
-        <router-link
-          v-for="s in statsCards"
-          :key="s.label"
-          :to="s.to"
-          class="overview__cell"
-        >
-          <span class="overview__value">{{ s.value }}<em>{{ s.unit }}</em></span>
-          <span class="overview__label">{{ s.label }}</span>
+
+      <div class="profile__stats">
+        <router-link v-for="s in summary" :key="s.label" :to="s.to" class="profile__stat">
+          <span class="profile__num">{{ s.value }}</span>
+          <span class="profile__label">{{ s.label }}</span>
         </router-link>
       </div>
     </section>
 
-    <!-- 快捷入口 -->
-    <h2 class="section-title">快捷入口</h2>
-    <div class="quick card">
-      <button class="quick__item quick__item--practice" @click="goPractice('practice')">
-        <span class="quick__icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="19" height="19">
-            <path d="M13 3 5 14h5l-1 7 8-11h-5l1-7z" fill="currentColor" />
-          </svg>
-        </span>
-        <span class="quick__text">
-          <span class="quick__title">开始刷题</span>
-          <span class="quick__desc">全部题 · 简答自评 / 选择作答</span>
-        </span>
-      </button>
-      <button class="quick__item quick__item--memorize" @click="goPractice('memorize')">
-        <span class="quick__icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="19" height="19">
+    <!-- 数据概览（纯展示，统计页已并入本页） -->
+    <h2 class="section-title">掌握情况</h2>
+    <div class="grid">
+      <div class="tile card">
+        <span class="tile__label">简答掌握率</span>
+        <span class="tile__value">{{ masteryText }}</span>
+      </div>
+      <div class="tile card">
+        <span class="tile__label">选择正确率</span>
+        <span class="tile__value">{{ choiceText }}</span>
+      </div>
+      <div class="tile card">
+        <span class="tile__label">今日已刷</span>
+        <span class="tile__value">{{ study.todayReviewedCount }}<em>题</em></span>
+      </div>
+      <div class="tile card">
+        <span class="tile__label">题库总量</span>
+        <span class="tile__value">{{ bank.total }}<em>题</em></span>
+      </div>
+    </div>
+
+    <!-- 各分类掌握度：默认折叠，点标题展开 -->
+    <button class="collapse" :aria-expanded="expandedMastery" @click="expandedMastery = !expandedMastery">
+      <span class="collapse__title">
+        各分类掌握度
+        <span class="collapse__tip">（仅简答题）</span>
+      </span>
+      <span class="collapse__chev" :class="{ 'collapse__chev--up': expandedMastery }" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16">
+          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span>
+    </button>
+    <section v-if="expandedMastery" class="card chart-card">
+      <BarChart :items="categoryMastery" empty-text="还没有简答题的作答记录" />
+    </section>
+
+    <!-- 各分类选择正确率：同样默认折叠 -->
+    <button class="collapse" :aria-expanded="expandedChoice" @click="expandedChoice = !expandedChoice">
+      <span class="collapse__title">各分类选择正确率</span>
+      <span class="collapse__chev" :class="{ 'collapse__chev--up': expandedChoice }" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16">
+          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span>
+    </button>
+    <section v-if="expandedChoice" class="card chart-card">
+      <BarChart :items="categoryChoice" empty-text="还没有选择题的作答记录" />
+    </section>
+
+    <!-- 错题本 / 收藏入口 -->
+    <h2 class="section-title">我的题目</h2>
+    <div class="group card">
+      <router-link to="/wrong" class="row">
+        <span class="row__icon row__icon--rose" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="17" height="17">
             <path
-              d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5v-13zM14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14V4z"
-              fill="currentColor"
-              opacity=".85"
+              d="M12 7v6M12 16.5v.5M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 0 0-15 0z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
             />
           </svg>
         </span>
-        <span class="quick__text">
-          <span class="quick__title">背题模式</span>
-          <span class="quick__desc">只有简答题 · 看题背答案</span>
-        </span>
-      </button>
-      <router-link to="/wrong" class="quick__item">
-        <span class="quick__badge quick__badge--danger">{{ wrongCount }}</span>
-        <span class="quick__text">
-          <span class="quick__title">错题本</span>
-          <span class="quick__desc">答错 / 自评不会的题</span>
-        </span>
-        <span class="quick__arrow" aria-hidden="true">→</span>
-      </router-link>
-      <router-link to="/favorites" class="quick__item">
-        <span class="quick__badge">{{ favCount }}</span>
-        <span class="quick__text">
-          <span class="quick__title">收藏</span>
-          <span class="quick__desc">手动标记的重点题</span>
-        </span>
-        <span class="quick__arrow" aria-hidden="true">→</span>
-      </router-link>
-    </div>
-
-    <!-- 外观 -->
-    <h2 class="section-title">外观</h2>
-    <div class="seg card">
-      <button
-        v-for="opt in themeOptions"
-        :key="opt.value"
-        class="seg__item"
-        :class="{ 'seg__item--on': settings.theme === opt.value }"
-        @click="settings.setTheme(opt.value)"
-      >
-        {{ opt.label }}
-      </button>
-    </div>
-
-    <!-- 默认练习方式 -->
-    <h2 class="section-title">默认练习方式</h2>
-    <div class="seg card">
-      <button
-        v-for="opt in prefOptions"
-        :key="opt.value"
-        class="seg__item"
-        :class="{ 'seg__item--on': prefMode === opt.value }"
-        @click="prefMode = opt.value"
-      >
-        {{ opt.label }}
-      </button>
-    </div>
-    <p class="note muted">进入刷题页时默认选中该模式，也可在刷题页随时切换。</p>
-
-    <!-- 数据管理 -->
-    <h2 class="section-title">数据管理</h2>
-    <div class="card list">
-      <div class="list__row">
-        <span>学习记录</span>
-        <span class="muted">{{ study.reviewedCount }} 题</span>
-      </div>
-      <button class="list__row list__row--action" @click="askConfirm('records')">
-        <span class="danger">清空学习记录</span>
-        <span class="list__arrow" aria-hidden="true">›</span>
-      </button>
-
-      <!-- 页内确认：不依赖 window.confirm，微信/WebView 里也能用 -->
-      <div v-if="confirming.records" class="confirm" role="alertdialog">
-        <p class="confirm__text">
-          确定清空全部学习记录？<br />
-          <span class="muted">已刷状态、掌握率、进度会一并清除，不可恢复。</span>
-        </p>
-        <div class="confirm__actions">
-          <button class="btn btn--plain btn--sm" @click="cancelConfirm('records')">取消</button>
-          <button class="btn btn--danger btn--sm" @click="confirmClearRecords">确定清空</button>
+        <div class="row__text">
+          <span class="row__title">错题本</span>
+          <span class="row__desc">答错 / 自评「不会」的题</span>
         </div>
-      </div>
+        <span class="row__value">{{ wrongCount }} 题</span>
+        <span class="row__chev" aria-hidden="true">›</span>
+      </router-link>
 
-      <div class="list__row">
-        <span>收藏</span>
-        <span class="muted">{{ favCount }} 题</span>
-      </div>
-      <button
-        class="list__row list__row--action"
-        :disabled="!favCount"
-        :class="{ 'list__row--disabled': !favCount }"
-        @click="askConfirm('favorites')"
-      >
-        <span class="danger">清空收藏</span>
-        <span class="list__arrow" aria-hidden="true">›</span>
-      </button>
-
-      <div v-if="confirming.favorites" class="confirm" role="alertdialog">
-        <p class="confirm__text">确定清空全部收藏？（{{ favCount }} 题）</p>
-        <div class="confirm__actions">
-          <button class="btn btn--plain btn--sm" @click="cancelConfirm('favorites')">取消</button>
-          <button class="btn btn--danger btn--sm" @click="confirmClearFavorites">确定清空</button>
+      <router-link to="/favorites" class="row">
+        <span class="row__icon row__icon--amber" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="17" height="17">
+            <path
+              d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <div class="row__text">
+          <span class="row__title">我的收藏</span>
+          <span class="row__desc">手动标记的重点题</span>
         </div>
-      </div>
+        <span class="row__value">{{ favCount }} 题</span>
+        <span class="row__chev" aria-hidden="true">›</span>
+      </router-link>
     </div>
 
-    <!-- 关于 -->
-    <h2 class="section-title">关于</h2>
-    <div class="card list">
-      <div class="list__row">
-        <span>应用</span>
-        <span class="muted">运维面试题库 v{{ appVersion }}</span>
+    <!-- 设置入口：外观 / 默认练习方式 / 数据管理都收进设置页 -->
+    <router-link to="/settings" class="row row--entry card">
+      <span class="row__icon row__icon--indigo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="17" height="17">
+          <path
+            d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+          />
+          <path
+            d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
+      <div class="row__text">
+        <span class="row__title">设置</span>
+        <span class="row__desc">外观主题 · 默认练习方式 · 清空数据</span>
       </div>
-      <div class="list__row">
-        <span>数据存储</span>
-        <span class="muted">{{ storageOk ? '浏览器本地（localStorage）' : '不可用（隐私模式）' }}</span>
-      </div>
-      <div class="list__row">
-        <span>题库规模</span>
-        <span class="muted">{{ bank.total || '—' }} 题</span>
-      </div>
-    </div>
+      <span class="row__chev" aria-hidden="true">›</span>
+    </router-link>
 
-    <p class="foot muted">
-      数据只存在本机浏览器，清除浏览器数据或换设备会丢失。<br />
-      建议定期到「统计」页核对进度。
-    </p>
-
-    <!-- 轻提示 -->
     <Transition name="toast">
       <div v-if="toastText" class="toast" role="status">{{ toastText }}</div>
     </Transition>
@@ -290,68 +246,204 @@ function goPractice(mode) {
 </template>
 
 <style scoped>
-/* ---------- 概览 ---------- */
-.overview {
+/* ---------- 个人卡 ---------- */
+.profile {
+  margin-top: 10px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--grad-hero);
+  box-shadow: var(--shadow-lift);
+  color: #fff;
+}
+.profile__top {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px;
+  gap: 12px;
 }
-.overview__ring {
+.profile__avatar {
   flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.32);
 }
-.overview__grid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 10px;
+.profile__info {
   min-width: 0;
 }
-.overview__cell {
+.profile__name {
+  margin: 0 0 3px;
+  font-size: 15.5px;
+  font-weight: 700;
+}
+.profile__sub {
+  margin: 0;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.profile__stats {
+  display: flex;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+.profile__stat {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  color: var(--c-text);
+  align-items: center;
+  gap: 2px;
+  color: #fff;
 }
-.overview__value {
-  font-size: 15px;
+.profile__stat + .profile__stat {
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+.profile__num {
+  font-size: 17px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  line-height: 1.3;
 }
-.overview__value em {
-  margin-left: 2px;
+.profile__label {
   font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* ---------- 四宫格 ---------- */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 13px;
+  color: var(--c-text);
+}
+
+/* 图表卡（分类掌握度） */
+.chart-card {
+  padding: 14px 14px 8px;
+}
+
+/* 页头右上角的设置入口 */
+.me__settings {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-2);
+  border-radius: 50%;
+}
+.me__settings:active {
+  background: var(--c-primary-weak);
+}
+
+/* 可折叠标题（分类掌握度 / 选择正确率） */
+.collapse {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 0 2px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--c-text);
+  text-align: left;
+}
+.collapse__title {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.collapse__tip {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--c-text-3);
+}
+.collapse__chev {
+  display: flex;
+  align-items: center;
+  color: var(--c-text-3);
+  transition: transform 0.2s ease;
+}
+.collapse__chev--up {
+  transform: rotate(180deg);
+}
+
+/* 设置入口行（单独一张卡） */
+.row--entry {
+  margin-top: 16px;
+  padding: 0 14px;
+  min-height: 56px;
+  border-bottom: none;
+}
+.tile__label {
+  font-size: 11.5px;
+  color: var(--c-text-3);
+}
+.tile__value {
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.tile__value em {
+  margin-left: 2px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 400;
   color: var(--c-text-3);
 }
-.overview__label {
-  font-size: 10.5px;
-  color: var(--c-text-3);
-}
 
-/* ---------- 快捷入口 ---------- */
-.quick {
-  padding: 0;
+/* ---------- 分组列表 ---------- */
+.group {
+  padding: 0 14px;
   overflow: hidden;
 }
-.quick__item {
+.row {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 54px;
-  padding: 10px 13px;
+  min-height: 56px;
+  padding: 10px 0;
   border-bottom: 1px solid var(--c-border);
   text-align: left;
   color: var(--c-text);
 }
-.quick__item:last-child {
+.row:last-child {
   border-bottom: none;
 }
-.quick__icon {
+.row:active {
+  background: var(--c-bg);
+}
+.row--static {
+  cursor: default;
+}
+.row--static:active {
+  background: none;
+}
+.row--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.row__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.row__icon {
   flex-shrink: 0;
   width: 30px;
   height: 30px;
@@ -359,179 +451,56 @@ function goPractice(mode) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
 }
-.quick__item--practice .quick__icon {
-  background: var(--grad-indigo);
+.row__icon--teal {
+  color: var(--c-tag-teal, #0d9488);
+  background: rgba(13, 148, 136, 0.12);
 }
-.quick__item--memorize .quick__icon {
-  background: var(--grad-teal);
-}
-.quick__badge {
-  flex-shrink: 0;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 7px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+.row__icon--indigo {
   color: var(--c-primary);
   background: var(--c-primary-weak);
 }
-.quick__badge--danger {
+.row__icon--amber {
+  color: var(--c-warning);
+  background: rgba(250, 173, 20, 0.14);
+}
+.row__icon--rose {
   color: var(--c-danger);
   background: var(--c-danger-weak);
 }
-.quick__text {
+
+.row__text {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 1px;
   min-width: 0;
 }
-.quick__title {
+.row__title {
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
 }
-.quick__desc {
+.row__desc {
   font-size: 10.5px;
   color: var(--c-text-3);
 }
-.quick__arrow {
+.row__value {
   flex-shrink: 0;
-  font-size: 15px;
+  font-size: 12.5px;
   color: var(--c-text-3);
+}
+.row__chev {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--c-text-3);
+  line-height: 1;
 }
 
 /* ---------- 分段选择 ---------- */
-.seg {
-  display: flex;
-  padding: 4px;
-  gap: 4px;
-}
-.seg__item {
-  flex: 1;
-  min-height: 38px;
-  border-radius: var(--radius-sm);
-  font-size: 13.5px;
-  color: var(--c-text-2);
-}
-.seg__item--on {
-  background: var(--c-primary);
-  color: #fff;
-  font-weight: 500;
-}
-
-.note {
-  margin: 6px 2px 0;
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-/* ---------- 列表 ---------- */
-.list {
-  padding: 0 14px;
-  overflow: hidden;
-}
-.list__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  min-height: 48px;
-  padding: 0;
-  font-size: 14px;
-  color: var(--c-text);
-  border-bottom: 1px solid var(--c-border);
-  text-align: left;
-}
-.list__row:last-child {
-  border-bottom: none;
-}
-.list__row--action {
-  justify-content: flex-start;
-  gap: 8px;
-  cursor: pointer;
-}
-.list__row--action:active {
-  background: var(--c-bg);
-}
-.list__row--disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.list__arrow {
-  margin-left: auto;
-  font-size: 17px;
-  color: var(--c-text-3);
-}
-.danger {
-  color: var(--c-danger);
-}
-.list__row .muted {
-  font-size: 13px;
-}
 
 /* ---------- 页内确认条 ---------- */
-.confirm {
-  padding: 11px 0 13px;
-  border-bottom: 1px solid var(--c-border);
-}
-.confirm__text {
-  margin: 0 0 9px;
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--c-text);
-}
-.confirm__actions {
-  display: flex;
-  gap: 8px;
-}
-.btn--sm {
-  height: 34px;
-  padding: 0 14px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-}
-.btn--danger {
-  background: var(--c-danger);
-  color: #fff;
-  font-weight: 500;
-}
 
 /* ---------- 页脚 ---------- */
-.foot {
-  margin: 16px 2px 8px;
-  font-size: 10.5px;
-  line-height: 1.7;
-  text-align: center;
-}
 
 /* ---------- 轻提示 ---------- */
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 16px);
-  transform: translateX(-50%);
-  padding: 8px 16px;
-  border-radius: 18px;
-  font-size: 12.5px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.78);
-  z-index: 60;
-  pointer-events: none;
-}
-.toast-enter-active,
-.toast-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(6px);
-}
 </style>

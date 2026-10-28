@@ -43,7 +43,7 @@ function startWrongPractice() {
 
 <template>
   <div class="page">
-    <AppHeader title="错题本" back-to="/stats" />
+    <AppHeader title="错题本" back-to="/me" />
 
     <div v-if="bank.loading" class="skeleton card" aria-busy="true" />
 

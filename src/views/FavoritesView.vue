@@ -63,7 +63,7 @@ function clearAll() {
 
 <template>
   <div class="page">
-    <AppHeader title="我的收藏" back-to="/stats" />
+    <AppHeader title="我的收藏" back-to="/me" />
 
     <div v-if="bank.loading" class="skeleton card" aria-busy="true" />
 

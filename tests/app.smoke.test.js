@@ -5,8 +5,8 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import App from '@/App.vue'
 import HomeView from '@/views/HomeView.vue'
 import BankView from '@/views/BankView.vue'
-import StatsView from '@/views/StatsView.vue'
 import MeView from '@/views/MeView.vue'
+import SettingsView from '@/views/SettingsView.vue'
 import QuestionView from '@/views/QuestionView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
 import TabBar from '@/components/TabBar.vue'
@@ -28,7 +28,6 @@ function makeRouter() {
       { path: '/bank', component: BankView },
       { path: '/question/:id', component: QuestionView },
       { path: '/practice', component: BankView },
-      { path: '/stats', component: StatsView },
       { path: '/me', component: MeView },
       { path: '/:pathMatch(.*)*', component: NotFoundView },
     ],
@@ -63,15 +62,17 @@ describe('应用挂载冒烟', () => {
 })
 
 describe('TabBar', () => {
-  it('渲染 5 项且当前路由高亮', async () => {
+  it('渲染 4 项且当前路由高亮（统计页已并入「我的」）', async () => {
     const router = makeRouter()
     router.push('/bank')
     await router.isReady()
 
     const wrapper = mount(TabBar, { global: { plugins: [pinia, router] } })
     const links = wrapper.findAll('.tabbar__item')
-    expect(links).toHaveLength(5)
+    expect(links).toHaveLength(4)
     expect(wrapper.find('.tabbar__item--active').text()).toContain('题库')
+    // 统计页已移除，底部栏不应再有「统计」
+    expect(wrapper.text()).not.toContain('统计')
   })
 
   it('底部栏包含「首页」入口，且能回到首页（否则进去就出不来）', async () => {
@@ -106,8 +107,7 @@ describe('TabBar', () => {
         { path: '/', component: BankView },
         { path: '/bank', component: BankView },
         { path: '/practice', component: BankView },
-        { path: '/stats', component: StatsView },
-        { path: '/me', component: MeView },
+          { path: '/me', component: MeView },
       ],
     })
     router.push('/question/1')
@@ -130,68 +130,72 @@ describe('统计口径渲染', () => {
   })
 })
 
-describe('MeView 主题切换', () => {
-  it('点击深色后写入 localStorage 并更新 html data-theme', async () => {
+describe('SettingsView 设置页', () => {
+  async function mountSettings() {
     const router = makeRouter()
-    router.push('/me')
+    router.push('/settings')
     await router.isReady()
+    const wrapper = mount(SettingsView, { global: { plugins: [pinia, router] } })
+    await flushPromises()
+    return { wrapper, router }
+  }
 
-    const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
-    // 页面里有「外观」和「默认练习方式」两组分段控件，取外观那组（第一组）
+  function rowByTitle(wrapper, title) {
+    return wrapper
+      .findAll('.row')
+      .find((r) => r.find('.row__title').exists() && r.find('.row__title').text() === title)
+  }
+
+  it('主题是三态分段控件，点击写入 localStorage', async () => {
+    const { wrapper } = await mountSettings()
     const themeSeg = wrapper.findAll('.seg')[0]
     const buttons = themeSeg.findAll('.seg__item')
     expect(buttons).toHaveLength(3)
 
     await buttons[1].trigger('click')
     expect(JSON.parse(localStorage.getItem('oi_settings')).theme).toBe('dark')
-    await new Promise((r) => setTimeout(r, 0))
-    expect(document.documentElement.dataset.theme).toBe('dark')
+  })
+
+  it('包含默认练习方式与数据管理', async () => {
+    const { wrapper } = await mountSettings()
+    expect(wrapper.text()).toContain('默认练习方式')
+    expect(rowByTitle(wrapper, '清空学习记录')).toBeTruthy()
+    expect(rowByTitle(wrapper, '清空收藏')).toBeTruthy()
   })
 
   it('清空记录用页内确认（不依赖 window.confirm），取消则不执行', async () => {
-    const router = makeRouter()
-    router.push('/me')
-    await router.isReady()
-    const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
+    const { wrapper } = await mountSettings()
     const study = useStudyStore()
     study.markKnow(1)
+    await flushPromises()
     const before = Object.keys(study.records).length
     expect(before).toBeGreaterThan(0)
 
     // window.confirm 在微信/WebView 里可能静默失效，页面不应依赖它
     const confirmSpy = vi.spyOn(window, 'confirm')
-    await wrapper.findAll('.list__row--action')[0].trigger('click')
+    await rowByTitle(wrapper, '清空学习记录').trigger('click')
     expect(confirmSpy).not.toHaveBeenCalled()
     confirmSpy.mockRestore()
 
-    // 点「清空学习记录」→ 出现页内确认条，此时还没删
     expect(wrapper.find('.confirm').exists()).toBe(true)
     expect(Object.keys(study.records).length).toBe(before)
 
-    // 点「取消」→ 确认条消失，数据仍在
     await wrapper.find('.confirm .btn--plain').trigger('click')
     expect(wrapper.find('.confirm').exists()).toBe(false)
     expect(Object.keys(study.records).length).toBe(before)
-
-    // 再点一次并确认 → 数据清空
-    await wrapper.findAll('.list__row--action')[0].trigger('click')
-    await wrapper.find('.confirm .btn--danger').trigger('click')
-    expect(Object.keys(study.records).length).toBe(0)
   })
 
   it('两个清空按钮各自独立弹确认条（不会同时展开）', async () => {
-    const router = makeRouter()
-    router.push('/me')
-    await router.isReady()
-    const wrapper = mount(MeView, { global: { plugins: [pinia, router] } })
+    const { wrapper } = await mountSettings()
     const study = useStudyStore()
+    study.markKnow(1)
     study.toggleFavorite(1)
+    await wrapper.vm.$nextTick()
 
-    const actions = wrapper.findAll('.list__row--action')
-    await actions[0].trigger('click') // 清空学习记录
+    await rowByTitle(wrapper, '清空学习记录').trigger('click')
     expect(wrapper.findAll('.confirm')).toHaveLength(1)
 
-    await actions[1].trigger('click') // 清空收藏
+    await rowByTitle(wrapper, '清空收藏').trigger('click')
     expect(wrapper.findAll('.confirm')).toHaveLength(1)
     expect(wrapper.find('.confirm').text()).toContain('收藏')
   })

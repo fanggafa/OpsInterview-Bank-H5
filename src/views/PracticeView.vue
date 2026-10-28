@@ -50,16 +50,19 @@ const category = computed(() =>
   CATEGORIES.includes(route.query.category) ? route.query.category : ''
 )
 
-/**
- * 模式选择面板：仅在「还没开始刷」时显示（cursor=0 且未答过题），
- * 开始刷之后收起，把整屏让给题卡。
- */
-const setupOpen = ref(false)
-
 const queue = ref([])
 const cursor = ref(0)
 const resumed = ref(false)
 const ready = ref(false)
+
+/**
+ * 是否已进入「刷题中」。
+ *
+ * 进入页面先显示选择页（两个居中按钮），选定后才渲染题卡。
+ * 从首页分类入口进来时带 category 参数，仍先选择方式——
+ * 因为「刷题 / 背题」是不同的队列，必须先定。
+ */
+const started = ref(false)
 const expanded = ref(false)
 const roundAnswers = ref({})
 const finished = ref(false)
@@ -116,9 +119,9 @@ function build() {
   )
   cursor.value = start.index
   resumed.value = start.resumed
-  // 没有可续刷的进度 → 打开模式面板，让用户先选「刷题 / 背题」
-  setupOpen.value = !start.resumed
-  expanded.value = false
+  // 背题模式默认展开答案（它的用途就是「看题背答案」）；
+  // 刷题模式仍默认收起，先自己想再看
+  expanded.value = studyMode.value === 'memorize'
   finished.value = false
   roundAnswers.value = {}
   resetChoice()
@@ -182,7 +185,8 @@ function goTo(index) {
 
   schedule(() => {
     cursor.value = index
-    expanded.value = false
+    // 切题后同样按模式决定：背题模式每道都直接展开答案
+    expanded.value = studyMode.value === 'memorize'
     resetChoice()
     slideDir.value = ''
     persistProgress()
@@ -298,29 +302,9 @@ function switchMode(nextMode) {
 function switchStudyMode(nextStudyMode) {
   if (studyMode.value === nextStudyMode) return
   study.clearProgress()
+  // 先按新模式决定答案展开态，避免路由切换那一瞬还是旧状态
+  expanded.value = nextStudyMode === 'memorize'
   router.replace({ path: '/practice', query: { ...route.query, studyMode: nextStudyMode } })
-}
-
-/** 「继续上次」：从保存的位置接着刷 */
-function resumeLast() {
-  const info = progressInfo.value
-  if (!info) return
-  setupOpen.value = false
-  study.clearProgress()
-  router.replace({
-    path: '/practice',
-    query: {
-      mode: info.mode,
-      studyMode: info.studyMode,
-      ...(info.category !== '全部题目' ? { category: info.category } : {}),
-    },
-  })
-}
-
-/** 收起模式面板，直接开刷 */
-function startNow() {
-  setupOpen.value = false
-  persistProgress()
 }
 
 // ---------- 键盘 ----------
@@ -429,14 +413,26 @@ const studyModeOptions = computed(() =>
   }))
 )
 
-/** 当前练习模式的简答题总数（面板上显示「本次 N 题」） */
+/** 当前练习模式下的题量提示（显示在「题目顺序」那一行右侧） */
 const queueHint = computed(() => {
   if (!total.value) return '没有符合条件的题目'
   return `本次 ${total.value} 题`
 })
 
-/** 上次进度（用于面板上的「继续上次」） */
+/** 上次进度（只在选择页展示，让用户知道继续会接上） */
 const progressInfo = computed(() => describeProgress(study.progress))
+
+/** 选定练习方式并开始 */
+function startStudy(next) {
+  started.value = true
+  if (studyMode.value !== next) {
+    switchStudyMode(next)
+  } else {
+    // 同一模式：直接在当前队列上恢复/继续
+    build()
+    persistProgress()
+  }
+}
 
 const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 </script>
@@ -445,18 +441,22 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   <div class="page practice page--fill">
     <AppHeader :title="headerTitle" :back="false">
       <template #right>
+        <!-- 模式切换：像切换主题一样，点一下切到另一种练习方式 -->
         <button
-          class="practice__fav"
-          :aria-label="favorite ? '取消收藏' : '收藏'"
-          :aria-pressed="favorite"
-          @click="toggleFavorite"
+          v-if="started && !finished"
+          class="practice__mode-btn"
+          :aria-label="`当前${STUDY_MODE_LABEL[studyMode]}，点击切换`"
+          :title="`点击切换到${STUDY_MODE_LABEL[studyMode === 'practice' ? 'memorize' : 'practice']}`"
+          @click="switchStudyMode(studyMode === 'practice' ? 'memorize' : 'practice')"
         >
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <span class="practice__mode-text">{{ STUDY_MODE_LABEL[studyMode] }}</span>
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <path
-              d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
-              :fill="favorite ? 'currentColor' : 'none'"
+              d="M7 9l5 5 5-5"
+              fill="none"
               stroke="currentColor"
-              stroke-width="1.6"
+              stroke-width="2"
+              stroke-linecap="round"
               stroke-linejoin="round"
             />
           </svg>
@@ -464,65 +464,57 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
       </template>
     </AppHeader>
 
-    <!-- 模式选择面板：未开始刷时显示，选完收起 -->
-    <section v-if="setupOpen && !finished" class="setup card">
-      <div class="setup__head">
-        <h2 class="setup__title">选择练习方式</h2>
-        <button class="setup__skip" @click="startNow">直接开始 →</button>
-      </div>
+    <!-- 选择页：两个居中按钮，选定后才进入刷题 -->
+    <section v-if="!started && !finished" class="picker">
+      <h1 class="picker__title">选择练习方式</h1>
+      <p class="picker__tip muted">
+        两种方式共用同一套题库，随时可在右上角切换
+      </p>
 
-      <!-- 练习模式：刷题 / 背题 -->
-      <div class="setup__modes">
-        <button
-          v-for="opt in studyModeOptions"
-          :key="opt.value"
-          class="setup__mode"
-          :class="{ 'setup__mode--on': studyMode === opt.value }"
-          @click="switchStudyMode(opt.value)"
-        >
-          <span class="setup__mode-name">{{ opt.label }}</span>
-          <span class="setup__mode-desc">{{ opt.desc }}</span>
-        </button>
-      </div>
-
-      <!-- 队列顺序 -->
-      <div class="setup__row">
-        <span class="setup__label">题目顺序</span>
-        <div class="setup__seg">
-          <button
-            v-for="opt in modeOptions"
-            :key="opt.value"
-            class="setup__seg-item"
-            :class="{ 'setup__seg-item--on': mode === opt.value }"
-            @click="switchMode(opt.value)"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-      </div>
-
-      <p class="setup__hint muted">{{ queueHint }}</p>
-
-      <!-- 继续上次 -->
-      <button v-if="progressInfo" class="setup__resume" @click="resumeLast">
-        <span class="setup__resume-dot" aria-hidden="true" />
-        <span class="setup__resume-body">
-          <span class="setup__resume-title">继续上次刷题</span>
-          <span class="setup__resume-desc">
-            {{ progressInfo.studyModeLabel }} · {{ progressInfo.category }} · {{ progressInfo.positionText }}
-          </span>
+      <button class="picker__btn picker__btn--practice" @click="startStudy('practice')">
+        <span class="picker__icon picker__icon--practice" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path d="M13 3 5 14h5l-1 7 8-11h-5l1-7z" fill="currentColor" />
+          </svg>
         </span>
-        <span class="setup__resume-arrow" aria-hidden="true">→</span>
+        <span class="picker__body">
+          <span class="picker__name">刷题模式</span>
+          <span class="picker__desc">全部题 · 简答自评 / 选择作答</span>
+        </span>
       </button>
+
+      <button class="picker__btn picker__btn--memorize" @click="startStudy('memorize')">
+        <span class="picker__icon picker__icon--memorize" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path
+              d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5v-13zM14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14V4z"
+              fill="currentColor"
+            />
+          </svg>
+        </span>
+        <span class="picker__body">
+          <span class="picker__name">背题模式</span>
+          <span class="picker__desc">只有简答题 · 答案默认展开</span>
+        </span>
+      </button>
+
+      <p v-if="progressInfo" class="picker__resume muted">
+        上次停在 {{ progressInfo.studyModeLabel }} · {{ progressInfo.category }} ·
+        {{ progressInfo.positionText }}
+      </p>
     </section>
 
-    <!-- 模式切换 + 进度 -->
-    <div class="modes">
+    <!-- 刷题中：只在 started 之后渲染 -->
+    <template v-if="started">
+    <!-- 题目顺序 -->
+    <div class="modes" role="radiogroup" aria-label="题目顺序">
       <button
         v-for="opt in modeOptions"
         :key="opt.value"
         class="modes__item"
         :class="{ 'modes__item--on': mode === opt.value }"
+        role="radio"
+        :aria-checked="mode === opt.value"
         @click="switchMode(opt.value)"
       >
         {{ opt.label }}
@@ -573,7 +565,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
       </p>
       <div class="done__actions">
         <button class="btn btn--plain" @click="restart">再来一轮</button>
-        <button class="btn btn--primary" @click="router.push('/stats')">看统计</button>
+        <button class="btn btn--primary" @click="router.push('/me')">看掌握情况</button>
       </div>
     </section>
 
@@ -590,6 +582,24 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
             <span v-if="status" class="badge qcard-p__status" :class="`qcard-p__status--${status}`">
               {{ status === 'know' ? (short ? '会' : '答对') : (short ? '不会' : '答错') }}
             </span>
+            <!-- 收藏：放在题目自己这一行，与「顶部导航」无关 -->
+            <button
+              class="qcard-p__fav"
+              :class="{ 'qcard-p__fav--on': favorite }"
+              :aria-label="favorite ? '取消收藏' : '收藏这道题'"
+              :aria-pressed="favorite"
+              @click="toggleFavorite"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path
+                  d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
+                  :fill="favorite ? 'currentColor' : 'none'"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
           </div>
 
           <!-- 可滚动的题目主体 -->
@@ -691,6 +701,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
         <template v-else>左滑下一题 · 右滑上一题 · A–D 选择<template v-if="multiple"> · Enter 提交</template></template>
       </p>
     </template>
+    </template>
   </div>
 </template>
 
@@ -714,144 +725,112 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   border-radius: 50%;
 }
 
-/* ---------- 模式选择面板 ---------- */
-.setup {
-  margin-top: 8px;
-  padding: 13px 14px 14px;
-}
-.setup__head {
+/* 右上角的模式切换按钮：像主题切换一样，点一下换一种练习方式 */
+.practice__mode-btn {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-.setup__title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-.setup__skip {
+  align-items: center;
+  gap: 3px;
+  height: 30px;
+  padding: 0 9px 0 11px;
+  border-radius: 15px;
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
   font-size: 12px;
   color: var(--c-primary);
+  white-space: nowrap;
 }
-
-/* 刷题 / 背题：两个大块，说明文案一起给出 */
-.setup__modes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.setup__mode {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 10px 11px;
-  border-radius: var(--radius-sm);
-  border: 1.5px solid var(--c-border);
-  background: var(--c-card);
-  text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-.setup__mode--on {
-  border-color: var(--c-primary);
+.practice__mode-btn:active {
   background: var(--c-primary-weak);
 }
-.setup__mode-name {
-  font-size: 13.5px;
+.practice__mode-text {
   font-weight: 600;
-  color: var(--c-text);
-}
-.setup__mode--on .setup__mode-name {
-  color: var(--c-primary);
-}
-.setup__mode-desc {
-  font-size: 10.5px;
-  line-height: 1.45;
-  color: var(--c-text-3);
 }
 
-/* 题目顺序 */
-.setup__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 12px;
-}
-.setup__label {
-  font-size: 12.5px;
-  color: var(--c-text-2);
-}
-.setup__seg {
-  display: flex;
-  padding: 2px;
-  gap: 2px;
-  border-radius: 10px;
-  background: var(--c-bg);
-}
-.setup__seg-item {
-  height: 26px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  color: var(--c-text-2);
-}
-.setup__seg-item--on {
-  color: #fff;
-  background: var(--c-primary);
-}
-
-.setup__hint {
-  margin: 8px 0 0;
-  font-size: 11.5px;
-}
-
-/* 继续上次 */
-.setup__resume {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  margin-top: 11px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--c-bg);
-  text-align: left;
-}
-.setup__resume-dot {
-  flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--c-primary);
-  box-shadow: 0 0 0 3px var(--c-primary-weak);
-}
-.setup__resume-body {
+/* ---------- 选择页（进入刷题前的两个居中按钮） ---------- */
+.picker {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px 6px 40px;
 }
-.setup__resume-title {
-  font-size: 13px;
-  font-weight: 600;
+.picker__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--c-text);
 }
-.setup__resume-desc {
-  font-size: 11px;
-  color: var(--c-text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.picker__tip {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-align: center;
 }
-.setup__resume-arrow {
+.picker__btn {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 17px 18px;
+  border-radius: 14px;
+  border: 1.5px solid var(--c-border);
+  background: var(--c-card);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+.picker__btn:active {
+  transform: scale(0.985);
+}
+.picker__btn--practice {
+  border-color: var(--c-primary);
+  background: var(--c-primary-weak);
+}
+.picker__icon {
   flex-shrink: 0;
-  font-size: 15px;
-  color: var(--c-primary);
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.picker__icon--practice {
+  background: var(--grad-indigo);
+}
+.picker__icon--memorize {
+  background: var(--grad-teal);
+}
+.picker__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.picker__name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+.picker__desc {
+  font-size: 11.5px;
+  color: var(--c-text-3);
+}
+.picker__resume {
+  margin: 12px 0 0;
+  padding: 8px 14px;
+  border-radius: 20px;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
 }
 
+/* ---------- 题目顺序按钮 ---------- */
 .modes {
   display: flex;
   align-items: center;
@@ -975,6 +954,24 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   gap: 5px;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+/* 收藏按钮固定在题头行末尾（题目自己的收藏，与顶部导航无关） */
+.qcard-p__fav {
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--c-text-3);
+}
+.qcard-p__fav:active {
+  background: var(--c-bg);
+}
+.qcard-p__fav--on {
+  color: var(--c-warning);
 }
 .qcard-p__cat {
   color: var(--c-text-2);
