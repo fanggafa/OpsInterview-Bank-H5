@@ -30,6 +30,19 @@ import JvmMemoryAreas from './JvmMemoryAreas.vue'
 import MqDelivery from './MqDelivery.vue'
 import MongoReplicaShard from './MongoReplicaShard.vue'
 import DeployStrategies from './DeployStrategies.vue'
+import GitAreas from './GitAreas.vue'
+import ShellSafety from './ShellSafety.vue'
+import BastionAccess from './BastionAccess.vue'
+import AutomationFlow from './AutomationFlow.vue'
+import VmCpuOvercommit from './VmCpuOvercommit.vue'
+import IncidentFlow from './IncidentFlow.vue'
+import SlowServiceLayers from './SlowServiceLayers.vue'
+import DeployIncidentTriage from './DeployIncidentTriage.vue'
+import HttpStatusGroups from './HttpStatusGroups.vue'
+import MysqlIndexLookup from './MysqlIndexLookup.vue'
+import DockerLayers from './DockerLayers.vue'
+import CacheProblems from './CacheProblems.vue'
+import AlertFunnel from './AlertFunnel.vue'
 
 /** @type {Record<string, object>} */
 export const FIGURES = {
@@ -54,6 +67,19 @@ export const FIGURES = {
   'mq-delivery': MqDelivery,
   'mongo-replica-shard': MongoReplicaShard,
   'deploy-strategies': DeployStrategies,
+  'git-areas': GitAreas,
+  'shell-safety': ShellSafety,
+  'bastion-access': BastionAccess,
+  'automation-flow': AutomationFlow,
+  'vm-cpu-overcommit': VmCpuOvercommit,
+  'incident-flow': IncidentFlow,
+  'slow-service-layers': SlowServiceLayers,
+  'deploy-incident-triage': DeployIncidentTriage,
+  'http-status-groups': HttpStatusGroups,
+  'mysql-index-lookup': MysqlIndexLookup,
+  'docker-layers': DockerLayers,
+  'cache-problems': CacheProblems,
+  'alert-funnel': AlertFunnel,
 }
 
 /**

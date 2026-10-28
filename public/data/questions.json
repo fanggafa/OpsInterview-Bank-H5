@@ -114,7 +114,7 @@
     "category": "Shell脚本",
     "difficulty": "简单",
     "question": "Shell 脚本开头写 set -euo pipefail 有什么作用？分别解释每个选项。",
-    "answer": "作用是让脚本「遇错即停」，避免静默失败导致更严重的后果。\n\n- set -e：任一命令返回非 0 状态立即退出。注意在 if/while 条件、|| 之后、管道中间（除非 pipefail）等场景不触发，属于已知坑。\n- set -u：引用未定义变量时报错退出，避免空变量静默变成空字符串。建议配合 ${VAR:-default} 使用。\n- set -o pipefail：管道中任一环节失败，整个管道返回失败（默认只看最后一个命令）。这是 -e 生效的关键补充。\n- 常一并加 set -x 用于调试，或用 IFS=$'\\n\\t' 规范分词。\n\n反例：cmd1 | cmd2 中 cmd1 失败，没有 pipefail 时脚本会继续执行，非常危险。",
+    "answer": "作用是让脚本「遇错即停」，避免静默失败导致更严重的后果。\n\n[[图:shell-safety]]\n\n- set -e：任一命令返回非 0 状态立即退出。注意在 if/while 条件、|| 之后、管道中间（除非 pipefail）等场景不触发，属于已知坑。\n- set -u：引用未定义变量时报错退出，避免空变量静默变成空字符串。建议配合 ${VAR:-default} 使用。\n- set -o pipefail：管道中任一环节失败，整个管道返回失败（默认只看最后一个命令）。这是 -e 生效的关键补充。\n- 常一并加 set -x 用于调试，或用 IFS=$'\\n\\t' 规范分词。\n\n反例：cmd1 | cmd2 中 cmd1 失败，没有 pipefail 时脚本会继续执行，非常危险。",
     "tags": [
       "set",
       "健壮性",
@@ -310,7 +310,7 @@
     "category": "网络基础",
     "difficulty": "中等",
     "question": "HTTP 502 与 504 有什么区别？分别应该往哪个方向排查？",
-    "answer": "502 Bad Gateway：网关/代理从上游收到了「无效响应」（连不上上游、上游返回了非法/空响应、上游进程崩溃）。\n排查方向：\n- 反向代理错误日志（nginx error.log 看 upstream/connect 相关）；\n- 上游服务是否存活、端口是否监听、健康检查是否通过；\n- 上游是否重启中、worker 崩溃（OOM）、协议不匹配（http 转 https）；\n- 超时类配置是否过短。\n\n504 Gateway Timeout：网关在超时时间内没等到上游响应，本质是「等太久」。\n排查方向：\n- 上游处理慢（慢 SQL、下游依赖慢、GC 停顿、锁等待）；\n- proxy_read_timeout / send_timeout 配置；\n- 大请求体上传、上游线程池打满。\n\n快速区分：502 是「上游坏了/连不上」，504 是「上游慢」。用 nginx 的 upstream_response_time 与上游自身耗时日志交叉验证。",
+    "answer": "502 Bad Gateway：网关/代理从上游收到了「无效响应」（连不上上游、上游返回了非法/空响应、上游进程崩溃）。\n排查方向：\n- 反向代理错误日志（nginx error.log 看 upstream/connect 相关）；\n- 上游服务是否存活、端口是否监听、健康检查是否通过；\n- 上游是否重启中、worker 崩溃（OOM）、协议不匹配（http 转 https）；\n- 超时类配置是否过短。\n\n[[图:http-status-groups]]\n\n504 Gateway Timeout：网关在超时时间内没等到上游响应，本质是「等太久」。\n排查方向：\n- 上游处理慢（慢 SQL、下游依赖慢、GC 停顿、锁等待）；\n- proxy_read_timeout / send_timeout 配置；\n- 大请求体上传、上游线程池打满。\n\n快速区分：502 是「上游坏了/连不上」，504 是「上游慢」。用 nginx 的 upstream_response_time 与上游自身耗时日志交叉验证。",
     "tags": [
       "HTTP",
       "502",
@@ -452,7 +452,7 @@
     "category": "Redis",
     "difficulty": "中等",
     "question": "缓存穿透、缓存击穿、缓存雪崩有什么区别？分别如何解决？",
-    "answer": "缓存穿透：查询不存在的数据，缓存不命中，每次打 DB。\n解决：\n- 缓存空值（短 TTL），\n- 布隆过滤器前置拦截，\n- 接口层参数校验与限流。\n\n缓存击穿：某个热点 key 过期瞬间，大量并发请求同时打到 DB。\n解决：\n- 互斥锁/分布式锁，只放一个请求回源（SET NX），\n- 逻辑过期 + 异步更新，\n- 热点 key 永不过期（后台定时刷新）。\n\n缓存雪崩：大量 key 在同一时刻集中失效，或 Redis 整体宕机。\n解决：\n- TTL 加随机抖动，打散过期时间；\n- 多级缓存（本地 + Redis）；\n- Redis 高可用（主从/哨兵/集群）；\n- 限流降级 + 熔断，保护 DB；\n- 缓存预热。\n\n区分口诀：穿透是「数据不存在」，击穿是「单个热点失效」，雪崩是「大批同时失效」。",
+    "answer": "缓存穿透：查询不存在的数据，缓存不命中，每次打 DB。\n解决：\n- 缓存空值（短 TTL），\n- 布隆过滤器前置拦截，\n- 接口层参数校验与限流。\n\n[[图:cache-problems]]\n\n缓存击穿：某个热点 key 过期瞬间，大量并发请求同时打到 DB。\n解决：\n- 互斥锁/分布式锁，只放一个请求回源（SET NX），\n- 逻辑过期 + 异步更新，\n- 热点 key 永不过期（后台定时刷新）。\n\n缓存雪崩：大量 key 在同一时刻集中失效，或 Redis 整体宕机。\n解决：\n- TTL 加随机抖动，打散过期时间；\n- 多级缓存（本地 + Redis）；\n- Redis 高可用（主从/哨兵/集群）；\n- 限流降级 + 熔断，保护 DB；\n- 缓存预热。\n\n区分口诀：穿透是「数据不存在」，击穿是「单个热点失效」，雪崩是「大批同时失效」。",
     "tags": [
       "缓存",
       "穿透",
@@ -582,7 +582,7 @@
     "category": "容器与K8s",
     "difficulty": "中等",
     "question": "如何优化 Dockerfile 以减小镜像体积并加快构建？请说出至少 5 条实践。",
-    "answer": "1. 选精简基础镜像：alpine / distroless / slim，避免用 latest 大镜像；\n2. 多阶段构建：编译阶段用完整镜像，运行阶段只 COPY 产物；\n3. 合并 RUN 指令并清理缓存：apt-get install 后 rm -rf /var/lib/apt/lists/*，同一层完成安装与清理；\n4. 合理排序指令：变化少的在前（依赖清单 → 安装依赖 → 复制源码），最大化缓存命中；\n5. 使用 .dockerignore 排除 node_modules、.git、测试文件，避免污染构建上下文并加速传输；\n6. 不在镜像中安装无关工具（curl、vim、编译器等），必要时用临时调试容器；\n7. 固定基础镜像与依赖版本（digest 或精确版本），保证可复现；\n8. 用非 root 用户运行（USER 指令），同时减少运行期风险；\n9. 减少层数不是唯一目标，避免为合并层而牺牲可读性。\n\n验证：docker images 看体积，docker history 定位大层。",
+    "answer": "[[图:docker-layers]]\n\n1. 选精简基础镜像：alpine / distroless / slim，避免用 latest 大镜像；\n2. 多阶段构建：编译阶段用完整镜像，运行阶段只 COPY 产物；\n3. 合并 RUN 指令并清理缓存：apt-get install 后 rm -rf /var/lib/apt/lists/*，同一层完成安装与清理；\n4. 合理排序指令：变化少的在前（依赖清单 → 安装依赖 → 复制源码），最大化缓存命中；\n5. 使用 .dockerignore 排除 node_modules、.git、测试文件，避免污染构建上下文并加速传输；\n6. 不在镜像中安装无关工具（curl、vim、编译器等），必要时用临时调试容器；\n7. 固定基础镜像与依赖版本（digest 或精确版本），保证可复现；\n8. 用非 root 用户运行（USER 指令），同时减少运行期风险；\n9. 减少层数不是唯一目标，避免为合并层而牺牲可读性。\n\n验证：docker images 看体积，docker history 定位大层。",
     "tags": [
       "Dockerfile",
       "镜像优化",
@@ -794,7 +794,7 @@
     "category": "监控告警",
     "difficulty": "中等",
     "question": "如何设计告警规则，避免告警风暴和告警疲劳？请说出具体的工程手段。",
-    "answer": "规则设计：\n1. 基于用户影响告警，而非单纯资源阈值：优先「错误率 > 1%」「P99 > 500ms 持续 5 分钟」，而不是「CPU > 80%」。\n2. 加 for 持续时间：`for: 5m` 过滤瞬时毛刺。\n3. 分级：P0（影响用户，立即处理）/ P1（即将影响）/ P2（趋势问题，工单）；不同级别不同通道与响应时效。\n4. 抑制（inhibit）：上游故障时抑制下游告警，避免连锁刷屏。\n5. 分组（group_by）：按服务/集群聚合，group_wait/group_interval/repeat_interval 控制通知节奏。\n6. 静默（silence）：变更窗口内主动静默，并与发布系统联动自动静默。\n7. 聚合去重：同根因的告警合并为一条，附影响范围。\n8. 定期治理：统计告警量与误报率，每月清理「从没人处理」的规则。\n\n组织层面：\n- 每条告警都必须有归属人、处理手册（runbook）；\n- 告警要有明确行动项，无法行动的指标不该告警；\n- 复盘时统计 MTTA/MTTR 而非告警数量。",
+    "answer": "[[图:alert-funnel]]\n\n规则设计：\n1. 基于用户影响告警，而非单纯资源阈值：优先「错误率 > 1%」「P99 > 500ms 持续 5 分钟」，而不是「CPU > 80%」。\n2. 加 for 持续时间：`for: 5m` 过滤瞬时毛刺。\n3. 分级：P0（影响用户，立即处理）/ P1（即将影响）/ P2（趋势问题，工单）；不同级别不同通道与响应时效。\n4. 抑制（inhibit）：上游故障时抑制下游告警，避免连锁刷屏。\n5. 分组（group_by）：按服务/集群聚合，group_wait/group_interval/repeat_interval 控制通知节奏。\n6. 静默（silence）：变更窗口内主动静默，并与发布系统联动自动静默。\n7. 聚合去重：同根因的告警合并为一条，附影响范围。\n8. 定期治理：统计告警量与误报率，每月清理「从没人处理」的规则。\n\n组织层面：\n- 每条告警都必须有归属人、处理手册（runbook）；\n- 告警要有明确行动项，无法行动的指标不该告警；\n- 复盘时统计 MTTA/MTTR 而非告警数量。",
     "tags": [
       "告警",
       "降噪",
@@ -987,7 +987,7 @@
     "category": "综合场景题",
     "difficulty": "困难",
     "question": "服务发布后 5 分钟，错误率从 0.1% 飙升到 30%，你如何处置？请给出完整决策过程。",
-    "answer": "第 1 分钟——止血优先：\n- 立即判断影响面（全量还是部分地域/机型、是否影响核心链路）；\n- 决策回滚：新版本是最大变量，优先回滚到上一版本（保留现场日志与镜像用于事后分析）；\n- 同步应急群，指定信息同步人。\n\n第 2-5 分钟——同步并行：\n- 回滚执行：rollout undo / 平台一键回滚，观察错误率是否下降；\n- 看监控：错误码分布（5xx 具体是什么）、是否有特定接口/下游依赖、DB/Redis 指标是否异常；\n- 看日志：新版本日志里是否有新增异常堆栈、配置读取失败、依赖版本冲突。\n\n回滚无效时：\n- 考虑非代码因素：配置变更、DB 迁移、证书、依赖服务同时变更、流量突增；\n- 采取降级/限流/切流保护核心链路。\n\n恢复后：\n- 确认指标回基线并观察 30 分钟；\n- 复盘：变更影响评估是否到位、灰度是否跳过、测试是否覆盖、回滚为何没更早触发（告警阈值/自动化）。\n- 改进：强制灰度分批、自动化回滚条件（错误率阈值）、发布窗口与观察期规范。\n\n回答要点：先恢复再定位，不回滚犹豫；用数据说话；复盘对事不对人。",
+    "answer": "第 1 分钟——止血优先：\n- 立即判断影响面（全量还是部分地域/机型、是否影响核心链路）；\n- 决策回滚：新版本是最大变量，优先回滚到上一版本（保留现场日志与镜像用于事后分析）；\n- 同步应急群，指定信息同步人。\n\n[[图:incident-flow]]\n\n第 2-5 分钟——同步并行：\n- 回滚执行：rollout undo / 平台一键回滚，观察错误率是否下降；\n- 看监控：错误码分布（5xx 具体是什么）、是否有特定接口/下游依赖、DB/Redis 指标是否异常；\n- 看日志：新版本日志里是否有新增异常堆栈、配置读取失败、依赖版本冲突。\n\n回滚无效时：\n- 考虑非代码因素：配置变更、DB 迁移、证书、依赖服务同时变更、流量突增；\n- 采取降级/限流/切流保护核心链路。\n\n恢复后：\n- 确认指标回基线并观察 30 分钟；\n- 复盘：变更影响评估是否到位、灰度是否跳过、测试是否覆盖、回滚为何没更早触发（告警阈值/自动化）。\n- 改进：强制灰度分批、自动化回滚条件（错误率阈值）、发布窗口与观察期规范。\n\n回答要点：先恢复再定位，不回滚犹豫；用数据说话；复盘对事不对人。",
     "tags": [
       "发布事故",
       "回滚",
@@ -2090,7 +2090,7 @@
     "category": "综合场景题",
     "difficulty": "困难",
     "question": "用户反馈网站打开很慢，给出你的全链路排查思路。",
-    "answer": "自顶向下分层：1）界定范围：是个别用户还是全部？某页面还是全站？（个别用户指向本地网络/运营商线路；全站指向服务端）；2）客户端侧：F12 看 Network 瀑布图——慢在 DNS、TCP连接、TTFB（服务端响应）、还是内容下载/前端渲染；3）网络链路：ping/mtr 看延迟丢包，CDN 是否命中（回源慢？）；4）接入层：Nginx access log 看 upstream_response_time 和 request_time 的差值——差大说明后端慢；连接数是否打满、是否有大量 TIME_WAIT；5）应用层：APM（SkyWalking）看 trace 哪个服务/哪个 SQL 慢，线程池是否打满、GC 是否频繁；6）依赖层：DB 慢查询、锁等待，Redis 慢查询/大key，下游 API 超时；7）资源层：CPU/内存/磁盘IO/带宽是否打满。面试表达要点：先分层隔离缩小范围，再说每层看什么指标用什么工具。",
+    "answer": "[[图:slow-service-layers]]\n\n自顶向下分层：1）界定范围：是个别用户还是全部？某页面还是全站？（个别用户指向本地网络/运营商线路；全站指向服务端）；2）客户端侧：F12 看 Network 瀑布图——慢在 DNS、TCP连接、TTFB（服务端响应）、还是内容下载/前端渲染；3）网络链路：ping/mtr 看延迟丢包，CDN 是否命中（回源慢？）；4）接入层：Nginx access log 看 upstream_response_time 和 request_time 的差值——差大说明后端慢；连接数是否打满、是否有大量 TIME_WAIT；5）应用层：APM（SkyWalking）看 trace 哪个服务/哪个 SQL 慢，线程池是否打满、GC 是否频繁；6）依赖层：DB 慢查询、锁等待，Redis 慢查询/大key，下游 API 超时；7）资源层：CPU/内存/磁盘IO/带宽是否打满。面试表达要点：先分层隔离缩小范围，再说每层看什么指标用什么工具。",
     "tags": [
       "全链路",
       "性能排查",
@@ -13324,7 +13324,7 @@
     "category": "虚拟化",
     "difficulty": "中等",
     "question": "虚拟机的 CPU 超分（overcommit）怎么配？配多了会怎样？",
-    "answer": "**超分 = 分配给虚拟机的 vCPU 总数 > 物理核数，靠「不是所有 VM 同时满载」来平衡。**\n\n**安全的超分比例（经验值）**：\n\n| 负载类型 | 超分比（vCPU : 物理核） |\n|---|---|\n| **生产高负载**（数据库、计算密集） | **1:1 ~ 2:1** |\n| 一般 Web 应用 | 2:1 ~ 4:1 |\n| 开发/测试环境 | 4:1 ~ 8:1 |\n| **VDI（虚拟桌面）** | 可到 10:1（用户不是一直在算） |\n\n**超分过度的三个后果**：\n\n**1. CPU 就绪时间（ready time）上升**\n```\nVM 想跑但拿不到物理 CPU → 排队等待\nready time 占比 > 10% → 用户开始感觉卡顿\n```\n**这是判断「是否超分过度」的核心指标。**\n\n**2. 延迟抖动（最致命）**\n```\n平均值正常，但 P99 延迟突然飙高\n→ 对延迟敏感的应用（数据库、实时交易）不可接受\n```\n\n**3. 「吵闹邻居」效应**\n```\n一台 VM 疯狂计算 → 抢走物理 CPU → 同宿主机其他 VM 全部变慢\n```\n\n**如何监控超分是否健康**：\n```\n- CPU Ready（就绪时间）占比（> 5% 关注，> 10% 严重）\n- 宿主机 CPU 使用率（> 80% 说明余量不足）\n- 各 VM 的 steal time（客户机视角）\n```\n**`steal` 是客户机最容易看到的指标**：\n```\ntop / vmstat 里的 st 列\nst 高 → 宿主机超分严重或该 VM 被限速\n```\n\n**KVM 的具体参数**：\n```\n# 限制单台 VM 的 CPU 使用（cgroup）\n<vcpu placement='static'>4</vcpu>\n<cputune>\n  <shares>4096</shares>        # 权重（相对公平）\n  <quota>400000</quota>        # 绝对上限（每 100ms 周期最多 400ms CPU）\n</cputune>\n```\n\n**「超分」的正确策略**：\n```\n1. 关键业务不超分（1:1）或独占 vCPU（绑核）\n2. 一般业务适度超分（2-4:1）\n3. 用「cgroup + quota」限制吵闹邻居\n4. 监控 ready time，超过阈值就扩容\n```\n\n**一句话**：**超分的本质是「赌不是所有 VM 同时满载」——关键业务别超分，一般业务 2-4 倍，并且必须监控 CPU Ready（就绪时间）。**",
+    "answer": "**超分 = 分配给虚拟机的 vCPU 总数 > 物理核数，靠「不是所有 VM 同时满载」来平衡。**\n\n[[图:vm-cpu-overcommit]]\n\n**安全的超分比例（经验值）**：\n\n| 负载类型 | 超分比（vCPU : 物理核） |\n|---|---|\n| **生产高负载**（数据库、计算密集） | **1:1 ~ 2:1** |\n| 一般 Web 应用 | 2:1 ~ 4:1 |\n| 开发/测试环境 | 4:1 ~ 8:1 |\n| **VDI（虚拟桌面）** | 可到 10:1（用户不是一直在算） |\n\n**超分过度的三个后果**：\n\n**1. CPU 就绪时间（ready time）上升**\n```\nVM 想跑但拿不到物理 CPU → 排队等待\nready time 占比 > 10% → 用户开始感觉卡顿\n```\n**这是判断「是否超分过度」的核心指标。**\n\n**2. 延迟抖动（最致命）**\n```\n平均值正常，但 P99 延迟突然飙高\n→ 对延迟敏感的应用（数据库、实时交易）不可接受\n```\n\n**3. 「吵闹邻居」效应**\n```\n一台 VM 疯狂计算 → 抢走物理 CPU → 同宿主机其他 VM 全部变慢\n```\n\n**如何监控超分是否健康**：\n```\n- CPU Ready（就绪时间）占比（> 5% 关注，> 10% 严重）\n- 宿主机 CPU 使用率（> 80% 说明余量不足）\n- 各 VM 的 steal time（客户机视角）\n```\n**`steal` 是客户机最容易看到的指标**：\n```\ntop / vmstat 里的 st 列\nst 高 → 宿主机超分严重或该 VM 被限速\n```\n\n**KVM 的具体参数**：\n```\n# 限制单台 VM 的 CPU 使用（cgroup）\n<vcpu placement='static'>4</vcpu>\n<cputune>\n  <shares>4096</shares>        # 权重（相对公平）\n  <quota>400000</quota>        # 绝对上限（每 100ms 周期最多 400ms CPU）\n</cputune>\n```\n\n**「超分」的正确策略**：\n```\n1. 关键业务不超分（1:1）或独占 vCPU（绑核）\n2. 一般业务适度超分（2-4:1）\n3. 用「cgroup + quota」限制吵闹邻居\n4. 监控 ready time，超过阈值就扩容\n```\n\n**一句话**：**超分的本质是「赌不是所有 VM 同时满载」——关键业务别超分，一般业务 2-4 倍，并且必须监控 CPU Ready（就绪时间）。**",
     "tags": [
       "超分",
       "CPU",
@@ -14480,7 +14480,7 @@
     "category": "Git/GitLab",
     "difficulty": "简单",
     "question": "Git 的三个工作区域分别是什么？一次提交经过哪些步骤？",
-    "answer": "**三个区域 + 一个远程仓库**：\n\n```\n工作区（Working Directory）\n  ↓ git add\n暂存区（Index / Staging Area）\n  ↓ git commit\n本地仓库（Repository，.git 目录）\n  ↓ git push\n远程仓库（Remote）\n```\n\n**关键认知：Git 存的不是「差异」，是「快照」**\n```\n每次 commit 都是一个「完整快照的指针」\n→ 切换分支时是「换指针」，不是「应用补丁」\n→ 这就是 Git 切分支极快的原因\n```\n\n**文件在 Git 里的四种状态**：\n```\nUntracked（未跟踪）  → git add → Staged\nModified（已修改）   → git add → Staged\nStaged（已暂存）     → git commit → Committed\nCommitted（已提交）  → 修改 → Modified\n```\n\n**最常用的六条命令**：\n```\ngit status              # 当前状态（最常用）\ngit diff                # 工作区 vs 暂存区\ngit diff --staged       # 暂存区 vs 最后一次提交\ngit log --oneline -10\ngit add -p              # 交互式选择要暂存的部分（推荐）\ngit restore <file>      # 撤销工作区修改\n```\n\n**三个「撤销」的区别（最容易混）**：\n\n| 命令 | 作用范围 | 是否破坏数据 |\n|---|---|---|\n| `git restore <file>` | 撤销工作区修改 | ⚠️ 修改会丢 |\n| `git restore --staged <file>` | 从暂存区撤出（回到工作区） | ✅ 安全 |\n| `git reset --soft HEAD~1` | 撤销 commit，改动留在暂存区 | ✅ 安全 |\n| `git reset --hard HEAD~1` | 撤销 commit + 丢弃改动 | ⚠️ **危险** |\n\n**「`--hard` 是唯一会丢代码的操作」**——用之前确认没有未提交的重要改动。\n\n**实践建议**：\n```\ngit add -p            # 拆分成多个有意义的提交，而不是一个巨大的 commit\ngit commit -m '...'   # 提交信息写「为什么改」，不是「改了什么」\n```",
+    "answer": "**三个区域 + 一个远程仓库**：\n\n[[图:git-areas]]\n\n```\n工作区（Working Directory）\n  ↓ git add\n暂存区（Index / Staging Area）\n  ↓ git commit\n本地仓库（Repository，.git 目录）\n  ↓ git push\n远程仓库（Remote）\n```\n\n**关键认知：Git 存的不是「差异」，是「快照」**\n```\n每次 commit 都是一个「完整快照的指针」\n→ 切换分支时是「换指针」，不是「应用补丁」\n→ 这就是 Git 切分支极快的原因\n```\n\n**文件在 Git 里的四种状态**：\n```\nUntracked（未跟踪）  → git add → Staged\nModified（已修改）   → git add → Staged\nStaged（已暂存）     → git commit → Committed\nCommitted（已提交）  → 修改 → Modified\n```\n\n**最常用的六条命令**：\n```\ngit status              # 当前状态（最常用）\ngit diff                # 工作区 vs 暂存区\ngit diff --staged       # 暂存区 vs 最后一次提交\ngit log --oneline -10\ngit add -p              # 交互式选择要暂存的部分（推荐）\ngit restore <file>      # 撤销工作区修改\n```\n\n**三个「撤销」的区别（最容易混）**：\n\n| 命令 | 作用范围 | 是否破坏数据 |\n|---|---|---|\n| `git restore <file>` | 撤销工作区修改 | ⚠️ 修改会丢 |\n| `git restore --staged <file>` | 从暂存区撤出（回到工作区） | ✅ 安全 |\n| `git reset --soft HEAD~1` | 撤销 commit，改动留在暂存区 | ✅ 安全 |\n| `git reset --hard HEAD~1` | 撤销 commit + 丢弃改动 | ⚠️ **危险** |\n\n**「`--hard` 是唯一会丢代码的操作」**——用之前确认没有未提交的重要改动。\n\n**实践建议**：\n```\ngit add -p            # 拆分成多个有意义的提交，而不是一个巨大的 commit\ngit commit -m '...'   # 提交信息写「为什么改」，不是「改了什么」\n```",
     "tags": [
       "三区域",
       "工作区",
@@ -17120,7 +17120,7 @@
     "category": "自动化与配置管理",
     "difficulty": "中等",
     "question": "什么是「幂等性」？为什么它这么重要？Ansible 的哪些操作不是幂等的？",
-    "answer": "**幂等 = 「执行一次和执行十次，结果相同」。**\n\n**为什么重要**：\n```\n配置管理会反复执行（重跑 playbook、加机器、修复故障）\n如果非幂等：\n  ✗ 重跑会在 /etc/xxx.conf 里追加重复行\n  ✗ 重跑会报「用户已存在」导致中断\n  ✗ 重跑会启动多个进程\n→ 脚本无法反复使用，必须靠「人工确认作了什么」\n```\n\n**幂等的 Ansible 模块（自带幂等）**：\n```yaml\nyum: name=nginx state=present          # 已装则跳过\nfile: path=/data state=directory       # 已存在则跳过\ncopy: src=conf dest=/etc/app.conf      # 内容相同则不改（不触发 handler）\nuser: name=app state=present\n```\n\n**非幂等的四种情况**：\n\n**1. `shell` / `command` 模块（默认非幂等）**\n```yaml\n- shell: echo \"export X=1\" >> /etc/profile     # ✗ 每次都追加\n```\n**修复**：\n```yaml\n- lineinfile:\n    path: /etc/profile\n    line: 'export X=1'\n    state: present          # 已存在就不改\n```\n**「能用专用模块就别用 shell」是 Ansible 的第一原则。**\n\n**2. `shell` 必须用时的两个补偿**\n```yaml\n- shell: /opt/init.sh\n  args:\n    creates: /var/lib/app/.initialized    # 文件存在则跳过\n  # 或\n  when: not (ansible_facts... )           # 显式条件\n```\n\n**3. 计时器/时间相关的操作**\n```\n「如果文件超过 7 天就删除」→ 每次执行结果不同（时间变了）\n→ 这类天生不幂等，要用 creates/条件控制\n```\n\n**4. 随机/自增的操作**\n```\n生成随机密码、自增 ID → 每次不同\n→ 要「已存在就不生成」\n```\n\n**验证幂等性的方法**：\n```bash\n# 连跑两次，第二次的 changed 必须为 0\nansible-playbook site.yml\nansible-playbook site.yml\n# 第二次输出结尾应该是 changed=0\n```\n**`changed=0` 是幂等性的唯一验收标准**——这是 Ansible 的「单元测试」。\n\n**这条原则不只适用于 Ansible**：\n```\n所有自动化脚本（Shell、Terraform、K8s manifest、数据库迁移）都要求幂等\n→ 因为「重跑」是最常见的运维操作\n```",
+    "answer": "**幂等 = 「执行一次和执行十次，结果相同」。**\n\n[[图:automation-flow]]\n\n**为什么重要**：\n```\n配置管理会反复执行（重跑 playbook、加机器、修复故障）\n如果非幂等：\n  ✗ 重跑会在 /etc/xxx.conf 里追加重复行\n  ✗ 重跑会报「用户已存在」导致中断\n  ✗ 重跑会启动多个进程\n→ 脚本无法反复使用，必须靠「人工确认作了什么」\n```\n\n**幂等的 Ansible 模块（自带幂等）**：\n```yaml\nyum: name=nginx state=present          # 已装则跳过\nfile: path=/data state=directory       # 已存在则跳过\ncopy: src=conf dest=/etc/app.conf      # 内容相同则不改（不触发 handler）\nuser: name=app state=present\n```\n\n**非幂等的四种情况**：\n\n**1. `shell` / `command` 模块（默认非幂等）**\n```yaml\n- shell: echo \"export X=1\" >> /etc/profile     # ✗ 每次都追加\n```\n**修复**：\n```yaml\n- lineinfile:\n    path: /etc/profile\n    line: 'export X=1'\n    state: present          # 已存在就不改\n```\n**「能用专用模块就别用 shell」是 Ansible 的第一原则。**\n\n**2. `shell` 必须用时的两个补偿**\n```yaml\n- shell: /opt/init.sh\n  args:\n    creates: /var/lib/app/.initialized    # 文件存在则跳过\n  # 或\n  when: not (ansible_facts... )           # 显式条件\n```\n\n**3. 计时器/时间相关的操作**\n```\n「如果文件超过 7 天就删除」→ 每次执行结果不同（时间变了）\n→ 这类天生不幂等，要用 creates/条件控制\n```\n\n**4. 随机/自增的操作**\n```\n生成随机密码、自增 ID → 每次不同\n→ 要「已存在就不生成」\n```\n\n**验证幂等性的方法**：\n```bash\n# 连跑两次，第二次的 changed 必须为 0\nansible-playbook site.yml\nansible-playbook site.yml\n# 第二次输出结尾应该是 changed=0\n```\n**`changed=0` 是幂等性的唯一验收标准**——这是 Ansible 的「单元测试」。\n\n**这条原则不只适用于 Ansible**：\n```\n所有自动化脚本（Shell、Terraform、K8s manifest、数据库迁移）都要求幂等\n→ 因为「重跑」是最常见的运维操作\n```",
     "tags": [
       "配置管理",
       "Terraform",
@@ -19785,7 +19785,7 @@
     "category": "MySQL",
     "difficulty": "中等",
     "question": "什么是回表？为什么说覆盖索引能避免回表？",
-    "answer": "**回表**：用二级索引查到主键值后，还要回到主键索引（聚簇索引）再查一次整行数据。\n\n举例，表有索引 idx_name(name)，执行：\n```\nSELECT * FROM user WHERE name = 'tom'\n```\n路径：\n1. 在 idx_name 找到 name='tom' 的叶子节点，拿到主键 id=5\n2. 再用 id=5 去主键索引查完整行 ← **这一步就是回表**\n\n**覆盖索引**：查询需要的列全在索引里，不需要再查主键索引。\n```\nSELECT name FROM user WHERE name = 'tom'\n```\nname 就在 idx_name 里 → 无需回表。\n\n如何确认：EXPLAIN 的 Extra 显示 **Using index** 就是覆盖索引；显示 Using where 或没有 Using index 通常意味着要回表。\n\n优化实践：把频繁查询的列加入联合索引，让查询变成覆盖索引，能显著减少 IO。但索引列不宜过多（增加写放大）。",
+    "answer": "**回表**：用二级索引查到主键值后，还要回到主键索引（聚簇索引）再查一次整行数据。\n\n[[图:mysql-index-lookup]]\n\n举例，表有索引 idx_name(name)，执行：\n```\nSELECT * FROM user WHERE name = 'tom'\n```\n路径：\n1. 在 idx_name 找到 name='tom' 的叶子节点，拿到主键 id=5\n2. 再用 id=5 去主键索引查完整行 ← **这一步就是回表**\n\n**覆盖索引**：查询需要的列全在索引里，不需要再查主键索引。\n```\nSELECT name FROM user WHERE name = 'tom'\n```\nname 就在 idx_name 里 → 无需回表。\n\n如何确认：EXPLAIN 的 Extra 显示 **Using index** 就是覆盖索引；显示 Using where 或没有 Using index 通常意味着要回表。\n\n优化实践：把频繁查询的列加入联合索引，让查询变成覆盖索引，能显著减少 IO。但索引列不宜过多（增加写放大）。",
     "tags": [
       "回表",
       "覆盖索引",
@@ -31375,7 +31375,7 @@
     "category": "安全与跳板机",
     "difficulty": "简单",
     "question": "跳板机（堡垒机）的作用是什么？为什么生产环境必须经过它？",
-    "answer": "**核心作用：把「直接访问生产」变成「经过审计的代理访问」。**\n\n**四个不可替代的价值**：\n\n| 价值 | 说明 |\n|---|---|\n| **统一入口** | 生产服务器只允许跳板机 IP 访问，其余一律拒绝 |\n| **身份集中** | 人员在跳板机上鉴权，不需要在每台机器上开账号 |\n| **操作审计** | 所有输入命令、回放录像、文件传输**全程记录** |\n| **权限控制** | 按人/组/主机授予不同权限，可临时授权、可即时回收 |\n\n**没有跳板机的现状（几乎所有事故的共性）**：\n```\n✗ 每个人本地都有私钥，能直连所有机器\n✗ 服务器上有几十个个人账号，走了人也没人清理\n✗ 出了事查不到「谁在什么时候做了什么」\n✗ 权限无法回收（私钥已经发出去了）\n```\n\n**典型架构**：\n```\n工程师 → 跳板机（跳跃服务器/堡垒机）→ 生产服务器\n         ├─ 双因素认证（2FA）\n         ├─ 命令审计与录像\n         ├─ 危险命令拦截（rm -rf /、dd）\n         └─ 权限矩阵（谁能登哪些机器）\n```\n\n**主流方案**：\n\n| 方案 | 特点 |\n|---|---|\n| **Jumpserver** | 开源，国内最流行，Web 界面 + 录像回放 |\n| **Teleport** | 现代化，支持 SSH/K8s/DB 统一接入 |\n| **云厂商堡垒机** | 阿里云/腾讯云，开箱即用 |\n| **自建 SSH 跳板** | 最简，只有 `ProxyJump`，无审计 |\n\n**自建最简版（仅跳转，无审计）**：\n```\n# ~/.ssh/config\nHost prod-*\n    ProxyJump bastion.example.com\nHost bastion.example.com\n    HostName 1.2.3.4\n    User ops\n```\n**这只是「跳转」，不是「堡垒机」**——没有审计就没有核心价值。\n\n**关键设计原则**：\n1. **生产服务器不暴露公网 SSH 端口**（安全组只允许跳板机）\n2. **跳板机本身要加固**（它是最高价值的攻击目标）\n3. **跳板机不存业务数据**，只做通道\n4. **双因素认证必须开**（密码/密钥 + TOTP/短信）\n5. **有「紧急通道」预案**（跳板机挂了怎么办）",
+    "answer": "**核心作用：把「直接访问生产」变成「经过审计的代理访问」。**\n\n[[图:bastion-access]]\n\n**四个不可替代的价值**：\n\n| 价值 | 说明 |\n|---|---|\n| **统一入口** | 生产服务器只允许跳板机 IP 访问，其余一律拒绝 |\n| **身份集中** | 人员在跳板机上鉴权，不需要在每台机器上开账号 |\n| **操作审计** | 所有输入命令、回放录像、文件传输**全程记录** |\n| **权限控制** | 按人/组/主机授予不同权限，可临时授权、可即时回收 |\n\n**没有跳板机的现状（几乎所有事故的共性）**：\n```\n✗ 每个人本地都有私钥，能直连所有机器\n✗ 服务器上有几十个个人账号，走了人也没人清理\n✗ 出了事查不到「谁在什么时候做了什么」\n✗ 权限无法回收（私钥已经发出去了）\n```\n\n**典型架构**：\n```\n工程师 → 跳板机（跳跃服务器/堡垒机）→ 生产服务器\n         ├─ 双因素认证（2FA）\n         ├─ 命令审计与录像\n         ├─ 危险命令拦截（rm -rf /、dd）\n         └─ 权限矩阵（谁能登哪些机器）\n```\n\n**主流方案**：\n\n| 方案 | 特点 |\n|---|---|\n| **Jumpserver** | 开源，国内最流行，Web 界面 + 录像回放 |\n| **Teleport** | 现代化，支持 SSH/K8s/DB 统一接入 |\n| **云厂商堡垒机** | 阿里云/腾讯云，开箱即用 |\n| **自建 SSH 跳板** | 最简，只有 `ProxyJump`，无审计 |\n\n**自建最简版（仅跳转，无审计）**：\n```\n# ~/.ssh/config\nHost prod-*\n    ProxyJump bastion.example.com\nHost bastion.example.com\n    HostName 1.2.3.4\n    User ops\n```\n**这只是「跳转」，不是「堡垒机」**——没有审计就没有核心价值。\n\n**关键设计原则**：\n1. **生产服务器不暴露公网 SSH 端口**（安全组只允许跳板机）\n2. **跳板机本身要加固**（它是最高价值的攻击目标）\n3. **跳板机不存业务数据**，只做通道\n4. **双因素认证必须开**（密码/密钥 + TOTP/短信）\n5. **有「紧急通道」预案**（跳板机挂了怎么办）",
     "tags": [
       "堡垒机",
       "审计",
@@ -33823,7 +33823,7 @@
     "answer": [
       "C"
     ],
-    "explanation": "**502 = 网关连不上/收到无效响应来自后端**。发布场景下两大主因：①**新实例未就绪就接入 LB**（readinessProbe 没配、或检查只查端口不查业务）；②**端口/协议/健康检查路径变了**（新版本换了端口，但 LB 配置没改）。**B/A 与发布无直接关联**（且 502 不是磁盘或 DNS 的典型症状）；**D 会导致构建阶段就失败，根本到不了发布**。排查：看 LB 的错误日志与后端健康状态、`kubectl describe pod` 看就绪时间。",
+    "explanation": "[[图:deploy-incident-triage]]\n\n**502 = 网关连不上/收到无效响应来自后端**。发布场景下两大主因：①**新实例未就绪就接入 LB**（readinessProbe 没配、或检查只查端口不查业务）；②**端口/协议/健康检查路径变了**（新版本换了端口，但 LB 配置没改）。**B/A 与发布无直接关联**（且 502 不是磁盘或 DNS 的典型症状）；**D 会导致构建阶段就失败，根本到不了发布**。排查：看 LB 的错误日志与后端健康状态、`kubectl describe pod` 看就绪时间。",
     "tags": [
       "故障处理",
       "发布",
