@@ -314,12 +314,46 @@ describe('刷题页 · 选择题', () => {
     }
   })
 
-  it('判定后自动进入下一题', async () => {
+  /**
+   * 回归：判定后必须停在本题，不能自动翻页。
+   *
+   * 用户反馈原话：「选择题点击选项即刻作答，判断对错后不要自动进入下一题，
+   * 不然我看不了解析，怎么学习呢」。
+   * 早期实现在判定 1.4 秒后自动进入下一题，解析根本来不及看；
+   * 现在改为停留，由用户点「下一题 →」/ 左滑 / → 键自己决定节奏。
+   */
+  it('判定后停在本题，不自动进入下一题（才看得到解析）', async () => {
     vi.useFakeTimers()
     try {
       const { wrapper } = await mountPractice({ category: 'Linux基础' })
       await wrapper.findAll('.option')[1].trigger('click')
-      await vi.advanceTimersByTimeAsync(2000)
+      await vi.advanceTimersByTimeAsync(3000)
+      await wrapper.vm.$nextTick()
+
+      // 仍然是第 1 题（3 个选项，不是第 2 题的 3 个）：
+      // 判定结果与解析都在，说明没有翻页
+      expect(wrapper.find('.result--ok').exists()).toBe(true)
+      expect(wrapper.find('.explain').exists()).toBe(true)
+      expect(wrapper.find('.qcard-p__q').text()).toContain('哪个命令查看打开的文件')
+      vi.useRealTimers()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('判定后出现「下一题 →」按钮，点了才前进', async () => {
+    vi.useFakeTimers()
+    try {
+      const { wrapper } = await mountPractice({ category: 'Linux基础' })
+      await wrapper.findAll('.option')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const nextBtn = wrapper.find('.actions__submit')
+      expect(nextBtn.exists()).toBe(true)
+      expect(nextBtn.text()).toContain('下一题')
+
+      await nextBtn.trigger('click')
+      await vi.advanceTimersByTimeAsync(400)
       await wrapper.vm.$nextTick()
 
       // 第 2 题是同一分类下的多选题

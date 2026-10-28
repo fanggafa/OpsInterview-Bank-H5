@@ -276,12 +276,16 @@ function commitResult(isPassed) {
   else study.markUnknown(q.id)
   roundAnswers.value = { ...roundAnswers.value, [q.id]: s }
 
-  // 判定后给用户时间看解析，再自动进入下一题（最后一题则结束）
-  schedule(() => {
-    if (finished.value) return
-    if (cursor.value >= total.value - 1) finish()
-    else goTo(cursor.value + 1)
-  }, 1400)
+  /**
+   * 判定后**停在本题**，不自动翻页。
+   *
+   * 早期版本在判定 1.4 秒后自动进入下一题，本意是「刷得快」，
+   * 但用户反馈：「判断对错后不要自动进入下一题，不然我看不了解析，怎么学习呢」——
+   * 选择题的价值就在解析里（为什么错、正确答案为什么对），
+   * 1.4 秒连滚动到解析都不够。学习场景优先，速度让位。
+   *
+   * 现在由用户自己看完解析点「下一题 →」（或左滑 / →键）前进。
+   */
 }
 
 /** 选择题「下一题」手动跳过等待 */
@@ -767,10 +771,10 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
             提交答案{{ selected.length ? `（已选 ${selected.length}）` : '' }}
           </button>
           <button v-else-if="submitted" class="btn btn--primary actions__submit" @click="continueNext">
-            下一题 →
+            {{ cursor >= total - 1 ? '完成本轮' : '下一题 →' }}
           </button>
           <p v-else class="actions__hint">
-            点击选项即作答，判对错后自动进入下一题
+            点击选项即作答，判定后可慢慢看解析
           </p>
         </template>
       </div>
