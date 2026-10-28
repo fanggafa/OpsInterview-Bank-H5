@@ -22509,7 +22509,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "**zset 内部同时用两张结构：跳表负责按 score 排序和范围查询，哈希表负责 O(1) 按成员名查 score。** 跳表通过多层索引把查找做到接近 O(log N)，且实现比平衡树简单、范围遍历更高效。\n\n```bash\nZADD rank 95 tom 88 jerry\nZREVRANGE rank 0 9 WITHSCORES   # 取前 10 名\nZRANGEBYSCORE rank 80 100       # 按分数区间取\n```\n\nA 项 A+Tree 是 MySQL InnoDB 的索引结构；C 项红黑树在 Redis 里只用于少量场景（如 Stream 的 radix tree 是另一套），zset 不是红黑树；D 项数组有序插入是 O(N)，不可能支撑排行榜。**zset 是按分数排名的首选结构**（排行榜、延时队列都用它）。",
+    "explanation": "**zset 内部同时用两张结构：跳表负责按 score 排序和范围查询，哈希表负责 O(1) 按成员名查 score。** 跳表通过多层索引把查找做到接近 O(log N)，且实现比平衡树简单、范围遍历更高效。\n\n```bash\nZADD rank 95 tom 88 jerry\nZREVRANGE rank 0 9 WITHSCORES   # 取前 10 名\nZRANGEBYSCORE rank 80 100       # 按分数区间取\n```\n\nA 项 B+Tree 是 MySQL InnoDB 的索引结构；C 项红黑树在 Redis 里只用于少量场景（如 Stream 的 radix tree 是另一套），zset 不是红黑树；D 项数组有序插入是 O(N)，不可能支撑排行榜。**zset 是按分数排名的首选结构**（排行榜、延时队列都用它）。",
     "tags": [
       "zset",
       "跳表",
