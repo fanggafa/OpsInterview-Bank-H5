@@ -182,18 +182,27 @@ describe('刷题页 · 「看答案」按钮与标签同行', () => {
 })
 
 describe('刷题页 · 断点续刷', () => {
-  it('progress 存在且模式分类一致时从上次位置继续并提示', async () => {
+  it('progress 存在且模式分类一致时从上次位置继续，并给出浮层提示', async () => {
     study.saveProgress({ mode: 'sequential', category: null, index: 1 })
     const { wrapper } = await mountPractice()
     expect(wrapper.text()).toContain('第 2 / 3 题')
-    expect(wrapper.text()).toContain('已从上次位置继续')
+    // 提示从「常驻一行」改成了 2 秒浮层
+    expect(wrapper.find('.resume-toast').exists()).toBe(true)
+    expect(wrapper.find('.resume-toast').text()).toContain('已从第 2 题继续')
+  })
+
+  it('续刷提示是浮层而非常驻行（不占高度）', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
+    const block = src.slice(src.indexOf('.resume-toast {'), src.indexOf('.toast-enter-active'))
+    expect(block).toMatch(/position:\s*absolute/)
+    expect(block).toMatch(/pointer-events:\s*none/)
   })
 
   it('progress 模式不一致时不续刷', async () => {
     study.saveProgress({ mode: 'random', category: null, index: 2 })
     const { wrapper } = await mountPractice()
     expect(wrapper.text()).toContain('第 1 / 3 题')
-    expect(wrapper.text()).not.toContain('已从上次位置继续')
+    expect(wrapper.find('.resume-toast').exists()).toBe(false)
   })
 
   it('progress 分类不一致时不续刷', async () => {

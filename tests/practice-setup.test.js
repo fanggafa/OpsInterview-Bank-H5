@@ -129,16 +129,76 @@ describe('刷题页 · 选择页（两个居中按钮）', () => {
   })
 })
 
-describe('刷题页 · 进入后仍可切换', () => {
-  it('题卡页顶部只有「题目顺序」，练习方式收进右上角', async () => {
+describe('刷题页 · 进入后的紧凑顶栏', () => {
+  it('刷题中不再显示大标题栏，改为 44px 紧凑顶栏', async () => {
     const { wrapper } = await mountPractice()
     await pick(wrapper, '刷题模式')
 
-    // 练习方式不再是页面里的一行按钮，而是页头右上角一个切换按钮
-    expect(wrapper.find('[aria-label="练习方式"]').exists()).toBe(false)
-    expect(wrapper.find('.practice__mode-btn').exists()).toBe(true)
-    // 题目顺序仍在
-    expect(wrapper.find('[aria-label="题目顺序"]').exists()).toBe(true)
+    // 大标题栏（AppHeader）不在了
+    expect(wrapper.find('.header').exists()).toBe(false)
+    // 换成 ptop 紧凑顶栏
+    expect(wrapper.find('.ptop').exists()).toBe(true)
+  })
+
+  it('题目顺序做成顶栏里的分段胶囊，不再单独占一行', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+
+    // 顶栏里有分段胶囊（有 role=radiogroup，但是紧凑版而非整行）
+    const seg = wrapper.find('.ptop__seg')
+    expect(seg.exists()).toBe(true)
+    expect(seg.attributes('role')).toBe('radiogroup')
+    const items = seg.findAll('.ptop__seg-item')
+    expect(items.map((o) => o.text())).toEqual(['顺序', '随机'])
+  })
+
+  it('练习方式仍收在右上角一个按钮', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+    expect(wrapper.find('.ptop .practice__mode-btn').exists()).toBe(true)
+  })
+
+  it('顶栏带「返回」按钮、进度文字与进度条', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+    // 返回用箭头（不是 ✕，语义是「退回选择页」）
+    const back = wrapper.find('.ptop__back')
+    expect(back.exists()).toBe(true)
+    expect(back.attributes('aria-label')).toContain('返回')
+    expect(wrapper.find('.ptop__bar').exists()).toBe(true)
+    expect(wrapper.find('.ptop__count').text()).toContain('第 1 / 3 题')
+  })
+
+  it('返回箭头是「横线+箭头」的标准样式，不是孤立的小 chevron', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
+    // 回归：早先用单个 chevron（M15 5l-7 7 7 7），反馈「很突兀」
+    expect(src).not.toMatch(/M15 5l-7 7 7 7/)
+    // 现在用带横线的箭头
+    expect(src).toMatch(/M20 12H5M11 6l-6 6 6 6/)
+  })
+
+  it('返回按钮有淡底色块（与其它块状控件同一视觉语言，不显孤立）', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
+    const block = src.slice(src.indexOf('.ptop__back {'), src.indexOf('.ptop__back:active'))
+    expect(block).toMatch(/background:\s*var\(--c-card\)/)
+    expect(block).toMatch(/border:\s*1px solid var\(--c-border\)/)
+    expect(block).toMatch(/border-radius:\s*9px/)
+  })
+
+  it('点返回回到「选择练习方式」页（而不是跳走）', async () => {
+    const { wrapper, router } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+    expect(wrapper.find('.ptop').exists()).toBe(true)
+
+    const before = router.currentRoute.value.path
+    await wrapper.find('.ptop__back').trigger('click')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    // 页码不变，但回到选择页
+    expect(router.currentRoute.value.path).toBe(before)
+    expect(wrapper.find('.picker').exists()).toBe(true)
+    expect(wrapper.find('.ptop').exists()).toBe(false)
   })
 
   it('点右上角模式按钮会切到另一种练习方式', async () => {
@@ -184,12 +244,12 @@ describe('刷题页 · 进入后仍可切换', () => {
     expect(wrapper.find('.qcard-p__meta .qcard-p__fav').exists()).toBe(true)
   })
 
-  it('题卡页点「随机」写入 mode=random', async () => {
+  it('顶栏点「随机」写入 mode=random', async () => {
     const { wrapper, router } = await mountPractice()
     await pick(wrapper, '刷题模式')
 
-    const btns = wrapper.find('[aria-label="题目顺序"]').findAll('.modes__item')
-    await btns[1].trigger('click')
+    const items = wrapper.findAll('.ptop__seg-item')
+    await items[1].trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query.mode).toBe('random')
   })
