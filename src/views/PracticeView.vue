@@ -617,14 +617,46 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
             </button>
           </div>
 
-          <!-- 可滚动的题目主体 -->
-          <div class="qcard-p__scroll">
+          <!--
+            题卡分三段（自上而下）：
+            ① 题头 meta：分类/难度/频率 + 收藏（固定不滚）
+            ② 题干区：题目 + 标签，以及简答题右侧的「看答案」按钮（固定不滚）
+            ③ 滚动区：只有答案 / 选项 / 解析会随手指滚动
+
+            为什么这样切：之前题干也在滚动区里，向下看答案时题目会被顶出去，
+            用户失去上下文。现在题目始终钉在顶部，「下滑看答案」只让答案区滚动。
+          -->
+          <div class="qcard-p__head">
             <h2 class="qcard-p__q">{{ current.question }}</h2>
 
-            <ul v-if="current.tags?.length" class="qcard-p__tags">
-              <li v-for="tag in current.tags" :key="tag" class="qcard-p__tag">#{{ tag }}</li>
-            </ul>
+            <div v-if="current.tags?.length || short" class="qcard-p__qfoot">
+              <ul v-if="current.tags?.length" class="qcard-p__tags">
+                <li v-for="tag in current.tags" :key="tag" class="qcard-p__tag">#{{ tag }}</li>
+              </ul>
+              <!-- 简答题：看答案按钮与标签同一行，靠最右 -->
+              <button
+                v-if="short"
+                class="qcard-p__toggle"
+                :aria-expanded="expanded"
+                @click="toggleAnswer"
+              >
+                <span>{{ expanded ? '收起答案' : '看答案' }}</span>
+                <svg
+                  class="qcard-p__chev"
+                  :class="{ 'qcard-p__chev--up': expanded }"
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                >
+                  <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
 
+          <!-- 可滚动的答案/选项区 -->
+          <div class="qcard-p__scroll">
             <!-- 选择题 -->
             <template v-if="!short">
               <ChoiceOptions
@@ -647,22 +679,8 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
               </div>
             </template>
 
-            <!-- 简答题 -->
+            <!-- 简答题：答案 -->
             <template v-else>
-              <button class="qcard-p__toggle" :aria-expanded="expanded" @click="toggleAnswer">
-                <span>{{ expanded ? '收起答案' : '看答案' }}</span>
-                <svg
-                  class="qcard-p__chev"
-                  :class="{ 'qcard-p__chev--up': expanded }"
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  aria-hidden="true"
-                >
-                  <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </button>
-
               <div class="answer" :class="{ 'answer--open': expanded }">
                 <div class="answer__inner">
                   <div class="answer__body">
@@ -1035,15 +1053,43 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   background: var(--c-danger-weak);
 }
 
+/**
+ * 滚动区：只有这一块会随手指滚动。
+ *
+ * 题干固定在 .qcard-p__head 里不参与滚动，
+ * 所以「向下滑看答案」时题目始终留在顶部。
+ */
 .qcard-p__scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding-top: 2px;
+  padding-top: 10px;
 }
 
+/* 答案展开时去掉上边距，紧贴题干下方，省出一行空间 */
+.qcard-p__scroll .answer__body {
+  margin-top: 0;
+}
+
+/**
+ * 题干区（固定不滚）。
+ *
+ * flex-shrink: 0 是关键——它保证题干不被下方的滚动区挤压；
+ * 内容再长（长题目）也只会自己换行，不会把答案区挤没。
+ */
+.qcard-p__head {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+/* 题干 + 标签 与「看答案」按钮同一行：标签左、按钮右 */
+.qcard-p__qfoot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
 .qcard-p__q {
   margin: 10px 0 0;
   font-size: 16px;
@@ -1056,7 +1102,9 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin: 8px 0 0;
+  margin: 0;
+  min-width: 0;
+  flex: 1;
 }
 .qcard-p__tag {
   font-size: 11.5px;
@@ -1070,21 +1118,35 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   margin-top: 12px;
 }
 
+/**
+ * 「看答案」按钮（简答题）。
+ *
+ * 从原来的「整行大按钮」改成行内小胶囊，与标签同行、靠最右：
+ * - 省掉一整行（44px + 12px margin），答案区多显示一行
+ * - 语义更清楚：「看本题答案」属于这道题，不是独立功能
+ */
 .qcard-p__toggle {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  min-height: 44px;
-  margin-top: 12px;
-  padding: 10px 12px;
-  background: var(--c-bg);
-  border-radius: var(--radius-sm);
-  font-size: 13.5px;
+  gap: 3px;
+  height: 28px;
+  padding: 0 9px 0 11px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--c-primary) 30%, transparent);
+  background: var(--c-primary-weak);
+  font-size: 12px;
   font-weight: 500;
   color: var(--c-primary);
+  white-space: nowrap;
+}
+.qcard-p__toggle:active {
+  transform: scale(0.96);
 }
 .qcard-p__chev {
+  display: flex;
+  align-items: center;
+  opacity: 0.8;
   transition: transform 0.2s ease;
 }
 .qcard-p__chev--up {

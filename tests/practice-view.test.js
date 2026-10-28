@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -103,6 +105,79 @@ describe('刷题页 · 默认行为（PRD §二.2）', () => {
     const { wrapper } = await mountPractice({ category: 'MySQL' })
     expect(wrapper.text()).toContain('第 1 / 1 题')
     expect(wrapper.find('.qcard-p__q').text()).toBe('q3')
+  })
+})
+
+describe('刷题页 · 题干固定、只有答案区滚动', () => {
+  it('题干在固定区里，不在滚动区里', async () => {
+    const { wrapper } = await mountPractice()
+    // 题干属于 .qcard-p__head（不滚），而不是 .qcard-p__scroll
+    expect(wrapper.find('.qcard-p__head .qcard-p__q').exists()).toBe(true)
+    expect(wrapper.find('.qcard-p__scroll .qcard-p__q').exists()).toBe(false)
+  })
+
+  it('答案在滚动区里（向下滑只让答案滚动）', async () => {
+    const { wrapper } = await mountPractice()
+    expect(wrapper.find('.qcard-p__scroll .answer').exists()).toBe(true)
+  })
+
+  it('滚动区与固定区是兄弟节点（结构上保证互不影响）', async () => {
+    const { wrapper } = await mountPractice()
+    const head = wrapper.find('.qcard-p__head')
+    const scroll = wrapper.find('.qcard-p__scroll')
+    expect(head.exists()).toBe(true)
+    expect(scroll.exists()).toBe(true)
+    // 两者不是父子关系
+    expect(head.element.contains(scroll.element)).toBe(false)
+    expect(scroll.element.contains(head.element)).toBe(false)
+  })
+
+  it('题干区设了 flex-shrink:0（不被滚动区挤压）', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
+    const block = src.slice(src.indexOf('.qcard-p__head {'), src.indexOf('.qcard-p__qfoot {'))
+    expect(block).toMatch(/flex-shrink:\s*0/)
+  })
+})
+
+describe('刷题页 · 「看答案」按钮与标签同行', () => {
+  it('看答案按钮在题干区的标签行内，不在滚动区', async () => {
+    const { wrapper } = await mountPractice()
+    const foot = wrapper.find('.qcard-p__qfoot')
+    expect(foot.exists()).toBe(true)
+    expect(foot.find('.qcard-p__toggle').exists()).toBe(true)
+    // 滚动区里不该再有这个按钮
+    expect(wrapper.find('.qcard-p__scroll .qcard-p__toggle').exists()).toBe(false)
+  })
+
+  it('标签与按钮在同一行容器内', async () => {
+    const { wrapper } = await mountPractice()
+    const foot = wrapper.find('.qcard-p__qfoot')
+    expect(foot.find('.qcard-p__tags').exists()).toBe(true)
+    expect(foot.find('.qcard-p__toggle').exists()).toBe(true)
+  })
+
+  it('看答案按钮是小胶囊（高度 ≤ 32px），不再占整行', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
+    const block = src.slice(src.indexOf('.qcard-p__toggle {'), src.indexOf('.qcard-p__toggle:active'))
+    const height = block.match(/height:\s*(\d+)px/)
+    expect(height).toBeTruthy()
+    expect(Number(height[1])).toBeLessThanOrEqual(32)
+    // 不再是 100% 宽的整行按钮
+    expect(block).not.toMatch(/width:\s*100%/)
+  })
+
+  it('点看答案能展开/收起答案', async () => {
+    const { wrapper } = await mountPractice()
+    const toggle = wrapper.find('.qcard-p__toggle')
+    expect(wrapper.find('.answer--open').exists()).toBe(false)
+
+    await toggle.trigger('click')
+    expect(wrapper.find('.answer--open').exists()).toBe(true)
+    expect(toggle.text()).toContain('收起答案')
+
+    await toggle.trigger('click')
+    expect(wrapper.find('.answer--open').exists()).toBe(false)
+    expect(toggle.text()).toContain('看答案')
   })
 })
 
