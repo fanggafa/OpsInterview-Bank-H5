@@ -8,7 +8,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 234" role="img" aria-label="HTTP 状态码按责任方分组：2xx 成功、3xx 重定向、4xx 客户端、5xx 服务端">
+    <svg viewBox="0 0 340 250" role="img" aria-label="HTTP 状态码按责任方分组：2xx 成功、3xx 重定向、4xx 客户端、5xx 服务端">
       <text x="6" y="12" font-size="9.5" fill="var(--fig-muted)">按「谁的责任」分组，比按数字顺序死记更有用</text>
 
       <!-- 2xx -->
@@ -46,8 +46,9 @@
       <text x="14" y="199" font-size="7.5" fill="var(--fig-muted)">所以查这两类要先看网关（Nginx/SLB）的日志，再看后端进程是否在</text>
 
       <!-- 结论 -->
-      <text x="6" y="218" font-size="8.5" font-weight="700" fill="var(--fig-node-a)">排障口诀：4xx 查请求，500 查代码，502/504 查网关与后端连通性，503 查容量与健康检查</text>
-      <text x="6" y="229" font-size="7.5" fill="var(--fig-muted)">304 属于正常缓存行为，出现在告警里通常是「采集了口径错误」，不是故障</text>
+      <text x="6" y="218" font-size="8.5" font-weight="700" fill="var(--fig-node-a)">排障口诀：4xx 查请求，500 查代码，</text>
+      <text x="6" y="230" font-size="8.5" font-weight="700" fill="var(--fig-node-a)">502/504 查网关与后端连通性，503 查容量与健康检查</text>
+      <text x="6" y="241" font-size="7.5" fill="var(--fig-muted)">304 属于正常缓存行为，出现在告警里通常是「采集了口径错误」，不是故障</text>
     </svg>
     <figcaption>5xx 的责任方在服务端，但「网关」和「后端应用」是两个不同的排查起点</figcaption>
   </figure>

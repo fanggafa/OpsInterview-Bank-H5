@@ -8,7 +8,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 216" role="img" aria-label="MySQL 主从复制的三个线程与两段日志">
+    <svg viewBox="0 0 340 226" role="img" aria-label="MySQL 主从复制的三个线程与两段日志">
       <defs>
         <marker id="arrRepl" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="var(--fig-node-a)" />

@@ -8,7 +8,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 226" role="img" aria-label="服务变慢时按资源、应用、依赖、链路四层分流排查">
+    <svg viewBox="0 0 340 238" role="img" aria-label="服务变慢时按资源、应用、依赖、链路四层分流排查">
       <text x="6" y="12" font-size="9.5" fill="var(--fig-muted)">先分层，再看每层用什么工具判断</text>
 
       <!-- ① 资源层 -->

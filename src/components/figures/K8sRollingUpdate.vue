@@ -8,7 +8,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 234" role="img" aria-label="K8s 滚动更新过程中新旧 Pod 的替换节奏与就绪探针">
+    <svg viewBox="0 0 340 246" role="img" aria-label="K8s 滚动更新过程中新旧 Pod 的替换节奏与就绪探针">
       <text x="6" y="12" font-size="9.5" fill="var(--fig-muted)">Deployment 滚动更新：maxSurge=1 / maxUnavailable=0（零停机配置）</text>
 
       <!-- 阶段1 -->
@@ -44,8 +44,8 @@
       </g>
 
       <!-- 探针对比 -->
-      <rect x="6" y="142" width="328" height="88" rx="8" fill="var(--fig-node-d)" opacity=".09" />
-      <rect x="6" y="142" width="328" height="88" rx="8" fill="none" stroke="var(--fig-node-d)" stroke-width="1.2" />
+      <rect x="6" y="142" width="328" height="100" rx="8" fill="var(--fig-node-d)" opacity=".09" />
+      <rect x="6" y="142" width="328" height="100" rx="8" fill="none" stroke="var(--fig-node-d)" stroke-width="1.2" />
       <text x="16" y="158" font-size="9.5" font-weight="700" fill="var(--fig-node-d)">三种探针的分工（最容易混淆）</text>
 
       <text x="16" y="174" font-size="8.5" font-weight="700" fill="var(--fig-node-a)">livenessProbe</text>
@@ -57,7 +57,8 @@
       <text x="16" y="206" font-size="8.5" font-weight="700" fill="var(--fig-node-b)">startupProbe</text>
       <text x="100" y="206" font-size="8.5" fill="var(--fig-text)">启动期用它，成功后才启用上面两个（治「启动慢被误杀」）</text>
 
-      <text x="16" y="222" font-size="8" fill="#e5484d">✗ 只配 liveness 不配 readiness → 应用假死时 Pod 仍是 Running，流量继续打进来 → 502</text>
+      <text x="16" y="222" font-size="8" fill="#e5484d">✗ 只配 liveness 不配 readiness → 应用假死时 Pod 仍是 Running，</text>
+      <text x="16" y="234" font-size="8" fill="#e5484d">流量继续打进来 → 502</text>
     </svg>
     <figcaption>零停机的关键：readinessProbe 查业务路径、maxUnavailable 设 0、preStop 里 sleep 等摘流生效</figcaption>
   </figure>
