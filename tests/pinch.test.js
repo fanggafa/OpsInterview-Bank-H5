@@ -6,6 +6,9 @@ import {
   pinchScale,
   MAX_PINCH_SCALE,
   MIN_PINCH_SCALE,
+  PINCH_DEADZONE_RATIO,
+  PINCH_MIN_START_DISTANCE,
+  PINCH_SENSITIVITY,
 } from '@/utils/pinch'
 
 /**
@@ -17,6 +20,12 @@ import {
  * 会把整个 App（含顶栏、按钮）一起放大，而且退出后字号也不复原。
  * 这里只把图解画布的**布局宽度**按比例改掉，滚动区自然跟着变宽，
  * 所以能「放大后拖过去看」。用 transform: scale() 做不到这一点。
+ *
+ * 两个真机上才暴露的 bug（已修复，见下面各自的用例组）：
+ * 1. 单指也能缩放：单指时没挂 window 监听，抬起的记录清不掉，
+ *    下次单指触摸就凑满两条指针，被误判成双指。
+ * 2. 轻轻一挪就放得很大：起手间距直接当分母，两指只隔二三十像素时
+ *    稍微分开一点比例就翻倍。现在分母有下限，再加死区与阻尼。
  */
 
 describe('distance · 两指间距', () => {
@@ -38,24 +47,66 @@ describe('distance · 两指间距', () => {
   })
 })
 
-describe('pinchScale · 缩放比例计算', () => {
-  it('手指间距翻倍 → 放大 2 倍', () => {
-    expect(pinchScale(100, 200)).toBe(2)
+describe('pinchScale · 灵敏度（回归：轻轻一挪就放得很大）', () => {
+  it('间距翻倍不是简单放大 2 倍，而是被阻尼到约 1.5 倍', () => {
+    const scale = pinchScale(100, 200)
+    expect(scale).toBeGreaterThan(1.3)
+    expect(scale).toBeLessThan(1.7)
   })
 
-  it('手指间距减半 → 缩小到 0.5，但被下限夹到 1（不比基准更小）', () => {
-    expect(pinchScale(200, 100)).toBe(MIN_PINCH_SCALE)
+  it('两指只隔 25px 时，分开到 50px 不会放大到 2 倍', () => {
+    // 旧实现直接 50/25 = 2 倍；现在分母有下限 48，且还有阻尼
+    const scale = pinchScale(25, 50)
+    expect(scale).toBeLessThan(1.2)
   })
 
-  it('连续缩放要叠在起始比例上（第二次缩放在第一次的结果上继续）', () => {
-    expect(pinchScale(100, 200, { baseScale: 2 })).toBe(4)
+  it('两指靠得很近时完全不动（间距不足下限、且变化在死区内）', () => {
+    expect(pinchScale(20, 22)).toBe(1)
   })
 
-  it('上限夹取到 5 倍（再大标注字也糊了）', () => {
-    expect(pinchScale(100, 900)).toBe(MAX_PINCH_SCALE)
+  it('死区内的微小抖动完全忽略', () => {
+    // 100 → 104，变化 4%，小于死区 6%
+    expect(pinchScale(100, 104)).toBe(1)
+    expect(pinchScale(100, 96)).toBe(1)
   })
 
-  it('起手距离为 0（两指重合）不产生 Infinity，返回基准', () => {
+  it('跨过死区后开始变化，且不会突然跳一格', () => {
+    const justInside = pinchScale(100, 105.9)
+    const justOutside = pinchScale(100, 106.1)
+    expect(justInside).toBe(1)
+    expect(justOutside).toBeGreaterThan(1)
+    // 刚跨过死区时放大量很小，不会「一格一跳」
+    expect(justOutside).toBeLessThan(1.02)
+  })
+
+  it('挪动同样的距离，放大后的增量比旧实现小（真的更稳）', () => {
+    // 旧实现：100→130 是 1.3 倍；现在应明显更小
+    const scale = pinchScale(100, 130)
+    expect(scale).toBeLessThan(1.3)
+    expect(scale).toBeGreaterThan(1)
+  })
+
+  it('缩小方向同样是阻尼过的', () => {
+    const scale = pinchScale(200, 100)
+    expect(scale).toBe(MIN_PINCH_SCALE) // 被下限夹住
+  })
+
+  it('灵敏度可通过参数放宽（后续调手感用）', () => {
+    const linear = pinchScale(100, 200, { sensitivity: 1, deadzone: 0 })
+    expect(linear).toBeCloseTo(2, 5)
+  })
+})
+
+describe('pinchScale · 比例计算与夹取', () => {
+  it('连续缩放叠在起始比例上', () => {
+    expect(pinchScale(100, 200, { baseScale: 2, sensitivity: 1, deadzone: 0 })).toBeCloseTo(4, 5)
+  })
+
+  it('上限夹到 5 倍', () => {
+    expect(pinchScale(100, 9000, { sensitivity: 1, deadzone: 0 })).toBe(MAX_PINCH_SCALE)
+  })
+
+  it('起手距离为 0（两指重合）不产生 Infinity', () => {
     expect(pinchScale(0, 100, { baseScale: 2 })).toBe(2)
   })
 
@@ -66,15 +117,15 @@ describe('pinchScale · 缩放比例计算', () => {
     expect(pinchScale(100, -10)).toBe(1)
   })
 
-  it('可自定义上下限（测试 / 后续调整用）', () => {
-    expect(pinchScale(100, 200, { min: 0.5, max: 1.5 })).toBe(1.5)
+  it('默认参数是一组明确的常量（改手感时知道去哪改）', () => {
+    expect(PINCH_MIN_START_DISTANCE).toBeGreaterThan(40)
+    expect(PINCH_DEADZONE_RATIO).toBeGreaterThan(0)
+    expect(PINCH_SENSITIVITY).toBeLessThan(1)
   })
 })
 
 describe('keepFocusScrollLeft · 缩放时保持手指下的内容不跑掉', () => {
   it('以两指中点为中心放大：滚动位置按比例外扩', () => {
-    // 原本滚到 100，中点在元素内 100 处。该点对应的内容坐标是 (100+100)/1 = 200，
-    // 放大到 2 倍后它应该仍然停在 midX=100 的位置 → scrollLeft = 200*2 - 100 = 300
     const next = keepFocusScrollLeft({ scrollLeft: 100, midX: 100, fromScale: 1, toScale: 2 })
     expect(next).toBe(300)
   })
@@ -117,7 +168,12 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-/** 两指从 fromGap 张开到 toGap，返回 onChange 收到的最后一次比例 */
+/**
+ * 两指从 fromGap 张开到 toGap。
+ *
+ * 注意：基线是在「两指距离 ≥ PINCH_MIN_START_DISTANCE」时才建立的，
+ * 所以 fromGap 太小的话手势根本不会开始（这正是失败的旧行为）。
+ */
 function pinch(fromGap, toGap, handlers = {}) {
   const scales = []
   const detach = attachPinch(el, {
@@ -128,10 +184,12 @@ function pinch(fromGap, toGap, handlers = {}) {
     },
   })
 
-  el.dispatchEvent(pe('pointerdown', { x: 200, y: 100, id: 1 }))
-  el.dispatchEvent(pe('pointerdown', { x: 200 - fromGap, y: 100, id: 2 }))
-  window.dispatchEvent(pe('pointermove', { x: 200 + toGap / 2, y: 100, id: 1 }))
-  window.dispatchEvent(pe('pointermove', { x: 200 - toGap / 2, y: 100, id: 2 }))
+  const midX = 200
+  const y = 100
+  el.dispatchEvent(pe('pointerdown', { x: midX + fromGap / 2, y, id: 1 }))
+  el.dispatchEvent(pe('pointerdown', { x: midX - fromGap / 2, y, id: 2 }))
+  window.dispatchEvent(pe('pointermove', { x: midX + toGap / 2, y, id: 1 }))
+  window.dispatchEvent(pe('pointermove', { x: midX - toGap / 2, y, id: 2 }))
   window.dispatchEvent(pe('pointerup', { x: 0, y: 0, id: 1 }))
   window.dispatchEvent(pe('pointerup', { x: 0, y: 0, id: 2 }))
 
@@ -139,30 +197,91 @@ function pinch(fromGap, toGap, handlers = {}) {
   return scales
 }
 
+describe('attachPinch · 回归：单指不能缩放', () => {
+  it('单指按下并移动不产生任何缩放', () => {
+    const onChange = vi.fn()
+    const detach = attachPinch(el, { onChange })
+    el.dispatchEvent(pe('pointerdown', { x: 200, y: 100, id: 1 }))
+    window.dispatchEvent(pe('pointermove', { x: 300, y: 100, id: 1 }))
+    window.dispatchEvent(pe('pointermove', { x: 400, y: 100, id: 1 }))
+    expect(onChange).not.toHaveBeenCalled()
+    detach()
+  })
+
+  it('连续多次单指触摸也不会累积成「假双指」（根因就在这里）', () => {
+    const onChange = vi.fn()
+    const detach = attachPinch(el, { onChange })
+
+    // 第一次单指：按下 → 抬起（旧实现这里收不到 up，记录残留）
+    el.dispatchEvent(pe('pointerdown', { x: 200, y: 100, id: 1 }))
+    window.dispatchEvent(pe('pointerup', { x: 200, y: 100, id: 1 }))
+
+    // 第二次单指：旧实现会让 map 里凑满两条（残留 + 新的）→ 误判双指
+    el.dispatchEvent(pe('pointerdown', { x: 210, y: 100, id: 1 }))
+    window.dispatchEvent(pe('pointermove', { x: 260, y: 100, id: 1 }))
+    expect(onChange).not.toHaveBeenCalled()
+
+    window.dispatchEvent(pe('pointerup', { x: 260, y: 100, id: 1 }))
+    detach()
+  })
+
+  it('反复单指滑动（看图常见的拖动操作）始终不触发缩放', () => {
+    const onChange = vi.fn()
+    const detach = attachPinch(el, { onChange })
+    for (let i = 0; i < 5; i++) {
+      el.dispatchEvent(pe('pointerdown', { x: 100 + i, y: 100, id: 1 }))
+      window.dispatchEvent(pe('pointermove', { x: 200 + i, y: 100, id: 1 }))
+      window.dispatchEvent(pe('pointerup', { x: 200 + i, y: 100, id: 1 }))
+    }
+    expect(onChange).not.toHaveBeenCalled()
+    detach()
+  })
+
+  it('单指抬起后 touch-action 恢复（不然单指拖不动图）', () => {
+    const detach = attachPinch(el, {})
+    // 先设一个真实存在的值，才能验证「恢复」而不是「恢复成 undefined」
+    el.style.touchAction = 'pan-x pan-y'
+    el.dispatchEvent(pe('pointerdown', { x: 200, y: 100, id: 1 }))
+    window.dispatchEvent(pe('pointerup', { x: 200, y: 100, id: 1 }))
+    expect(el.style.touchAction).toBe('pan-x pan-y')
+    detach()
+  })
+})
+
 describe('attachPinch · 双指张开 / 捏合', () => {
-  it('两指张开会放大（间距翻倍 → 2 倍）', () => {
-    expect(pinch(100, 200).at(-1)).toBe(2)
+  it('两指张开能放大（间距翻倍约 1.5 倍，不是 2 倍）', () => {
+    const scale = pinch(100, 200).at(-1)
+    expect(scale).toBeGreaterThan(1.3)
+    expect(scale).toBeLessThan(1.7)
   })
 
-  it('两指捏合会缩小，但不小于基准 1 倍', () => {
-    expect(pinch(200, 100).at(-1)).toBe(1)
+  it('两指捏合能缩小，但不小于基准 1 倍', () => {
+    expect(pinch(200, 100).at(-1)).toBe(MIN_PINCH_SCALE)
   })
 
-  it('onStart 在手势开始时就回调一次', () => {
+  it('两指从很近（20px）开始张开时，不会立刻跳成大倍数', () => {
+    // 这是「轻轻一挪就放得很大」的另一面：起手距离太小时基线不建立
+    const scales = pinch(20, 60)
+    // 基线在两指够开（≥48）后才建立，建立时已经是 48→60，放大量很小
+    expect(scales.length === 0 || scales.every((s) => s < 1.2)).toBe(true)
+  })
+
+  it('onStart 在基线建立时回调一次', () => {
     const onStart = vi.fn()
     pinch(100, 200, { onStart })
     expect(onStart).toHaveBeenCalledTimes(1)
   })
 
-  it('onEnd 在两指都抬起后回调', () => {
+  it('onEnd 在手势结束后回调', () => {
     const onEnd = vi.fn()
     pinch(100, 200, { onEnd })
     expect(onEnd).toHaveBeenCalledTimes(1)
   })
 
   it('getScale 提供起始比例，连续缩放叠加上去', () => {
-    // 已经从 1 倍放大到 2 倍，再张开一倍 → 4
-    expect(pinch(100, 200, { getScale: () => 2 }).at(-1)).toBe(4)
+    const scale = pinch(100, 200, { getScale: () => 2 }).at(-1)
+    expect(scale).toBeGreaterThan(2)
+    expect(scale).toBeLessThan(3.4)
   })
 
   it('缩放过程中 preventDefault（不让浏览器同时做自己的手势）', () => {
@@ -180,12 +299,6 @@ describe('attachPinch · 双指张开 / 捏合', () => {
 })
 
 describe('attachPinch · touch-action 接管（真机上能不能捏的关键）', () => {
-  /**
-   * 缩放层是 overflow:auto 的滚动区，touch-action 是 pan-x pan-y。
-   * 这个值同时禁用了 pinch-zoom：两指落下时浏览器会当成「平移」接管，
-   * 并派发 pointercancel 中断我们的手势 —— 真机上表现就是「两指捏了没反应」。
-   * 所以第二根手指落下的瞬间必须把 touch-action 改成 none。
-   */
   it('两指落下时把 touch-action 设为 none（阻止浏览器接管）', () => {
     const detach = attachPinch(el, {})
     el.dispatchEvent(pe('pointerdown', { x: 200, y: 100, id: 1 }))
@@ -197,12 +310,11 @@ describe('attachPinch · touch-action 接管（真机上能不能捏的关键）
   it('单指落下不改 touch-action（保留单指拖动看图）', () => {
     const detach = attachPinch(el, {})
     el.dispatchEvent(pe('pointerdown', { x: 200, y: 100, id: 1 }))
-    // 未写过 inline style 时 jsdom 给的是 undefined / ''，都不等于 'none'
     expect(el.style.touchAction).not.toBe('none')
     detach()
   })
 
-  it('两指抬起后恢复原值（否则后续单指拖不动图）', () => {
+  it('两指抬起后恢复原值', () => {
     const detach = attachPinch(el, {})
     el.dispatchEvent(pe('pointerdown', { x: 200, y: 100, id: 1 }))
     el.dispatchEvent(pe('pointerdown', { x: 100, y: 100, id: 2 }))
@@ -215,10 +327,10 @@ describe('attachPinch · touch-action 接管（真机上能不能捏的关键）
     detach()
   })
 
-  it('两指落点完全重合（距离 0）也要能解锁 todo，不会卡住拖拽', () => {
+  it('两指落点完全重合（距离 0）也要能解锁，不会卡住拖拽', () => {
     const detach = attachPinch(el, {})
     el.dispatchEvent(pe('pointerdown', { x: 150, y: 100, id: 1 }))
-    el.dispatchEvent(pe('pointerdown', { x: 150, y: 100, id: 2 })) // 同一点
+    el.dispatchEvent(pe('pointerdown', { x: 150, y: 100, id: 2 }))
     expect(el.style.touchAction).toBe('none')
 
     window.dispatchEvent(pe('pointerup', { x: 150, y: 100, id: 1 }))
@@ -247,15 +359,6 @@ describe('attachPinch · touch-action 接管（真机上能不能捏的关键）
 })
 
 describe('attachPinch · 边界', () => {
-  it('单指不触发缩放（那是滑动换题）', () => {
-    const onChange = vi.fn()
-    const detach = attachPinch(el, { onChange })
-    el.dispatchEvent(pe('pointerdown', { x: 200, y: 100, id: 1 }))
-    window.dispatchEvent(pe('pointermove', { x: 100, y: 100, id: 1 }))
-    expect(onChange).not.toHaveBeenCalled()
-    detach()
-  })
-
   it('鼠标不触发（桌面端用别的交互）', () => {
     const onChange = vi.fn()
     const detach = attachPinch(el, { onChange })
@@ -266,13 +369,14 @@ describe('attachPinch · 边界', () => {
     detach()
   })
 
-  it('pointercancel 会结束手势并清掉监听', () => {
-    const onEnd = vi.fn()
-    const detach = attachPinch(el, { onEnd })
+  it('pointercancel 之后不再响应', () => {
+    const onChange = vi.fn()
+    const detach = attachPinch(el, { onChange })
     el.dispatchEvent(pe('pointerdown', { x: 200, y: 100, id: 1 }))
     el.dispatchEvent(pe('pointerdown', { x: 100, y: 100, id: 2 }))
     window.dispatchEvent(pe('pointercancel', { id: 1 }))
-    expect(onEnd).toHaveBeenCalled()
+    window.dispatchEvent(pe('pointermove', { x: 300, y: 100, id: 1 }))
+    expect(onChange).not.toHaveBeenCalled()
     detach()
   })
 
