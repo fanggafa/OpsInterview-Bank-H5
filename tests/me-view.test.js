@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -134,6 +136,54 @@ describe('我的 · 分类图表默认折叠', () => {
     expect(wrapper.findAll('.chart-card').length).toBe(1)
     await wrapper.findAll('.collapse')[0].trigger('click')
     expect(wrapper.findAll('.chart-card').length).toBe(2)
+  })
+
+  it('折叠条是卡片式（带 bg/border/padding），不是裸文字', () => {
+    // 回归：早先只写了 padding: 0 2px + 无边框，视觉上像普通小标题
+    const src = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
+    const collapseBlock = src.slice(src.indexOf('.collapse {'), src.indexOf('.collapse:active'))
+    expect(collapseBlock).toMatch(/border:\s*1px solid var\(--c-border\)/)
+    expect(collapseBlock).toMatch(/background:\s*var\(--c-card\)/)
+    expect(collapseBlock).toMatch(/border-radius:\s*var\(--radius\)/)
+    expect(collapseBlock).toMatch(/padding:\s*0 14px/)
+  })
+
+  it('展开时折叠条与图表卡贴合（去掉中间圆角）', async () => {
+    const { wrapper } = await mountMe()
+    await wrapper.findAll('.collapse')[0].trigger('click')
+    expect(wrapper.findAll('.collapse')[0].classes()).toContain('collapse--open')
+    expect(wrapper.find('.chart-card').classes()).toContain('chart-card--attached')
+  })
+})
+
+describe('我的 · 设置入口与「我的题目」卡片对齐', () => {
+  it('设置入口也用 .group 容器包裹（宽度来源与上面的卡一致）', async () => {
+    const { wrapper } = await mountMe()
+    const groups = wrapper.findAll('.group')
+    // 「我的题目」一组 + 「设置」一组 = 2
+    expect(groups.length).toBe(2)
+
+    const settingsGroup = groups[1]
+    const entry = settingsGroup.find('a[href*="/settings"]')
+    expect(entry.exists()).toBe(true)
+    // 行本身不再自带左右 padding —— 交给 .group 统一提供
+    expect(entry.classes()).not.toContain('row--entry')
+  })
+
+  it('不再保留 .row--entry（曾导致卡片宽出 28px、与上图对不齐）', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
+    expect(src).not.toMatch(/\.row--entry\s*\{/)
+  })
+
+  it('设置入口是一个可点的链接行，包含图标/标题/描述/箭头', async () => {
+    const { wrapper } = await mountMe()
+    // 页头还有一个齿轮入口，这里要的是 .group 里的那一行
+    const entry = wrapper.find('.group a[href*="/settings"]')
+    expect(entry.exists()).toBe(true)
+    expect(entry.find('.row__icon').exists()).toBe(true)
+    expect(entry.find('.row__title').text()).toBe('设置')
+    expect(entry.find('.row__desc').exists()).toBe(true)
+    expect(entry.find('.row__chev').exists()).toBe(true)
   })
 })
 

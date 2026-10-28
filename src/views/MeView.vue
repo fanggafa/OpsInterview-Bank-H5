@@ -140,9 +140,21 @@ const categoryChoice = computed(() => {
       </div>
     </div>
 
-    <!-- 各分类掌握度：默认折叠，点标题展开 -->
-    <button class="collapse" :aria-expanded="expandedMastery" @click="expandedMastery = !expandedMastery">
+    <!-- 各分类掌握度：默认折叠，点标题展开（卡片式折叠条，与其它卡片同一套视觉） -->
+    <button
+      class="collapse"
+      :class="{ 'collapse--open': expandedMastery }"
+      :aria-expanded="expandedMastery"
+      @click="expandedMastery = !expandedMastery"
+    >
       <span class="collapse__title">
+        <span class="collapse__icon collapse__icon--indigo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15">
+            <rect x="4" y="12" width="4" height="8" rx="1" fill="currentColor" opacity=".5" />
+            <rect x="10" y="8" width="4" height="12" rx="1" fill="currentColor" opacity=".75" />
+            <rect x="16" y="4" width="4" height="16" rx="1" fill="currentColor" />
+          </svg>
+        </span>
         各分类掌握度
         <span class="collapse__tip">（仅简答题）</span>
       </span>
@@ -152,20 +164,39 @@ const categoryChoice = computed(() => {
         </svg>
       </span>
     </button>
-    <section v-if="expandedMastery" class="card chart-card">
+    <section v-if="expandedMastery" class="card chart-card chart-card--attached">
       <BarChart :items="categoryMastery" empty-text="还没有简答题的作答记录" />
     </section>
 
     <!-- 各分类选择正确率：同样默认折叠 -->
-    <button class="collapse" :aria-expanded="expandedChoice" @click="expandedChoice = !expandedChoice">
-      <span class="collapse__title">各分类选择正确率</span>
+    <button
+      class="collapse"
+      :class="{ 'collapse--open': expandedChoice }"
+      :aria-expanded="expandedChoice"
+      @click="expandedChoice = !expandedChoice"
+    >
+      <span class="collapse__title">
+        <span class="collapse__icon collapse__icon--teal" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15">
+            <path
+              d="M5 12.5l4.5 4.5L19 7"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        各分类选择正确率
+      </span>
       <span class="collapse__chev" :class="{ 'collapse__chev--up': expandedChoice }" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="16" height="16">
           <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </span>
     </button>
-    <section v-if="expandedChoice" class="card chart-card">
+    <section v-if="expandedChoice" class="card chart-card chart-card--attached">
       <BarChart :items="categoryChoice" empty-text="还没有选择题的作答记录" />
     </section>
 
@@ -213,31 +244,35 @@ const categoryChoice = computed(() => {
       </router-link>
     </div>
 
-    <!-- 设置入口：外观 / 默认练习方式 / 数据管理都收进设置页 -->
-    <router-link to="/settings" class="row row--entry card">
-      <span class="row__icon row__icon--indigo" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="17" height="17">
-          <path
-            d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-          />
-          <path
-            d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.4"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </span>
-      <div class="row__text">
-        <span class="row__title">设置</span>
-        <span class="row__desc">外观主题 · 默认练习方式 · 清空数据</span>
-      </div>
-      <span class="row__chev" aria-hidden="true">›</span>
-    </router-link>
+    <!-- 设置入口：外观 / 默认练习方式 / 数据管理都收进设置页。
+         外层用 .group 包裹（与「我的题目」完全相同的容器），
+         避免「独立 card + 自己加 padding」把卡片撑宽、与上面的卡对不齐。 -->
+    <div class="group card">
+      <router-link to="/settings" class="row">
+        <span class="row__icon row__icon--indigo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="17" height="17">
+            <path
+              d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+            />
+            <path
+              d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <div class="row__text">
+          <span class="row__title">设置</span>
+          <span class="row__desc">外观主题 · 默认练习方式 · 清空数据</span>
+        </div>
+        <span class="row__chev" aria-hidden="true">›</span>
+      </router-link>
+    </div>
 
     <Transition name="toast">
       <div v-if="toastText" class="toast" role="status">{{ toastText }}</div>
@@ -345,31 +380,71 @@ const categoryChoice = computed(() => {
   background: var(--c-primary-weak);
 }
 
-/* 可折叠标题（分类掌握度 / 选择正确率） */
+/**
+ * 可折叠标题（分类掌握度 / 选择正确率）。
+ *
+ * 这两块原来只是一行文字 + 箭头，视觉上像「普通小标题」，
+ * 和上面的卡片、下面的「我的题目」不成体系。
+ * 现在做成卡片样式的折叠条：带边框/底色/图标，与其它卡片同一套视觉语言。
+ */
 .collapse {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   width: 100%;
-  min-height: 44px;
-  margin-top: 16px;
-  padding: 0 2px;
-  font-size: 14.5px;
+  min-height: 52px;
+  margin-top: 8px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  box-shadow: var(--shadow-card);
+  font-size: 14px;
   font-weight: 600;
   color: var(--c-text);
   text-align: left;
 }
+.collapse:active {
+  background: var(--c-bg);
+}
+/* 展开后与下方图表连成一体：底部去掉圆角与分隔线 */
+.collapse--open {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
 .collapse__title {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 5px;
+  min-width: 0;
 }
 .collapse__tip {
   font-size: 11px;
   font-weight: 400;
   color: var(--c-text-3);
 }
+.collapse__icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.collapse__icon--indigo {
+  color: var(--c-primary);
+  background: var(--c-primary-weak);
+}
+.collapse__icon--teal {
+  color: var(--c-tag-teal, #0d9488);
+  background: rgba(13, 148, 136, 0.12);
+}
 .collapse__chev {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   color: var(--c-text-3);
@@ -378,14 +453,24 @@ const categoryChoice = computed(() => {
 .collapse__chev--up {
   transform: rotate(180deg);
 }
-
-/* 设置入口行（单独一张卡） */
-.row--entry {
-  margin-top: 16px;
-  padding: 0 14px;
-  min-height: 56px;
-  border-bottom: none;
+/* 展开后的图表卡：与折叠条贴合 */
+.chart-card--attached {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top-color: transparent;
 }
+
+/**
+ * 设置入口行（单独一张卡）。
+ *
+ * 注意：`.row` 的左右 padding 是 0——它原本设计为放在 `.group` 里，
+ * 由 `.group` 提供 14px 内边距。这里的行是「独立一张卡」，没有 group 包着，
+ * 所以必须自己补上左右 14px，否则图标会贴着卡片左边缘（截图里就是这样）。
+ */
+/* 设置入口现在用 .group 包裹（与「我的题目」同一容器），
+   不需要单独的 .row--entry —— 曾用「独立 card + 自己加 padding」的方式，
+   结果卡片比上面那张宽出 28px（2×14px），与截图里对不齐的现象一致。 */
 .tile__label {
   font-size: 11.5px;
   color: var(--c-text-3);
