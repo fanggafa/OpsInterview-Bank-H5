@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
 import { parseAnswerFlow } from '@/utils/answerParts'
 import { getFigure } from '@/components/figures/index'
 
