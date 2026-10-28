@@ -140,9 +140,21 @@ const categoryChoice = computed(() => {
       </div>
     </div>
 
-    <!-- 各分类掌握度：默认折叠，点标题展开 -->
-    <button class="collapse" :aria-expanded="expandedMastery" @click="expandedMastery = !expandedMastery">
+    <!-- 各分类掌握度：默认折叠，点标题展开（卡片式折叠条，与其它卡片同一套视觉） -->
+    <button
+      class="collapse"
+      :class="{ 'collapse--open': expandedMastery }"
+      :aria-expanded="expandedMastery"
+      @click="expandedMastery = !expandedMastery"
+    >
       <span class="collapse__title">
+        <span class="collapse__icon collapse__icon--indigo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15">
+            <rect x="4" y="12" width="4" height="8" rx="1" fill="currentColor" opacity=".5" />
+            <rect x="10" y="8" width="4" height="12" rx="1" fill="currentColor" opacity=".75" />
+            <rect x="16" y="4" width="4" height="16" rx="1" fill="currentColor" />
+          </svg>
+        </span>
         各分类掌握度
         <span class="collapse__tip">（仅简答题）</span>
       </span>
@@ -152,20 +164,39 @@ const categoryChoice = computed(() => {
         </svg>
       </span>
     </button>
-    <section v-if="expandedMastery" class="card chart-card">
+    <section v-if="expandedMastery" class="card chart-card chart-card--attached">
       <BarChart :items="categoryMastery" empty-text="还没有简答题的作答记录" />
     </section>
 
     <!-- 各分类选择正确率：同样默认折叠 -->
-    <button class="collapse" :aria-expanded="expandedChoice" @click="expandedChoice = !expandedChoice">
-      <span class="collapse__title">各分类选择正确率</span>
+    <button
+      class="collapse"
+      :class="{ 'collapse--open': expandedChoice }"
+      :aria-expanded="expandedChoice"
+      @click="expandedChoice = !expandedChoice"
+    >
+      <span class="collapse__title">
+        <span class="collapse__icon collapse__icon--teal" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15">
+            <path
+              d="M5 12.5l4.5 4.5L19 7"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        各分类选择正确率
+      </span>
       <span class="collapse__chev" :class="{ 'collapse__chev--up': expandedChoice }" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="16" height="16">
           <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </span>
     </button>
-    <section v-if="expandedChoice" class="card chart-card">
+    <section v-if="expandedChoice" class="card chart-card chart-card--attached">
       <BarChart :items="categoryChoice" empty-text="还没有选择题的作答记录" />
     </section>
 
@@ -345,31 +376,71 @@ const categoryChoice = computed(() => {
   background: var(--c-primary-weak);
 }
 
-/* 可折叠标题（分类掌握度 / 选择正确率） */
+/**
+ * 可折叠标题（分类掌握度 / 选择正确率）。
+ *
+ * 这两块原来只是一行文字 + 箭头，视觉上像「普通小标题」，
+ * 和上面的卡片、下面的「我的题目」不成体系。
+ * 现在做成卡片样式的折叠条：带边框/底色/图标，与其它卡片同一套视觉语言。
+ */
 .collapse {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   width: 100%;
-  min-height: 44px;
-  margin-top: 16px;
-  padding: 0 2px;
-  font-size: 14.5px;
+  min-height: 52px;
+  margin-top: 8px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  box-shadow: var(--shadow-card);
+  font-size: 14px;
   font-weight: 600;
   color: var(--c-text);
   text-align: left;
 }
+.collapse:active {
+  background: var(--c-bg);
+}
+/* 展开后与下方图表连成一体：底部去掉圆角与分隔线 */
+.collapse--open {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
 .collapse__title {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 5px;
+  min-width: 0;
 }
 .collapse__tip {
   font-size: 11px;
   font-weight: 400;
   color: var(--c-text-3);
 }
+.collapse__icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.collapse__icon--indigo {
+  color: var(--c-primary);
+  background: var(--c-primary-weak);
+}
+.collapse__icon--teal {
+  color: var(--c-tag-teal, #0d9488);
+  background: rgba(13, 148, 136, 0.12);
+}
 .collapse__chev {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   color: var(--c-text-3);
@@ -378,13 +449,32 @@ const categoryChoice = computed(() => {
 .collapse__chev--up {
   transform: rotate(180deg);
 }
+/* 展开后的图表卡：与折叠条贴合 */
+.chart-card--attached {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top-color: transparent;
+}
 
-/* 设置入口行（单独一张卡） */
+/**
+ * 设置入口行（单独一张卡）。
+ *
+ * 注意：`.row` 的左右 padding 是 0——它原本设计为放在 `.group` 里，
+ * 由 `.group` 提供 14px 内边距。这里的行是「独立一张卡」，没有 group 包着，
+ * 所以必须自己补上左右 14px，否则图标会贴着卡片左边缘（截图里就是这样）。
+ */
 .row--entry {
-  margin-top: 16px;
+  margin-top: 8px;
   padding: 0 14px;
-  min-height: 56px;
+  min-height: 58px;
   border-bottom: none;
+  border-radius: var(--radius);
+  color: var(--c-text);
+}
+/* 独立卡片时，图标与文字仍按 group 内的一致间距排 */
+.row--entry .row__icon {
+  margin-left: 0;
 }
 .tile__label {
   font-size: 11.5px;

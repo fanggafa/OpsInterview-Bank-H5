@@ -441,16 +441,31 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   <div class="page practice page--fill">
     <AppHeader :title="headerTitle" :back="false">
       <template #right>
-        <!-- 模式切换：像切换主题一样，点一下切到另一种练习方式 -->
+        <!-- 模式切换：像切换主题一样，点一下切到另一种练习方式
+             做得比「图标按钮」更醒目一些：40px 高、有底色，避免用户以为它只是个标签 -->
         <button
           v-if="started && !finished"
           class="practice__mode-btn"
+          :class="`practice__mode-btn--${studyMode}`"
           :aria-label="`当前${STUDY_MODE_LABEL[studyMode]}，点击切换`"
           :title="`点击切换到${STUDY_MODE_LABEL[studyMode === 'practice' ? 'memorize' : 'practice']}`"
           @click="switchStudyMode(studyMode === 'practice' ? 'memorize' : 'practice')"
         >
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+            <!-- 刷题：闪电；背题：书本 -->
+            <path
+              v-if="studyMode === 'practice'"
+              d="M13 3 5 14h5l-1 7 8-11h-5l1-7z"
+              fill="currentColor"
+            />
+            <path
+              v-else
+              d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5v-13zM14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14V4z"
+              fill="currentColor"
+            />
+          </svg>
           <span class="practice__mode-text">{{ STUDY_MODE_LABEL[studyMode] }}</span>
-          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" class="practice__mode-chev">
             <path
               d="M7 9l5 5 5-5"
               fill="none"
@@ -725,25 +740,48 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
   border-radius: 50%;
 }
 
-/* 右上角的模式切换按钮：像主题切换一样，点一下换一种练习方式 */
+/**
+ * 右上角的模式切换按钮。
+ *
+ * 早期版本做得太小（30px 高、细边框），用户反馈「确实有点小」——
+ * 看不出它是可点的，更像一个状态标签。现在：
+ * - 高度 38px（接近 44px 的触控建议下限，且不与页头 52px 冲突）
+ * - 有实色底 + 主色文字，视觉上明确是「按钮」
+ * - 左侧带模式图标（闪电 / 书本），一眼看出当前在哪种模式
+ */
 .practice__mode-btn {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 30px;
-  padding: 0 9px 0 11px;
-  border-radius: 15px;
-  border: 1px solid var(--c-border);
-  background: var(--c-card);
-  font-size: 12px;
-  color: var(--c-primary);
+  gap: 5px;
+  height: 38px;
+  padding: 0 12px 0 13px;
+  border-radius: 19px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
+  transition: transform 0.12s ease;
 }
 .practice__mode-btn:active {
+  transform: scale(0.96);
+}
+/* 刷题模式：主色（靛蓝） */
+.practice__mode-btn--practice {
+  color: var(--c-primary);
   background: var(--c-primary-weak);
+  border-color: color-mix(in srgb, var(--c-primary) 32%, transparent);
+}
+/* 背题模式：青色，与刷题明确区分 */
+.practice__mode-btn--memorize {
+  color: var(--c-tag-teal, #0d9488);
+  background: rgba(13, 148, 136, 0.12);
+  border-color: rgba(13, 148, 136, 0.3);
 }
 .practice__mode-text {
   font-weight: 600;
+}
+.practice__mode-chev {
+  opacity: 0.75;
 }
 
 /* ---------- 选择页（进入刷题前的两个居中按钮） ---------- */

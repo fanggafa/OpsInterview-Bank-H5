@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -152,6 +154,34 @@ describe('刷题页 · 进入后仍可切换', () => {
     // 切到背题模式：只剩简答题，按钮文案也跟着变
     expect(wrapper.find('.practice__mode-btn').text()).toContain('背题模式')
     expect(wrapper.text()).toContain('第 1 / 2 题')
+  })
+
+  it('模式按钮足够大（用户反馈「有点小」，不再是个小标签）', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
+    const block = src.slice(src.indexOf('.practice__mode-btn {'), src.indexOf('.practice__mode-btn:active'))
+
+    const height = block.match(/height:\s*(\d+)px/)
+    expect(height).toBeTruthy()
+    expect(Number(height[1])).toBeGreaterThanOrEqual(36)
+
+    const fontSize = block.match(/font-size:\s*([\d.]+)px/)
+    expect(fontSize).toBeTruthy()
+    expect(Number(fontSize[1])).toBeGreaterThanOrEqual(13)
+  })
+
+  it('两种模式有不同配色（一眼区分当前模式）', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
+    expect(src).toMatch(/\.practice__mode-btn--practice/)
+    expect(src).toMatch(/\.practice__mode-btn--memorize/)
+  })
+
+  it('收藏按钮在题卡内，不在页头', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '刷题模式')
+    // 页头里不应有收藏按钮
+    expect(wrapper.find('.header__right .qcard-p__fav').exists()).toBe(false)
+    // 收藏按钮在题卡的题头行里
+    expect(wrapper.find('.qcard-p__meta .qcard-p__fav').exists()).toBe(true)
   })
 
   it('题卡页点「随机」写入 mode=random', async () => {

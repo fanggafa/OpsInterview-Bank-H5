@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -134,6 +136,43 @@ describe('我的 · 分类图表默认折叠', () => {
     expect(wrapper.findAll('.chart-card').length).toBe(1)
     await wrapper.findAll('.collapse')[0].trigger('click')
     expect(wrapper.findAll('.chart-card').length).toBe(2)
+  })
+
+  it('折叠条是卡片式（带 bg/border/padding），不是裸文字', () => {
+    // 回归：早先只写了 padding: 0 2px + 无边框，视觉上像普通小标题
+    const src = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
+    const collapseBlock = src.slice(src.indexOf('.collapse {'), src.indexOf('.collapse:active'))
+    expect(collapseBlock).toMatch(/border:\s*1px solid var\(--c-border\)/)
+    expect(collapseBlock).toMatch(/background:\s*var\(--c-card\)/)
+    expect(collapseBlock).toMatch(/border-radius:\s*var\(--radius\)/)
+    expect(collapseBlock).toMatch(/padding:\s*0 14px/)
+  })
+
+  it('展开时折叠条与图表卡贴合（去掉中间圆角）', async () => {
+    const { wrapper } = await mountMe()
+    await wrapper.findAll('.collapse')[0].trigger('click')
+    expect(wrapper.findAll('.collapse')[0].classes()).toContain('collapse--open')
+    expect(wrapper.find('.chart-card').classes()).toContain('chart-card--attached')
+  })
+})
+
+describe('我的 · 设置入口行的内边距', () => {
+  it('独立卡片的行自己补了左右内边距（否则图标贴边）', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
+    const block = src.slice(src.indexOf('.row--entry {'), src.indexOf('.tile__label {'))
+    // .row 本身 padding 左右是 0，所以 .row--entry 必须自己给 14px
+    expect(block).toMatch(/padding:\s*0 14px/)
+  })
+
+  it('设置入口是一个可点的链接行，包含图标/标题/描述/箭头', async () => {
+    const { wrapper } = await mountMe()
+    const entry = wrapper.find('.row--entry')
+    expect(entry.exists()).toBe(true)
+    expect(entry.attributes('href')).toContain('/settings')
+    expect(entry.find('.row__icon').exists()).toBe(true)
+    expect(entry.find('.row__title').text()).toBe('设置')
+    expect(entry.find('.row__desc').exists()).toBe(true)
+    expect(entry.find('.row__chev').exists()).toBe(true)
   })
 })
 
