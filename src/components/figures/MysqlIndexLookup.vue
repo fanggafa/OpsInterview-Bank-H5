@@ -8,7 +8,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 226" role="img" aria-label="MySQL 聚簇索引与二级索引的结构差异，以及回表与覆盖索引">
+    <svg viewBox="0 0 340 240" role="img" aria-label="MySQL 聚簇索引与二级索引的结构差异，以及回表与覆盖索引">
       <defs>
         <marker id="arrIdx" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="var(--fig-node-d)" />
@@ -49,11 +49,12 @@
       <text x="14" y="154" font-size="7" fill="var(--fig-muted)">这就是「走二级索引反而更慢」的原因（数据量大时明显）</text>
 
       <!-- 覆盖索引 -->
-      <rect x="6" y="164" width="328" height="52" rx="6" fill="var(--fig-node-c)" opacity=".1" />
-      <rect x="6" y="164" width="328" height="52" rx="6" fill="none" stroke="var(--fig-node-c)" stroke-width="1.2" />
+      <rect x="6" y="164" width="328" height="68" rx="6" fill="var(--fig-node-c)" opacity=".1" />
+      <rect x="6" y="164" width="328" height="68" rx="6" fill="none" stroke="var(--fig-node-c)" stroke-width="1.2" />
       <text x="16" y="180" font-size="8.5" font-weight="700" fill="var(--fig-node-c)">覆盖索引：省掉回表</text>
-      <text x="16" y="194" font-size="8" fill="var(--fig-text)">如果 SELECT 要的字段「都在索引里」，就不必回表 —— EXPLAIN 的 Extra 会显示 Using index</text>
-      <text x="16" y="207" font-size="7.5" fill="var(--fig-muted)">实践：把「查询频繁用到的字段」一起建进复合索引，让查询变成覆盖索引</text>
+      <text x="16" y="194" font-size="8" fill="var(--fig-text)">如果 SELECT 要的字段「都在索引里」，就不必回表</text>
+      <text x="16" y="206" font-size="8" fill="var(--fig-text)">—— EXPLAIN 的 Extra 会显示 Using index</text>
+      <text x="16" y="219" font-size="7.5" fill="var(--fig-muted)">实践：把「查询频繁用到的字段」一起建进复合索引，让查询变成覆盖索引</text>
     </svg>
     <figcaption>「回表」是二级索引的主要开销；覆盖索引是消除它的唯一手段</figcaption>
   </figure>

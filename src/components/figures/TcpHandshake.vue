@@ -8,7 +8,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 246" role="img" aria-label="TCP 三次握手与四次挥手，标注半连接队列与 TIME_WAIT">
+    <svg viewBox="0 0 340 278" role="img" aria-label="TCP 三次握手与四次挥手，标注半连接队列与 TIME_WAIT">
       <defs>
         <marker id="arrTcp" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="var(--fig-node-a)" />
@@ -49,10 +49,13 @@
       <path d="M108 210 L56 218" stroke="var(--fig-node-b)" stroke-width="1.4" marker-end="url(#arrTcp2)" />
       <text x="62" y="216" font-size="7.5" fill="var(--fig-node-b)">ACK</text>
 
-      <text x="130" y="196" font-size="8" fill="var(--fig-text)">服务端此时可能还有数据要发 → 所以 ACK 与 FIN 分开（这是第 4 次的原因）</text>
-      <text x="130" y="208" font-size="8" fill="var(--fig-node-d)">主动关闭方最后进 TIME_WAIT，等 2MSL（≈60s）</text>
-      <text x="130" y="220" font-size="8" fill="var(--fig-muted)">目的：让最后的 ACK 能重传 + 让旧连接的残留包在网络中消亡</text>
-      <text x="130" y="232" font-size="8" fill="var(--fig-node-c)">TIME_WAIT 大量堆积（短连接场景）→ 调 tw_reuse / 用长连接 / 加端口范围</text>
+      <text x="118" y="196" font-size="8" fill="var(--fig-text)">服务端此时可能还有数据要发 →</text>
+      <text x="118" y="208" font-size="8" fill="var(--fig-text)">所以 ACK 与 FIN 分开（这是第 4 次的原因）</text>
+      <text x="118" y="220" font-size="8" fill="var(--fig-node-d)">主动关闭方最后进 TIME_WAIT，等 2MSL（≈60s）</text>
+      <text x="118" y="232" font-size="8" fill="var(--fig-node-d)">目的：让最后的 ACK 能重传 +</text>
+      <text x="118" y="244" font-size="8" fill="var(--fig-muted)">让旧连接的残留包在网络中消亡</text>
+      <text x="118" y="256" font-size="8" fill="var(--fig-node-c)">TIME_WAIT 大量堆积（短连接场景）→</text>
+      <text x="118" y="268" font-size="8" fill="var(--fig-node-c)">调 tw_reuse / 用长连接 / 加端口范围</text>
     </svg>
     <figcaption>握手 3 次确立双向可达，挥手 4 次因为「半关闭」——TIME_WAIT 不是故障，是保护</figcaption>
   </figure>

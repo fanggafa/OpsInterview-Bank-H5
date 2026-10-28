@@ -8,7 +8,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 226" role="img" aria-label="Kafka 消息在生产者、broker、消费者三个环节的丢失与重复风险">
+    <svg viewBox="0 0 340 242" role="img" aria-label="Kafka 消息在生产者、broker、消费者三个环节的丢失与重复风险">
       <defs>
         <marker id="arrMq" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="var(--fig-node-a)" />
@@ -46,19 +46,20 @@
       <text x="278" y="78" font-size="7.5" fill="var(--fig-node-c)">防：先处理</text>
 
       <!-- 重复 -->
-      <rect x="6" y="96" width="328" height="44" rx="7" fill="var(--fig-node-d)" opacity=".1" />
-      <rect x="6" y="96" width="328" height="44" rx="7" fill="none" stroke="var(--fig-node-d)" stroke-width="1.2" />
+      <rect x="6" y="96" width="328" height="56" rx="7" fill="var(--fig-node-d)" opacity=".1" />
+      <rect x="6" y="96" width="328" height="56" rx="7" fill="none" stroke="var(--fig-node-d)" stroke-width="1.2" />
       <text x="16" y="112" font-size="9" font-weight="700" fill="var(--fig-node-d)">「不丢」的代价：多半会「重复」</text>
-      <text x="16" y="126" font-size="8.5" fill="var(--fig-text)">重试、ack 超时重发、rebalance 重新消费 offset —— 都会导致同一条消息被处理两次</text>
-      <text x="16" y="136" font-size="8.5" fill="var(--fig-node-c)">所以消费端必须「幂等」：唯一键去重 / 状态机判断 / 数据库 upsert</text>
+      <text x="16" y="126" font-size="8.5" fill="var(--fig-text)">重试、ack 超时重发、rebalance 重新消费 offset ——</text>
+      <text x="16" y="138" font-size="8.5" fill="var(--fig-text)">都会导致同一条消息被处理两次</text>
+      <text x="16" y="148" font-size="8.5" fill="var(--fig-node-c)">所以消费端必须「幂等」：唯一键去重 / 状态机判断 / 数据库 upsert</text>
 
       <!-- 语义 -->
-      <text x="6" y="162" font-size="9.5" font-weight="700" fill="var(--fig-text)">三种投递语义</text>
-      <text x="6" y="176" font-size="8.5" fill="var(--fig-muted)">at-most-once（最多一次）：先提交 offset 再处理 → 可能丢，不会重</text>
-      <text x="6" y="189" font-size="8.5" fill="var(--fig-muted)">at-least-once（至少一次）：先处理再提交 → 不会丢，可能重（最常见）</text>
-      <text x="6" y="202" font-size="8.5" fill="var(--fig-node-c)">exactly-once（恰好一次）：需要事务/幂等配合，成本高</text>
+      <text x="6" y="174" font-size="9.5" font-weight="700" fill="var(--fig-text)">三种投递语义</text>
+      <text x="6" y="188" font-size="8.5" fill="var(--fig-muted)">at-most-once（最多一次）：先提交 offset 再处理 → 可能丢，不会重</text>
+      <text x="6" y="201" font-size="8.5" fill="var(--fig-muted)">at-least-once（至少一次）：先处理再提交 → 不会丢，可能重（最常见）</text>
+      <text x="6" y="214" font-size="8.5" fill="var(--fig-node-c)">exactly-once（恰好一次）：需要事务/幂等配合，成本高</text>
 
-      <text x="6" y="220" font-size="8.5" font-weight="700" fill="var(--fig-node-a)">实践结论：选 at-least-once + 消费端幂等，这是绝大多数业务的最优解</text>
+      <text x="6" y="232" font-size="8.5" font-weight="700" fill="var(--fig-node-a)">实践结论：选 at-least-once + 消费端幂等，这是绝大多数业务的最优解</text>
     </svg>
     <figcaption>「消息会不会丢」要分三段看；多数线上「丢消息」其实是第三段先提交 offset 导致的</figcaption>
   </figure>

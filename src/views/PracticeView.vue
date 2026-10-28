@@ -1347,7 +1347,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 }
 .explain__label {
   margin: 0 0 5px;
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--c-text-2);
 }
