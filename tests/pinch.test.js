@@ -86,9 +86,20 @@ describe('pinchScale · 灵敏度（回归：轻轻一挪就放得很大）', ()
     expect(scale).toBeGreaterThan(1)
   })
 
-  it('缩小方向同样是阻尼过的', () => {
+  it('缩小方向同样是阻尼过的，且能真的缩到 1 倍以下', () => {
     const scale = pinchScale(200, 100)
-    expect(scale).toBe(MIN_PINCH_SCALE) // 被下限夹住
+    /**
+     * 回归：用户反馈「原始大小下只能放大不能缩小」。
+     * 原因是下限曾是 1，而打开时的基准宽度已经是屏宽的 2.6 倍，
+     * 想「看全整张图」需要缩到 0.4 左右 —— 必须允许比 1 更小。
+     */
+    expect(scale).toBeLessThan(1)
+    expect(scale).toBeGreaterThan(MIN_PINCH_SCALE)
+  })
+
+  it('缩到底（间距极小时）被下限兜住，不会缩成看不见', () => {
+    expect(pinchScale(400, 48)).toBe(MIN_PINCH_SCALE)
+    expect(MIN_PINCH_SCALE).toBeLessThan(1)
   })
 
   it('灵敏度可通过参数放宽（后续调手感用）', () => {
@@ -255,8 +266,14 @@ describe('attachPinch · 双指张开 / 捏合', () => {
     expect(scale).toBeLessThan(1.7)
   })
 
-  it('两指捏合能缩小，但不小于基准 1 倍', () => {
-    expect(pinch(200, 100).at(-1)).toBe(MIN_PINCH_SCALE)
+  it('两指捏合能缩小到 1 倍以下（回归：只能放大不能缩小）', () => {
+    const scale = pinch(400, 160).at(-1)
+    expect(scale).toBeLessThan(1)
+    expect(scale).toBeGreaterThanOrEqual(MIN_PINCH_SCALE)
+  })
+
+  it('捏到底被下限兜住，不会缩成看不见', () => {
+    expect(pinch(400, 20).at(-1)).toBe(MIN_PINCH_SCALE)
   })
 
   it('两指从很近（20px）开始张开时，不会立刻跳成大倍数', () => {

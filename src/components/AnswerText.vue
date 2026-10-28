@@ -133,9 +133,25 @@ watch(canvasRef, (el) => {
   }
 })
 
-/** 双击复位：缩放到 2 倍以上后，双击可以快速回到基准尺寸 */
+/**
+ * 双击 / 「复位」回来的一档。
+ *
+ * 不是回到 1（那是打开时的放大基准，约屏宽 2.6 倍，整张图看不全）。
+ * 缩到 FIT_SCALE 时整张图刚好装进屏幕 —— 这才是用户按「复位」时的预期：
+ * 「让我先看全，再决定放大哪里」。
+ */
+const FIT_SCALE = 0.4
+
+/** 双击切换：装不下整张图（> FIT_SCALE）就先缩小看全，否则回放大基准 */
 function onCanvasDoubleClick() {
-  zoomScale.value = 1
+  zoomScale.value = zoomScale.value > FIT_SCALE ? FIT_SCALE : 1
+  const el = canvasRef.value
+  if (el) el.scrollLeft = 0
+}
+
+/** 「复位」按钮：回到「整张图装进屏幕」 */
+function resetZoom() {
+  zoomScale.value = FIT_SCALE
   const el = canvasRef.value
   if (el) el.scrollLeft = 0
 }
@@ -315,16 +331,18 @@ onBeforeUnmount(() => {
         <div class="ans-zoom__bar">
           <span class="ans-zoom__tip">
             双指缩放 · 拖动查看
-            <span v-if="zoomScale > 1" class="ans-zoom__pct">{{ Math.round(zoomScale * 100) }}%</span>
+            <span v-if="zoomScale !== 1" class="ans-zoom__pct">{{ Math.round(zoomScale * 100) }}%</span>
           </span>
+          <!-- 一键看全：缩到整张图装进屏幕。放大后来回切「看全 / 看大」很方便 -->
           <button
             type="button"
-            class="ans-zoom__reset"
-            :class="{ 'ans-zoom__reset--hidden': zoomScale === 1 }"
-            aria-label="复位大小"
-            @click="onCanvasDoubleClick"
+            class="ans-zoom__fit"
+            :class="{ 'ans-zoom__fit--on': zoomScale <= FIT_SCALE + 0.01 }"
+            :aria-pressed="zoomScale <= FIT_SCALE + 0.01"
+            aria-label="缩放到整张图可见"
+            @click="resetZoom"
           >
-            复位
+            看全
           </button>
           <button
             type="button"
@@ -337,16 +355,16 @@ onBeforeUnmount(() => {
             </svg>
           </button>
         </div>
-          <div
-            ref="canvasRef"
-            class="ans-zoom__canvas"
-            @click.self="closeZoom"
-            @dblclick="onCanvasDoubleClick"
-          >
-            <div class="ans-zoom__inner" :style="{ '--zoom': zoomScale }">
-              <component :is="zoomComp" />
-            </div>
+        <div
+          ref="canvasRef"
+          class="ans-zoom__canvas"
+          @click.self="closeZoom"
+          @dblclick="onCanvasDoubleClick"
+        >
+          <div class="ans-zoom__inner" :style="{ '--zoom': zoomScale }">
+            <component :is="zoomComp" />
           </div>
+        </div>
       </div>
     </Teleport>
   </div>
@@ -639,8 +657,8 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* 「复位」：缩放后才出现，点一下回到基准尺寸 */
-.ans-zoom__reset {
+/* 「看全」：缩到整张图装进屏幕。已经在看全状态时高亮，像个开关 */
+.ans-zoom__fit {
   margin-left: auto;
   height: 32px;
   padding: 0 12px;
@@ -651,12 +669,14 @@ onBeforeUnmount(() => {
   font-weight: 500;
   color: var(--c-text-2);
 }
-.ans-zoom__reset:active {
+.ans-zoom__fit:active {
   background: var(--c-primary-weak);
   color: var(--c-primary);
 }
-.ans-zoom__reset--hidden {
-  visibility: hidden;
+.ans-zoom__fit--on {
+  border-color: var(--c-primary);
+  background: var(--c-primary-weak);
+  color: var(--c-primary);
 }
 
 .ans-zoom__close {

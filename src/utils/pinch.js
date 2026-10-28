@@ -14,8 +14,15 @@
  *    超过死区的部分再用 <1 的指数做阻尼，让「挪一点 = 变一点」而不是跳变。
  */
 
-/** 缩放下限：1 表示「按当前布局的基准尺寸」，不允许比基准更小 */
-export const MIN_PINCH_SCALE = 1
+/**
+ * 缩放下限。
+ *
+ * 1 不是合适的下限：打开时的基准宽度是 `min(920px, 260vw)`（约屏宽的 2.6 倍，
+ * 因为标注字要够大才读得清）。用户反馈「原始大小下只能放大不能缩小」——
+ * 想缩到「整张图一次看全」时需要的比例在 0.4 上下，比 1 还小。
+ * 所以下限放到 0.35，缩到底时整张图稳稳装进屏内。
+ */
+export const MIN_PINCH_SCALE = 0.35
 /** 缩放上限：5 倍，再大标注字也糊了，且横向要拖很久 */
 export const MAX_PINCH_SCALE = 5
 
@@ -73,8 +80,20 @@ export function pinchScale(startDistance, currentDistance, options = {}) {
   if (!Number.isFinite(startDistance) || startDistance <= 0) return base
   if (!Number.isFinite(currentDistance) || currentDistance <= 0) return base
 
+  /**
+   * 两指还都贴得很近（当前距离都没过 minStart）时不做任何缩放。
+   *
+   * 这时分母虽然被 minStart 兜住了，但 20/48 = 0.42 落在死区之外，
+   * 会被算成「一下子缩到 0.66」—— 而用户其实只是两根手指轻轻搭在屏幕上、
+   * 还没来得及张开。等真正分开超过 minStart 才开始计比例。
+   */
+  const minStartValue = Number(minStart) > 0 ? minStart : 0
+  if (minStartValue && currentDistance < minStartValue && startDistance < minStartValue) {
+    return base
+  }
+
   // 分母下限：两指贴太近时不直接用它的距离做基准
-  const start = Math.max(startDistance, Number(minStart) > 0 ? minStart : 0)
+  const start = Math.max(startDistance, minStartValue)
 
   const raw = currentDistance / start
   // 死区内的抖动一律不响应，保持当前比例
