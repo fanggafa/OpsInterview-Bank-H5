@@ -1,0 +1,111 @@
+[
+  {
+    "id": 3200,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 的核心概念有哪些？inventory、playbook、role、module 分别是什么？",
+    "answer": "**五层结构，从「对谁做」到「怎么做」。**\n\n| 概念 | 作用 | 类比 |\n|---|---|---|\n| **Inventory** | 主机清单（哪些机器、怎么分组） | 通讯录 |\n| **Module** | 具体动作的最小单元（copy/yum/service） | 单个工具 |\n| **Task** | 调用一个 module 做一件事 | 一条命令 |\n| **Playbook** | 一组 play（对哪些主机做哪些 task） | 剧本 |\n| **Role** | 可复用的 playbook 集合（tasks/handlers/templates/vars） | 打包好的剧本 |\n\n**Inventory 的写法**：\n```ini\n[web]\nweb1 ansible_host=10.0.0.1\nweb2 ansible_host=10.0.0.2\n\n[db]\ndb1 ansible_host=10.0.0.3\n\n[all:vars]\nansible_user=ops\nansible_ssh_private_key_file=/keys/ops.pem\n```\n**也支持动态 inventory**（从云 API/CMDB/K8s 拉取）——云环境推荐这种做法，避免手工维护清单。\n\n**Playbook 的最小例子**：\n```yaml\n- hosts: web\n  become: yes\n  tasks:\n    - name: 安装 nginx\n      yum: name=nginx state=present\n    - name: 启动并开机自启\n      service: name=nginx state=started enabled=yes\n```\n\n**Role 的目录结构（固定）**：\n```\nroles/nginx/\n├── tasks/main.yml       # 任务（必需）\n├── handlers/main.yml    # handler 定义\n├── templates/           # Jinja2 模板\n├── files/               # 静态文件\n├── vars/main.yml        # 高优先级变量\n└── defaults/main.yml    # 默认变量（可被覆盖）\n```\n**`defaults` 与 `vars` 的区别**：`defaults` 优先级最低（可被 inventory/playbook 覆盖），`vars` 优先级很高——**给用户改的放 defaults**。\n\n**三个关键认知**：\n1. **Ansible 是无 agent 的**：只靠 SSH，不装客户端（比 Puppet/Chef 轻）\n2. **幂等性由 module 保证**：`state=present` 重复执行不会报「已存在」\n3. **`-C`（check mode）是安全网**：先 dry-run 看会改什么\n\n**常用命令**：\n```bash\nansible all -m ping                    # 连通性测试\nansible-playbook -i inv site.yml --check --diff   # 干跑 + 显示差异\nansible-playbook -i inv site.yml --limit web1     # 只对一台\n```"
+  },
+  {
+    "id": 3201,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "什么是「幂等性」？为什么它这么重要？Ansible 的哪些操作不是幂等的？",
+    "answer": "**幂等 = 「执行一次和执行十次，结果相同」。**\n\n**为什么重要**：\n```\n配置管理会反复执行（重跑 playbook、加机器、修复故障）\n如果非幂等：\n  ✗ 重跑会在 /etc/xxx.conf 里追加重复行\n  ✗ 重跑会报「用户已存在」导致中断\n  ✗ 重跑会启动多个进程\n→ 脚本无法反复使用，必须靠「人工确认作了什么」\n```\n\n**幂等的 Ansible 模块（自带幂等）**：\n```yaml\nyum: name=nginx state=present          # 已装则跳过\nfile: path=/data state=directory       # 已存在则跳过\ncopy: src=conf dest=/etc/app.conf      # 内容相同则不改（不触发 handler）\nuser: name=app state=present\n```\n\n**非幂等的四种情况**：\n\n**1. `shell` / `command` 模块（默认非幂等）**\n```yaml\n- shell: echo \"export X=1\" >> /etc/profile     # ✗ 每次都追加\n```\n**修复**：\n```yaml\n- lineinfile:\n    path: /etc/profile\n    line: 'export X=1'\n    state: present          # 已存在就不改\n```\n**「能用专用模块就别用 shell」是 Ansible 的第一原则。**\n\n**2. `shell` 必须用时的两个补偿**\n```yaml\n- shell: /opt/init.sh\n  args:\n    creates: /var/lib/app/.initialized    # 文件存在则跳过\n  # 或\n  when: not (ansible_facts... )           # 显式条件\n```\n\n**3. 计时器/时间相关的操作**\n```\n「如果文件超过 7 天就删除」→ 每次执行结果不同（时间变了）\n→ 这类天生不幂等，要用 creates/条件控制\n```\n\n**4. 随机/自增的操作**\n```\n生成随机密码、自增 ID → 每次不同\n→ 要「已存在就不生成」\n```\n\n**验证幂等性的方法**：\n```bash\n# 连跑两次，第二次的 changed 必须为 0\nansible-playbook site.yml\nansible-playbook site.yml\n# 第二次输出结尾应该是 changed=0\n```\n**`changed=0` 是幂等性的唯一验收标准**——这是 Ansible 的「单元测试」。\n\n**这条原则不只适用于 Ansible**：\n```\n所有自动化脚本（Shell、Terraform、K8s manifest、数据库迁移）都要求幂等\n→ 因为「重跑」是最常见的运维操作\n```"
+  },
+  {
+    "id": 3202,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的变量优先级是怎样的？为什么「变量被覆盖了找不到原因」很常见？",
+    "answer": "**Ansible 有 20 多层变量优先级——这是它最反直觉的设计。**\n\n**从低到高（简化版，记 6 个关键的即可）**：\n```\n1. command line -e（最低，但会被覆盖）\n2. role defaults/main.yml          ← 给用户改的\n3. inventory group_vars/all\n4. inventory group_vars/<group>\n5. inventory host_vars/<host>\n6. playbook vars\n7. playbook vars_files\n8. block vars\n9. task vars\n10. set_fact / registered vars\n11. role vars/main.yml             ← 常常意外覆盖别人\n12. include_vars\n13. extra vars (-e)                ← 最高，永远赢\n```\n\n**「变量被覆盖找不到原因」的三个高频原因**：\n\n**1. 用了 `vars/main.yml` 而不是 `defaults/main.yml`**\n```\nrole 的 vars/main.yml 优先级很高（接近最高）\n→ inventory 里设的值会被它覆盖 → 用户改了不生效\n→ 给用户可配置的变量必须放 defaults\n```\n**这是 Ansible 最常见的「配置不生效」原因。**\n\n**2. inventory 里同时有 group_vars 和 host_vars**\n```\ngroup_vars/web.yml:  port: 80\nhost_vars/web1.yml:  port: 8080\n→ web1 用 8080（host 优先）\n但如果有多个 group 且都有定义，按「group 名的字母顺序」后者覆盖前者\n```\n\n**3. `set_fact` 会覆盖一切（除 extra vars）**\n```\n- set_fact: port=9090\n→ 后续所有引用 port 的地方都是 9090，即使 inventory 里定义了 80\n```\n\n**调试变量的方法（最实用）**：\n```yaml\n- name: 看变量到底是多少\n  debug:\n    var: my_var\n\n# 看所有变量来源的完整清单\n- debug: var=hostvars[inventory_hostname]\n```\n```bash\n# 命令行查\nansible web1 -m debug -a 'var=port'\n```\n\n**命名规范（预防混乱的关键）**：\n```\n✓ 角色变量加前缀：nginx_port、nginx_user\n✗ 裸名：port、user（必然与别处冲突）\n```\n**「所有变量都加 role 前缀」是最有效的一条规范**。\n\n**一句话**：**变量优先级混乱的根因是「可配置项放进了 vars 而不是 defaults」，以及「变量名没加前缀」——这两条规则能避免 90% 的坑。**"
+  },
+  {
+    "id": 3203,
+    "type": "multiple",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "关于 Ansible 的 handler，以下哪些说法正确？（多选）",
+    "options": [
+      { "key": "A", "text": "handler 只在被 notify 且 task 状态为 changed 时执行" },
+      { "key": "B", "text": "多个 task notify 同一个 handler，play 结束时只执行一次" },
+      { "key": "C", "text": "handler 默认在 play 的所有 task 执行完后才运行" },
+      { "key": "D", "text": "handler 会在每个 task 执行后立刻运行" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 说反了：**handler 是「延迟执行」的**——它被 notify 后不会立即运行，而是等 play 的 tasks 全部结束（或遇到 `meta: flush_handlers`）才执行。这正是 handler 的价值：**避免「改了 5 个配置就重启 5 次服务」**。三项正确说法都是 handler 的核心语义。补充要点：⑤**只有 `changed` 的 task 才会触发 notify**（`state=present` 且已存在时是 ok，不会通知）——这是「配置没变所以不重启」的正确行为；⑥想中途执行用 `meta: flush_handlers`。"
+  },
+  {
+    "id": 3204,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 `serial`、`max_fail_percentage`、`any_errors_fatal` 分别控制什么？",
+    "answer": "**三个参数解决「批量操作时怎么控制风险」。**\n\n| 参数 | 作用 |\n|---|---|\n| **`serial`** | 分批执行（如「每批 2 台」或「每批 10%」） |\n| **`max_fail_percentage`** | 失败比例超阈值就中止后续批次 |\n| **`any_errors_fatal`** | 任一主机失败就整体失败 |\n\n**`serial` 是最重要的**：\n```yaml\n- hosts: web\n  serial: 2                # 一批 2 台\n  # 或\n  serial:\n    - 1                    # 第一批 1 台（先探路）\n    - 5                    # 之后一批 5 台\n  tasks: [...]\n```\n**「先 1 台验证，再批量」是生产变更的标准姿势**——第一批出问题只影响 1 台。\n\n**`serial` 的另一个价值：配合负载均衡**\n```\n滚动重启 100 台 web 服务\nserial: 10 → 10 台重启时，另外 90 台仍在服务\n→ 用户完全无感知\n```\n**不做分批就会「所有机器同时重启」= 全站不可用。**\n\n**`max_fail_percentage`**：\n```yaml\n- hosts: web\n  serial: 10\n  max_fail_percentage: 20       # 一批里失败超过 20% 就停\n```\n**作用是「防止问题扩散」**——如果第一批就有 3 台失败，说明这个变更本身有问题，应该停下来而不是继续推 90 台。\n\n**`any_errors_fatal`**：\n```yaml\n- hosts: db\n  any_errors_fatal: true        # 任一主机失败，整批立即停\n```\n**适合「集群类操作」**——如三节点集群初始化，少一个节点就没意义，应该整体失败。\n\n**关于失败与重试**：\n```yaml\n- shell: /opt/healthcheck.sh\n  register: result\n  until: result.rc == 0          # 失败重试直到成功\n  retries: 5\n  delay: 10\n```\n\n**推荐的组合（生产滚动发布）**：\n```yaml\n- hosts: web\n  serial: 1                      # 一台一台来\n  max_fail_percentage: 0         # 一台失败就停（严格）\n  tasks:\n    - name: 从 LB 摘除\n    - name: 停服务、更新、启动\n    - name: 健康检查（until 重试）\n    - name: 加回 LB\n```\n**这个模式与 K8s 的滚动更新是同一个思路**——先摘流量、再变更、再验证、最后加回。"
+  },
+  {
+    "id": 3205,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "困难",
+    "question": "Ansible 执行很慢（100 台机器跑 30 分钟），怎么优化？",
+    "answer": "**五个层面优化，按收益排序。**\n\n**1. 开启 SSH 复用（收益最大）**\n```ini\n# ansible.cfg\n[ssh_connection]\npipelining = True              # 减少 SSH 连接次数（需目标机 sudoers 关掉 requiretty）\nssh_args = -o ControlMaster=auto -o ControlPersist=60s\n```\n**`ControlPersist` 让 SSH 连接复用**——首次建连后保持 60 秒，后续 task 直接复用，**通常能提速 2-5 倍**。\n\n**2. 提高并发（forks）**\n```ini\n[defaults]\nforks = 50                     # 默认只有 5！\n```\n**默认 `forks=5` 是最常见的性能瓶颈**——100 台机器只并行 5 台。按机器数与目标机承受能力调到 20-100。\n\n**3. 用 `gather_facts: no`（不需要 facts 时）**\n```yaml\n- hosts: web\n  gather_facts: no             # 跳过收集系统信息（几秒/台）\n```\n**facts 收集很慢**（要跑很多命令），不用就不要收集。\n\n**4. 减少 task 数量（用专用模块批量做）**\n```yaml\n# ✗ 慢：循环 100 次 yum\n- yum: name={{ item }} state=present\n  loop: [a, b, c, ...]\n\n# ✓ 快：一次装完\n- yum:\n    name: [a, b, c, d]\n    state: present\n```\n\n**5. 用 `free` 策略（策略插件）**\n```yaml\n- hosts: web\n  strategy: free               # 每台主机独立跑完所有 task，不等其他主机\n```\n**默认 `linear` 策略是「所有主机同步推进」**——最慢的那台决定整体速度。`free` 让快的主机先跑完。\n\n**其他优化点**：\n\n| 手段 | 说明 |\n|---|---|\n| **`async` + `poll: 0`** | 把耗时 task 放后台，不阻塞 |\n| **减少 `when` 判断里的远程命令** | 每次都要 SSH 执行 |\n| **本地化模板渲染** | `template` 比 `copy` 慢（要在控制端渲染） |\n| **避免 `with_items` 嵌套循环** | 用 `loop` + 直接传 list |\n| **`ansible-pull`** | 在目标机上拉配置，分散控制端压力 |\n\n**`async` 的正确用法**：\n```yaml\n- name: 重启服务（可能耗时几分钟）\n  service: name=app state=restarted\n  async: 300\n  poll: 0                      # 不等待，立即继续\n  register: restart_result\n- name: 稍后检查结果\n  async_status:\n    jid: \"{{ restart_result.ansible_job_id }}\"\n  register: job\n  until: job.finished\n  retries: 30\n  delay: 10\n```\n\n**性能诊断**：\n```bash\nANSIBLE_PROFILE_TASKS=1 ansible-playbook ...   # 或\n# ansible.cfg 里开 callback\n[defaults]\nstdout_callback = profile_tasks\n```\n**先看「哪个 task 最慢」再优化**，不要盲目调并发。\n\n**通常的优化顺序**：\n```\nforks 调到 50 → 开 pipelining + ControlPersist → gather_facts: no → 合并循环 task\n→ 100 台机器的 playbook 从 30 分钟降到 3-5 分钟\n```"
+  },
+  {
+    "id": 3206,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "Ansible 中 `state: present` 与 `state: latest` 的区别是？",
+    "options": [
+      { "key": "A", "text": "present 只保证「已安装」（版本不管），latest 会升级到最新版" },
+      { "key": "B", "text": "两者完全等价" },
+      { "key": "C", "text": "present 会卸载重装" },
+      { "key": "D", "text": "latest 只用于文件" }
+    ],
+    "answer": ["A"],
+    "explanation": "**这是「版本管理策略」的选择**：`present` 是「存在即可」，已装旧版本不会再动——**生产推荐用这个**，配合显式版本号（`name: nginx-1.20.1`）实现「幂等且可控」；`latest` 每次执行都会尝试升级，**会导致「重跑 playbook 就意外升级」**，不符合幂等预期，生产慎用。B/C/D 不对。补充：yum/apt 模块支持 `name: nginx-1.20.1` 指定精确版本，这比 `latest` 安全得多。"
+  },
+  {
+    "id": 3207,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Terraform 和 Ansible 有什么区别？什么场景用哪个？",
+    "answer": "**核心区别：Terraform 管「资源的存在」，Ansible 管「资源的状态」。**\n\n| | Terraform | Ansible |\n|---|---|---|\n| 范式 | **声明式**（我要什么） | **过程式**（怎么做，虽然有模块） |\n| 状态 | **有 state 文件**（记录已创建的资源） | 无状态，每次现场探测 |\n| 强项 | **创建/销毁基础设施**（VM、VPC、LB） | **配置软件**（装包、改配置、启服务） |\n| 幂等 | 靠 state 对比 | 靠 module 探测 |\n| 回滚 | `terraform destroy` / 切回旧配置 | 无内建回滚（要写反向 playbook） |\n| 并行 | 自动并行（依赖图） | 按 forks 并行 |\n\n**典型分工（最重要的一句话）**：\n```\nTerraform：从「无」到「有」——创建 VM、VPC、数据库实例、DNS 记录\nAnsible：从「有」到「配置好」——在 VM 上装软件、改配置、部署应用\n```\n\n**组合使用（生产标准做法）**：\n```\n1. Terraform 创建基础设施（VPC + 10 台 VM + LB）\n2. Terraform 输出 IP 列表 → 生成 Ansible inventory\n3. Ansible 在那些 VM 上装软件、配服务\n4. Terraform 的 remote state 供 CI 使用\n```\n\n**Terraform 的关键概念**：\n```hcl\nresource \"aws_instance\" \"web\" {\n  count         = 3\n  ami           = data.aws_ami.ubuntu.id\n  instance_type = \"t3.medium\"\n  tags = { Name = \"web-${count.index}\" }\n}\n\noutput \"web_ips\" { value = aws_instance.web[*].public_ip }\n```\n**`terraform plan` 是它的杀手锏**——执行前能看到「将要创建/修改/销毁什么」，比 Ansible 的 `--check` 更精确（因为有 state）。\n\n**K8s 时代的变化**：\n```\n容器化后，应用部署交给 K8s（YAML + GitOps）\n→ Terraform 管「集群本身」（EKS/GKE 的节点池、VPC、IAM）\n→ Ansible 用得少了（只在 VM 场景或初始化阶段）\n→ GitOps（ArgoCD）管应用\n```\n\n**常见误区**：\n```\n✗ 用 Ansible 创建云资源（能做但不推荐：没有 state，删除时容易漏）\n✗ 用 Terraform 装软件（用 provisioner 是反模式，Terraform 官方明确不推荐）\n✓ Terraform 建资源，Ansible/cloud-init 配系统，K8s/GitOps 部署应用\n```"
+  },
+  {
+    "id": 3208,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Terraform 的 state 文件为什么必须「远程存储 + 加锁」？",
+    "answer": "**state 是 Terraform 的「记忆」——它记录「我创建了哪些真实资源」。**\n\n**state 里有什么**：\n```json\n{\"resources\": [{\n  \"type\": \"aws_instance\", \"name\": \"web\",\n  \"instances\": [{\n    \"attributes\": {\"id\": \"i-0abc123\", \"public_ip\": \"1.2.3.4\", ...}\n  }]\n}]}\n```\n**没有 state，Terraform 就不知道「哪些资源是我管着的」** → 每次 plan 都想重新创建。\n\n**本地 state 的四个致命问题**：\n\n**1. 无法协作**\n```\n开发 A 本地有 state，开发 B 没有\n→ B 的 plan 显示「要创建所有资源」→ 重复创建 → 冲突\n```\n\n**2. 容易丢失（最惨）**\n```\n笔记本坏了 / 误删 state 文件\n→ Terraform 认为「什么都没创建」\n→ 下次 apply 会重建一套，而旧的还在（资源泄漏 + 费用翻倍）\n```\n\n**3. 无锁 → 并发破坏**\n```\n两个 CI job 同时 apply\n→ 都基于旧 state → 后写入的覆盖先写入的 → 资源状态错乱\n```\n\n**4. 含敏感信息**\n```\nstate 里有数据库密码、私钥（Terraform 会记录资源的全部属性）\n→ 本地文件容易被误提交到 Git\n```\n\n**正确做法：远程后端 + 锁**\n```hcl\nterraform {\n  backend \"s3\" {\n    bucket         = \"my-tf-state\"\n    key            = \"prod/terraform.tfstate\"\n    region         = \"ap-east-1\"\n    dynamodb_table = \"tf-lock\"        # 锁表\n    encrypt        = true\n  }\n}\n```\n**`dynamodb_table` 提供分布式锁**——同时只有一个人能 apply，第二个人会报「state locked」。\n\n**其他后端**：\n| 后端 | 特点 |\n|---|---|\n| **S3 + DynamoDB** | AWS 标准，成熟 |\n| **GCS / Azure Blob** | 对应云原生，自带锁 |\n| **Terraform Cloud** | 托管，自带 UI 与策略 |\n| **PostgreSQL** | 自建环境可选 |\n\n**四个实践要点**：\n```\n1. state 里含密钥 → 后端必须加密（encrypt = true）\n2. 按环境分 key（prod/terraform.tfstate、dev/terraform.tfstate）\n3. 开启 versioning（S3 版本控制）→ state 被写坏能回滚\n4. 定期备份 state（或依赖 S3 版本）\n```\n\n**state 被搞坏了怎么办**：\n```bash\nterraform state list                 # 看管了哪些资源\nterraform state pull > backup.json   # 备份当前 state\nterraform import <addr> <id>         # 把已有资源「导入」state\nterraform state rm <addr>            # 从 state 里移除（不会删真实资源）\n```\n**`terraform state rm` + `import` 是「救 state」的标准手段**——用于把资源从一个 state 挪到另一个。"
+  },
+  {
+    "id": 3209,
+    "type": "multiple",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "关于「配置管理」的落地，以下哪些做法是正确的？（多选）",
+    "options": [
+      { "key": "A", "text": "所有配置进版本控制（Git），禁止在生产机器上手工改" },
+      { "key": "B", "text": "配置变更走 PR 审核，与代码变更同等对待" },
+      { "key": "C", "text": "敏感配置（密码）用密钥管理或加密，不进 Git 明文" },
+      { "key": "D", "text": "为了灵活，每台机器允许手工调整部分配置" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是「配置漂移」的根源：**手工调整的配置不会进版本控制，下次自动化执行时会被覆盖**（然后有人再手工改回来），形成「自动化与手工互相打架」的恶性循环。三项正确做法是配置管理的三条铁律。补充：④**定期检查漂移**（`ansible --check` 或 GitOps 的 diff）；⑤**配置要能回滚**（Git revert 即可）；⑥**配置分层**（公共配置 + 环境差异 + 密钥注入）。核心：**「配置的唯一真相源是 Git」——机器上的配置只是 Git 的投影。**"
+  },
+  {
+    "id": 3210,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "困难",
+    "question": "自动化脚本把生产改坏了，怎么「紧急止血」并防止再发生？",
+    "answer": "**止血优先，但要保留现场。**\n\n**Step 1：立即停（别让脚本继续扩散）**\n```bash\n# Ansible：Ctrl+C 只是优雅停止，已在执行的 task 会跑完\n# 更彻底：kill 掉 ansible-playbook 进程\npkill -f ansible-playbook\n```\n**`serial` 分批执行的价值就在这一刻**——只影响当前批次，后面的没动。\n\n**Step 2：判断「改了什么」（最关键）**\n```bash\n# 1. 看 ansible 的执行日志（哪个 task 是 changed）\n# 2. 在受影响机器上看：\nls -lt /etc/ | head            # 最近修改的配置文件\ngit status                     # 如果配置在 Git 里\ndiff -r /etc/app /backup/etc-app   # 对比备份\n```\n**「不知道改了什么」是最难处理的局面**——这就是为什么必须有变更前备份与配置版本控制。\n\n**Step 3：止血的三种手段（按速度）**\n\n| 手段 | 速度 | 适用 |\n|---|---|---|\n| **回滚配置**（Git revert / 备份还原） | 秒-分钟 | 配置文件被改 |\n| **摘流量 + 重启** | 分钟 | 服务起不来 |\n| **从快照/镜像重建机器** | 分钟-小时 | 系统级损坏 |\n\n**最快的止血**：\n```bash\n# 如果配置在 Git 里且 playbook 是幂等的\nansible-playbook rollback.yml       # 用上一版配置再跑一遍\n\n# 或直接从备份恢复\nfor h in $(cat affected.txt); do\n  scp /backup/etc-app-$h.tar.gz $h:/tmp/\n  ssh $h 'tar xzf /tmp/etc-app-$h.tar.gz -C /etc/'\ndone\n```\n\n**Step 4：防止再发生的五个机制**\n\n| 机制 | 作用 |\n|---|---|\n| **`--check --diff` 干跑** | 执行前看到「会改什么」 |\n| **`serial` 分批** | 第一批出问题只影响少数 |\n| **`max_fail_percentage`** | 失败超阈值自动停 |\n| **变更前备份** | 能快速回滚 |\n| **灰度/预发环境** | 先在非生产验证 |\n\n**命令示例（生产变更的标准姿势）**：\n```bash\n# 1. 干跑看差异\nansible-playbook -i prod site.yml --check --diff\n\n# 2. 只对一台试跑\nansible-playbook -i prod site.yml --limit web1\n\n# 3. 分批全量（serial: 5 已在 playbook 里）\nansible-playbook -i prod site.yml\n```\n\n**一个最容易被忽略的点**：**「playbook 把机器改坏了，但 playbook 自己也修不好」**——\n```\n如果 playbook 只做「创建」不做「修复」\n→ 改坏之后重跑还是坏的\n→ 必须保证 playbook 能「从任意状态收敛到目标状态」\n```\n**「从坏的机器上重跑能修好」是幂等性的高阶要求**，也是自动化成熟度的标志。"
+  }
+]

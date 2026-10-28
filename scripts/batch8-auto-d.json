@@ -1,0 +1,96 @@
+[
+  {
+    "id": 3231,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 `tags` 怎么用？大规模场景为什么必须用它？",
+    "answer": "**`tags` = 给 task 打标签，执行时用 `--tags` / `--skip-tags` 只跑一部分。**\n\n**基本用法**：\n```yaml\n- name: 安装 nginx\n  yum: name=nginx state=present\n  tags: [nginx, install]\n\n- name: 部署配置\n  template: src=nginx.conf.j2 dest=/etc/nginx/nginx.conf\n  tags: [nginx, config]\n\n- name: 重启\n  service: name=nginx state=restarted\n  tags: [nginx, restart]\n```\n```bash\nansible-playbook site.yml --tags nginx           # 只跑 nginx 相关\nansible-playbook site.yml --skip-tags install    # 跳过安装\nansible-playbook site.yml --list-tags            # 看有哪些标签\n```\n\n**为什么大规模场景必须用**：\n```\n一个 site.yml 管理 20 个服务、几百个 task\n→ 只想改 nginx 配置时，跑全量要等很久，且动到不该动的服务\n→ 用 --tags nginx 只跑相关 task（几十秒）\n```\n**「只想改一行的配置，却跑了 500 个 task」是自动化慢的主因之一。**\n\n**四个实用技巧**：\n\n**1. 通用的 `always` 和 `never`**\n```yaml\n- name: 检查环境（每次都跑）\n  fail: msg='禁止对 prod 执行'\n  when: ...\n  tags: always\n\n- name: 耗时任务（默认不跑，显式指定才跑）\n  command: /opt/full-reindex.sh\n  tags: never\n```\n\n**2. `--tags` 的特殊值**\n```bash\n--tags all             # 全部\n--tags tagged          # 只跑有标签的\n--tags untagged        # 只跑没标签的\n--tags always          # 只跑 always\n```\n\n**3. role 里的标签**\n```yaml\n- include_role:\n    name: nginx\n    apply:\n      tags: [nginx]       # 给整个 role 的 task 打标签\n```\n\n**4. 标签设计原则**\n```\n按「服务」打标签（nginx、mysql）——最常用\n按「动作」打标签（install、config、restart）——用于特定场景\n不要给自己造太多标签（10 个以内比较可维护）\n```\n\n**两个容易踩的坑**：\n\n**1. `--tags` 不会自动包含依赖**\n```yaml\n- name: 安装（tags: install）\n- name: 配置（tags: config）\n  when: 安装成功\n\n--tags config → 只跑配置，但安装没跑 → 可能因前置条件缺失而失败\n```\n**解法**：把「前置条件检查」放 `always`，或 `--tags install,config`。\n\n**2. `import_tasks` 的标签继承**\n```\nimport 的 task 会继承 include 处的 tags\ninclude_tasks 的 task 需要显式传 tags\n```\n\n**「标签 + serial + check」是生产变更的三件套**：\n```bash\nansible-playbook site.yml --tags nginx --check --diff    # 干跑看差异\nansible-playbook site.yml --tags nginx --limit web1      # 单台验证\nansible-playbook site.yml --tags nginx                   # 分批全量（serial 在 playbook 里）\n```"
+  },
+  {
+    "id": 3232,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 facts 收集（`gather_facts`）默认开启，代价是？",
+    "options": [
+      { "key": "A", "text": "每台主机多花几秒执行 setup 模块，大规模时显著拖慢" },
+      { "key": "B", "text": "会修改目标机配置" },
+      { "key": "C", "text": "会占用大量磁盘" },
+      { "key": "D", "text": "没有任何代价" }
+    ],
+    "answer": ["A"],
+    "explanation": "`setup` 模块要执行很多命令（读 `/proc`、`dmidecode`、网络接口等），**单台几秒，500 台就是可观的时间**。所以：`gather_facts: no`（不需要时）、`gather_subset: ['!all', 'network']`（只收集需要的部分）、或 `gather_facts: no` + 单独跑一个 collect 的 play。B/C/D 都不对——facts 只读不改，占用的是内存不是磁盘。**优化 playbook 速度时，`gather_facts` 往往是第一个该检查的项。**"
+  },
+  {
+    "id": 3233,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "困难",
+    "question": "如何用 Ansible 管理「有状态服务」（如 MySQL 主从、Redis 集群）？",
+    "answer": "**有状态服务的自动化比无状态难数倍——核心难点是「顺序、唯一性、数据安全」。**\n\n**六个必须先解决的问题**：\n\n**1. 顺序（不能并发）**\n```yaml\n- hosts: mysql\n  serial: 1                    # 必须一台一台来\n  order: inventory             # 按 inventory 顺序（保证 master 先）\n```\n**`order: inventory` 让执行顺序可预测**——主库必须先于从库。\n\n**2. 主从关系（每台配置不同）**\n```yaml\n# 用 group 区分角色\n[mysql_master]\ndb1\n[mysql_slave]\ndb2\ndb3\n\n- hosts: mysql_master\n  roles: [mysql-master]\n\n- hosts: mysql_slave\n  roles: [mysql-slave]\n```\n**「主库和从库的配置用不同 role」** 比「在一个 role 里写 if」清晰得多。\n\n**3. 幂等且不破坏数据（最关键）**\n```yaml\n# ✗ 危险：每次跑都可能重建\n- shell: mysql_install_db --datadir=/var/lib/mysql\n\n# ✓ 安全：先判断\n- stat: path=/var/lib/mysql/mysql\n  register: datadir\n- shell: mysqld --initialize-insecure\n  when: not datadir.stat.exists\n```\n**「初始化只在数据目录不存在时执行」是硬规则**——写错就清库。\n\n**4. 从库的复制位置（动态值）**\n```yaml\n- name: 从主库取 binlog 位置\n  shell: mysql -N -e 'SHOW MASTER STATUS'\n  register: master_status\n  delegate_to: \"{{ mysql_master_host }}\"\n\n- name: 配置复制\n  mysql_replication:\n    mode: changemaster\n    master_host: \"{{ mysql_master_host }}\"\n    master_log_file: \"{{ master_status.stdout_lines[0].split('\\t')[0] }}\"\n    master_log_pos: \"{{ master_status.stdout_lines[0].split('\\t')[1] }}\"\n  when: not already_replicating\n```\n**`delegate_to` 让「取主库状态」这一步在主库上执行**——这是跨主机编排的关键。\n\n**5. 不要用 Ansible 管「集群成员变更」**\n```\n✗ 用 Ansible 加 Redis 集群节点（涉及槽位迁移，中间状态复杂）\n✓ 用官方工具（redis-cli --cluster add-node）或 Operator\n```\n**Ansible 擅长「配置」，不擅长「在线状态迁移」。**\n\n**6. 数据保护**\n```yaml\n- name: 变更前快照\n  shell: mysqldump --single-transaction --all-databases > /backup/pre-{{ ansible_date_time.iso8601 }}.sql\n\n- name: 执行变更\n  template: src=my.cnf.j2 dest=/etc/my.cnf\n  validate: 'mysqld --defaults-file=%s --validate-config'    # 语法验证\n  notify: restart mysql\n\n# handler 里再确认一次\n- name: 重启前检查\n  shell: mysqladmin ping\n```\n**「变更前备份 + 配置语法 validate + 重启前健康检查」三道保险必须都有。**\n\n**「滚动重启集群」的标准模式**：\n```yaml\n- hosts: mysql_slave          # 先从库\n  serial: 1\n  tasks:\n    - 停止复制（防止数据不一致）\n    - 备份\n    - 变更配置 + 重启\n    - 检查复制延迟追平\n    - 恢复复制\n\n- hosts: mysql_master         # 最后主库（需切换）\n  serial: 1\n  tasks:\n    - 主从切换（提升一个从库）\n    - 变更原主库\n    - 原主库作为新从库加入\n```\n\n**一句话**：**有状态服务的自动化必须「串行 + 主从用不同 role + 初始化前判断 + 变更前备份 + 用官方工具做集群变更」——Ansible 只做「配置」，不做「状态迁移」。**"
+  },
+  {
+    "id": 3234,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的错误处理有哪些手段？`block`/`rescue`/`always` 怎么用？",
+    "answer": "**Ansible 的错误处理类似 try/catch——`block`/`rescue`/`always`。**\n\n**基本结构**：\n```yaml\n- block:\n    - name: 可能失败的操作\n      command: /opt/risky.sh\n    - name: 依赖上一步\n      command: /opt/after.sh\n  rescue:\n    - name: 失败时的回滚\n      command: /opt/rollback.sh\n    - name: 通知\n      debug: msg=\"执行失败，已回滚\"\n  always:\n    - name: 无论如何都执行（清理）\n      file: path=/tmp/work state=absent\n```\n\n| 块 | 何时执行 |\n|---|---|\n| `block` | 正常流程 |\n| `rescue` | **block 里任一 task 失败时** |\n| `always` | **无论成功失败都执行** |\n\n**四个常用错误控制手段**：\n\n**1. `ignore_errors`（谨慎使用）**\n```yaml\n- command: /opt/optional.sh\n  ignore_errors: true\n```\n**它会让失败被静默忽略** → 后续 task 在错误状态上继续跑。**只在「真的无所谓」时用。**\n\n**2. `failed_when`（精确界定失败条件）**\n```yaml\n- shell: /opt/check.sh\n  register: r\n  failed_when: \"r.rc not in [0, 2]\"\n```\n**比 `ignore_errors` 精确得多**——只是告诉 Ansible「哪些退出码算失败」。\n\n**3. `any_errors_fatal`（任一失败就整体停）**\n```yaml\n- hosts: db\n  any_errors_fatal: true\n```\n**适合集群操作**——三节点集群初始化，一个失败其余无意义。\n\n**4. `max_fail_percentage`（失败比例阈值）**\n```yaml\n- hosts: web\n  serial: 10\n  max_fail_percentage: 20\n```\n\n**`block/rescue` 的典型场景**：\n\n```yaml\n# 场景：配置变更 + 验证 + 失败回滚\n- block:\n    - name: 备份当前配置\n      copy: src=/etc/app/config.yml dest=/etc/app/config.yml.bak remote_src=true\n    - name: 写入新配置\n      template: src=config.yml.j2 dest=/etc/app/config.yml\n    - name: 重启并检查\n      shell: systemctl restart app && sleep 5 && curl -f localhost:8080/health\n  rescue:\n    - name: 回滚配置\n      copy: src=/etc/app/config.yml.bak dest=/etc/app/config.yml remote_src=true\n    - name: 重启旧配置\n      shell: systemctl restart app\n    - name: 标记失败\n      fail: msg=\"配置变更失败，已回滚\"\n  always:\n    - name: 清理临时文件\n      file: path=/tmp/deploy state=absent\n```\n**这个模式（备份→变更→验证→失败回滚→清理）是生产变更的标准骨架。**\n\n**三个注意点**：\n```\n1. rescue 里如果还失败，任务仍然报失败（不会无限递归）\n2. always 里的失败会影响最终结果\n3. rescue 只捕获 block 里的失败，不捕获「主机不可达」\n```\n\n**「主机不可达」不能被 rescue 捕获** —— 那是连接层问题，要用 `ignore_unreachable`（更危险，慎用）。"
+  },
+  {
+    "id": 3235,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "什么是「配置漂移」？怎么发现和治理？",
+    "answer": "**配置漂移 = 「机器上的实际配置」与「代码里定义的配置」不一致了。**\n\n**三个成因**：\n```\n1. 有人 SSH 上去手工改（最常见）\n2. 自动化执行失败，只改了一半\n3. 机器创建时就没走自动化（老机器、紧急扩容）\n```\n\n**漂移的危害**：\n```\n→ 「同一份配置在这台生效、那台不生效」的诡异问题\n→ 自动化执行时被覆写（然后有人再手工改回来）→ 反复拉扯\n→ 故障时无法用「代码里的配置」解释现场\n→ 重建机器后行为不一致\n```\n\n**发现漂移的四种方式**：\n\n**1. `--check` 定期扫描（最直接）**\n```bash\nansible-playbook site.yml --check --diff 2>&1 | tee drift.log\ngrep -c 'changed' drift.log      # 非 0 就有漂移\n```\n**把它做成每日定时任务 + 报告，是最有效的漂移监控。**\n\n**2. 文件完整性（AIDE/tripwire）**\n```bash\n# 记录基线，之后比对\naide --init && aide --check\n```\n**适合「关键配置目录」的完整性监控**（如 `/etc/`）。\n\n**3. GitOps 的持续对比（K8s）**\n```\nArgoCD 会自动对比「集群实际状态」vs「Git 期望状态」\n→ 不一致会在 UI 上标为 OutOfSync\n→ 还能配置 auto-sync 自动纠正\n```\n\n**4. 配置中心的本机快照比对**\n```\n应用启动时上报「我实际加载的配置」→ 与配置中心比对\n```\n\n**治理的三层**：\n\n| 层 | 措施 |\n|---|---|\n| **预防** | 禁止 SSH 改生产（跳板机只读、改配置走流水线） |\n| **检测** | 每日 `--check` 报告、AIDE、GitOps diff |\n| **纠正** | 定期全量重跑（幂等 playbook 会把机器拉回目标状态） |\n\n**「定期全量重跑」是最强的治理手段**：\n```\n每周对所有机器跑一次 site.yml\n→ 所有漂移被自动纠正\n→ 没被纠正的（因为 playbook 没覆盖）就是待补的缺口\n```\n**这也是幂等性的价值所在**——如果不是幂等的，重跑会制造问题。\n\n**一个现实的观察**：\n```\n「完全禁止手工改」很难做到（紧急故障时总有人上去改）\n→ 更现实的做法：允许改，但要「定期自动纠正」\n→ 于是手工改动的效果最多存活一周\n```\n\n**一句话**：**配置漂移的治法不是「禁止人改」，而是「能检测 + 能自动纠正」——每日 `--check` 发现，每周全量重跑纠正。**"
+  },
+  {
+    "id": 3236,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 在 K8s 时代还有用吗？现在还能做什么？",
+    "answer": "**有用，但作用范围明显缩小了——从「管一切」变成「管 VM 与集群初始化」。**\n\n**仍然不可替代的五个场景**：\n\n**1. 操作系统层配置**\n```\n内核参数、ulimit、时间同步、系统加固\n→ K8s 管不了这些（它在容器之上）\n```\n\n**2. K8s 集群本身（用 kubeadm）**\n```\n初始化 control plane、加入 worker 节点\n→ 官方文档就是「在每台机器上执行 kubeadm」，Ansible 正好批量做\n```\n\n**3. 传统中间件与老系统**\n```\n还没容器化的 MySQL、Nginx、Tomcat\n→ 仍然靠 Ansible 装配置\n```\n\n**4. 一次性/探索性任务**\n```\n批量收集信息（查磁盘、查进程）、批量执行脚本\n→ ad-hoc 模式非常方便\n```\n\n**5. 云资源的「初始化」**\n```\nTerraform 创建 VM 后，用 cloud-init 或 Ansible 做首轮初始化\n（装 agent、配监控、加入集群）\n```\n\n**已经「被替代」的场景**：\n```\n✗ 应用部署 → K8s Deployment / Helm / ArgoCD\n✗ 服务发现 → K8s Service / 服务网格\n✗ 配置热更新 → 配置中心\n✗ 扩缩容 → HPA / Cluster Autoscaler\n```\n\n**「现在的最佳分工」**：\n```\nTerraform    → 云资源（VPC、VM、LB、DNS）\nPacker       → OS 基线镜像\nAnsible      → 集群初始化（kubeadm）、VM 服务配置、批量运维\nK8s + GitOps → 应用部署与运行\n```\n\n**一个具体例子（K8s 集群搭建）**：\n```yaml\n- hosts: k8s_master\n  tasks:\n    - 装 containerd、kubelet、kubeadm\n    - kubeadm init\n    - 安装 CNI（Calico）\n\n- hosts: k8s_worker\n  tasks:\n    - 装 containerd、kubelet\n    - kubeadm join（用 master 生成的 token）\n```\n**这是 Ansible 在 K8s 时代最典型的用法** ——「一次性初始化」，之后日常运维都交给 K8s。\n\n**一个现实判断**：\n```\n新项目、纯容器化 → 几乎不需要 Ansible\n传统业务 + 部分容器化 → Ansible 仍是主力\n→ 取决于「还有多少台 VM 需要手工配」\n```\n\n**「学不学 Ansible」的回答**：\n```\n✓ 值得学：理解「幂等、声明式、批量编排」这些思想，对其他工具（Terraform/K8s）都是通用的\n✗ 不必深入：复杂的高级特性（自定义 module、插件开发）在容器时代用处变小\n```\n\n**一句话**：**Ansible 在 K8s 时代主要剩下「OS 配置、集群初始化、VM 服务、批量 ad-hoc」四块——日常应用运维已交给 K8s。**"
+  },
+  {
+    "id": 3237,
+    "type": "multiple",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "关于「Ansible 目录与仓库结构」，以下哪些是合理的做法？（多选）",
+    "options": [
+      { "key": "A", "text": "inventory 与 playbook 分离，不同环境用不同 inventory 目录" },
+      { "key": "B", "text": "roles 目录放可复用角色，playbook 只做组合" },
+      { "key": "C", "text": "敏感变量用 Vault 加密后随仓库走" },
+      { "key": "D", "text": "把生产 inventory 的明文密码直接写在 group_vars/all.yml 里以便查看" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 是最常见的严重失误：**明文密码进 Git 等于永久泄漏**（即使后来删了，历史里还在）。三项正确做法是规模化的标准结构：①环境隔离（避免跑错环境）；②roles 复用（避免复制粘贴）；③Vault 加密（密钥随代码走但不明文）。补充：④**`ansible.cfg` 也进仓库**（统一配置，如 forks/pipelining/log_path）；⑤**`.gitignore` 排除 `*.retry`、临时文件**；⑥**CI 里跑 `ansible-lint`**。"
+  },
+  {
+    "id": 3238,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "困难",
+    "question": "公司要从「手工运维」转向「自动化运维」，第一年该怎么做？",
+    "answer": "**第一年的目标不是「全自动化」，而是「建立可持续的自动化习惯」。**\n\n**四个季度路线**：\n\n**Q1：打地基（先有可用的执行通道）**\n```\n□ 统一 SSH 密钥管理 + 跳板机\n□ Ansible 仓库 + inventory 结构\n□ CI 流水线（能跑 ansible-lint + --check）\n□ 3 个高频场景的 playbook（装 agent、改配置、批量查状态）\n```\n**产出：能对 100 台机器批量执行命令，且执行有记录。**\n\n**Q2：核心场景自动化**\n```\n□ 服务部署 playbook（含滚动与健康检查）\n□ 配置变更流程（Git → PR → CI → 执行）\n□ 日常巡检自动化（盘查磁盘/服务/证书）\n```\n**产出：发布与配置变更不再手工 SSH。**\n\n**Q3：让自动化「安全可用」**\n```\n□ --check + diff 成为默认动作\n□ serial 分批 + max_fail_percentage\n□ 变更前自动备份\n□ 失败自动回滚（block/rescue）\n```\n**产出：变更风险显著下降，敢在白天做变更。**\n\n**Q4：治理与扩展**\n```\n□ 配置漂移检测（每日 --check 报告）\n□ 自动化覆盖率度量（多少操作还靠手工）\n□ 推给业务团队（自助化）\n```\n**产出：自动化成为默认做法，而不是「额外的工作」。**\n\n**五个关键成功因素**：\n\n**1. 从一个「痛且可见」的场景开始**\n```\n✗ 从「全面梳理所有配置」开始（半年没产出）\n✓ 从「手工发布要 30 分钟」开始（两周见效）\n```\n\n**2. 让自动化比手工更快**\n```\n「走流水线 5 分钟」vs「手工 SSH 15 分钟」\n→ 大家自然用流水线\n「走流水线 20 分钟」vs「手工 15 分钟」\n→ 没人会用，流程会死\n```\n**这是自动化能否落地的唯一标准。**\n\n**3. 保留逃生通道**\n```\n紧急故障时允许手工操作，但事后要「补进自动化」\n→ 否则「紧急」会变成常态\n```\n\n**4. 度量并展示收益**\n```\n季度报告：\n- 自动化覆盖了多少操作\n- 节省了多少人时\n- 减少了多少次误操作/事故\n```\n\n**5. 有人负责维护**\n```\n自动化代码也是代码，会坏、需要更新\n→ 没有 owner 的自动化会在半年后腐烂\n```\n\n**三个常见失败模式**：\n```\n✗ 追求「100% 自动化」（最后 20% 成本极高，收益极低）\n✗ 只做工具不做流程（工具没人用）\n✗ 一次性大重构（周期太长，中途失去支持）\n```\n\n**「第一年该有的产出」（可验收）**：\n```\n□ 80% 的常规变更走流水线\n□ 平均变更耗时下降 50%\n□ 变更导致的故障次数下降\n□ 有配置漂移检测\n□ 团队里所有人都能写简单 playbook\n```\n\n**一句话**：**第一年不求「全自动」，求「让自动化成为默认选择」——从痛点场景切入、让流程比手工快、度量收益、有人维护。**"
+  },
+  {
+    "id": 3239,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 `delegate_to` 和 `run_once` 分别解决什么问题？",
+    "answer": "**两个都是「打破『每台都执行』默认行为」的机制。**\n\n**`delegate_to`：把 task 放到「别的机器」上执行**\n```yaml\n- name: 从 LB 摘除这台机器\n  uri:\n    url: \"http://lb-api/remove?host={{ inventory_hostname }}\"\n  delegate_to: localhost      # 在控制端执行（调 LB 的 API）\n```\n**典型用途**：\n```\n✓ 调 LB/云 API（在控制端执行）\n✓ 从一个特定机器上取信息（delegate_to: db1）\n✓ 在 localhost 上做本地操作（生成配置、读文件）\n```\n\n**跨主机编排的经典例子**：\n```yaml\n- name: 从主库获取 binlog 位置\n  shell: mysql -N -e 'SHOW MASTER STATUS'\n  register: master_status\n  delegate_to: \"{{ groups['mysql_master'][0] }}\"     # 在主库上执行\n\n- name: 配置从库复制\n  mysql_replication:\n    master_log_file: \"{{ master_status.stdout_lines[0].split('\\t')[0] }}\"\n```\n**「在 A 机器上取信息，用于配置 B 机器」只能靠 `delegate_to`。**\n\n**`run_once`：整个 play 只执行一次（在第一台主机上）**\n```yaml\n- name: 初始化数据库 schema（只需一次）\n  shell: mysql < /opt/schema.sql\n  run_once: true\n  delegate_to: \"{{ groups['mysql_master'][0] }}\"     # 通常还要配 delegate_to\n```\n**典型用途**：\n```\n✓ 建表/初始化数据（只需一次）\n✓ 生成证书（一次生成，分发到各机器）\n✓ 注册服务到配置中心（一次）\n```\n**注意：`run_once` 只在「第一台主机」上执行，通常要同时配 `delegate_to` 指定具体哪台。**\n\n**`run_once` + 分发 的组合（很常用）**：\n```yaml\n- name: 生成证书\n  openssl_certificate: ...\n  run_once: true\n  delegate_to: localhost\n  register: cert\n\n- name: 分发到所有机器\n  copy:\n    content: \"{{ cert.stdout }}\"\n    dest: /etc/ssl/app.crt\n```\n\n**三个容易踩的坑**：\n\n**1. `run_once` 的变量作用域**\n```\nrun_once 的 task 里的 register 变量，在其他主机上也能访问\n→ 这是它的价值（一处生成，多处使用）\n但要注意变量的「主机归属」是「第一台」\n```\n\n**2. `delegate_to` 的分组变量**\n```yaml\n-\n  delegate_to: db1\n  # 此时 task 用的是「db1 的变量」，不是「当前主机的变量」\n  # 要用当前主机的变量需显式：{{ hostvars[inventory_hostname].xxx }}\n```\n**这是最容易出错的地方**——委派后变量上下文变了。\n\n**3. `run_once` 与 `serial` 一起用时**\n```\nserial: 10 时，run_once 会在「每批」执行一次（不是全剧一次）\n→ 想全剧只执行一次，要放在单独的 play 里（不带 serial）\n```\n\n**「拒绝冗余」的完整示例（部署前检查集群状态只查一次）**：\n```yaml\n- name: 检查集群是否健康（只需一次）\n  uri: url=http://{{ groups['k8s_master'][0] }}:6443/healthz\n  run_once: true\n  delegate_to: localhost\n  register: health\n\n- name: 不健康则中止\n  fail: msg=\"集群不健康，中止部署\"\n  when: health.status != 200\n```"
+  },
+  {
+    "id": 3240,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "简单",
+    "question": "「运维开发」和「传统运维」有什么区别？对能力要求有什么不同？",
+    "answer": "**核心区别：从「操作机器」变成「写工具让机器自己操作」。**\n\n| | 传统运维 | 运维开发 |\n|---|---|---|\n| 主要工作 | 手工操作、救火 | **写平台/工具/自动化** |\n| 产出物 | 「系统正常」 | **可复用的代码** |\n| 能力要求 | 熟悉系统与网络 | **+ 编程、系统设计** |\n| 扩展性 | 人越多管得越多 | **代码一次写好，无限复用** |\n| 价值感 | 出了问题才被看见 | **效率提升可度量** |\n\n**运维开发需要的能力（按重要性）**：\n\n**1. 编程能力（必备）**\n```\nPython（最主流）、Go（云原生工具的语言）\n→ 不是「会写脚本」，是「能写可维护的工具」\n```\n\n**2. 系统设计能力**\n```\n设计一个发布平台/CMDB/监控系统\n→ 要考虑「状态怎么存、并发怎么处理、失败怎么恢复」\n```\n\n**3. 对运维场景的深刻理解（这是优势）**\n```\n「知道手工运维的痛在哪」是运维开发最大的优势\n→ 纯开发做不出好用的运维工具（不懂场景）\n```\n\n**4. 前端/全栈（做平台需要）**\n```\n运维平台通常要 UI（Vue/React）\n→ 至少能调通 API + 简单页面\n```\n\n**典型的运维开发产物**：\n```\n□ CMDB（资产与关系管理）\n□ 发布平台（CI/CD 封装）\n□ 监控与告警平台\n□ 自助化工具（开发自己发版、查日志）\n□ K8s Operator / Controller\n```\n\n**「不要为了写代码而写代码」**：\n```\n✗ 花三个月造一个 CMDB，最后没人用（Excel 更好用）\n✓ 先解决「每次发布要手动填 10 个表单」这种真实痛点\n```\n**运维开发最大的失败模式是「造了一个华丽的平台，但解决的不是真问题」。**\n\n**成长路径建议**：\n```\n阶段 1：把重复操作写成脚本（Python/Shell）\n阶段 2：把脚本变成有 CLI/参数的工具\n阶段 3：把工具串成流水线\n阶段 4：做成有 UI 的平台，支持多人/权限/审计\n阶段 5：抽象成通用能力（Operator、SDK、API）\n```\n\n**一句话**：**运维开发不是「运维去写代码」，而是「用代码消灭重复劳动」——核心优势是懂场景，核心风险是造了没人用的东西。**"
+  }
+]

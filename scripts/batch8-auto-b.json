@@ -1,0 +1,96 @@
+[
+  {
+    "id": 3211,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 ad-hoc 命令和 playbook 分别什么时候用？常用 ad-hoc 有哪些？",
+    "answer": "**ad-hoc = 「一次性命令」，playbook = 「可复用的剧本」。**\n\n| | ad-hoc | playbook |\n|---|---|---|\n| 用途 | 临时探查、紧急操作 | 标准化、可重复的配置 |\n| 是否需要写文件 | 否 | 是（Git 管理） |\n| 幂等 | 取决于模块 | 应当是 |\n| 审计 | **难追溯** | Git 历史可查 |\n\n**判断标准**：\n```\n只做一次（且不重要）→ ad-hoc\n会重复 / 重要 / 需要审计 → playbook（进 Git）\n```\n**「临时 ad-hoc 改生产」是最常见的失控点**——没人记得当时改了什么。\n\n**十个最常用的 ad-hoc**：\n```bash\n# 1. 连通性\nansible all -m ping\n\n# 2. 查磁盘\nansible all -m shell -a 'df -h | tail -3'\n\n# 3. 查内存\nansible all -m shell -a 'free -g'\n\n# 4. 查服务状态\nansible web -m service -a 'name=nginx state=started'\n\n# 5. 批量重启服务（危险，注意做分批）\nansible web -m service -a 'name=nginx state=restarted'\n\n# 6. 分发文件\nansible web -m copy -a 'src=/tmp/x.conf dest=/etc/app/x.conf owner=app mode=0644'\n\n# 7. 拉取文件（收集日志/配置）\nansible all -m fetch -a 'src=/etc/app/config.yml dest=/backup/'\n\n# 8. 执行脚本\nansible all -m script -a '/opt/check.sh'\n\n# 9. 查事实\nansible web1 -m setup -a 'filter=ansible_distribution*'\n\n# 10. 批量加用户\nansible all -m user -a 'name=deploy state=present groups=wheel'\n```\n\n**危险的 ad-hoc（要特别小心）**：\n```\n✗ ansible all -m service -a 'state=restarted'        # 全部同时重启\n✓ ansible all -m service -a 'state=restarted' --forks 1   # 串行\n✓ 或用 playbook 配 serial\n\n✗ ansible all -m shell -a 'rm -rf /tmp/*'\n✓ 先用 --check 或 -a 'ls /tmp' 确认范围\n```\n\n**让 ad-hoc 也留痕**：\n```bash\n# 1. 开 log_path（所有执行都记日志）\n[defaults]\nlog_path = /var/log/ansible.log\n\n# 2. 重要操作后立刻把它写进 playbook\n```\n**`log_path` 是低成本的审计手段**——建议所有环境都开。"
+  },
+  {
+    "id": 3212,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "困难",
+    "question": "如何用 Ansible 做「滚动发布」？怎么保证零停机？",
+    "answer": "**核心：摘流量 → 变更 → 健康检查 → 加回流量，一批做完再做下一批。**\n\n**playbook 骨架**：\n```yaml\n- hosts: web\n  serial: 1                      # 一台一台来（或 10%）\n  max_fail_percentage: 0         # 一台失败就全停\n  tasks:\n    - name: 从负载均衡摘除\n      uri:\n        url: \"http://lb/api/remove?host={{ inventory_hostname }}\"\n        method: POST\n      delegate_to: localhost     # 在控制端调 LB 的 API\n\n    - name: 等待连接排空（让在途请求结束）\n      pause: seconds: 10\n\n    - name: 停服务\n      service: name=app state=stopped\n\n    - name: 部署新版本\n      unarchive: src=app-{{ version }}.tar.gz dest=/opt/app/\n\n    - name: 启动服务\n      service: name=app state=started\n\n    - name: 健康检查（失败重试）\n      uri:\n        url: \"http://{{ inventory_hostname }}:8080/health\"\n        status_code: 200\n      register: health\n      until: health.status == 200\n      retries: 10\n      delay: 5\n\n    - name: 加回负载均衡\n      uri:\n        url: \"http://lb/api/add?host={{ inventory_hostname }}\"\n        method: POST\n      delegate_to: localhost\n```\n\n**四个让「零停机」成立的关键点**：\n\n**1. `serial` 必须小于总机器数**\n```\nserial: 1 + 10 台机器 → 任何时候至少 9 台在服务\nserial 省略 → 10 台同时停 → 全站不可用\n```\n\n**2. 「摘流量」与「停服务」之间要有等待**\n```yaml\n- pause: seconds: 10\n```\n**没有这个等待，LB 还没反应过来就停了服务 → 那 10 秒内有请求打进来 → 502。**\n**这个坑非常高频**——「滚动发布仍有少量 502」基本都是缺这个 pause。\n\n**3. 健康检查必须验证「业务可用」而非「端口开放」**\n```yaml\n✗ 只检查端口（nc -z host 8080）\n✓ 检查 /health 且它真的查了 DB/依赖\n```\n\n**4. 失败要能停下来**\n```yaml\nmax_fail_percentage: 0     # 一台失败立即停，不让问题扩散\nany_errors_fatal: true     # 或这个\n```\n\n**更现代的做法：交给编排平台**\n```\nK8s 的 Deployment 自带滚动更新（maxSurge/maxUnavailable + readinessProbe）\n→ VM 场景才需要手写这套 playbook\n→ 如果已上 K8s，别用 Ansible 做应用发布\n```\n\n**「发布后回滚」怎么配合**：\n```yaml\n# 用同一个 playbook，只是 version 参数回退\nansible-playbook deploy.yml -e version=1.2.3\n```\n**「回滚 = 用旧版本号重跑同一个 playbook」** —— 这是幂等性带来的最大便利。"
+  },
+  {
+    "id": 3213,
+    "type": "single",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 `--check` 模式（dry run）能发现以下哪类问题？",
+    "options": [
+      { "key": "A", "text": "能看出「将要修改哪些文件/服务」，但涉及前置条件的 task 可能不准" },
+      { "key": "B", "text": "能发现所有问题，包括依赖关系错误" },
+      { "key": "C", "text": "与真实执行完全一样" },
+      { "key": "D", "text": "只能检查语法" }
+    ],
+    "answer": ["A"],
+    "explanation": "`--check` 是**最有价值的执行前保护**（配合 `--diff` 能看到具体改了什么内容），但它有已知局限：**依赖「前一个 task 的结果」的 task 在 check 模式下会不准**——因为 check 模式并不真的执行，前一步创建的文件不存在，后一步就会误报失败。所以「check 全部通过」不等于「执行一定成功」，但**「check 报错」几乎一定是真问题**。B/C/D 都不对：它不能发现所有问题、也不等同真实执行、更不只是语法检查（那是 `--syntax-check`）。"
+  },
+  {
+    "id": 3214,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible Vault 是什么？密钥怎么管理？",
+    "answer": "**Vault = 用密码加密「敏感文件或变量」。**\n\n**三种用法**：\n```bash\n# 1. 加密整个文件\nansible-vault encrypt secrets.yml\nansible-vault decrypt secrets.yml\nansible-vault edit secrets.yml        # 编辑（解密→改→再加密）\nansible-vault view secrets.yml        # 只看\n\n# 2. 加密单个字符串（inline，推荐）\nansible-vault encrypt_string 'MyP@ssw0rd' --name 'db_password'\n→ 生成 !vault | 开头的加密块，可以贴进普通 yml\n\n# 3. 执行时提供密码\nansible-playbook site.yml --ask-vault-pass\nansible-playbook site.yml --vault-password-file ~/.vault_pass\n```\n\n**加密字符串形式（最实用）**：\n```yaml\n# group_vars/prod.yml\ndb_password: !vault |\n  $ANSIBLE_VAULT;1.1;AES256\n  6231336539666230... （多行密文）\n```\n**好处：整个文件不用加密，只有那一个值是密文**——`diff`、review 都能正常进行。\n\n**密钥（vault password）怎么管——这是真正的难点**：\n\n| 方式 | 安全性 | 适用 |\n|---|---|---|\n| 明文文件在控制机 | ❌ 差 | 仅测试 |\n| **CI 的 Secret 变量** | ✅ 好 | **推荐** |\n| 交互输入（--ask-vault-pass） | ✅ 好 | 手工执行 |\n| 密钥管理系统（Vault/AWS KMS） | ✅ 最好 | 大规模 |\n\n**生产推荐做法**：\n```\n1. vault 密码存在 CI 的 Secret（GitLab CI variable / GitHub Secret）\n2. 流水线执行时写入临时文件（权限 600）\n3. 用完立即删除（trap 清理）\n4. 定期轮换 vault 密码\n```\n```yaml\n# .gitlab-ci.yml\ndeploy:\n  script:\n    - echo \"$VAULT_PASSWORD\" > /tmp/.vault_pass\n    - chmod 600 /tmp/.vault_pass\n    - ansible-playbook site.yml --vault-password-file /tmp/.vault_pass\n  after_script:\n    - rm -f /tmp/.vault_pass\n```\n\n**四个必须知道的局限**：\n\n**1. Vault 只保护「静态文件」**\n```\n执行时解密后的值会出现在：\n- 进程内存\n- 可能的日志（如果 debug 打印了变量）\n- 目标机的配置文件\n→ Vault 不能防「运行时的泄漏」\n```\n\n**2. 目标机上的明文**\n```\n配置里写了密码 → 落到目标机 /etc/app/config.yml\n→ 那台机器的任何有权限用户都能看到\n→ 更高要求要用「配置中心下发」或「运行时从 Vault 拉」\n```\n\n**3. 日志会泄漏**\n```yaml\n- debug: var=db_password      # ✗ 明文打到日志\n```\n**要配 `no_log: true`**：\n```yaml\n- name: 创建数据库用户\n  mysql_user: name=app password={{ db_password }}\n  no_log: true                # 该 task 的输出不记录\n```\n\n**4. 密钥轮换困难**\n```\nVault 密码换了 → 所有加密文件都要重新加密\n→ 用「encrypt_string」形式时只影响那几行，更容易轮换\n```\n\n**Vault vs 专业密钥管理**：\n```\nVault（Ansible）：适合「少量、静态、随代码走」的密钥\nHashiCorp Vault / AWS Secrets Manager：适合「动态、短期、需审计」的密钥\n→ 大规模生产用专业方案，Ansible 只负责拉取\n```"
+  },
+  {
+    "id": 3215,
+    "type": "multiple",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "「基础设施即代码（IaC）」的落地，以下哪些是必要的？（多选）",
+    "options": [
+      { "key": "A", "text": "所有基础设施定义进 Git，禁止控制台手工创建" },
+      { "key": "B", "text": "变更走 PR + plan 审核（看 plan 结果再 apply）" },
+      { "key": "C", "text": "state 远程存储 + 加锁 + 加密" },
+      { "key": "D", "text": "为了方便，允许在生产控制台手工改少量配置" }
+    ],
+    "answer": ["A", "B", "C"],
+    "explanation": "D 会立刻破坏 IaC 的价值：**手工改的资源不在 state 里，下次 apply 时 Terraform 会试图「纠正」它们，或者更糟——以为是新建而重复创建**。这就是「配置漂移」在 IaC 场景下的表现。三项正确做法是 IaC 的三根支柱：Git（版本与审计）、PR + plan（变更可审查）、远程 state（协作与安全）。补充：④**定期 `terraform plan` 检查 drift**（应该有 no changes）；⑤**用模块化组织**（不要一个巨型 main.tf）。"
+  },
+  {
+    "id": 3216,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 `ansible-pull` 模式是什么？什么时候有用？",
+    "answer": "**`ansible-pull` = 把「推」变成「拉」——目标机自己从 Git 拉配置并执行。**\n\n**普通模式 vs pull 模式**：\n```\n普通（push）：控制端 SSH 到目标机执行\ntarget ← ssh ← control\n\npull 模式：目标机定时从 Git 拉配置自己跑\ncontrol → Git ← target（自己拉）\n```\n\n**基本用法**：\n```bash\n# 在目标机上\nansible-pull -U https://git.example.com/ansible.git -i localhost playbook.yml\n\n# 配成定时任务\ncrontab: */30 * * * * ansible-pull -U <repo> localhost.yml\n```\n**目标机每 30 分钟自己同步一次配置**——类似 Puppet/Chef 的 agent 模式。\n\n**适合的场景**：\n```\n✓ 机器数量极多（几万台），控制端 SSH 并发扛不住\n✓ 机器在 NAT/防火墙后面（控制端连不进去）\n✓ 边缘节点/物联网设备（网络不稳定）\n✓ 需要「自愈」——配置被改坏，下次 pull 自动恢复\n```\n\n**不适合的场景**：\n```\n✗ 需要「精确控制执行时机」（pull 是定时的，你无法立刻推）\n✗ 首次初始化（新机器上还没有 ansible/配置仓库）\n✗ 需要「一次性全量变更」（等下一轮 pull 太慢）\n```\n**「想立刻执行」是 pull 模式的最大短板**——所以生产上常见「pull 为主 + push 为辅」。\n\n**安全注意（很重要）**：\n```\n✗ 目标机以 root 拉取并执行 Git 仓库的代码 → 仓库被入侵 = 所有机器被控\n✓ 仓库只读权限 + 分支保护 + 代码审查\n✓ 用 GPG 签名校验（ansible-pull 支持 --verify-commit）\n✓ 只拉「特定 tag/commit」，不拉任意分支\n```\n**pull 模式把「代码仓库」变成了「所有机器的执行入口」** ——仓库的安全性等级必须提升到最高。\n\n**与 K8s/GitOps 的关系**：\n```\nansible-pull 之于 VM ≈ ArgoCD 之于 K8s\n都是「目标端主动拉取期望状态」\n→ 一个管 VM，一个管容器\n```"
+  },
+  {
+    "id": 3217,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "困难",
+    "question": "Ansible 的 inventory 怎么按环境/角色组织？多环境怎么隔离？",
+    "answer": "**核心：目录结构决定可维护性，环境隔离决定安全性。**\n\n**推荐的目录结构**：\n```\ninventories/\n├── prod/\n│   ├── hosts.ini\n│   ├── group_vars/\n│   │   ├── all.yml           # 所有机器\n│   │   ├── web.yml           # web 组\n│   │   └── db.yml\n│   └── host_vars/\n│       └── db1.yml\n├── staging/\n│   └── ...（同结构）\n└── dev/\n    └── ...\n```\n**同一套 playbook + 不同的 inventory 目录 = 不同环境**（`-i inventories/prod`）。\n\n**分组设计（三个维度）**：\n```ini\n# 1. 按角色（决定「做什么」）\n[web]\nweb1 ansible_host=10.0.1.1\n[db]\ndb1 ansible_host=10.0.2.1\n\n# 2. 按环境（决定「用哪套配置」）——用目录区分，不混在一个文件\n\n# 3. 按机房/可用区（决定「怎么调度/发布顺序」）\n[prod_az1]\n[prod_az2]\n\n# 组合：[role:env] 子组语法\n[web_prod:children]\nweb\n```\n\n**多环境隔离的三层保障**：\n\n**1. 目录隔离（基础）**\n```\nprod / staging / dev 各自独立的 inventory 与 group_vars\n→ 不会「跑错环境」\n```\n\n**2. 凭据隔离（关键）**\n```\n✗ 同一把 SSH key 能登所有环境\n✓ prod 的 key 只在 prod 的 CI job 里可用\n✓ prod 的 vault 密码独立\n```\n\n**3. 保护机制（最后防线）**\n```yaml\n# playbook 开头硬性检查\n- name: 确认目标环境\n  fail:\n    msg: \"禁止对 prod 执行此 playbook\"\n  when:\n    - inventory_dir is search('prod')\n    - confirm_prod is not defined\n\n- name: 需要显式确认\n  pause:\n    prompt: \"你正在对 PROD 执行变更，输入 yes 继续\"\n  when: inventory_dir is search('prod')\n```\n**「对 prod 必须显式传 `-e confirm_prod=yes`」是有效的防呆。**\n\n**四个容易踩的坑**：\n```\n✗ group_vars 放在 playbook 目录（会被所有 inventory 共用）→ 环境串味\n✗ 用同一个 inventory 文件靠 --limit 区分环境 → 迟早跑错\n✗ prod 的 SSH key 放在开发者笔记本上 → 无法审计\n✓ inventory 与 playbook 分离仓库，inventory 单独权限控制\n```\n\n**大规模时的演进**：\n```\n手工维护 ini → 动态 inventory 插件（AWS/GCP/K8s）\n→ 从云 API 自动拉机器，按 tag 分组\n→ 新机器开出来自动进入 inventory，无需人工维护\n```\n\n**验证方法（每次变更前）**：\n```bash\nansible-inventory --list -i inventories/prod | jq '.web.hosts'\n# 确认「你到底要对哪些机器动手」\n```\n**执行前打印目标主机清单是最低成本的防呆。**"
+  },
+  {
+    "id": 3218,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "什么是「不可变基础设施」？它解决了什么问题？",
+    "answer": "**核心思想：机器一旦创建就永不修改，要变更就「换一台新的」。**\n\n**可变 vs 不可变**：\n```\n可变（传统）：\n  机器跑久了 → 装补丁、改配置、加软件 → 每台都不一样\n  → 「雪花服务器」（Snowflake）\n\n不可变：\n  代码改了就构建新镜像 → 用新镜像起新机器 → 销毁旧的\n  → 每台机器都来自同一个镜像，完全一致\n```\n\n**它解决的四个真实问题**：\n\n**1. 配置漂移**\n```\n「这台机器为什么能跑，那台不能？」→ 因为手工改过\n→ 不可变后：同镜像 = 同环境\n```\n\n**2. 无法复现**\n```\n生产出问题，想复现 → 无法重建「那个跑了 3 年的环境」\n→ 不可变后：随时用镜像起一台一模一样的\n```\n\n**3. 回滚困难**\n```\n打补丁打坏了 → 手工回退很痛苦\n→ 不可变后：回滚 = 用旧镜像起新机器（分钟级）\n```\n\n**4. 安全基线失控**\n```\n老机器补丁不统一 → 漏洞扫描永远有遗留\n→ 不可变后：所有机器定期重建，自动带上最新补丁\n```\n\n**三种实现形态**：\n| 形态 | 工具 |\n|---|---|\n| **容器** | 镜像 + K8s（最彻底的不可变） |\n| **VM 镜像** | Packer 构建 AMI/镜像 + Terraform 起机器 |\n| **OS 镜像** | 云厂商的镜像 + cloud-init |\n\n**Packer 的典型用法**：\n```hcl\nsource \"amazon-ebs\" \"base\" {\n  ami_name = \"app-{{timestamp}}\"\n  source_ami_filter { name = \"ubuntu/images/*22.04*\" }\n}\nbuild {\n  provisioner \"ansible\" { playbook_file = \"playbook.yml\" }   # 用 Ansible 烤镜像\n}\n```\n**「Ansible 烤镜像 + Terraform 起机器」是不可变基础设施的经典组合。**\n\n**代价与现实的取舍**：\n```\n✗ 重建机器成本高（启动时间、状态迁移）\n✗ 有状态服务难不可变（数据库不能随便重建）\n✓ 折中：无状态服务完全不可变，有状态服务用「配置管理 + 定期重建」\n```\n\n**「不可变」的渐进路径**：\n```\n阶段 1：容器化无状态服务（最容易）\n阶段 2：VM 用 Packer 烤镜像，不再 SSH 上去改\n阶段 3：定期重建所有机器（如每周滚动重建）\n阶段 4：有状态服务用 Operator/自动化运维\n```\n\n**一句话**：**不可变基础设施用「重建」代替「修补」，把「机器状态」变成「镜像版本」——这样才有可复现、可回滚、无漂移的环境。**"
+  },
+  {
+    "id": 3219,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "中等",
+    "question": "Ansible 的 `template` 和 `copy` 有什么区别？Jinja2 模板要注意什么？",
+    "answer": "**`copy` 原样复制；`template` 在控制端渲染后复制。**\n\n| | copy | template |\n|---|---|---|\n| 内容处理 | 原样 | **Jinja2 渲染（变量、循环、条件）** |\n| 用途 | 静态文件、证书、二进制 | **配置文件、启动脚本** |\n| 速度 | 快 | 慢（要渲染） |\n\n**template 的例子**：\n```jinja\n# templates/nginx.conf.j2\nworker_processes {{ ansible_processor_vcpus }};\n\nupstream backend {\n{% for host in groups['web'] %}\n    server {{ hostvars[host]['ansible_host'] }}:8080;\n{% endfor %}\n}\n```\n\n**五个必须知道的注意点**：\n\n**1. 变量未定义会报错（`undefined variable`）**\n```jinja\n{{ my_var }}                # 未定义 → 报错\n{{ my_var | default('x') }}  # 安全：给默认值\n```\n**生产模板一律加 `| default()`**，避免「变量忘了定义导致整批失败」。\n\n**2. `trim_blocks` 与空白控制（最容易被忽略）**\n```yaml\n# ansible.cfg\n[defaults]\ntrim_blocks = True          # 去掉 {% %} 后的换行\nlstrip_blocks = True        # 去掉 {% %} 前的空白\n```\n**不配的话，渲染出的配置文件里会有大量空行**（有时还会因为空行导致配置解析错误）。\n\n**3. 布尔值要小心**\n```jinja\n{{ enabled }}          # Python 的 True 渲染成 \"True\"，不是 \"true\"\n{{ enabled | lower }}  # → \"true\"（配置文件通常要小写）\n```\n**这是「配置写了但程序不认」的高频原因。**\n\n**4. 不要用 template 渲染「含 Jinja2 语法的文件」**\n```\n有些配置文件本身含 {{ }}（如某些 Helm chart、监控模板）\n→ template 会把它们当变量 → 报错或错乱\n✓ 用 copy，或用 {% raw %}...{% endraw %} 包裹\n```\n\n**5. `validate` 参数（救命的选项）**\n```yaml\n- template:\n    src: nginx.conf.j2\n    dest: /etc/nginx/nginx.conf\n    validate: 'nginx -t -c %s'      # 渲染后先验证语法，不通过就不替换\n```\n**`validate` 是「改坏了自动回滚」的机制**——验证失败时 Ansible 会保留原文件。\n**所有「改配置文件」的 task 都应该配 validate。**\n\n**常见 validate 命令**：\n```yaml\nnginx: nginx -t -c %s\nsshd:  sshd -t -f %s\nsudo:  visudo -c -f %s\napache: apachectl -t -f %s\n```\n\n**最佳实践**：\n```\n1. 模板里对外部变量一律 default()\n2. 配 trim_blocks / lstrip_blocks\n3. 改配置文件必配 validate\n4. 布尔值用 | lower\n5. 模板文件头部注释写「这是 Ansible 模板，不要直接改」\n```"
+  },
+  {
+    "id": 3220,
+    "type": "short",
+    "category": "自动化与配置管理",
+    "difficulty": "困难",
+    "question": "公司有 500 台机器、20 个不同服务，如何设计自动化架构？",
+    "answer": "**500 台是「必须有结构」的规模——靠脚本和手工已经管不住了。**\n\n**Step 1：先分层（决定用什么工具）**\n\n| 层 | 内容 | 工具 |\n|---|---|---|\n| **基础设施** | VM、网络、LB、DNS | Terraform |\n| **OS 基线** | 内核参数、加固、监控 agent | **Packer 烤镜像**（不要事后配） |\n| **服务部署** | 装软件、改配置、启服务 | Ansible（role） |\n| **应用发布** | 版本更新 | 各自的语言/容器方案 |\n| **配置数据** | 业务配置 | 配置中心 / Ansible vars |\n\n**关键决策：OS 基线用「镜像」而不是「Ansible 事后改」**\n```\n✗ 500 台都用 Ansible 装 agent、改内核参数（慢、容易漏）\n✓ Packer 把基线烤进镜像，新机器开出来就已经配好\n→ Ansible 只做「服务级」配置，task 数量大幅减少\n```\n\n**Step 2：仓库结构**\n```\ninfra/                      # Terraform\n├── modules/{network,vm,lb}/\n└── envs/{prod,staging}/\n\nansible/                    # 配置管理\n├── inventories/{prod,staging}/\n├── roles/{common,nginx,mysql,app}/\n├── playbooks/\n│   ├── site.yml            # 全量\n│   ├── deploy-app.yml      # 应用发布\n│   └── rollback.yml\n└── ansible.cfg\n\nimages/                     # Packer\n└── base-ubuntu22.pkr.hcl\n```\n\n**Step 3：执行入口（统一，不要人人本地跑）**\n```\nCI/CD 流水线（GitLab CI / Jenkins）\n→ 所有变更从 PR 触发\n→ 走 --check 先看 diff，再人工 approve，再执行\n→ 日志留档\n```\n**「禁止本地直接跑 ansible-playbook 对生产」** 是规模化的硬要求。\n\n**Step 4：性能与并发**\n```ini\n[defaults]\nforks = 100                    # 500 台要足够并发\n[ssh_connection]\npipelining = True\nssh_args = -o ControlMaster=auto -o ControlPersist=120s\n```\n**500 台如果不调 forks，一次全量要几十分钟。**\n\n**Step 5：20 个服务的 role 组织**\n```yaml\n# playbooks/site.yml\n- hosts: all\n  roles: [common]               # 通用基线（复查）\n\n- hosts: nginx\n  roles: [nginx]\n\n- hosts: mysql\n  roles: [mysql]\n\n# 20 个服务 = 20 个 role，每个 role 只对自己的组生效\n```\n\n**Step 6：必须有的治理机制**\n\n| 机制 | 作用 |\n|---|---|\n| **`serial` 分批** | 500 台不同时变更 |\n| **`max_fail_percentage`** | 失败就停 |\n| **drift 检查（定期 `--check`）** | 发现手工改动 |\n| **变更审计**（log_path + CI 记录） | 谁改了什么 |\n| **角色/环境隔离** | prod 的凭据只在 prod CI 里 |\n\n**Step 7：演进到 GitOps（可选）**\n```\n如果大量服务跑在 K8s：\n→ 应用交给 ArgoCD（Git = 唯一真相源）\n→ 只剩「集群本身 + VM 基线」用 Terraform/Ansible\n→ 自动化面积大幅缩小\n```\n\n**三个最容易踩的坑**：\n```\n✗ 一个巨型 playbook 管所有服务（改一处要回归全部）\n✗ 没有 drift 检查（三个月后发现一半机器被手工改过）\n✗ OS 基线靠 Ansible 事后配（新机器上线要等，且容易漏）\n```\n\n**投入产出的排序**：\n```\n1. 镜像化 OS 基线（收益最大，减少 80% 的配置工作）\n2. CI 化的执行入口（可审计、防误操作）\n3. 分批 + 失败即停（降低变更风险）\n4. drift 检查（长期一致性）\n```\n"
+  }
+]
