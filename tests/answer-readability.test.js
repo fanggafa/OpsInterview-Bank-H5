@@ -173,16 +173,18 @@ describe('图解放大', () => {
     wrapper.unmount()
   })
 
-  it('放大层宽度是真实放大（约 2.4 倍），不是原样再显示一遍', () => {
+  it('放大层宽度是真实放大（约 2.7 倍），不是原样再显示一遍', () => {
     const css = answerCss()
     // 选择器里带 :deep(...)，用宽松匹配定位到那条规则
     const idx = css.indexOf('.ans-zoom__inner')
     expect(idx).toBeGreaterThan(-1)
     const zoomRule = css.slice(idx)
-    const m = zoomRule.match(/min-width:\s*(\d+)px/)
+    const m = zoomRule.match(/width:\s*min\((\d+)px,\s*(\d+)vw\)/)
     expect(m).toBeTruthy()
-    // 画布 340 宽 → 820 宽约 2.4 倍，8px 标注字变 ~19px
+    // 画布 340 宽 → 最大 920 宽（约 2.7 倍），8px 标注字变 ~21px；
+    // 小屏（375px）上 260vw≈975，被 920 上限收住
     expect(Number(m[1])).toBeGreaterThanOrEqual(700)
+    expect(Number(m[2])).toBeGreaterThanOrEqual(200)
   })
 })
 
