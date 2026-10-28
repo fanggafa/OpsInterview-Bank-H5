@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**1430 题**（726 简答 + 537 单选 + 167 多选），23 个分类；含 **21 张内联 SVG 图解**（24 题带图）
+- 题库：**1430 题**（726 简答 + 537 单选 + 167 多选），23 个分类；含 **34 张内联 SVG 图解**（37 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -848,7 +848,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（21 张）
+### 已注册的插图（34 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -873,6 +873,19 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `mq-delivery` | 消息在三段链路上的丢失与重复 | 题 2203、2215 |
 | `mongo-replica-shard` | 副本集高可用 vs 分片水平扩展 | 题 2011 |
 | `deploy-strategies` | 滚动/蓝绿/灰度三种发布策略 | 题 49 |
+| `git-areas` | Git 四层区域与常用命令流向 | 题 2800 |
+| `shell-safety` | set -e/-u/pipefail 的作用范围与坑 | 题 9 |
+| `bastion-access` | 生产访问收敛与 SSH 四条加固 | 题 5200 |
+| `automation-flow` | Ansible 执行链路与幂等判断点 | 题 3201 |
+| `vm-cpu-overcommit` | vCPU 超分、steal time 与绑核 | 题 2601 |
+| `incident-flow` | 故障处理五步（止血优先于定位） | 题 70 |
+| `slow-service-layers` | 「服务慢」的四层分流排查 | 题 112 |
+| `deploy-incident-triage` | 发布后故障按错误形态分诊 | 题 5502 |
+| `http-status-groups` | 状态码按责任方分组（重点 5xx） | 题 23 |
+| `mysql-index-lookup` | 聚簇/二级索引、回表与覆盖索引 | 题 3602 |
+| `docker-layers` | 镜像分层与构建缓存顺序 | 题 42 |
+| `cache-problems` | 穿透 / 击穿 / 雪崩对照 | 题 33 |
+| `alert-funnel` | 告警治理漏斗（抑制/分组/分级） | 题 57 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
