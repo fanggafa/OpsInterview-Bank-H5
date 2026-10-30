@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **65 张内联 SVG 图解**（67 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **75 张内联 SVG 图解**（77 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（65 张，23 个分类全覆盖）
+### 已注册的插图（75 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1147,6 +1147,16 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `kafka-isr-mechanism` | Kafka ISR 机制与 min.insync.replicas | 题 2204 |
 | `es-thread-pool-triage` | ES 拒绝按线程池分流 | 题 3005 |
 | `prometheus-scaling` | Prometheus 四条扩展路线 | 题 5010 |
+| `mongo-oplog-flow` | oplog 数据流与「固定大小窗口」 | 题 2006 |
+| `wired-tiger-mechanisms` | WiredTiger 四个核心机制 | 题 2010 |
+| `redis-memory-metrics` | used_memory vs rss 与碎片判断 | 题 3807 |
+| `redis-failover-triage` | 主从切换后的报错与丢数据两条线 | 题 3816 |
+| `k8s-workload-types` | Deployment / StatefulSet / DaemonSet | 题 4600 |
+| `k8s-not-ready-layers` | NotReady 的四层排查 | 题 4607 |
+| `ci-pipeline-stages` | 流水线阶段与每道质量门禁 | 题 48 |
+| `test-pyramid` | 测试金字塔与流水线分层 | 题 109 |
+| `git-branch-strategies` | 三种 Git 分支策略对比 | 题 53 |
+| `rollout-strategies` | 滚动 / 蓝绿 / 金丝雀对比 | 题 4800 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
