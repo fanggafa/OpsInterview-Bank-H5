@@ -141,6 +141,14 @@ import MetricCardinality from './MetricCardinality.vue'
 import P99SpikeTriage from './P99SpikeTriage.vue'
 import K8sMetricsSources from './K8sMetricsSources.vue'
 import PrometheusStorage from './PrometheusStorage.vue'
+import ProcessStates from './ProcessStates.vue'
+import BootFlow from './BootFlow.vue'
+import Signals from './Signals.vue'
+import SelinuxModes from './SelinuxModes.vue'
+import AuditReplay from './AuditReplay.vue'
+import SuspiciousAccountTriage from './SuspiciousAccountTriage.vue'
+import SecretManagement from './SecretManagement.vue'
+import SqlInjection from './SqlInjection.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -341,6 +349,14 @@ export const FIGURES = {
   'cross-vpc-connect': CrossVpcConnect,
   'cloud-latency-triage': CloudLatencyTriage,
   'metric-cardinality': MetricCardinality,
+  'process-states': ProcessStates,
+  'boot-flow': BootFlow,
+  'linux-signals': Signals,
+  'selinux-modes': SelinuxModes,
+  'audit-replay': AuditReplay,
+  'suspicious-account-triage': SuspiciousAccountTriage,
+  'secret-management': SecretManagement,
+  'sql-injection': SqlInjection,
   'p99-spike-triage': P99SpikeTriage,
   'k8s-metrics-sources': K8sMetricsSources,
   'prometheus-storage': PrometheusStorage,
