@@ -1,0 +1,6302 @@
+[
+  {
+    "id": 4247,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "脚本里执行完一条命令后 `echo $?` 输出 0，说明上一条命令？",
+    "options": [
+      {
+        "key": "A",
+        "text": "执行成功"
+      },
+      {
+        "key": "B",
+        "text": "执行失败"
+      },
+      {
+        "key": "C",
+        "text": "命令不存在"
+      },
+      {
+        "key": "D",
+        "text": "被信号强制杀死"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`$?` 是上一条命令（或上一个管道、命令列表）的退出状态，0 表示成功，1–255 表示失败各类原因**。易混点：0 是「成功」不是「没有输出」，很多新手看到 `$?` 为 0 却以为命令没跑。几个常用取值：`127` 命令不存在（PATH 里找不到）、`126` 文件没有执行权限、`137` 即 128+9 被 SIGKILL 杀（常见于 OOM）。排查要点：`$?` 只保留最近一条命令的结果，中间插了 `echo`、`[ -f x ]` 都会把它覆盖，所以要在命令后立刻取值。案例：备份脚本里 `tar` 其实失败了，但因为中间夹了一条 `[ -d /backup ] && echo ok`，取到的 0 是 test 的结果，导致故障被吞掉。",
+    "tags": [
+      "退出码",
+      "$?",
+      "状态判断"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4248,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`echo $((10/3))` 的输出是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "3"
+      },
+      {
+        "key": "B",
+        "text": "3.333333"
+      },
+      {
+        "key": "C",
+        "text": "1"
+      },
+      {
+        "key": "D",
+        "text": "报语法错误"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`$(( ))` 是算术展开，bash 只做整数运算，除法直接截断小数**，所以 10/3 得 3 而不是 3.33。易混点：`$(( ))` 做算术、`$( )` 做命令替换、`${ }` 做参数展开，三者符号长得像但语义完全不同；把 `$((10/3))` 写成 `$(10/3)` 会被当成执行命令 `10/3`，报 `command not found`。要小数必须换工具：`awk 'BEGIN{printf \"%.2f\", 10/3}'`、`bc -l` 或 `python3 -c`。案例：脚本里算磁盘使用率 `used*100/total` 全是 0，就是因为整数截断，改成 `awk` 才有百分比。另外除数为 0 会直接报 `division by 0` 并让脚本退出。",
+    "tags": [
+      "算术展开",
+      "整数运算",
+      "易混点"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4249,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`[ -d /var/log/app ]` 这个判断成立时，说明该路径？",
+    "options": [
+      {
+        "key": "A",
+        "text": "是一个存在的目录"
+      },
+      {
+        "key": "B",
+        "text": "是一个存在的普通文件"
+      },
+      {
+        "key": "C",
+        "text": "是一个符号链接"
+      },
+      {
+        "key": "D",
+        "text": "可读且可写"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`test` 的 `-d` 判断「存在且是目录」**，文件不存在时同样返回假，所以它同时覆盖了「不存在」和「不是目录」两种情况。常见测试运算符：`-f` 存在且是普通文件、`-e` 仅判断存在（不分类型）、`-L` 符号链接、`-r/-w/-x` 当前用户是否有读/写/执行权限、`-s` 存在且非空。易混点：`-e` 能匹配目录，`-d` 不能匹配文件；另外 `-d` 判断的是**当前执行脚本的用户**的权限视角，root 下几乎永远为真。排查建议：路径判断失败先 `ls -ld 路径` 看类型和权限，再看脚本是以哪个用户跑的（cron 里常是 root 与预期不同）。",
+    "tags": [
+      "test",
+      "文件判断",
+      "权限"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4250,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`chmod +x deploy.sh` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "为文件增加可执行权限"
+      },
+      {
+        "key": "B",
+        "text": "把文件属主改成 root"
+      },
+      {
+        "key": "C",
+        "text": "让文件对所有用户可读"
+      },
+      {
+        "key": "D",
+        "text": "把脚本加入系统 PATH"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`chmod +x` 给文件增加可执行位（x）**，脚本没有 x 位时执行会得到 `Permission denied`（退出码 126）。易混点：不写 who 的 `+x` 受 `umask` 影响，实际会按 umask 屏蔽掉部分位，想要明确的权限应写 `chmod 755 deploy.sh` 或 `chmod u+x,g+x,o+x`。`+x` 只改权限位，**不会**把脚本加进 PATH，也不会改属主（那是 `chown`）。排查链路：`./x.sh` 报 Permission denied 时，先 `ls -l x.sh` 看有没有 x、再看文件系统是不是 noexec（`mount | grep noexec`）、最后看是不是在 `/tmp` 这类默认 noexec 目录。案例：CI 里 checkout 出来的脚本丢了执行位，就是 git 没记录 mode 导致的。",
+    "tags": [
+      "chmod",
+      "权限位",
+      "noexec"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4251,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`command -v nginx >/dev/null` 返回非 0，最合理的结论是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "nginx 不在当前 PATH 中或未安装"
+      },
+      {
+        "key": "B",
+        "text": "nginx 正在运行"
+      },
+      {
+        "key": "C",
+        "text": "nginx 进程已退出"
+      },
+      {
+        "key": "D",
+        "text": "nginx 配置文件有语法错误"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`command -v` 只查「这个名字能否被 shell 解析到可执行文件」，找不到就返回非 0**，它是判断命令存在性的可移植写法（比 `which` 更可靠，`which` 在某些发行版行为不一致）。易混点：命令「存在」不等于「在运行」，判断运行要用 `pgrep -x nginx` 或 `systemctl is-active nginx`，所以 B、C 都不对；D 更是另一回事，配置语法要用 `nginx -t`。排查链路：脚本在 cron 里报命令找不到，先 `echo $PATH`（cron 的 PATH 极简，通常只有 `/usr/bin:/bin`）、再看是否装在 `/usr/local/bin`、最后确认 systemd 环境是否覆盖了 PATH。案例：脚本手动能跑、定时任务里报 `nginx: command not found`，就是 PATH 差异。",
+    "tags": [
+      "PATH",
+      "command -v",
+      "cron环境"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4252,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`f=app.log; echo ${f%.log}` 的输出是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "app"
+      },
+      {
+        "key": "B",
+        "text": "app.log"
+      },
+      {
+        "key": "C",
+        "text": ".log"
+      },
+      {
+        "key": "D",
+        "text": "空字符串"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`${var%pattern}` 从变量值的尾部删除最短匹配，`${var%%pattern}` 删最长匹配**，所以 `app.log` 去掉 `.log` 得 `app`。对照组要一起记：`${var#pattern}` 从头删最短、`${var##pattern}` 从头删最长（`${x##*/}` 就是取 basename）。易混点：`${f%.log}` 里的 `.log` 不是正则而是 glob，`.` 就是普通字符；如果写成 `%log` 结果也是 `app.`。还有一点：这是**纯字符串操作**，变量里是什么就处理什么，不做文件系统校验。案例：批量重命名脚本用 `${f%.log}.log.bak` 组装新名字，比 `basename`+`sed` 更安全，因为不依赖外部命令、也不会被文件名里的空格影响。",
+    "tags": [
+      "参数展开",
+      "字符串处理",
+      "去后缀"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4253,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`p=/data/backup/2026.tar.gz; echo ${p##*/}` 的输出是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "2026.tar.gz"
+      },
+      {
+        "key": "B",
+        "text": "/data/backup"
+      },
+      {
+        "key": "C",
+        "text": "/data/backup/2026.tar.gz"
+      },
+      {
+        "key": "D",
+        "text": "2026.tar"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`${var##*/}` 从头删除到最后一个 `/` 为止的最长匹配，等价于 `basename`**，得到文件名 `2026.tar.gz`；对应的 `${var%/*}` 等价于 `dirname`，得到 `/data/backup`。这是纯 bash 内建写法，不需要 fork 外部命令，在循环上万次时比 `basename` 快一个数量级。易混点：`##` 是从左删最长、`#` 是从左删最短，写反了会得到 `/data/backup/2026.tar.gz` 这样的残缺值；另外结尾带斜杠的路径（`/data/logs/`）用 `##*/` 会得到空串，取文件名前要先去掉尾部斜杠 `${p%/}`。案例：日志清理脚本遍历时用 `##*/` 取文件名拼目标路径，遇到目录末尾带 `/` 的输入直接拼出错误路径，加一层 `${p%/}` 才稳。",
+    "tags": [
+      "参数展开",
+      "basename",
+      "路径处理"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4254,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`cmd >> /var/log/app.log` 与用单个 `>` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`>>` 追加写，`>` 先清空再写"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价，只是写法不同"
+      },
+      {
+        "key": "C",
+        "text": "`>>` 只写错误输出，`>` 只写标准输出"
+      },
+      {
+        "key": "D",
+        "text": "`>>` 会压缩日志，`>` 不会"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`>` 在命令执行前就把文件截断为 0 字节，`>>` 则以追加方式打开**。这解释了最经典的坑：`cmd > app.log 2>&1` 没问题，但 `nohup ... > /dev/null 2>&1 &` 之后再 `cat /dev/null > app.log` 做「清空日志」，正在写的进程仍持有旧文件句柄，空间不会释放，得用 `truncate -s 0` 或者直接 reload。易混点：重定向与管道不同，`>>` 只影响目标文件的打开方式，不影响 stdout/stderr 的合并顺序（`2>&1` 才管这个）。排查链路：日志文件「越清越大」时，`lsof +L1` 找 deleted 但仍被占用的文件，再 `kill -HUP` 让进程重开日志。案例：有人用 `> app.log` 清日志，结果进程句柄还在老 inode 上，磁盘一直不降。",
+    "tags": [
+      "重定向",
+      "日志",
+      "inode"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4255,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "命令末尾加 `2>/dev/null` 的效果是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "标准错误被丢弃，标准输出仍正常显示"
+      },
+      {
+        "key": "B",
+        "text": "标准输出和标准错误都被丢弃"
+      },
+      {
+        "key": "C",
+        "text": "只有标准输出被丢弃"
+      },
+      {
+        "key": "D",
+        "text": "命令失败时自动重试一次"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`2>` 指文件描述符 2（stderr），`/dev/null` 是黑洞，所以只是把错误信息吞掉，stdout 照常输出**。要用 `&>/dev/null` 或 `>/dev/null 2>&1` 才是全丢弃，注意顺序：`2>&1 >/dev/null` 会把错误打到终端、正常输出丢弃，与直觉相反。易混点：`2>/dev/null` 不改变**退出码**，命令失败时 `$?` 依然非 0，所以「静默」和「忽略失败」是两件事，后者需要 `|| true`。排查建议：临时加 `2>/dev/null` 排噪音可以，但线上脚本长期吞错误会掩盖故障。案例：脚本里 `rm -f x 2>/dev/null` 把「权限不足」也吞了，结果备份没清掉、磁盘继续涨。",
+    "tags": [
+      "重定向",
+      "stderr",
+      "/dev/null"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4256,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`grep -c 'ERROR' app.log` 输出的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "包含 ERROR 的行数"
+      },
+      {
+        "key": "B",
+        "text": "ERROR 出现的总次数"
+      },
+      {
+        "key": "C",
+        "text": "第一个匹配的行号"
+      },
+      {
+        "key": "D",
+        "text": "匹配行的内容"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-c` 数的是「匹配的行数」，不是匹配次数**；一行里出现 3 次 ERROR 也只算 1。要数出现次数用 `grep -o 'ERROR' app.log | wc -l`。易混点：`-n` 才是显示行号，`-l` 只输出文件名（多文件递归时很有用，`grep -rl` 找哪些文件命中），`-v -c` 是数不匹配的行。排查链路：统计错误量时先 `grep -c` 看规模，再用 `grep -n` 定位首行，最后 `sed -n '100,140p'` 看上下文。案例：监控脚本用 `-c` 判 `>0` 就告警，日志里一行 JSON 内嵌了多个 ERROR 时会低估数量，换成 `-o | wc -l` 才准。另外注意 `grep` 默认按行匹配，超长单行日志会拖慢处理，可加 `LC_ALL=C` 提速。",
+    "tags": [
+      "grep",
+      "日志统计",
+      "参数"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4257,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`awk '{print $NF}' access.log` 输出每行的？",
+    "options": [
+      {
+        "key": "A",
+        "text": "最后一个字段"
+      },
+      {
+        "key": "B",
+        "text": "第一个字段"
+      },
+      {
+        "key": "C",
+        "text": "倒数第二个字段"
+      },
+      {
+        "key": "D",
+        "text": "整行内容"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`NF` 是当前记录（默认一整行）按分隔符切分后的字段数，`$NF` 即最后一个字段**，同理 `$(NF-1)` 是倒数第二个。默认分隔符是空白（空格/Tab），所以对 Nginx 日志取最后一个字段常用来抓 `$request_time` 或状态码，但只有字段位置固定时才可靠。易混点三条：`NR` 是全局行号、`FNR` 是每个文件内的行号（多文件时要 FNR）；`$0` 是整行、`$1` 是第一个字段；字段引用必须写 `$` 加数字/NR，写 `print NF` 打印的是字段数量而不是内容。排查建议：字段取错时先 `awk '{print NF}' f | sort | uniq -c` 看每行字段数是否一致，字段数不一致说明日志里混了带空格的字段（如 UA），要改成 `-F` 指定分隔符或用正则。",
+    "tags": [
+      "awk",
+      "NF",
+      "字段"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4258,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`sed 's/foo/bar/g'` 末尾的 `g` 表示？",
+    "options": [
+      {
+        "key": "A",
+        "text": "每行内所有匹配都替换"
+      },
+      {
+        "key": "B",
+        "text": "只替换第一次出现的匹配"
+      },
+      {
+        "key": "C",
+        "text": "忽略大小写"
+      },
+      {
+        "key": "D",
+        "text": "把结果写回源文件"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`s///g` 的 g 是 global，替换该行内每一处匹配，不加 g 只替换行内第一处**。注意「全局」是**每行内**的全局，不是跨行的。易混点：忽略大小写用 `I`（或 `i`），写回源文件用 `-i`（且 GNU sed 才支持 `-i` 不带后缀，macOS 的 `sed -i` 必须带备份后缀），要第三处匹配用 `s/x/y/3`。另一个坑：`sed -i` 是**原地改写**，会破坏符号链接指向、也不保留原文件硬链接，线上改配置应先 `cp` 备份再改。案例：批量改 Nginx upstream 地址，`sed -i` 写回后 `nginx -t` 才报语法错，因为替换串里的 `/` 没转义；改用 `sed -i 's#a#b#g'` 换分隔符就避开了。",
+    "tags": [
+      "sed",
+      "替换",
+      "易混点"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4259,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`find /var/log -name '*.log' -mtime +7` 会匹配哪些文件？",
+    "options": [
+      {
+        "key": "A",
+        "text": "修改时间在 7 天以前（超过 7×24 小时）的文件"
+      },
+      {
+        "key": "B",
+        "text": "修改时间在 7 天以内的文件"
+      },
+      {
+        "key": "C",
+        "text": "创建时间正好第 7 天的文件"
+      },
+      {
+        "key": "D",
+        "text": "文件大小超过 7 MB 的文件"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-mtime +7` 表示「距今超过 7 个 24 小时」，`-7` 表示 7 天以内，不带正负号是「第 7 天那一天」**。它按**修改时间（mtime）**算，不是 ctime（元数据变更）也不是 atime（访问时间），这三个时间经常被混淆。易混点：`+7` 的边界是按 24 小时整段计算，所以「7 天前 23:00 生成的文件」在中午跑时可能只算 6 天，清理脚本要配合 `-daystart` 才有按自然日的语义。排查习惯：删除前先把动作换成 `-print` 先看清单，确认无误再换 `-delete` 或 `xargs rm`。案例：日志清理脚本误删当天日志，就是因为把 `-mtime -7` 写成了 `+7` 方向反了，加上 `-print` 预览这一步就能提前发现。",
+    "tags": [
+      "find",
+      "mtime",
+      "日志清理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4260,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`trap 'rm -f \"$tmp\"' EXIT` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "脚本无论正常结束还是中途退出，都会执行清理"
+      },
+      {
+        "key": "B",
+        "text": "只在脚本正常结束时执行清理"
+      },
+      {
+        "key": "C",
+        "text": "只在收到 Ctrl+C 时执行清理"
+      },
+      {
+        "key": "D",
+        "text": "脚本启动时先执行清理"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**EXIT 伪信号在脚本退出时必定触发**，包括正常 `exit 0`、`set -e` 触发的失败退出、甚至收到可捕获的信号后退出，所以清理临时文件写在 EXIT trap 里最稳。易混点：`trap ... INT` 只处理 Ctrl+C，`trap ... TERM` 处理 `kill`，`EXIT` 是「退出时」而非「某种信号」；另外 trap 里若又出错，可能递归或改变退出码，所以清理命令要写成 `|| true` 形态。排查要点：trap 的注册要在资源**创建之后、使用之前**，注册太晚中途失败就漏清理；若脚本里 `exec` 替换了进程，trap 也不会再执行。案例：脚本中途 `set -e` 退出留下 `/tmp/x.$$` 大文件，磁盘一天被占满，加了 EXIT trap 才彻底解决。",
+    "tags": [
+      "trap",
+      "EXIT",
+      "清理"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4261,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "脚本里执行 `shift` 之后，`$1` 变成？",
+    "options": [
+      {
+        "key": "A",
+        "text": "原来的 `$2`"
+      },
+      {
+        "key": "B",
+        "text": "保持不变"
+      },
+      {
+        "key": "C",
+        "text": "空值"
+      },
+      {
+        "key": "D",
+        "text": "原来的 `$0`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`shift` 把位置参数整体左移一位：`$2`→`$1`、`$3`→`$2`，`$#` 减 1，`$0`（脚本名）不受影响**。这是解析命令行参数最常用的手段，配 `while [ $# -gt 0 ]; do case $1 in ...; shift;; esac; done` 可以处理任意顺序、任意数量的参数。易混点：`shift n` 可以一次移 n 位，移过头（n 大于 `$#`）在 bash 里会报错并返回非 0；`$0` 永远不变，所以「脚本名」不能靠 shift 拿到。案例：旧脚本用固定位置参数（`$1`=源、`$2`=目标），后来加了 `-v` 开关，参数位置全乱；改造成 `case $1` + `shift` 的写法后兼容性才好。另一个易错点是忘了在 `case` 分支里 shift，导致死循环。",
+    "tags": [
+      "位置参数",
+      "shift",
+      "参数解析"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4262,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "在 bash 函数里用 `local name=ops` 声明变量，作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只在函数内部可见，不影响外部同名变量"
+      },
+      {
+        "key": "B",
+        "text": "声明为全局变量，函数结束仍生效"
+      },
+      {
+        "key": "C",
+        "text": "声明为只读变量，赋值会报错"
+      },
+      {
+        "key": "D",
+        "text": "声明为环境变量，子进程可见"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`local` 让变量只在该函数及其子函数的作用域内有效，函数返回后自动恢复外层的同名变量**。bash 默认变量是全局的（即使写在函数里），所以忘记 `local` 是脚本最常见的隐蔽 bug：两个函数用了同一个临时变量名，互相污染。易混点三条：`local` 只能在函数内使用，写在函数外用会报错；`local` 不导出给子进程，子进程要看到必须 `export`；只读用 `readonly`（或 `declare -r`），和 `local` 是两个维度，可以 `local -r x=1` 组合。案例：函数里 `for f in *.log` 用了全局变量 `f`，调用方循环到一半就跳出了，排查半天才发现是作用域问题。另外 `local x=$(cmd)` 会把命令的失败状态吞掉，建议分开写。",
+    "tags": [
+      "local",
+      "作用域",
+      "函数"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4263,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "脚本开头 `set -u` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "引用未定义变量时报错并退出"
+      },
+      {
+        "key": "B",
+        "text": "命令失败时立即退出"
+      },
+      {
+        "key": "C",
+        "text": "开启调试模式，打印每条命令"
+      },
+      {
+        "key": "D",
+        "text": "禁止输出到标准错误"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-u`（nounset）让引用未赋值变量变成错误**，而不是静默展开成空串——这正是很多「脚本把变量拼错，结果把空值传给 `rm -rf`」事故的根因。对照组：`-e` 是命令失败即退出（B），`-x` 才是打印每条执行命令（C），`-o pipefail` 是管道任一环失败即整条管道失败。易混点：`${var:-default}` 这类带默认值的展开在 `-u` 下不会报错，这是刻意的豁免；`$@` 在没有参数时也不触发 nounset，但 `$1` 会。排查链路：加上 `-u` 后旧脚本常报 `unbound variable`，先 `bash -x` 跑到出错行、再看该行用的是哪个变量、确认是否拼写错或某分支没赋值。案例：脚本里 `if [ $DEBUG = 1 ]` 在没传 DEBUG 时直接退出，改用 `[ \"${DEBUG:-0}\" = 1 ]` 才对。",
+    "tags": [
+      "set -u",
+      "nounset",
+      "变量"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4264,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`dirname /data/backup/2026.tar.gz` 的输出是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "/data/backup"
+      },
+      {
+        "key": "B",
+        "text": "2026.tar.gz"
+      },
+      {
+        "key": "C",
+        "text": "/data/backup/"
+      },
+      {
+        "key": "D",
+        "text": "/data"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`dirname` 去掉最后一段路径，返回其父目录，且不带结尾斜杠**；`basename` 正好相反，只留最后一段。易混点：`dirname /data/backup/2026.tar.gz` 是 `/data/backup` 而不是 `/data`，容易少退一层；`dirname` 不做路径规范化，`dirname /a/b/../c/x` 会原样返回 `/a/b/../c`，要规范化得 `realpath` 或 `readlink -f`。纯 bash 等价写法是 `${p%/*}`。排查建议：脚本里「备份到哪」类 bug，先 `echo` 出 `dirname` 和 `basename` 的结果再落盘，别靠脑补。案例：脚本用 `cd $(dirname $0)` 定位自身目录，若脚本以软链接方式被调用，`dirname $0` 得到的是链接所在目录而非真实目录，要用 `readlink -f` 再取 dirname。",
+    "tags": [
+      "dirname",
+      "basename",
+      "路径"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4265,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`read -p '请输入用户名: ' name` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "打印提示后从终端读一行到变量 name"
+      },
+      {
+        "key": "B",
+        "text": "从标准输入读一行写入文件 name"
+      },
+      {
+        "key": "C",
+        "text": "读取文件 name 的第一行"
+      },
+      {
+        "key": "D",
+        "text": "打印变量 name 的值"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`read -p` 把提示串直接输出到 stderr（不是 stdout），然后读一行，按 `IFS` 切分依次赋给变量**。常见参数：`-r` 禁止转义（否则反斜杠会被吃掉，是脚本里最该加的参数）、`-s` 静默读密码、`-t 5` 超时、`-n 1` 读固定字符数、`-a` 读成数组。易混点：只有**一个变量名**时会把整行（含空格）赋给该变量，多个变量名时按空白拆分、最后一个变量拿到剩余全部；另外 `read` 失败（EOF/超时）返回非 0，配 `set -e` 时可能误伤，要写 `read -r x || true`。案例：交互脚本提示不显示，是因为把 `-p` 写成了 `echo` 之后又 `read`，管道场景下提示还被打进了管道输出，导致解析失败。",
+    "tags": [
+      "read",
+      "交互输入",
+      "IFS"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4266,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "简单",
+    "question": "`[ \"$a\" = \"$b\" ]` 中 `=` 比较的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "字符串是否完全相同"
+      },
+      {
+        "key": "B",
+        "text": "数值是否相等"
+      },
+      {
+        "key": "C",
+        "text": "字符串是否匹配正则"
+      },
+      {
+        "key": "D",
+        "text": "两个文件内容是否一致"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**在 `[ ]` 中 `=` 和 `==` 都做字符串逐字节比较（`==` 只有 `[[ ]]` 或 bash 扩展才接受），数值比较必须用 `-eq/-ne/-gt/-lt`**。这是最经典的坑：`[ \"$a\" = \"$b\" ]` 在 a=10、b=9 时判为不等（字符串视角），而 `[ 10 -eq 9 ]` 是数值比较。易混点四条：`=` 是字符串、`-eq` 是数值；`-v` 判断变量是否已定义；`=~` 仅在 `[[ ]]` 里可用且右边不要加引号；旧 `-a/-o` 已废弃，改用 `&&`/`||` 但要写在 `[[ ]]` 内。变量务必加双引号，否则空值会变成语法错误 `unary operator expected`。案例：脚本判断磁盘使用率时用 `=` 比 ``90``，`100` 与 ``90`` 字符串比较判等失败，换成 `-gt` 才对。",
+    "tags": [
+      "test",
+      "字符串比较",
+      "易混点"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4267,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "开了 `set -e`，但 `ls *.log | head -n 5` 失败后脚本仍继续执行，最可能原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`ls` 在管道中，非最后一条命令的失败被忽略"
+      },
+      {
+        "key": "B",
+        "text": "`set -e` 只对 `exit` 生效"
+      },
+      {
+        "key": "C",
+        "text": "`head` 的退出码覆盖了整条管道的状态"
+      },
+      {
+        "key": "D",
+        "text": "`ls` 不会返回失败状态"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`set -e` 只看整条管道的退出码，而管道的退出码默认是「最后一条命令」的退出码**——这里 `head` 成功了，所以管道整体返回 0，`ls` 的失败被吞掉。D 也错得离谱：`ls` 找不到文件时确实返回 2。补齐办法是 `set -o pipefail`，让管道中任一命令失败即整条失败，再配 `-e` 才会退出。排查链路：1) `bash -x script.sh` 看失败发生在哪条；2) 单独跑那条管道并 `echo ${PIPESTATUS[@]}`（bash 专有数组，记录管道每一环的退出码）；3) 确认是否有 `set -o pipefail`；4) 检查该命令是否在 `if`/`while`/`&&`/`||` 上下文里，这些位置 `-e` 也会被豁免。案例：备份脚本 `tar -czf out.tar.gz /data | head` 中 tar 因权限失败，但脚本判定成功继续删原数据，加了 pipefail 才拦住。",
+    "tags": [
+      "set -e",
+      "pipefail",
+      "管道退出码"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4268,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "要获取管道 `a | b | c` 中每个命令的退出码，应该用？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`${PIPESTATUS[@]}`（bash）"
+      },
+      {
+        "key": "B",
+        "text": "`$?`"
+      },
+      {
+        "key": "C",
+        "text": "`$!`"
+      },
+      {
+        "key": "D",
+        "text": "`$$`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`PIPESTATUS` 是 bash 的数组，按顺序记录最近一条管道的每一环退出码**，所以 `${PIPESTATUS[0]}` 是第一环、`${PIPESTATUS[2]}` 是最后一环。关键坑：它是**易变**的，执行任何别的命令（包括 `echo`）都会重置，必须先复制 `rc=(${PIPESTATUS[@]})` 再判断。干扰项里 `$?` 只是最后一环的退出码，`$!` 是最近一个后台进程的 PID，`$$` 是当前脚本的 PID。排查链路：管道故障时先看 pipefail 是否开启，没有就用 PIPESTATUS 逐环定位；POSIX sh（dash）不支持 PIPESTATUS，要换写法（各段写临时文件分别取 `$?`）。案例：日志处理链 `zcat | awk | sort` 里 `zcat` 因文件损坏失败，只有逐环看退出码才能发现，否则看到的是 sort 的 0。",
+    "tags": [
+      "PIPESTATUS",
+      "管道",
+      "退出码"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4269,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`< <(cat big.log)` 版 while 循环与 `cat | while` 版的关键区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "进程替换让循环在当前 shell 执行，变量修改能保留"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价，只是写法不同"
+      },
+      {
+        "key": "C",
+        "text": "进程替换版本不能读大文件"
+      },
+      {
+        "key": "D",
+        "text": "管道版本更省内存，但会丢行"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`< <(cmd)` 是进程替换：bash 造一个临时「文件」（`/dev/fd/N`）交给重定向，循环主体仍在当前 shell 里跑，所以 `total` 累加结果能带出循环**。反过来 `cat big.log | while read ...` 会为管道右段开一个**子 shell**，循环结束变量就丢了——这是最高频的「脚本里 count 永远是 0」的根因。干扰项排查：B 错在两者语义差异明显；C 错，进程替换对大文件同样流式处理不占内存；D 也不对，管道版本并不会丢行。三种正确写法对比：1) 输入重定向 `< file`；2) 进程替换 `< <(cmd)`；3) `shopt -s lastpipe`（bash 4.2+，非交互模式下让管道最后一段留在当前 shell）。案例：统计日志条数脚本输出永远是 0，最后定位到 `cat | while` 的 subshell 问题。",
+    "tags": [
+      "子shell",
+      "进程替换",
+      "while read"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4270,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`while read` 循环在文件末尾缺换行时会漏掉最后一行，正确修法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "循环条件用 `while read -r line || [ -n \"$line\" ]`"
+      },
+      {
+        "key": "B",
+        "text": "给 `read` 加 `-n 1` 参数"
+      },
+      {
+        "key": "C",
+        "text": "改成 `for line in $(cat file)`"
+      },
+      {
+        "key": "D",
+        "text": "把 `file` 改成 `file.txt`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`read` 只有在读到行尾换行符时才返回成功，文件最后一行若没有换行符就会返回非 0，导致该行被丢弃**；`|| [ -n \"$line\" ]` 的写法在 EOF 时再补判断「变量非空就再处理一轮」。干扰项：`-n 1` 是每次读 1 个字符，与行无关；`for line in $(cat file)` 会做单词拆分，行内有空格就被拆成多行、还会做通配符展开，是最差的写法；改文件名当然无关。排查链路：确认是「最后一行没处理」还是「整段没输出」，用 `wc -l` 与脚本计数对比；再看文件是不是 CRLF（Windows 换行会带 `\\r`，表现为变量末尾多一个看不见字符，可用 `read -r line` 之后 `${line%$'\\r'}` 或 `dos2unix` 处理）。案例：上游系统导出的 CSV 最后一行缺换行，导入脚本少导一条记录。",
+    "tags": [
+      "read",
+      "EOF",
+      "边界坑"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4271,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "脚本里 `for f in $(ls *.log)` 相比 `for f in *.log` 的主要缺点是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "文件名中的空格/通配符会被拆成多个词"
+      },
+      {
+        "key": "B",
+        "text": "`$(ls)` 会先删除文件再遍历"
+      },
+      {
+        "key": "C",
+        "text": "`*.log` 只匹配目录不匹配文件"
+      },
+      {
+        "key": "D",
+        "text": "两者完全等价，没有区别"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**命令替换 `$(ls)` 的结果要经过「分词 + 通配符展开」，文件名里的空格会把一个文件拆成两个循环项，`*`、`?` 还会被当作通配符二次展开**；而 `for f in *.log` 由 shell 直接做路径展开，每个匹配项作为一个整体，天然安全（配 `set -f` 还能关掉二次展开）。干扰项：B 纯属臆造；C 错，`*.log` 默认匹配当前目录下所有名字以 .log 结尾的**非隐藏**项（目录也可能被匹配到，需要 `[ -f \"$f\" ]` 过滤）；D 显然不对。进一步建议：需要「按修改时间排序」等 ls 才有的能力时，用 `find . -maxdepth 1 -name '*.log' -print0 | sort -z | while IFS= read -r -d '' f` 配 NUL 分隔，彻底避开空格问题。案例：日志目录里有个文件名带空格，循环把它拆成两个不存在的路径，`rm` 全报错。",
+    "tags": [
+      "通配符",
+      "分词",
+      "for循环"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4272,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`xargs -0 rm -f` 中 `-0` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "用 NUL 字符分隔输入，正确处理含空格的文件名"
+      },
+      {
+        "key": "B",
+        "text": "让 rm 不输出任何错误"
+      },
+      {
+        "key": "C",
+        "text": "限制并发数为 0"
+      },
+      {
+        "key": "D",
+        "text": "只在退出码为 0 时执行"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-0`（等价 `--null`）让 xargs 以 NUL 而不是空白/换行作为分隔符**，配合 `find ... -print0` 使用，能安全处理带空格、引号、换行的文件名。这正是「`find . -name '*.log' | xargs rm` 误删」的标准解法：不带 `-0` 时 xargs 会把含空格的文件名拆成两段，可能删到别的文件；更隐蔽的是文件名以 `-` 开头时会被 rm 当成选项。干扰项：B 是 `rm` 自己的事；C 并发是 `-P`；D 是 `&&` 的语义。补充要点：xargs 默认「无输入时仍执行一次」（GNU 可用 `-r` 关掉），还可用 `-n1` 控制每次传几个参数、`-t` 打印实际执行的命令便于审计。案例：清理脚本误删了 `/tmp/x y.log` 之外的一个正常文件，就是空格导致的拆分。",
+    "tags": [
+      "xargs",
+      "NUL分隔",
+      "find"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4273,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "脚本中 `exec 3>&1; exec 1>>app.log 2>&1` 的常用意图是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把 stdout/stderr 重定向到日志，同时保留 fd3 指向原终端"
+      },
+      {
+        "key": "B",
+        "text": "把日志内容读回标准输出"
+      },
+      {
+        "key": "C",
+        "text": "立即退出脚本并关闭所有文件描述符"
+      },
+      {
+        "key": "D",
+        "text": "创建一个名为 fd3 的进程"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**先 `exec 3>&1` 复制一份 stdout 到 fd3（相当于「记住原终端」），再做全局重定向把后面所有输出送到日志**，这样脚本内部仍可用 `echo msg >&3` 把关键提示打到屏幕上，而不是混进日志。这是「日志与用户提示分离」的标准手法。易混点：`exec` 后接重定向**且不带命令**时只改变当前 shell 的 fd 表，不替换进程；`exec cmd` 带命令则是替换进程（之后的脚本行不再执行），初学者把两者混用会得到「脚本执行到一半就结束了」。排查链路：`lsof -p $$ | grep -E '1u|2u|3u'` 确认 fd 指向；写完日志后用 `exec 1>&3 2>&1` 还原。案例：定时任务既要写日志又要用 stdout 给监控工具回传状态，就是靠 fd3 分离两路输出。",
+    "tags": [
+      "文件描述符",
+      "exec",
+      "重定向"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4274,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`flock -n /tmp/backup.lock -c './backup.sh'` 中 `-n` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "拿不到锁立即失败返回，不排队等待"
+      },
+      {
+        "key": "B",
+        "text": "锁文件不存在时自动创建"
+      },
+      {
+        "key": "C",
+        "text": "循环重试直到拿到锁"
+      },
+      {
+        "key": "D",
+        "text": "把锁绑定到某个进程 PID"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-n`（non-blocking）在锁被占用时立刻返回非 0，而不是一直阻塞**，常用于「上一次备份还没跑完，本次直接跳过」的场景。对照组：不带 `-n` 会阻塞排队，`-w 10` 是最多等 10 秒，`-w 0` 等价 `-n`；锁文件本身没必要手工创建，`flock` 会自动创建（B 错在把它当成 `-n` 的功能）。要点：`flock` 锁的是**文件句柄**，进程退出自动释放，比手写 PID 文件可靠得多（手写锁在进程被 `kill -9` 后会残留，得靠 `kill -0 $pid` 判断存活）。排查链路：任务偶发不执行时先看锁文件 `ls -l /tmp/backup.lock` 和 `fuser`，再查是否有残留的长任务；也可以 `flock -n /tmp/x.lock -c 'sleep 30'` 两个终端对试。案例：cron 每 5 分钟跑一次全量备份，单次耗时 7 分钟，加 `-n` 后重叠的那次直接跳过，避免了双份写盘把 IO 打满。",
+    "tags": [
+      "flock",
+      "文件锁",
+      "并发"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4275,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "想在 1 分钟内把脚本里的变量和命令全部展开打印（不含注释），应该用？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`bash -x script.sh`"
+      },
+      {
+        "key": "B",
+        "text": "`bash -n script.sh`"
+      },
+      {
+        "key": "C",
+        "text": "`bash -v script.sh`"
+      },
+      {
+        "key": "D",
+        "text": "`bash -u script.sh`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-x`（xtrace）在执行前把每一行「展开后」的命令打到 stderr，前缀是 `+`**，能看到变量实际值、重定向目标、循环每一轮的参数。对照：`-n`（noexec）只做语法检查、不执行；`-v`（verbose）打印的是「原样脚本行」，看不到变量展开，所以排查值不对的问题必须用 `-x`；`-u` 是未定义变量报错。实用技巧：脚本内部 `set -x` / `set +x` 局部开启，避免全量输出；用 `PS4='+${LINENO}:${FUNCNAME[0]}: '` 让每行带上行号和函数名。排查链路：日志里 `+` 行太多时配合 `2>&1 | grep -n 'rm '` 精确捞；敏感变量（密码）要先 `set +x` 再赋值，否则会漏到日志。案例：脚本里 `$i` 一直是空，`-x` 一跑就看出循环变量名拼错。",
+    "tags": [
+      "调试",
+      "set -x",
+      "bash -n"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4276,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "cron 里脚本手动能跑、定时跑报 `command not found`，最应先排查？",
+    "options": [
+      {
+        "key": "A",
+        "text": "cron 环境的 PATH 与登录 shell 不同"
+      },
+      {
+        "key": "B",
+        "text": "命令本身不存在"
+      },
+      {
+        "key": "C",
+        "text": "文件权限被收回"
+      },
+      {
+        "key": "D",
+        "text": "系统时间不同步"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**cron 启动的进程继承的是一份极简环境：PATH 通常只有 `/usr/bin:/bin`，且不读 `.bashrc`/`.bash_profile`，也不设置 LANG、自定义的 JAVA_HOME 等**。所以「手动好、定时坏」九成是环境差异。排查顺序：1) 在 crontab 里临时加一行 `* * * * * env > /tmp/cron.env` 采集真实环境；2) 对比 `echo $PATH`；3) 脚本里用绝对路径或在开头显式 `PATH=/usr/local/bin:/usr/bin:/bin` 与 `source /etc/profile`；4) 检查 locale 导致的字符问题（`LANG` 缺失让 `grep` 中文/UTF-8 报错）。干扰项：B 若真不存在手动也跑不通；C 权限问题会报 Permission denied；D 时间不同步影响的是触发时机而不是命令查找。案例：K8s 节点上用 `kubectl` 的备份脚本，手动正常、cron 报找不到，最后是 `/usr/local/bin` 不在 cron PATH 里。",
+    "tags": [
+      "cron",
+      "PATH",
+      "环境变量"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4277,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`cmd || { echo failed; exit 1; }` 里 `{ }` 与 `( )` 的关键区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`{ }` 在当前 shell 执行，`( )` 在子 shell 执行"
+      },
+      {
+        "key": "B",
+        "text": "`{ }` 只能写一条命令，`( )` 可以写多条"
+      },
+      {
+        "key": "C",
+        "text": "`{ }` 里的 `exit` 只退出子 shell"
+      },
+      {
+        "key": "D",
+        "text": "两者没有区别，可互换使用"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`{ cmd1; cmd2; }` 在当前 shell 执行，改动的变量、`cd`、`exit` 都影响外层；`( cmd1; cmd2 )` 会 fork 一个子 shell，内部改动出不来**。语法细节：`{ }` 的左花括号后必须有空格、命令之间必须用 `;` 或换行分隔、右花括号前也要有 `;`，而圆括号不需要。结合 `||` 用法：`cmd || { echo failed; exit 1; }` 能真正退出整个脚本；若写成 `cmd || ( echo failed; exit 1 )`，只退出子 shell，脚本继续往下跑——这是排查「明明写了 exit 却继续执行」的关键点。案例：并发脚本里用 `( )` 包了一组命令想「失败就整体退出」，结果只在子 shell 里退出，主流程仍继续发布了坏版本。",
+    "tags": [
+      "分组",
+      "子shell",
+      "exit"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4278,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`IFS=$'\\n'` 之后再 `read a b`，会带来什么后果？",
+    "options": [
+      {
+        "key": "A",
+        "text": "整行只赋给 a，b 为空（不再按空格切分）"
+      },
+      {
+        "key": "B",
+        "text": "按冒号切分"
+      },
+      {
+        "key": "C",
+        "text": "报语法错误"
+      },
+      {
+        "key": "D",
+        "text": "行为与默认 IFS 完全一致"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`IFS`（Internal Field Separator）决定 `read` 和未加引号的变量展开如何切词**；把它改成只有换行后，空格不再是分隔符，所以 `read a b` 会把整行给 `a`、`b` 为空。这正是很多「按字段解析日志」脚本在第 2 列取不到值的根因。要点：1) 改 IFS 要**局部化**，写法 `while IFS=$'\\n' read -r line` 或 `IFS=':' read -ra parts <<< \"$str\"`（只对该命令生效）；2) 全局改 `IFS` 会影响后面所有 `for x in $list` 的行为，属于隐形地雷；3) 解析 `/etc/passwd` 这类冒号分隔文件常用 `IFS=: read -r u p`。排查链路：发现「只有第一个变量有值」时先 `echo \"[$IFS]\" | od -c` 看分隔符到底是什么，再查是否有全局 IFS 赋值。案例：脚本里为了读多行文本设了 `IFS=$'\\n'`，后续按列解析全部失效。",
+    "tags": [
+      "IFS",
+      "read",
+      "分词"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4279,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`arr=(a b c); echo ${#arr[@]} ${arr[1]}` 输出是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "3 b"
+      },
+      {
+        "key": "B",
+        "text": "2 b"
+      },
+      {
+        "key": "C",
+        "text": "3 a"
+      },
+      {
+        "key": "D",
+        "text": "3 c"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`${#arr[@]}` 取数组元素个数（3），bash 数组下标从 0 开始，所以 `${arr[1]}` 是第二个元素 b**。易混点清单：`${arr[@]}` 展开成所有元素（每个元素保持独立，`for x in \"${arr[@]}\"` 循环时不会被空格拆分）；`${arr[*]}` 用 IFS 首字符拼成一个字符串；`${!arr[@]}` 取的是下标列表而不是值；`${#arr}` 只取第一个元素的长度（对数组误用最常见）。追加元素用 `arr+=(d)`，关联数组要 `declare -A map; map[k]=v`，遍历要 `for k in \"${!map[@]}\"`。案例：脚本把 IP 列表塞进数组后 `for ip in \"${arr[*]}\"` 循环，结果所有 IP 当成一个整体处理，只剩一个「元素」。排查建议：`declare -p arr` 直接打印数组内容与类型，比猜快。",
+    "tags": [
+      "数组",
+      "长度",
+      "下标"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4280,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`grep -q pattern file` 与 `grep -c pattern file` 的正确区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`-q` 只返回退出码、不输出内容；`-c` 输出计数"
+      },
+      {
+        "key": "B",
+        "text": "`-q` 输出计数；`-c` 静默"
+      },
+      {
+        "key": "C",
+        "text": "两者都会打印匹配行"
+      },
+      {
+        "key": "D",
+        "text": "`-q` 会修改文件"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-q`（quiet）匹配到就立即返回 0 并停止读取，不产生任何输出，适合 `if grep -q x f; then` 这类条件判断；`-c` 输出匹配行数，适合统计**。区别还体现在性能上：`-q` 命中即退出，对大文件判断「有没有」比 `-c`（必须读完）快得多。排查链路：`if` 判断里 `grep` 有输出会污染 stdout，所以脚本条件判断必须加 `-q`；反过来统计必须用 `-c` 或 `-o | wc -l`。易混点：`-q` 配 `set -e` 要小心——未命中返回 1，在 `if` 里没问题，但直接裸执行会触发 `-e` 退出，可写 `grep -q x f || true`。案例：健康检查脚本用 `-c` 判是否存在，日志文件几个 GB 时每分钟拖慢几十秒，换成 `-q` 后几乎立刻返回。",
+    "tags": [
+      "grep",
+      "-q",
+      "条件判断"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4281,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "中等",
+    "question": "`curl -fsSL -o /tmp/x.sh <url>` 里 `-f` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "HTTP 状态码非 2xx 时返回失败，不写出文件体"
+      },
+      {
+        "key": "B",
+        "text": "强制使用 HTTPS"
+      },
+      {
+        "key": "C",
+        "text": "输出完整调试信息"
+      },
+      {
+        "key": "D",
+        "text": "只输出响应头"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`curl -f`（fail）把 HTTP ≥400 视为失败并返回退出码 22，且不把错误页面写进输出文件**。没有 `-f` 时，404 页面会被当成「下载成功」写到 `/tmp/x.sh`，随后执行就是一个报错脚本——这是下载执行类脚本必须加 `-f` 的原因。参数组合解释：`-s` 静默进度条、`-S` 静默时仍显示错误、`-L` 跟随跳转（不加时 3xx 会被当成失败）、`-o` 输出到文件。干扰项：B 是 URL 决定的（可用 `--proto '=https'` 强制）；C 是 `-v`；D 是 `-I` 或 `--head`。排查链路：下载类脚本失败先看 curl 退出码（6 DNS、7 连接失败、22 HTTP 错误、28 超时、35 SSL 握手失败），再 `curl -v` 看具体阶段。案例：安装脚本在 404 环境下「下载成功」但执行报语法错，加上 `-f` 立刻暴露问题。",
+    "tags": [
+      "curl",
+      "下载",
+      "退出码"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4282,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "线上备份脚本每天 02:00 跑，偶发「目录消失后 rm -rf 删了空目录」，最该加固的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "校验路径非空且是预期目录，再执行删除（`[[ -n \"$dir\" && -d \"$dir\" ]]`）"
+      },
+      {
+        "key": "B",
+        "text": "把 rm 换成 rm -f"
+      },
+      {
+        "key": "C",
+        "text": "给脚本加 `set -e`"
+      },
+      {
+        "key": "D",
+        "text": "把脚本改成用 Python 写"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**根因是变量为空或路径拼接异常时，`rm -rf \"$dir\"` 展开成 `rm -rf \"\"`（无操作）或更糟的 `rm -rf /`（当变量含斜杠时）**，所以防线是执行删除前做「非空 + 类型 + 白名单前缀」三重校验。加固清单：1) `set -u` 让空变量直接报错；2) `[[ -n \"$dir\" && -d \"$dir\" ]] || exit 1`；3) 用 `${dir:?dir is empty}` 强制非空；4) 加 `--` 防止以 `-` 开头的路径被当选项；5) 先在 `echo` 预览模式下跑一遍。干扰项：B 只是去掉交互确认，反而更危险；C 只能拦住「命令失败」，拦不住「命令成功但删错了」；D 换语言不解决逻辑缺陷。排查链路：先在测试环境把 `rm -rf` 换成 `echo rm -rf` 干跑，再 `bash -x` 确认变量值。案例：某次上游 NFS 挂载掉了，`$dir` 存在但是空的挂载点，`rm -rf` 把本地同名目录内容清了。",
+    "tags": [
+      "rm -rf",
+      "变量校验",
+      "事故复盘"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4283,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "脚本用 `$( )` 拼接日志后 `wc -l` 少了一半行，最可能的原因与修法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "命令替换对输出做了分词，改用 `mapfile` 或重定向到临时文件"
+      },
+      {
+        "key": "B",
+        "text": "`wc -l` 本身有 bug，改用 `grep -c ''`"
+      },
+      {
+        "key": "C",
+        "text": "日志文件编码问题，改 UTF-8 即可"
+      },
+      {
+        "key": "D",
+        "text": "磁盘空间不足导致丢行"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`x=$(cmd)` 拿到的是一段文本，随后放进循环时若不加引号就会按 `IFS` 做分词、并做通配符展开，包含空格的行被拆、连续的空白被合并**，于是行数「变少」。正确做法：1) 数组化 `mapfile -t lines < <(cmd)`（bash 4+，一行一个元素，绝不分词）；2) 或直接流式处理 `cmd | while IFS= read -r line`；3) 若必须存字符串，循环用 `while IFS= read -r line <<< \"$x\"`（加引号）。干扰项：B 是臆造，`grep -c ''` 数的是非空行数、反而更少；C 编码问题通常表现为乱码而非丢行；D 磁盘满会报错写失败，不会静默少行。排查链路：先 `cmd | wc -l` 看真实行数、再 `echo \"$x\" | wc -l` 看变量里的行数，两值不一致即证实分词问题。案例：nginx 日志里 UA 字段带空格，脚本统计 PV 少 30%。",
+    "tags": [
+      "命令替换",
+      "分词",
+      "mapfile"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4284,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "`nohup ./job.sh > job.log 2>&1 &` 后退出终端，第二天日志停在第一晚，最可能的原因？",
+    "options": [
+      {
+        "key": "A",
+        "text": "脚本内部有命令读 stdin，后台任务收到 SIGHUP/读失败退出"
+      },
+      {
+        "key": "B",
+        "text": "nohup 不能用于后台任务"
+      },
+      {
+        "key": "C",
+        "text": "`2>&1` 写法让错误被吞掉"
+      },
+      {
+        "key": "D",
+        "text": "日志文件被 logrotate 压缩了"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`nohup` 只做两件事：忽略 SIGHUP + 把 stdout 追加到 `nohup.out`（这里被重定向覆盖）**；它**不会**处理 stdin。后台进程若读了 stdin（交互确认、`read`、`ssh` 提示、`sudo` 要密码），在终端关闭后会读到 EOF 或收到异常而退出。加固做法：1) `nohup ./job.sh </dev/null >job.log 2>&1 &` 显式断开 stdin；2) 交互提示改为非交互参数；3) 更稳妥用 `setsid` 或交给 `systemd`（`Restart=always`，还能开机自启）；4) 用 `disown` 从 shell 任务表摘除。干扰项：B 错，nohup 常配 `&`；C 错，`2>&1` 是合并错误流，不吞错；D 只是压缩日志不影响进程。排查链路：`ps -ef | grep job.sh` 看进程是否还在、`tail job.log` 看最后一条、`journalctl`/`dmesg` 看是否被 OOM 杀。案例：备份脚本里有个 `read -p \"确认继续?\"`，凌晨无人应答，任务挂了。",
+    "tags": [
+      "nohup",
+      "后台任务",
+      "stdin"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4285,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "批量改 200 台机器配置的脚本，做到「失败可定位、可重跑、不重复改」，核心设计是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "按机器逐台执行并记录状态文件，成功打标、失败留日志，重跑跳过已完成"
+      },
+      {
+        "key": "B",
+        "text": "所有机器并行执行，最后统一看汇总"
+      },
+      {
+        "key": "C",
+        "text": "只要 `set -e` 保证失败即停"
+      },
+      {
+        "key": "D",
+        "text": "把脚本分发后在各机器上 `nohup` 自行执行"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**批量运维脚本的三要素是幂等、可观测、可重入**：每台机器执行后用状态文件（如 `done/<host>`）或数据库记录成功标记，失败保留单独日志（`logs/<host>.err`），重跑时 `[[ -f done/$host ]] && continue` 跳过已完成机器——这样才能在 200 台里补齐那 3 台失败的而不重改其余。干扰项分析：B 并行虽然快，但失败信息交叉、无法逐台定位，且并发过高会打爆目标（建议 `xargs -P 10` 限流）；C 的 `set -e` 会让脚本在第一台失败就整体退出，剩下 199 台都不动；D 分散执行后你拿不到统一退出码和汇总，出问题无法追溯。排查链路：先小批量灰度（如 5 台）跑通、再全量；执行前 `ssh -o BatchMode=yes -o ConnectTimeout=5` 预检连通性；用 `timeout` 限制单机耗时。案例：某次改 NTP 配置，脚本中途卡在密码提示，200 台只改了 17 台，因状态文件缺失无法判断哪些成功。",
+    "tags": [
+      "批量运维",
+      "幂等",
+      "状态文件"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4286,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "开了 `set -e` 的脚本在 `if [[ $(grep -c x f) -gt 0 ]]` 处莫名退出，原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`grep` 未匹配返回 1，命令替换在 `set -e` 下仍触发退出"
+      },
+      {
+        "key": "B",
+        "text": "`[[ ]]` 不支持 `-gt`"
+      },
+      {
+        "key": "C",
+        "text": "`pipefail` 让 `[[ ]]` 失败"
+      },
+      {
+        "key": "D",
+        "text": "`-u` 把 `$( )` 当未定义变量"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`grep -c` 在没有匹配时返回 1（同时打印 0），而命令替换的退出码会参与 `set -e` 的判定**；当它出现在 `if [[ $(...) -gt 0 ]]` 的**条件表达式内部**时，命令替换发生在 `[[ ]]` 求值之前，bash 会因「简单命令失败」直接退出——这是 `set -e` 最著名的坑之一。修法：1) `grep -c x f || true`；2) 改成 `if grep -q x f; then` 让失败成为 `if` 的条件（`if` 上下文豁免 `-e`）；3) 先赋值 `n=$(grep -c x f || true)` 再用 `$n`。干扰项：B 错，`[[ ]]` 支持整数比较；C 错，`[[ ]]` 不是管道；D 错，`-u` 只管未定义变量名。排查链路：`bash -x` 定位退出的那一行、`echo $?` 看退出码是否符合预期、逐步去掉 pipefail/`-e` 二分定位；`shellcheck` 对这类写法有专门告警（SC2310/SC2312）。案例：健康检查脚本因为某个关键字日志不存在而整脚本退出，监控静默失效。",
+    "tags": [
+      "set -e",
+      "命令替换",
+      "grep -c"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4287,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "`zcat *.gz | awk | sort | head -5` 统计结果为空，源文件却有数据，最该怀疑？",
+    "options": [
+      {
+        "key": "A",
+        "text": "某个 gz 文件损坏，zcat 报错；且 `*.gz` 通配未匹配时 zcat 阻塞等 stdin"
+      },
+      {
+        "key": "B",
+        "text": "awk 不支持关联数组"
+      },
+      {
+        "key": "C",
+        "text": "`sort -k2 -nr` 参数顺序错误"
+      },
+      {
+        "key": "D",
+        "text": "`head -5` 会丢弃全部输入"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**两个独立陷阱**：1) `zcat` 遇到坏 gz 会在 stderr 报 `unexpected end of file` 并可能中断整条管道，结果为空而屏幕上只剩报错；2) `zcat *.gz` 若目录下没有任何匹配项，通配符原样传给 zcat，它会**从 stdin 读**，在管道里就表现为「卡住不动」而不是报错。排查链路：先 `ls -l *.gz | wc -l` 确认匹配数、`zcat f.gz >/dev/null` 逐个验证完整、`gzip -t f.gz` 检测 CRC、把 `*.gz` 换成 `find . -name '*.gz' -print0 | xargs -0 zcat` 更稳；再用 `zcat ... 2>>err.log | wc -l` 分离错误与数据。干扰项：B 错，awk 关联数组是一等公民；C 错，`-k2 -nr` 合法；D 错，`head` 提前退出只会让上游收到 SIGPIPE，不会丢全部结果。案例：日志轮转后正在写的 gz 被截断，每日统计连续三天为空。",
+    "tags": [
+      "zcat",
+      "管道",
+      "错误隔离"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4288,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "脚本要在「已用磁盘 > 85%」时告警，用 `df | awk` 实现，最易被忽略的坑是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`df` 的 Use% 带 `%`、多行输出头字段错位，且 tmpfs/overlay 行会干扰判断"
+      },
+      {
+        "key": "B",
+        "text": "awk 无法做数值比较"
+      },
+      {
+        "key": "C",
+        "text": "`df` 输出单位是 KB，无法转百分比"
+      },
+      {
+        "key": "D",
+        "text": "85 是字符串，必须加引号"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`df` 的 `Use%` 列是 `85%` 这种带百分号的字符串，awk 直接比较会按字符串处理（`85%` > `100%` 之类结果要命），且不同版本 `df` 的列位置会因长设备名而换行错位**。稳妥写法：`df -P`（POSIX 输出格式，保证单行不换行）后用 `awk 'NR>1{sub(/%/,\"\",$5); if($5+0>=85) print $6,$5}'`，`$5+0` 强制数值化；再按文件系统类型过滤 `df -P -x tmpfs -x overlay`。排查链路：1) 先 `df -h` 人工看哪个挂载点高；2) `du -sh /* 2>/dev/null | sort -h | tail` 逐层下钻；3) `lsof +L1` 查被删除但仍占空间的文件；4) 确认不是 inode 满（`df -i`）。易混点：`df` 看空间、`du` 看目录占用，两者数值不一致通常是「已删除但句柄未释放」。案例：告警脚本在 K8s 节点上被 overlay 行触发误报，实际业务盘只用了 40%。",
+    "tags": [
+      "df",
+      "awk",
+      "磁盘告警"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4289,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "`trap ... EXIT` 之后再 `exec ssh host cmd`，清理逻辑为什么没跑？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`exec` 替换了当前进程，trap 随原 shell 一起消失"
+      },
+      {
+        "key": "B",
+        "text": "trap 不能捕获 EXIT"
+      },
+      {
+        "key": "C",
+        "text": "`ssh` 退出码非 0 导致 trap 跳过"
+      },
+      {
+        "key": "D",
+        "text": "`exec` 之后 trap 会延迟到下一次登录执行"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`exec cmd` 不 fork 子进程，而是用 cmd 直接**替换**当前 shell 进程镜像**；shell 进程一被替换，它的 trap 表、变量、函数全部消失，EXIT trap 自然不会触发。正确做法：1) 不用 `exec`，直接 `ssh ...` 后由脚本自然退出；2) 若为了「省一个进程」而 `exec`，把清理放到被 exec 的远端命令里，或改成 `ssh host 'cmd; cleanup'`；3) 用 `($$)` 组合的 ATEXIT 手法（写 PID 文件由外部清理）也可以。干扰项：B 错，EXIT 是 bash 的标准伪信号；C 错，trap 与退出码无关；D 纯属臆造。排查链路：加 `set -x` 看 trap 是否真注册成功（`trap -p EXIT` 打印当前定义）、确认 exec 是否在 trap 之后、换成普通调用对比行为。案例：脚本用 exec 启动 Java 进程避免多一层进程，结果临时目录永远不被清理，/tmp 每天涨。",
+    "tags": [
+      "exec",
+      "trap",
+      "进程替换"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4290,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "监控脚本用 `nc -z host 3306` 判存活，误报「端口正常」最常见的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`nc -z` 只验证 TCP 握手成功，却被防火墙/中间设备代答，且未校验应用层响应"
+      },
+      {
+        "key": "B",
+        "text": "`nc -z` 会启动一个长连接占用端口"
+      },
+      {
+        "key": "C",
+        "text": "`nc` 不支持 3306 这类高位端口"
+      },
+      {
+        "key": "D",
+        "text": "`nc` 需要 root 权限才能探测"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`nc -z` 只做 TCP 三次握手（部分实现还会发 banner 探测），握手成功不代表业务可用**：MySQL 进程僵死、连接数打满（`max_connections` 用完仍可能握手成功再立刻断开）、中间有 LB/防火墙做了端口级探活代答，都会让 `-z` 报「通」而业务实际不可用。更靠谱的做法：1) 应用层探活 `mysqladmin ping`（真正执行 ping 语句）或 `curl -f http://host/healthz`；2) `nc -z -w 3` 必须加超时，否则 UDP/丢包场景会挂起；3) 更严格控制用 `timeout 5 bash -c '</dev/tcp/host/3306'` 或 `ss -tn` 看握手是否真的建立。干扰项：B 错，`-z` 探测后立即断开；C 错，端口与数值范围无关；D 错，普通用户可发起连接。排查链路：先「端口通不通」`nc -zv` 看结果、再「服务活不活」用业务命令、最后看服务端 `ss -s` 与 `SHOW PROCESSLIST`。案例：某大促 MySQL 连接数打满，端口探测全绿，监控没告警。",
+    "tags": [
+      "nc",
+      "端口探测",
+      "监控误报"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4291,
+    "type": "single",
+    "category": "Shell脚本",
+    "difficulty": "困难",
+    "question": "多脚本共用 `/tmp/build.lock` 互斥，某次被 `kill -9` 后全部永久阻塞，根因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "手写 PID 锁文件残留；改用 `flock`（进程退出自动释放）或锁内写 PID 并校验存活"
+      },
+      {
+        "key": "B",
+        "text": "`kill -9` 会删除锁文件，导致锁永远锁不上"
+      },
+      {
+        "key": "C",
+        "text": "应该把锁放 `/var/run`，`/tmp` 不支持文件锁"
+      },
+      {
+        "key": "D",
+        "text": "并发任务太多，加 `-P 1` 即可"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**手写锁（`if [ -f lock ]; then exit; fi; touch lock`）在进程被 `kill -9`、机器断电、OOM 时会留下残留锁文件，没人负责清理，后续任务全部被判为「已锁定」**。`flock` 用的是内核文件锁（fd 级），进程消亡时锁**自动释放**，是首选。若必须沿用标记文件方案，至少写进 PID 并在抢锁时用 `kill -0 $pid` 校验「持锁进程是否还活着」，另外用 `trap 'rm -f lock' EXIT` 兜住正常退出路径。干扰项：B 错，`kill -9` 不删文件，恰恰相反是留下残留；C 错，`/tmp` 与 `/var/run` 都支持 flock，区别是重启清理策略；D 错，`-P 1` 是 xargs 并发参数，不解决互斥。排查链路：`cat lock` 看 PID、`ps -p <pid>` 判断是否存活、`rm lock` 恢复。案例：某次 CI 构建机重启后流水线全部卡在「waiting for lock」，删掉残留文件即恢复。",
+    "tags": [
+      "flock",
+      "锁残留",
+      "并发"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4450,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "主机访问不同网段的目标时，数据包首先交给谁？",
+    "options": [
+      {
+        "key": "A",
+        "text": "默认网关"
+      },
+      {
+        "key": "B",
+        "text": "同网段内的其他主机"
+      },
+      {
+        "key": "C",
+        "text": "DNS 服务器"
+      },
+      {
+        "key": "D",
+        "text": "本机的回环地址"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**主机先用「目标 IP + 子网掩码」判断目标是否同网段：同网段直接 ARP 找对方 MAC，跨网段则把包发给默认网关，由网关做三层转发**。所以「能 ping 通网关、ping 不通外网」说明二层和网关都正常，问题在网关之后（路由、NAT、运营商）。易混点：DNS 只负责把域名解析成 IP，不参与数据转发；回环地址只用于本机内部通信。排查链路：1) `ip route` 确认 default 路由存在；2) `ip neigh` / `arp -n` 看网关 MAC 是否学到；3) `ping 网关` 断开在二层，通但外网不通看网关侧路由和 NAT；4) `traceroute` 看在哪一跳断。案例：机器改完 IP 忘了配网关，能访问同网段，跨网段全部超时。",
+    "tags": [
+      "默认网关",
+      "路由",
+      "子网判断"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4451,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "`ip route` 输出 `default via 192.168.1.1 dev eth0`，含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "所有无匹配路由的流量从 eth0 发给 192.168.1.1"
+      },
+      {
+        "key": "B",
+        "text": "eth0 的 IP 地址是 192.168.1.1"
+      },
+      {
+        "key": "C",
+        "text": "192.168.1.1 是本机 DNS 服务器"
+      },
+      {
+        "key": "D",
+        "text": "只有 192.168.1.0/24 的流量走 eth0"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`default` 即 `0.0.0.0/0`，是优先级最低的兜底路由：当明细路由都不匹配时才用它**，`via` 是下一跳地址、`dev` 是出接口。干扰项：B 混淆了「网关地址」与「本机地址」，本机地址用 `ip addr` 看；C 是 `/etc/resolv.conf` 的事；D 反了，`192.168.1.0/24` 会命中更精确的直连路由（`ip route` 里 `scope link` 那条），不会走默认路由。排查链路：多网卡机器路由错乱时，用 `ip route get 8.8.8.8` 精确查看「这个目标会走哪条路由、从哪个源 IP 出去」，比 `ip route` 猜快得多；策略路由场景还要看 `ip rule`。案例：双网卡机器默认路由指向业务网卡，管理网访问异常，靠 `ip route get` 一眼定位。",
+    "tags": [
+      "路由表",
+      "默认路由",
+      "下一跳"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4452,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "服务监听在 `0.0.0.0:8080` 与 `127.0.0.1:8080` 的关键区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "前者接受所有网卡的访问，后者只接受本机回环访问"
+      },
+      {
+        "key": "B",
+        "text": "前者只能本机访问，后者可外部访问"
+      },
+      {
+        "key": "C",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "D",
+        "text": "前者使用 UDP，后者使用 TCP"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**绑定地址决定了「哪个网卡的入站包会被接受」：`0.0.0.0` 是通配地址，所有本机 IP 上的该端口都监听；`127.0.0.1` 只监听回环，外部访问会被内核直接拒绝（连接被拒 RST）**。这是「本机 curl 通、别的机器连不上」的最常见原因——服务配置里写死了 localhost。易混点：`0.0.0.0` 也常被误认为「任意目标地址」，用作**目标**时通常表示默认路由，用作**监听地址**时才是通配。排查链路：`ss -lntp | grep 8080` 看 Local Address 是 `0.0.0.0` 还是 `127.0.0.1`，再看防火墙 `iptables -L -n`、云安全组。案例：微服务在本机测试全通，容器化后其他服务调不通，原因是应用配置 `server.address=127.0.0.1`。",
+    "tags": [
+      "监听地址",
+      "0.0.0.0",
+      "回环"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4453,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "下列哪个地址**不属于** RFC1918 私有地址段？",
+    "options": [
+      {
+        "key": "A",
+        "text": "172.32.1.10"
+      },
+      {
+        "key": "B",
+        "text": "10.1.1.1"
+      },
+      {
+        "key": "C",
+        "text": "192.168.1.1"
+      },
+      {
+        "key": "D",
+        "text": "172.16.5.6"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**私有地址只有三段：`10.0.0.0/8`、`172.16.0.0/12`（即 172.16.0.0–172.31.255.255）、`192.168.0.0/16`**，另外 `169.254.0.0/16` 是链路本地（APIPA）、`127.0.0.0/8` 是回环。172.32.1.10 刚好超出 `172.16/12` 的上界 172.31.255.255，属于公网地址段（实际由 ARIN 持有），所以 A 是答案。易混点：很多人只记 `172.16`，忽略前缀长度，看到 172.20、172.31 就以为是公网，看到 172.32 又以为是私有——必须按 /12 算范围。排查建议：`ip -4 addr` 看本机地址后，用 `awk -F. '$1==10 || ($1==172 && $2>=16 && $2<=31) || ($1==192 && $2==168)'` 批量识别私有 IP。案例：脚本按字符串前缀判断私网，把 172.32.0.0/16 的客户内网误判为公网，跳过代理配置导致访问失败。",
+    "tags": [
+      "私有地址",
+      "RFC1918",
+      "网段"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4454,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "DNS 的 AAAA 记录用于解析什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "域名对应的 IPv6 地址"
+      },
+      {
+        "key": "B",
+        "text": "域名对应的 IPv4 地址"
+      },
+      {
+        "key": "C",
+        "text": "域名的邮件服务器"
+      },
+      {
+        "key": "D",
+        "text": "域名的别名指向"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`A` 记录返回 IPv4，`AAAA`（读作 quad-A）返回 IPv6**，两者可以同时存在，客户端按自身协议栈选择。干扰项对照：`CNAME` 是别名（D）、`MX` 是邮件服务器（C）、`PTR` 是反向解析、`TXT` 常用于域名验证与 SPF、`SRV` 用于服务发现、`NS` 指明该域的权威服务器。排查链路：域名不通先 `dig 域名 A` 和 `dig 域名 AAAA` 分别看，两条都不通再看权威侧；只开 IPv4 的老服务器配上 AAAA 会导致「解析到 IPv6 但连不上」，表现为部分客户端超时。案例：某站点新加 AAAA 记录后，一批只支持 IPv4 的内网出口先尝试 IPv6 再回退，首包延迟明显增加，最后靠 `curl -4` 才确认。",
+    "tags": [
+      "DNS",
+      "AAAA",
+      "记录类型"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4455,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "MAC 地址工作在 TCP/IP 模型的哪一层？",
+    "options": [
+      {
+        "key": "A",
+        "text": "网络接口层（链路层）"
+      },
+      {
+        "key": "B",
+        "text": "网际层"
+      },
+      {
+        "key": "C",
+        "text": "传输层"
+      },
+      {
+        "key": "D",
+        "text": "应用层"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**MAC 地址是链路层的物理寻址标识，只在同一广播域内有效；跨网段传输时，源/目的 MAC 每一跳都会被重写，而 IP 地址端到端不变**——这是理解「IP 用于路由、MAC 用于同段交付」的关键。对照：网际层是 IP 与 ICMP、传输层是 TCP/UDP、应用层是 HTTP/DNS/SSH。排查链路：同网段不通先 `ip neigh` 看 MAC 是否学到（`INCOMPLETE` 说明 ARP 无应答），再用 `tcpdump -e` 抓带 MAC 的包；换成不同网段后 MAC 变了是正常的，别误判为「中间设备改包」。案例：交换机端口安全（port-security）限制每口只能学一个 MAC，新接的一台小交换机下挂了多台设备，导致整段频繁断网，问题就出在二层。",
+    "tags": [
+      "MAC地址",
+      "链路层",
+      "ARP"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4456,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "`curl -I https://example.com` 的效果是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只发送 HEAD 请求，打印响应头"
+      },
+      {
+        "key": "B",
+        "text": "下载完整响应体到当前目录"
+      },
+      {
+        "key": "C",
+        "text": "只测试 TCP 端口是否开放"
+      },
+      {
+        "key": "D",
+        "text": "强制使用 HTTP/2"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-I`（`--head`）发 HEAD 请求，服务端只返回响应头、不返回 body**，用来快速看状态码、`Content-Type`、`Location`、缓存与安全响应头，比 GET 省流量也更快。注意几个坑：1) 有些服务端/网关不支持 HEAD 会返回 405 或 403，不能据此判定 URL 不可用；2) 只测端口用 `curl -v telnet://host:port` 或 `nc -zv`，`-I` 是应用层请求；3) 强制 HTTP/2 用 `--http2`，看跳转链可用 `-IL --max-redirs 5`；4) 看完整握手过程用 `-v`，看耗时拆解用 `-w '%{http_code} %{time_total}\\n'`。排查链路：接口返回异常先 `curl -I` 看状态码与跳转，再 `curl -v` 看请求头与 TLS，最后 `curl -o /dev/null -w` 看耗时分段。案例：排查 CDN 缓存未命中，`-I` 看 `X-Cache` 与 `Age` 头最快。",
+    "tags": [
+      "curl",
+      "HTTP",
+      "响应头"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4457,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "一条 TCP 连接由哪四项唯一确定？",
+    "options": [
+      {
+        "key": "A",
+        "text": "源IP、源端口、目的IP、目的端口"
+      },
+      {
+        "key": "B",
+        "text": "源MAC、目的MAC、源IP、目的IP"
+      },
+      {
+        "key": "C",
+        "text": "源IP、目的IP、协议号、TTL"
+      },
+      {
+        "key": "D",
+        "text": "序列号、确认号、窗口、校验和"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**TCP 连接用四元组（源 IP、源端口、目的 IP、目的端口）唯一标识，服务端每接受一个连接就多一条四元组记录**。这解释了两类经典现象：1) 同一客户端对同一目标最多约 65535 条连接（源端口有限），耗尽后报 `Cannot assign requested address`；2) 客户端复用到同一四元组（`SO_REUSEADDR`/`SO_REUSEPORT`）才可能冲突。干扰项：B 是链路层寻址，跨网段每跳都会变；C 中协议号与 TTL 不是标识；D 是 TCP 头字段，用来保证可靠性而不是标识连接。排查链路：`ss -tn` 看四元组、`ss -s` 看总量、`netstat -an | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn` 看哪个对端连接最多。案例：压测时客户端报端口耗尽，根因是没有开启连接复用，每条请求新建连接。",
+    "tags": [
+      "TCP连接",
+      "四元组",
+      "端口耗尽"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4458,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP/UDP 端口号的取值范围是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "0–65535"
+      },
+      {
+        "key": "B",
+        "text": "0–1023"
+      },
+      {
+        "key": "C",
+        "text": "1–32767"
+      },
+      {
+        "key": "D",
+        "text": "0–65536"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**端口号是 16 位字段，取值 0–65535（共 65536 个）**。常规划分：`0–1023` 知名端口（需 root 绑定，如 80/443/22）、`1024–49151` 注册端口、`49152–65535` 动态/临时端口（客户端发起连接时由内核分配）。易混点：D 的 65536 越界了，最大端口是 65535；B 只是知名端口段。实操要点：1) 客户端可用临时端口约 2.8 万个（`ip_local_port_range` 可调），单机对单目标的高并发连接会先撞上这个上限；2) `ss -lnt` 里端口冲突报 `Address already in use`，用 `ss -lntp` 找占用进程；3) 改端口范围 `sysctl net.ipv4.ip_local_port_range=\"1024 65535\"` 要评估安全影响。案例：爬虫单机对同一站点建了几万连接，报端口耗尽，改成连接池加端口范围调整后恢复。",
+    "tags": [
+      "端口",
+      "端口范围",
+      "临时端口"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4459,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "DHCP 协议的主要作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "自动为主机分配 IP、掩码、网关和 DNS"
+      },
+      {
+        "key": "B",
+        "text": "把域名解析成 IP 地址"
+      },
+      {
+        "key": "C",
+        "text": "在路由器之间交换路由表"
+      },
+      {
+        "key": "D",
+        "text": "为 HTTPS 协商加密密钥"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**DHCP 通过 DORA 四步（Discover→Offer→Request→Ack）把网络参数下发主机，属于典型的 UDP 应用（服务端 67、客户端 68）**。干扰项：B 是 DNS；C 是路由协议（OSPF/BGP）；D 是 TLS。易混点：DHCP 分配的是**网络参数**，ARP 才是「IP 找 MAC」，两者常被混淆。排查链路：主机拿不到地址时先看是不是 169.254.x.x（APIPA，说明 DHCP 无响应），再用 `dhclient -v` 看四步走到哪、`tcpdump -i eth0 port 67 or 68` 抓包确认 Offer 是否回来；还要查 DHCP 地址池是否耗尽、交换机是否开了 DHCP Snooping 误拦。案例：机房新增一批机器全部拿到 169.254 地址，最后是接入交换机端口没划进对应 VLAN，DHCP 广播出不去。",
+    "tags": [
+      "DHCP",
+      "DORA",
+      "网络参数"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4460,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "同网段两台机器互 ping 不通，最先应该确认什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "掩码是否正确、是否真的同网段，以及 ARP 能否学到对端 MAC"
+      },
+      {
+        "key": "B",
+        "text": "DNS 解析是否正常"
+      },
+      {
+        "key": "C",
+        "text": "默认网关是否配置"
+      },
+      {
+        "key": "D",
+        "text": "对方是否开了 HTTPS"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**同网段通信不经过网关、也不需要 DNS，靠 ARP 拿对端 MAC 后二层直发**，所以排查顺序是：1) 确认双方 IP 与掩码（`ip -4 addr`），掩码配错时一方认为同段、另一方认为跨段，会各自发往网关导致不通；2) `ip neigh` 看对端状态，`INCOMPLETE` 说明 ARP 请求没人应答（对方防火墙、VLAN 隔离、ARP 抑制）；3) `tcpdump -e arp` 抓 ARP 请求/应答；4) 再看交换机端口 VLAN 与 MAC 表。干扰项：B 同网段用 IP 直连不查 DNS；C 同网段不用网关，只有跨网段才需要；D 与 ICMP 无关。案例：两台机器各配 /24 与 /25，一方把对方算作跨网段，ping 全部超时，改掩码后立刻通。",
+    "tags": [
+      "同网段",
+      "ARP",
+      "子网掩码"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4461,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "子网掩码 `255.255.255.0` 对应的 CIDR 前缀长度是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "/24"
+      },
+      {
+        "key": "B",
+        "text": "/16"
+      },
+      {
+        "key": "C",
+        "text": "/8"
+      },
+      {
+        "key": "D",
+        "text": "/25"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**掩码换算就是数「二进制里 1 的个数」：255.255.255.0 = 24 个 1**，对应 /24，可用主机数 2^8−2 = 254（去掉网络地址与广播地址）。常用对照：/8=255.0.0.0（约 1677 万）、/16=255.255.0.0（65534 台）、/25=255.255.255.128（126 台）、/26=255.255.255.192（62 台）、/30=255.255.255.252（2 台，常用于点对点）。易混点：`/24` 可分配 254 而非 256；`/31`（RFC3021）在点对点链路可用 2 个地址、`/32` 是单主机。快速换算技巧：把最后一段除以 256 的差：/25→128、/26→192、/27→224、/28→240、/29→248、/30→252。案例：运维把 /24 写成 255.255.255.128，整段只分到 126 个地址，容量评估直接腰斩。",
+    "tags": [
+      "子网掩码",
+      "CIDR",
+      "换算"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4462,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "`ss -tlnp` 中 `-p` 参数的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "显示占用端口的进程名与 PID"
+      },
+      {
+        "key": "B",
+        "text": "只看 TCP 协议"
+      },
+      {
+        "key": "C",
+        "text": "不解析服务名，直接显示端口号"
+      },
+      {
+        "key": "D",
+        "text": "只显示监听状态"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**参数拆解：`-t` TCP、`-l` 仅监听（listen）、`-n` 不解析服务名与主机名（数字显示）、`-p` 显示进程（process）**，所以 `ss -tlnp` 是「看哪个进程占了哪个端口」的标准姿势；B 是 `-t`、C 是 `-n`、D 是 `-l`。注意：`-p` 需要 root（或同等 cap）才能看到别人的进程，普通用户看到的会是空。排查链路：起服务报 `bind: Address already in use` 时，`ss -tlnp | grep :8080` 找占用 PID，再 `ps -fp <pid>` 确认是不是旧进程/僵尸残留，必要时 `kill` 后重启；容器场景要在**宿主机**上看，且可能看到 docker-proxy 或 kube-proxy 占位。案例：发布新版本报端口被占，查到是上一次没退干净的旧进程，`systemctl restart` 之前先手动清理。",
+    "tags": [
+      "ss",
+      "端口排查",
+      "进程"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4463,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "HTTP 状态码 `204 No Content` 表示？",
+    "options": [
+      {
+        "key": "A",
+        "text": "请求已成功处理，但没有响应体"
+      },
+      {
+        "key": "B",
+        "text": "请求的资源不存在"
+      },
+      {
+        "key": "C",
+        "text": "客户端未认证"
+      },
+      {
+        "key": "D",
+        "text": "服务端内部错误"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**204 属于 2xx 成功类，语义是「处理成功且刻意不返回实体」**，常用于删除成功、埋点上报、心跳接口，客户端不应期待 body。易混点：`200` 有 body、`304 Not Modified` 也是无 body 但属于「缓存未变更」需配 `If-None-Match` 判断、`205` 是要求客户端重置视图。干扰项：B 是 404、C 是 401（未认证）/403（已认证但无权限）、D 是 500。排查链路：接口「成功但无数据」时，先 `curl -i` 看状态行与 `Content-Length`，再看是否被网关改写；带 `204` 却返回了 body 是协议违规，部分客户端会挂住等待。案例：前端用 `fetch` 处理 204 时直接 `.json()`，因空 body 抛解析异常，改成先判状态码再解析。",
+    "tags": [
+      "HTTP状态码",
+      "204",
+      "响应体"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4464,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "关于 UDP，下列说法正确的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "不保证送达与顺序，但开销小、延迟低"
+      },
+      {
+        "key": "B",
+        "text": "提供可靠传输和自动重传"
+      },
+      {
+        "key": "C",
+        "text": "必须先三次握手才能发数据"
+      },
+      {
+        "key": "D",
+        "text": "无法携带超过 8 字节的数据"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**UDP 只做「端口寻址 + 可选的校验和」，不建连、不重传、不排序、不控流**，换来的是低开销与低延迟，可靠性要由应用层自己补（如 QUIC、DNS 的重试）。干扰项：B 是 TCP 的特性；C 三次握手是 TCP，UDP 直接发包；D 胡说，UDP 报文长度受 MTU 与 IP 分片限制，远大于 8 字节（8 字节是 UDP 头长度）。易混点：UDP「无连接」不等于「不能有会话」，应用层仍可用五元组维护状态；UDP「会丢包」也不等于「一定丢包」，内网通常很稳。排查链路：UDP 业务异常时 1) 用 `tcpdump -i eth0 udp port 53` 确认包是否到达；2) 查防火墙是否放行 UDP（很多策略只放 TCP）；3) 大报文看分片与 MTU；4) 看应用层是否有序号与重传。案例：DNS 改成 UDP 大包（EDNS）后部分网络丢包，降回 512 字节或改 TCP 才恢复。",
+    "tags": [
+      "UDP",
+      "无连接",
+      "可靠性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4465,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "`dig +short example.com` 的输出是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "仅解析结果（如 IP 地址），省略其余报文细节"
+      },
+      {
+        "key": "B",
+        "text": "完整 DNS 报文与统计信息"
+      },
+      {
+        "key": "C",
+        "text": "只显示权威服务器的 NS 记录"
+      },
+      {
+        "key": "D",
+        "text": "本地 DNS 缓存内容"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`+short` 是 dig 的精简输出模式，只打印 ANSWER 段的关键值（A 记录就是 IP、CNAME 就是别名），适合脚本取值**；默认输出则包含 QUESTION/ANSWER/AUTHORITY/ADDITIONAL 四段、`status`、`Query time`、`SERVER` 等。实用组合：`dig +short @8.8.8.8 example.com` 指定递归服务器；`dig +trace example.com` 从根开始逐级查（排查解析链路必用）；`dig +noall +answer` 只留 ANSWER 段但保留格式；`dig -x 1.2.3.4` 反向解析。易混点：`+short` 对 CNAME 链会打印多行，脚本里取 IP 要再过滤；`host` 与 `nslookup` 也简洁，但 `dig` 信息最全。案例：脚本用 `dig +short` 取 IP 做健康检查，域名配了 CDN 返回多个 IP 时只拿到第一个，导致探测结果片面。",
+    "tags": [
+      "dig",
+      "DNS查询",
+      "脚本"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4466,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "`traceroute` 能逐跳显示路径，靠的是什么机制？",
+    "options": [
+      {
+        "key": "A",
+        "text": "逐步增大 TTL，让每跳路由器返回 ICMP 超时报文"
+      },
+      {
+        "key": "B",
+        "text": "向每跳发送 SSH 登录请求"
+      },
+      {
+        "key": "C",
+        "text": "读取路由器的配置文件"
+      },
+      {
+        "key": "D",
+        "text": "直接查询 DNS 的 PTR 记录"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**原理：故意把 TTL 设为 1、2、3…，包每经过一跳 TTL 减 1，减到 0 时该路由器丢弃包并回 ICMP Time Exceeded，源端据此记录该跳地址**；到达目标时回的是 ICMP Port Unreachable（UDP 模式）或 Echo Reply（ICMP 模式）。常见「全是星号」的原因：中间设备禁用 ICMP 或不回 TTL 超时、策略过滤、目标不回；可换 `-I`（ICMP）或 `-T`（TCP SYN）试试，`mtr` 则是持续统计每跳丢包率更有参考价值。易混点：`traceroute` 显示某跳「丢包 100%」但后续跳正常，通常是该路由器对探测包限速，不代表链路真断。案例：跨运营商访问慢，`mtr` 发现第 8 跳开始丢包 30%、后续跳也丢，才判定是链路问题而非回程限速。",
+    "tags": [
+      "traceroute",
+      "TTL",
+      "ICMP"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4467,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "Linux 解析域名时，`/etc/hosts` 与 DNS 谁优先？",
+    "options": [
+      {
+        "key": "A",
+        "text": "由 `/etc/nsswitch.conf` 的 hosts 行决定，通常 hosts 优先"
+      },
+      {
+        "key": "B",
+        "text": "永远是 DNS 优先"
+      },
+      {
+        "key": "C",
+        "text": "永远是 hosts 优先，无法调整"
+      },
+      {
+        "key": "D",
+        "text": "两者随机选择"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**解析顺序由 NSS 配置决定，`hosts: files dns` 表示先查本地 `/etc/hosts`（files）再走 DNS，这是发行版默认值；写成 `dns files` 就能反过来**。这解释了两个高频现场：1) 改了 DNS 但某台机器仍解析到旧 IP——因为它 hosts 里写死了该域名；2) 容器里 `/etc/hosts` 被编排注入（K8s 会写 Pod 自己的条目），排查时要进去看。相关项：`/etc/resolv.conf` 决定 DNS 服务器与超时重试（`options timeout:1 attempts:2`）、`/etc/host.conf` 是老的兼容配置。排查链路：`getent hosts 域名`（走完整 NSS 链路，与程序行为一致）对比 `dig 域名`（只测 DNS），两者结果不同就基本锁定 hosts 或 nsswitch 问题；`strace -f -e trace=openat curl -I http://域名` 能看到它读了哪些文件。案例：灰度切流后部分机器还在打老集群，最后发现是运维手工在 hosts 里做过临时映射没清理。",
+    "tags": [
+      "hosts",
+      "nsswitch",
+      "解析顺序"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4468,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "带宽 100Mbps 与延迟 20ms，分别衡量的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "单位时间能传输的数据量，与数据往返所需时间"
+      },
+      {
+        "key": "B",
+        "text": "都是指每秒传输的字节数"
+      },
+      {
+        "key": "C",
+        "text": "都指网络设备的转发能力"
+      },
+      {
+        "key": "D",
+        "text": "前者是延迟，后者是带宽"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**带宽（bps，比特每秒）衡量吞吐能力，延迟（ms）衡量往返时延，二者独立且常被混淆**。关键换算与直觉：1) 100Mbps ≈ 12.5MB/s，因为 1 字节 = 8 比特，工程上常按「除以 8」粗算，还要扣协议开销；2) 延迟对交互型业务更敏感，20ms 与 200ms 是体感分水岭；3) 「带宽大但延迟高」的链路（长肥管道）单个 TCP 流未必跑满带宽，因为受窗口大小限制（BDP = 带宽 × RTT）。干扰项：B 单位错了（字节 vs 比特）；C 混淆了链路能力与设备规格；D 完全颠倒。排查链路：用户报「网慢」先分清是大文件下载慢（带宽问题，看 `iftop`/`nload`）还是页面首包慢（延迟问题，看 `ping`/`curl -w time_connect`）。案例：跨境访问带宽 1Gbps 却每次请求 600ms，问题在 RTT 不在带宽，加 CDN 才解决。",
+    "tags": [
+      "带宽",
+      "延迟",
+      "单位换算"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4469,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "二层交换机与路由器转发数据的主要区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "交换机按 MAC 在同一广播域转发，路由器按 IP 跨网段转发"
+      },
+      {
+        "key": "B",
+        "text": "交换机按 IP 转发，路由器按 MAC 转发"
+      },
+      {
+        "key": "C",
+        "text": "两者转发方式完全相同"
+      },
+      {
+        "key": "D",
+        "text": "交换机只能转发 UDP 流量"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**交换机是二层设备：查 MAC 地址表决定从哪个口发出，不改变 IP、不隔离广播域（除非划分 VLAN）；路由器是三层设备：查路由表决定下一跳，每跳重写链路层头、隔离广播域并常做 NAT**。易混点：三层交换机两者都能做（一次路由多次交换），不能简单按设备名判断；「同网段通信走交换机、跨网段走路由器」是理解网络排障分界线的口诀。排查链路：同 VLAN 内不通 → 查交换机 MAC 表与端口（`display mac-address`、`show mac address-table`）；跨 VLAN/跨网段不通 → 查网关、路由表与 ACL。案例：办公室里同部门互相能通、访问其他部门不通，是 VLAN 划分 + 三层 ACL 拦截，先查交换机再查网关。",
+    "tags": [
+      "交换机",
+      "路由器",
+      "二层三层"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4470,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`curl` 报 `unable to get local issuer certificate`，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "服务端未下发完整的中间证书链"
+      },
+      {
+        "key": "B",
+        "text": "客户端与服务端加密算法完全不兼容"
+      },
+      {
+        "key": "C",
+        "text": "目标域名解析到了错误的 IP"
+      },
+      {
+        "key": "D",
+        "text": "服务端没有开启 TLS 1.3"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**这个报错误是「本地找不到签发者证书」，最常见于服务端只发了叶子证书、漏发中间 CA 证书**：浏览器会自动下载缺失的中间证书（AIA 补链）所以能打开，而 `curl`/Java/Go 默认不会，于是表现为「浏览器正常、命令行/后端调不通」。排查链路：1) `openssl s_client -connect host:443 -showcerts -servername host` 看下发了几张证书；2) 用 `openssl verify -CAfile chain.pem leaf.pem` 验证链；3) 检查 Nginx 的 `ssl_certificate` 是否配了「叶子+中间」合并的 fullchain 文件；4) 客户端侧确认 `ca-certificates` 包与 `SSL_CERT_FILE`/`REQUESTS_CA_BUNDLE` 是否正确（内网自签 CA 要显式加入信任库）。干扰项：B 报的会是 `handshake failure` 或算法不匹配；C 会报 hostname mismatch 或连接失败；D 与 1.3 无关。案例：某内部服务换证后只有 Java 客户端报 PKIX 错误，补全 chain 后恢复。",
+    "tags": [
+      "TLS",
+      "证书链",
+      "curl"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4471,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`tcpdump -i eth0 'tcp port 443 and host 10.0.0.5'` 表示？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只抓与 10.0.0.5 之间 443 端口的 TCP 包"
+      },
+      {
+        "key": "B",
+        "text": "抓 10.0.0.5 上所有端口的 UDP 包"
+      },
+      {
+        "key": "C",
+        "text": "抓除 10.0.0.5 之外的所有包"
+      },
+      {
+        "key": "D",
+        "text": "抓 eth0 上的全部流量"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**BPF 过滤表达式里 `and` 表示条件同时满足、`host` 匹配源或目的 IP、`port` 匹配源或目的端口**，所以这条只抓到「与 10.0.0.5 交互的 443/TCP 流量」。常用补充：`src host`/`dst host` 限定方向、`portrange 1024-65535`、`not port 22`（抓包时排除自己的 SSH 会话避免刷屏）、`-n` 不解析域名与端口名提速、`-s 0` 抓全包、`-w x.pcap` 落盘后用 Wireshark 分析。易混点：抓到的双向流量要区分谁是客户端，看 `Flags [S]` 发起方；`host` 不能写成 `src or dst host` 混用括号错误。排查链路：先在服务端抓 `-w` 落盘，再在客户端同时抓，两边对比可区分「没发出」还是「收到了但没回」。案例：排查偶发超时，双端抓包发现客户端发了 SYN、服务端从未收到，问题指向中间防火墙丢包。",
+    "tags": [
+      "tcpdump",
+      "BPF",
+      "抓包"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4472,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`ss -s` 里 `timewait` 数值远高于其他状态且持续增长，最需要先确认的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "是否存在大量短连接，以及是否由本机主动关闭"
+      },
+      {
+        "key": "B",
+        "text": "是否磁盘 IO 过高"
+      },
+      {
+        "key": "C",
+        "text": "是否开启了 swap"
+      },
+      {
+        "key": "D",
+        "text": "是否配置了 IPv6"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**TIME_WAIT 由「主动关闭方」产生，大量 TIME_WAIT 说明本机在频繁主动关闭短连接**（HTTP 客户端没开 keepalive、每次请求新建连接、脚本循环 curl 等）。判断要点：1) `ss -tan state time-wait | wc -l` 看总量、`ss -tan state time-wait '( dport = :80 or dport = :443 )'` 看目标；2) 看 `ss -s` 的 total 与 `timewait` 占比，几千条属正常量级，几万条才需要处理；3) 分清方向——服务端大量 TIME_WAIT 往往是服务端主动关（例如 `Connection: close` 或超时主动断）。治理手段：优先在应用层加连接池/keepalive；次选 `net.ipv4.tcp_tw_reuse=1`（仅对**主动发起**的连接有效，且需时间戳开启）、调小 `tcp_fin_timeout`；**不要**迷信 `tcp_tw_recycle`（NAT 场景会误杀，已在 4.12 移除）。干扰项：B、C、D 与 TIME_WAIT 无关。案例：某定时任务每分钟跑 200 次短连接 curl，服务端 TIME_WAIT 涨到 4 万，换成长连接池后归零。",
+    "tags": [
+      "TIME_WAIT",
+      "短连接",
+      "ss"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4473,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "服务端 `ss -lnt` 显示 8080 监听正常，本机 curl 通，其他机器连不上，下一步最该查？",
+    "options": [
+      {
+        "key": "A",
+        "text": "监听地址是否为 127.0.0.1，以及防火墙/安全组是否放行"
+      },
+      {
+        "key": "B",
+        "text": "应用日志级别是否过低"
+      },
+      {
+        "key": "C",
+        "text": "服务器 CPU 使用率"
+      },
+      {
+        "key": "D",
+        "text": "磁盘剩余空间"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「本机通、外部不通」几乎只有三类原因：绑定在回环地址、主机防火墙拦截、上游安全组/网络 ACL 拦截**（少数还有中间 NAT 未映射端口）。排查链路（按成本从低到高）：1) `ss -lntp | grep 8080` 看 Local Address 是 `0.0.0.0` 还是 `127.0.0.1`；2) 本机 `iptables -L -n -v` / `firewall-cmd --list-all` / `ufw status` 看是否有 DROP 规则与计数器增长；3) 从对端 `nc -zv 服务器IP 8080` 看是「拒绝」（RST，多为无服务或防火墙 REJECT）还是「超时」（DROP，多为防火墙或安全组静默丢弃）；4) 云环境查安全组、VPC 网络 ACL；5) `tcpdump -i eth0 port 8080` 看包是否到达网卡——没到就是上游拦的，到了没回就是本机拦的。干扰项：B、C、D 都不影响入站连接建立。案例：容器里服务绑定 127.0.0.1，宿主机端口映射看似正常但外网一直超时。",
+    "tags": [
+      "监听地址",
+      "防火墙",
+      "连不上排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4474,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "客户端看到 `Connection refused` 与 `Connection timed out`，关键区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "前者收到 RST（端口无监听或策略拒绝），后者多为包被静默丢弃"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价，只是措辞不同"
+      },
+      {
+        "key": "C",
+        "text": "前者表示服务端过载，后者表示服务端宕机"
+      },
+      {
+        "key": "D",
+        "text": "前者是 DNS 问题，后者是路由问题"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`refused` = 对方主机可达但目标端口没有监听（内核回 RST），或防火墙用 REJECT 主动拒绝；`timed out` = SYN 发出去没有任何回应，通常是 DROP 规则、安全组静默丢弃、路由黑洞或主机不在线**。这个区别直接决定排查方向：refused 要查「服务有没有起、绑没绑对地址」，timed out 要查「网络路径与策略」。验证手段：`nc -zv host port` 配合 `tcpdump -i eth0 'tcp port X'` 在两端看包——只见到 SYN 不见回包即 DROP。易混点：`refused` 也可能来自中间设备（如 LB 后端无健康节点时拒连），不一定是目标主机行为。案例：新上线的服务在 K8s 里 Pod 没 Ready，Service 端口映射存在但后端为空，客户端看到的是 refused 而非超时。",
+    "tags": [
+      "RST",
+      "超时",
+      "排查方向"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4475,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`ping` 有 `time=1ms` 但丢包 30%，说明？",
+    "options": [
+      {
+        "key": "A",
+        "text": "链路存在丢包，需确认是单向、间歇还是限速导致"
+      },
+      {
+        "key": "B",
+        "text": "DNS 解析有问题"
+      },
+      {
+        "key": "C",
+        "text": "目标端口未开放"
+      },
+      {
+        "key": "D",
+        "text": "对方主机 CPU 打满"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**延迟正常 + 丢包明显，说明时延没问题但链路/设备存在丢包点**，常见成因：链路拥塞、光模块/网线误码、设备限速（ICMP 常被限速，出现「假丢包」）、双端不同路径（不对称路由）、wifi 无线干扰。排查链路：1) `mtr -n -c 100 目标` 看丢包从第几跳开始、是否后续跳也丢（只有某跳丢、后续正常，大概率是该设备对 ICMP 限速，非真丢包）；2) 双端 `tcpdump -i eth0 icmp` 对比序列号，判断是去程还是回程丢；3) 换协议验证 `ping -s 1400`、`iperf3 -u` 或 TCP 探测；4) 查网卡错误计数 `ip -s link`、`ethtool -S eth0` 的 `rx_errors`/`crc`。干扰项：B 是解析层、C 是传输层端口、D 与丢包无直接关系（但拥塞时可能间接）。案例：某机房 30% 丢包，`mtr` 显示第 3 跳起持续丢、网卡有 CRC 错误，最终是光模块老化。",
+    "tags": [
+      "丢包",
+      "mtr",
+      "链路质量"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4476,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`iptables -A INPUT -j DROP` 写在允许 22 端口规则之前，会有什么后果？",
+    "options": [
+      {
+        "key": "A",
+        "text": "所有入站包先被丢弃，22 端口规则永远不会命中"
+      },
+      {
+        "key": "B",
+        "text": "规则顺序不影响结果"
+      },
+      {
+        "key": "C",
+        "text": "只有 UDP 包被丢弃"
+      },
+      {
+        "key": "D",
+        "text": "DROP 只对出站生效"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**iptables 按「链内顺序从上到下匹配，命中即执行目标动作（ACCEPT/DROP/REJECT）并结束」**，所以把全量 DROP 放在前面会截断后面所有规则；正确顺序是「先放行已建立连接与必要端口，最后一条兜底 DROP」。配套要点：1) `-A` 追加到末尾、`-I` 插入到最前（`-I 1` 到第一行），改规则时常用 `-I` 临时插入放行自保；2) 状态化规则 `-m state --state ESTABLISHED,RELATED -j ACCEPT` 要放最前，否则回包被拦会表现为「连上了但没数据」；3) 远程改防火墙前先 `iptables-save > /root/ipt.bak` 并配 `at`/计划任务定时恢复，防止把自己锁在外面；4) 现代系统用 `firewalld`/`nftables` 时规则来源不同，`iptables -L` 可能看到的是 nft 的兼容层。案例：某次运维误把 DROP 放首位，SSH 立即断开且无法回连，靠机房带外才恢复。",
+    "tags": [
+      "iptables",
+      "规则顺序",
+      "防火墙"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4477,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "HTTP/1.1 默认 `Connection: keep-alive` 相比 HTTP/1.0 的最大收益是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "复用 TCP 连接，避免每个请求重复握手与慢启动"
+      },
+      {
+        "key": "B",
+        "text": "把响应内容压缩传输"
+      },
+      {
+        "key": "C",
+        "text": "让请求自动变为 HTTPS"
+      },
+      {
+        "key": "D",
+        "text": "允许服务端主动推送资源"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**keep-alive 复用同一条 TCP 连接承载多次请求/响应，省掉每次的 TCP 握手、TLS 握手（HTTPS 时更贵）和 TCP 慢启动**，这正是 HTTP/1.1 相比 1.0 最大的性能改进。配套实践：客户端连接池要设合理的 `maxIdle` 与空闲回收，服务端 keepalive 超时要比客户端长（如 Nginx `keepalive_timeout 65s`、upstream `keepalive 32`），否则会出现「服务端刚关、客户端正好复用」导致的偶发 502/EOF。干扰项：B 是 `Content-Encoding: gzip`；C 是 HSTS 或 301 跳转；D 是 HTTP/2 的 Server Push（已被浏览器废弃）或 SSE/WebSocket。易混点：keep-alive 解决的是「连接复用」，解决不了 HTTP/1.1 的**队头阻塞**（同一连接上请求串行），那要靠 HTTP/2 多路复用。案例：上游没开 upstream keepalive，网关到后端每秒新建上千连接，端口与 CPU 都被拖高。",
+    "tags": [
+      "keep-alive",
+      "连接复用",
+      "HTTP/1.1"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4478,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "用 `dig` 查询某域名，返回 `status: NXDOMAIN`，说明？",
+    "options": [
+      {
+        "key": "A",
+        "text": "该域名在权威 DNS 中不存在"
+      },
+      {
+        "key": "B",
+        "text": "本地网络不通"
+      },
+      {
+        "key": "C",
+        "text": "DNS 服务器拒绝提供服务"
+      },
+      {
+        "key": "D",
+        "text": "查询超时"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`NXDOMAIN`（RCODE=3）表示「这个名字根本不存在」，是权威 DNS 给出的明确否定答案**。对照其他状态：`NOERROR` 但没有 ANSWER 段表示「域名存在但该类型没有记录」（如只配了 A 没配 AAAA，查 AAAA 会 NOERROR/0 条）；`SERVFAIL` 是解析器上游出错或 DNSSEC 校验失败；`REFUSED` 是服务器拒绝（常见于只允许内网递归的 DNS 被外部查询）；超时在 dig 里表现为 `connection timed out; no servers could be reached` 而非状态码。排查链路：1) `dig +trace 域名` 从根开始逐级看在哪一级断（是 NS 未配、还是记录拼错）；2) 换 `@8.8.8.8` 与权威服务器各自查一次，区分「权威没配」与「缓存/递归问题」；3) 查是否有泛解析（`*.domain` 会让不存在的子域也返回 IP）。案例：上线新子域 `api.xxx.com` 忘了加解析，应用报 `Name or service not known`，dig 一眼 NXDOMAIN。",
+    "tags": [
+      "DNS",
+      "NXDOMAIN",
+      "dig"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4479,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "服务端 `ss -tn` 显示大量连接 `Recv-Q` 持续堆积且应用 CPU 不高，最可能是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "应用读取太慢或阻塞，数据积压在 socket 接收缓冲"
+      },
+      {
+        "key": "B",
+        "text": "网卡带宽不足"
+      },
+      {
+        "key": "C",
+        "text": "DNS 解析失败"
+      },
+      {
+        "key": "D",
+        "text": "对方没有发数据"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`ss` 的 `Recv-Q` 表示「已到达内核、还没被应用 read 走的字节数」**，持续不为 0 说明应用消费速度跟不上（线程被阻塞、锁竞争、下游慢导致处理卡住、GC 停顿），数据只能躺在内核缓冲区。对照：`Send-Q` 在**监听态** socket 上表示 accept 队列（已完成握手但应用没 accept 的连接数），在**已连接** socket 上表示「已交给内核、对方还没确认的字节数」。排查链路：1) `ss -tn state established '( sport = :8080 )'` 看哪些连接积压；2) 应用侧看线程栈 `jstack`/`py-spy` 是否卡在 IO 或锁；3) 看下游依赖耗时；4) 必要时临时调大 `net.core.rmem_max` 与 socket 缓冲，但那是缓解不是解决。干扰项：B 带宽不足时通常 Send-Q 也涨且网卡有丢包计数；C 与已建立连接无关；D 若对方没发数据，Recv-Q 不会涨。案例：某服务 GC 单次停顿 3 秒，期间 Recv-Q 暴涨、客户端超时，加监控抓 GC 日志才定位。",
+    "tags": [
+      "Recv-Q",
+      "socket缓冲",
+      "性能"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4480,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "跨网段访问失败，去程与回程路径不一致（不对称路由）会导致什么典型现象？",
+    "options": [
+      {
+        "key": "A",
+        "text": "请求能到服务端，但响应回不来，表现为超时"
+      },
+      {
+        "key": "B",
+        "text": "DNS 解析变慢"
+      },
+      {
+        "key": "C",
+        "text": "端口号自动变化"
+      },
+      {
+        "key": "D",
+        "text": "MAC 地址被改写"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**不对称路由的典型表现是「单向不通」：SYN 能到服务端、服务端的 SYN-ACK 却走上了另一条（或没有回程路由的）路径而被丢弃**，客户端只看到超时。常见成因：多网卡机器（业务网卡收、管理网卡回）、双线机房策略路由、云上多路由表、NAT 设备只做了单向转换。排查链路：1) 服务端 `tcpdump -i any 'tcp port X'` 确认 SYN 到达、SYN-ACK 从哪个网卡发出；2) `ip route get <客户端IP>` 看回程走哪条路；3) `ip rule`/多路由表（`ip route show table all`）看策略路由；4) 在中间设备做双向抓包对比。修复思路：统一回程路由、加策略路由让回包走入口网卡，或在防火墙上做状态跟踪（stateful）放行。干扰项：B、C、D 都不是该现象的表现。案例：双网卡服务器加了默认路由到管理网，业务访问全部超时，抓包发现回包从管理网出去了。",
+    "tags": [
+      "不对称路由",
+      "单向不通",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4481,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "Nginx 返回 `413 Request Entity Too Large`，应该调整哪个配置？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`client_max_body_size`"
+      },
+      {
+        "key": "B",
+        "text": "`proxy_read_timeout`"
+      },
+      {
+        "key": "C",
+        "text": "`keepalive_timeout`"
+      },
+      {
+        "key": "D",
+        "text": "`worker_connections`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**413 是「请求体超过服务端允许上限」，Nginx 的开关就是 `client_max_body_size`（默认 1m）**，上传大文件或提交大 JSON 时必须按业务调大（如 `client_max_body_size 100m;`），放在 `http`/`server`/`location` 任一合适层级。同时要检查链路上下游：API 网关/负载均衡/云 WAF 也各有自己的 body 限制，只改 Nginx 仍可能被上游拦。同类限制对照：`proxy_read_timeout`（B）影响的是「等待后端响应超时」，表现为 504；`keepalive_timeout`（C）影响连接复用；`worker_connections`（D）影响并发连接上限，超限表现为连接排队或报错而不是 413。排查链路：1) 看 Nginx `error.log` 是否有 `client intended to send too large body`；2) `curl -v` 看请求头 `Content-Length` 与响应状态；3) 逐层确认网关限制；4) 特别大的文件建议改直传对象存储（预签名 URL），避免过网关。案例：运营后台上传 5MB 图片一直 413，调大后仍失败，最后发现是 SLB 侧的 body 限制。",
+    "tags": [
+      "Nginx",
+      "413",
+      "请求体限制"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4482,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "用 `nmap -sS -p 80,443 10.0.0.0/24` 与 `nc -zv` 逐个探测相比，主要优势是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "一次批量探测网段，且半开扫描更快、不易被应用日志记录"
+      },
+      {
+        "key": "B",
+        "text": "nmap 不受防火墙限制"
+      },
+      {
+        "key": "C",
+        "text": "nc 无法探测 TCP 端口"
+      },
+      {
+        "key": "D",
+        "text": "nmap 会建立完整连接并传输数据"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-sS` 是 SYN 半开扫描：只发 SYN、收到 SYN-ACK 即判定开放并立刻 RST 断开，不完成三次握手**，所以速度快、且不会进入应用的 accept 队列（应用日志里一般没有记录）；`nmap` 还能批量扫网段、识别服务版本（`-sV`）、跑脚本（`-sC`）。对比 `nc -zv`：它完成完整握手再断开，逐条命令只能一个个来，慢且会在服务端留下连接记录。要点与合规：1) 半开扫描需 root/`CAP_NET_RAW`；2) 现代 IDS 对 SYN 扫描很敏感，**生产环境扫描必须先申请授权**；3) `-sT` 是全连接扫描，无权限时用它；4) `-Pn` 跳过主机存活检测，避免被禁 ping 的主机漏扫。干扰项：B 错，防火墙照样拦；C 错，`nc -z` 就是探 TCP；D 说反了，全连接的是 `-sT`。案例：资产盘点用 `nmap -sS -p-` 扫内网，发现一批未登记的高危端口暴露。",
+    "tags": [
+      "nmap",
+      "端口扫描",
+      "批量探测"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4483,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`ping6` 报 `connect: Network is unreachable`，最可能缺少什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "IPv6 默认路由或地址未正确配置"
+      },
+      {
+        "key": "B",
+        "text": "DNS 没有 AAAA 记录"
+      },
+      {
+        "key": "C",
+        "text": "防火墙没放行 ICMPv4"
+      },
+      {
+        "key": "D",
+        "text": "网卡没有 MAC 地址"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**IPv6 没有 ARP、也没有 NAT，靠 NDP（邻居发现）与路由工作；`Network is unreachable` 表示本机路由表里没有能到达目标的前缀**——常见于只配了链路本地地址（fe80::）、没配全局地址、或没加默认路由 `ip -6 route add default via fe80::1 dev eth0`。排查链路：1) `ip -6 addr` 看是否有全局地址与 `scope global`；2) `ip -6 route` 看是否有 default 与直连路由；3) `ip -6 neigh` 看邻居是否可达；4) `sysctl net.ipv6.conf.all.disable_ipv6` 确认没被禁用；5) 云的 IPv6 需要单独开通并绑定。干扰项：B 是解析层，报错会出现在解析阶段而非 connect；C 是 ICMPv4，且 IPv6 用的是 ICMPv6，报错措辞不同；D 网卡天然有 MAC，IPv6 还会据此生成链路本地地址。案例：机房上 IPv6 只配了地址没配默认路由，`ping6` 内网通、外网全 unreachable。",
+    "tags": [
+      "IPv6",
+      "路由",
+      "NDP"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4484,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "`curl` 请求经代理访问外网失败，`-x` 与 `--noproxy` 的关系是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`-x` 指定代理，`--noproxy` 指定绕过代理的域名列表"
+      },
+      {
+        "key": "B",
+        "text": "两者作用完全相反，不能同时用"
+      },
+      {
+        "key": "C",
+        "text": "`-x` 用于 HTTPS，`--noproxy` 用于 HTTP"
+      },
+      {
+        "key": "D",
+        "text": "两者都必须配合 root 权限"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-x/--proxy` 显式指定代理地址（如 `-x http://10.0.0.1:3128`），`--noproxy` 给出「这些主机/域名不走代理」的逗号分隔列表（`--noproxy '*'` 表示全都不走）**，两者可以同时使用，用于「默认走代理、内网直连」的混合场景。环境变量也要注意：`http_proxy`/`https_proxy`/`no_proxy` 会被 curl 自动读取，且 `no_proxy` 的匹配是后缀匹配（`no_proxy=.corp.com` 覆盖子域）。排查链路：1) `curl -v` 看是否出现 `Uses proxy env variable http_proxy`；2) 代理认证失败会是 407；3) HTTPS 走代理时 curl 用 `CONNECT` 隧道，代理必须支持 CONNECT；4) `curl -x socks5://...` 需要 curl 编译时带 SOCKS 支持。案例：容器里全局配了 `http_proxy`，访问内网服务走了代理导致超时，加 `no_proxy` 才通。",
+    "tags": [
+      "curl",
+      "代理",
+      "no_proxy"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4485,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "`dmesg` 出现 `nf_conntrack: table full` 相关报错，处置思路是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "连接跟踪表满导致新连接被丢；调大 `nf_conntrack_max` 并缩短 `tcp_timeout_established`"
+      },
+      {
+        "key": "B",
+        "text": "内存不足导致进程被杀，扩容内存即可"
+      },
+      {
+        "key": "C",
+        "text": "网卡队列满，需换万兆网卡"
+      },
+      {
+        "key": "D",
+        "text": "DNS 缓存过期，调大 TTL 即可"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**netfilter 的 conntrack 表是有限资源（`net.netfilter.nf_conntrack_max`），NAT/防火墙场景下每条连接都占一项；表满后新包直接被丢，表现为「随机断连、偶发 502、长连接被重置」**。处置链路：1) `conntrack -C`（或 `cat /proc/sys/net/netfilter/nf_conntrack_count`）看当前用量、对比 `nf_conntrack_max`；2) `dmesg | grep conntrack` 确认确有 table full；3) 临时调大 `sysctl -w net.netfilter.nf_conntrack_max=1048576` 并同步 `nf_conntrack_buckets`（建议为 max 的 1/4~1/8）；4) 降低驻留时间 `tcp_timeout_established`（默认 432000 秒太长）、`udp_timeout`；5) 从应用侧减少连接数（连接池、keepalive）；6) 排查是否有扫描/攻击导致的巨量短连接。干扰项：B 报错文本会不同（OOM killer）；C 网卡满会体现为 `dropped` 计数而非 conntrack 日志；D 与 DNS 无关。案例：大促时 LB 后面连接数暴涨 10 倍，conntrack 打满，调大上限 + 加连接池后稳定。",
+    "tags": [
+      "conntrack",
+      "502",
+      "连接跟踪"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4486,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "客户端连服务端超时，但两端 `tcpdump` 都只看到 SYN 没有回包，最可能发生在哪一环？",
+    "options": [
+      {
+        "key": "A",
+        "text": "中间设备静默丢弃（安全组/防火墙 DROP 或路由黑洞）"
+      },
+      {
+        "key": "B",
+        "text": "服务端应用处理太慢"
+      },
+      {
+        "key": "C",
+        "text": "客户端端口耗尽"
+      },
+      {
+        "key": "D",
+        "text": "服务端磁盘写满"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**两端抓包都只有 SYN、没有 SYN-ACK，且服务端根本没收到 SYN（这就是「服务端也抓不到」的含义），说明包在中间被静默丢弃**：安全组/网络 ACL 未放行、主机防火墙 DROP、路由黑洞（目标网段没有回程路由）、中间设备策略丢弃。如果是服务端收到了但没回，服务端抓包会看到 SYN 且有 RST 或无响应，那才轮到查应用/端口/backlog。排查链路：1) 确认双方抓包点的位置（`tcpdump -i any` 会包含所有网卡，注意别只在回环抓）；2) 分段二分：从离客户端最近的一跳开始逐跳验证（`nc -zv` 或 `hping3 -S`）；3) 查安全组入方向规则与 `iptables -L -n -v` 的 DROP 计数器是否增长；4) `ip route get <源IP>` 确认回程可达；5) 云上查 NAT/弹性 IP 绑定。干扰项：B 若应用慢，握手已经完成（能看到 SYN-ACK），超时发生在后续读写；C 端口耗尽报的是本地 `Cannot assign requested address`，不会表现为远端超时；D 磁盘满与握手无关。案例：跨 VPC 访问新服务一直超时，最后是安全组只放行了同 VPC 网段。",
+    "tags": [
+      "SYN",
+      "静默丢弃",
+      "分段排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4487,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "千兆链路、RTT 100ms 的两个机房传大文件，单流只有 5MB/s，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "带宽时延积大，单流受 TCP 窗口限制，需调大窗口或并行多流"
+      },
+      {
+        "key": "B",
+        "text": "磁盘 IO 上限只有 5MB/s"
+      },
+      {
+        "key": "C",
+        "text": "DNS 解析慢导致"
+      },
+      {
+        "key": "D",
+        "text": "TCP 校验和计算太慢"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**单条 TCP 流的理论吞吐上限 ≈ 窗口大小 / RTT（BDP 限制）：窗口 64KB、RTT 100ms 时约 0.64MB/s；窗口 1MB 时约 10MB/s**，要跑满千兆（约 125MB/s）需要窗口约 12.5MB 或更短 RTT。这就是「长肥管道（long fat network）」问题：带宽够、RTT 大，单流上不去。优化链路：1) 确认两端 `net.ipv4.tcp_window_scaling=1`、`tcp_rmem/tcp_wmem` 上限是否够（`sysctl` 里第三个数是最大值）；2) 用 `iperf3 -w 4M` 对比不同窗口的吞吐验证；3) 传输工具加并发（`rsync` 单流不行，可用 `lftp -p 8`、`mc` 或分片 + `xargs -P`）；4) 有条件的用专线加速/QUIC 多路复用。干扰项：B 若磁盘只有 5MB/s，写入侧也会有明显 IO 等待，用 `iostat` 可排除；C 只影响建连前的解析；D TCP 校验和卸载（`ethtool -k`）确实有影响但通常不是瓶颈量级。案例：跨洋备份 8 小时没传完，改用多流 + 调大窗口后压到 40 分钟。",
+    "tags": [
+      "BDP",
+      "TCP窗口",
+      "长肥管道"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4488,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "两台主机 IP 冲突（同网段同 IP）时，最典型的现象与检测手段是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "网络间歇性中断、ARP 表频繁变化；用 `arping` 检测同 IP 应答"
+      },
+      {
+        "key": "B",
+        "text": "两台机器都无法启动"
+      },
+      {
+        "key": "C",
+        "text": "DNS 解析全部失败"
+      },
+      {
+        "key": "D",
+        "text": "端口号会自动冲突"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**IP 冲突的典型表现是「时通时不通、SSH 偶发断开、丢包与延迟抖动」**，因为两台机器都响应 ARP，网关/对端的 ARP 缓存来回翻转，流量一会儿发到 A 一会儿发到 B。检测手段：1) `arping -I eth0 -c 4 192.168.1.50`，同一 IP 收到**两个不同 MAC** 的应答即冲突；2) 交换机上 `show mac address-table | include <MAC>` 看同一 IP 出现在多个端口；3) 看系统日志内核报 `IPv4 address conflict detection`（`ip addr` 会打印 duplicate address detected）；4) 云环境查 DHCP 静态绑定与手工静态 IP 是否重叠。处置要点：静态 IP 必须纳入 IPAM 管理，或用 DHCP 保留；发现冲突先断掉一台再确认。干扰项：B 主机照常运行；C 与 DNS 无关；D 端口是进程级资源，与 IP 冲突无关。案例：机房搬迁手工配 IP，两台新机器配了同一个地址，业务每天不定时抖 20 分钟。",
+    "tags": [
+      "IP冲突",
+      "ARP",
+      "arping"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4489,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "VXLAN 隧道里小包正常、大包（如 >1400 字节）全部不通，最可能原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "封装增加 50 字节导致超过底层 MTU，且未正确做分片或 PMTUD"
+      },
+      {
+        "key": "B",
+        "text": "VXLAN 不支持 TCP 协议"
+      },
+      {
+        "key": "C",
+        "text": "隧道两端时钟不同步"
+      },
+      {
+        "key": "D",
+        "text": "VXLAN 只能传 UDP 小包"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**VXLAN 在原始帧外再包一层（外层 IP+UDP+VXLAN 头约 50 字节），底层 MTU 1500 时隧道内可用 MTU 只有约 1450**，若未在隧道接口设置 `mtu 1450`、或中间设备禁了 ICMP `fragmentation needed`（PMTUD 失效），大包就被静默丢弃——典型症状是「ping 小包通、SSH 能连上但传文件卡住、TLS 握手阶段挂住」。排查链路：1) `ip link show` 看隧道接口与物理口 MTU；2) `ping -M do -s 1472 目标`（1500-20-8）逐级试，报 `Frag needed` 说明超 MTU；3) `tcpdump` 看是否有 ICMP type 3 code 4 被防火墙拦；4) 调整：隧道口设 1450 或底层口设 1550（jumbo frame，需全链路支持）。干扰项：B、D 都是臆造；C 与大包无关。案例：K8s 集群跨机房打通后，部分大查询超时，最后定位是 VXLAN 接口 MTU 仍为 1500。",
+    "tags": [
+      "VXLAN",
+      "MTU",
+      "PMTUD"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4490,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "某域名在办公网访问正常、在云主机上解析到错误 IP，最可能的排查方向是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "云主机 DNS 服务器与搜索域配置差异，或被内网 DNS 泛解析覆盖"
+      },
+      {
+        "key": "B",
+        "text": "云主机网卡驱动有问题"
+      },
+      {
+        "key": "C",
+        "text": "该域名证书过期"
+      },
+      {
+        "key": "D",
+        "text": "云主机时间不同步"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**同一个域名在不同环境解析结果不同，几乎都是「用了不同的 DNS 服务器」或「本地覆盖」**：云主机默认指向云厂商内网 DNS，若该 DNS 配置了该域的条件转发/泛解析（`*` 记录）就会返回内网地址；此外 `/etc/resolv.conf` 的 `search`/`domain` 后缀会把短域名拼成完全不同的名字，`/etc/hosts` 也可能写死。排查链路：1) `cat /etc/resolv.conf` 看 nameserver 与 search；2) `dig @<办公网DNS> 域名` 与 `dig @<云DNS> 域名` 分别查，对比 ANSWER；3) `dig +trace` 看权威结果，确认到底哪一层在改写；4) `getent hosts 域名` 排除 hosts/nsswitch 干扰；5) 有 `nscd`/`systemd-resolved` 的先清缓存。干扰项：B 驱动问题会整体不通而非解析到错 IP；C 证书影响 HTTPS 握手，此时 IP 是对的；D 时间影响 TLS 校验而非解析。案例：云上访问 `api.xxx.com` 一直打到内网测试环境，原因是云 DNS 为该域配了条件转发。",
+    "tags": [
+      "DNS",
+      "解析差异",
+      "resolv.conf"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4491,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "线上接口 P99 从 50ms 涨到 800ms，抓包看到大量 TCP Retransmission，下一步最该做什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "定位丢包点（双端抓包 + mtr）并确认是否链路拥塞或网卡/驱动异常"
+      },
+      {
+        "key": "B",
+        "text": "立刻重启应用进程"
+      },
+      {
+        "key": "C",
+        "text": "把 HTTP 改成 HTTPS"
+      },
+      {
+        "key": "D",
+        "text": "扩容应用实例数"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**重传是「发出去了没收到确认」的结果，会触发退避与慢启动回退，直接表现为延迟飙升与吞吐下降**；根因可能在链路丢包、拥塞、网卡/驱动、中间设备队列溢出、或对端 socket 缓冲不足。排查链路：1) `ss -ti` 看单连接的 `retrans`、`rtt`、`cwnd`、`ssthresh` 变化，量化重传率；2) `nstat -az | grep -i retrans` 或 `netstat -s | grep retrans` 看全机重传计数；3) 双端 `tcpdump` 定位丢在哪个方向，`mtr -c 100` 定位哪一跳开始丢；4) `ip -s link`、`ethtool -S` 看 `rx_errors`/`rx_dropped`/`crc`；5) 查拥塞：`tc -s qdisc show` 看队列丢包、出口带宽是否打满（`iftop`/`sar -n DEV 1`）；6) 若确认是拥塞可临时扩容带宽或限流降级。干扰项：B 重启会中断并掩盖证据，且不解决链路问题；C 与传输层重传无关；D 扩容可能加剧带宽竞争，应先定性再定量。案例：某次 P99 抖动，`ss -ti` 显示重传率 8%，`ethtool -S` 有 rx_dropped，最后是网卡队列数与 CPU 亲和配置不当。",
+    "tags": [
+      "重传",
+      "丢包定位",
+      "延迟"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4492,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "服务端 `ss -lnt` 的 Send-Q 在监听 socket 上持续增长，说明什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "已完成握手的连接堆在 accept 队列，应用 accept 太慢或 backlog 太小"
+      },
+      {
+        "key": "B",
+        "text": "应用发送数据太快，对方来不及收"
+      },
+      {
+        "key": "C",
+        "text": "DNS 解析超时"
+      },
+      {
+        "key": "D",
+        "text": "网卡处于全双工模式冲突"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**监听态 socket 的 `Send-Q` 表示 accept 队列（已完成三次握手、等待应用 accept 的连接数）**，持续增长意味着应用 accept 循环太慢或被阻塞，或者 `backlog`（`somaxconn` / `listen()` 参数）太小导致溢出。与之相对，**`Recv-Q` 在监听态表示 SYN 队列（半连接，已收到 SYN 但握手未完成）**，这两个队列正是常说的「半连接队列 vs 全连接队列」。排查链路：1) `ss -lnt` 看 Send-Q 与 `net.core.somaxconn`、`net.ipv4.tcp_max_syn_backlog`；2) `netstat -s | grep -i 'listen'` 看 `times the listen queue of a socket overflowed` 计数；3) 应用侧看是否单线程 accept、是否有同步阻塞操作、线程池是否耗尽；4) 调大 backlog 只是缓冲，根因在应用处理速度。干扰项：B 描述的是已连接 socket 的 Send-Q；C 与队列无关；D 现代网卡全双工不存在冲突。案例：某网关 `somaxconn` 用默认 128，流量高峰 accept 溢出，客户端看到偶发超时。",
+    "tags": [
+      "accept队列",
+      "backlog",
+      "监听socket"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4493,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "内网服务 A 调 B 偶发超时，A 侧 `ss -tn` 显示大量 `SYN-SENT`，最可能的方向是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "SYN 或其回包在中间被丢弃（策略/路由/限速），或 B 侧半连接队列被打满"
+      },
+      {
+        "key": "B",
+        "text": "A 侧应用线程池太小"
+      },
+      {
+        "key": "C",
+        "text": "B 侧磁盘空间不足"
+      },
+      {
+        "key": "D",
+        "text": "A 侧 DNS 缓存命中率低"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`SYN-SENT` 表示「SYN 已发出、还在等 SYN-ACK」，堆积说明握手完不成**：可能是 SYN 被中间策略丢弃、回程 SYN-ACK 丢失（不对称路由）、B 侧 `tcp_max_syn_backlog` 满（SYN 洪水或突发流量）、或 B 侧启用了 `tcp_syncookies` 但队列仍溢出。对照 `SYN-RECV`（B 侧视角，收到 SYN 回了 SYN-ACK 但没等到 ACK）能进一步区分方向。排查链路：1) 双端 `tcpdump -i any 'tcp port X and tcp[tcpflags] & tcp-syn != 0'` 看 SYN 是否到达 B、SYN-ACK 是否回到 A；2) B 侧 `netstat -s | grep -i 'syn'` 看 `SYNs to LISTEN sockets dropped` 与 `SYN flooding`；3) 查安全组/防火墙对新建连接的限速（如 `hashlimit`、云 WAF 的 CC 防护）；4) `sysctl net.ipv4.tcp_syn_retries`（默认 6，意味着最长要等约 127 秒才失败）解释「为什么超时这么久」。干扰项：B 在线程池满时连接通常已建立；C 与握手无关；D 影响建连之前的解析阶段。案例：内网新上 WAF 后 A 调 B 偶发 3 秒超时，抓包发现 WAF 对新建连接做了速率限制。",
+    "tags": [
+      "SYN-SENT",
+      "握手失败",
+      "限速"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4494,
+    "type": "single",
+    "category": "网络基础",
+    "difficulty": "困难",
+    "question": "要把「网络慢」的投诉变成可定位的问题，最有效的第一步是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "分场景量化：哪个 URL/哪类用户、分层耗时（DNS/建连/TLS/首字节/传输）各多少"
+      },
+      {
+        "key": "B",
+        "text": "直接升级机房带宽"
+      },
+      {
+        "key": "C",
+        "text": "先重启所有网络设备"
+      },
+      {
+        "key": "D",
+        "text": "把所有服务迁到 CDN"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「慢」必须拆成可测量指标才能定位，否则只能靠猜**。分层耗时用 `curl -w` 一次拿全：`time_namelookup`（DNS）、`time_connect`（TCP 握手）、`time_appconnect`（TLS）、`time_starttransfer`（首字节 TTFB，含服务端处理）、`time_total`（整体），再用 `%{speed_download}` 看传输速率。定位矩阵：1) 只有 DNS 段慢 → 解析器/权威/DNS 污染；2) connect 慢 → 路由绕、丢包、SYN 重传；3) appconnect 慢 → TLS 握手（证书链、加密套件、RTT）；4) starttransfer 慢 → 服务端处理/后端依赖/DB；5) 传输段慢 → 带宽/BDP/丢包；6) 区分用户群：指定 `--resolve` 打不同节点、按地域/运营商抽样。工具组合：`mtr` 看路径、`ss -ti` 看重传、`iftop` 看带宽、APM/浏览器瀑布图看真实用户。干扰项：B、C、D 都是「先动手再定位」，可能放大风险且不解决问题。案例：用户说「网站慢」，拆分后发现 80% 的耗时在 TTFB，最终是后端慢查询，与网络无关。",
+    "tags": [
+      "性能量化",
+      "curl -w",
+      "分层耗时"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4651,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`kubectl get pods` 的 READY 列显示 `0/1`，说明？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Pod 里 1 个容器中 0 个通过就绪检查"
+      },
+      {
+        "key": "B",
+        "text": "Pod 已经完全崩溃"
+      },
+      {
+        "key": "C",
+        "text": "Pod 没有调度成功"
+      },
+      {
+        "key": "D",
+        "text": "Pod 里没有容器"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**READY 列格式是「就绪容器数/容器总数」，`0/1` 表示容器已经跑起来但 readinessProbe 未通过（或没有就绪）**，此时 Pod 不会进入 Service 的 Endpoints，流量不会打过来——这是「Pod 明明 Running 但服务 502/无后端」的常见原因。区分几个状态：`Running` 是容器进程在跑，`Ready` 是探针通过，两者独立；`Pending` 才是没调度或没启动；`Completed` 是正常退出（Job 场景）。排查链路：1) `kubectl describe pod <pod>` 看 `Readiness` 事件与 `Conditions`；2) `kubectl get pod -o wide` 与 `kubectl get endpoints <svc>` 确认是否进 Endpoints；3) 进容器手工执行探针命令（`curl localhost:8080/healthz`）验证；4) 检查探针 `path`/`port`/`initialDelaySeconds` 是否配错（启动慢的应用容易一直 0/1）。案例：Java 应用启动要 90 秒，readiness 的 `initialDelaySeconds` 只给了 10 秒，导致长时间 0/1、发布期间流量全打到旧副本。",
+    "tags": [
+      "READY",
+      "readinessProbe",
+      "Endpoints"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4652,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`docker ps` 与 `docker ps -a` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "前者只看运行中容器，后者包含已停止的容器"
+      },
+      {
+        "key": "B",
+        "text": "前者看镜像，后者看容器"
+      },
+      {
+        "key": "C",
+        "text": "后者会删除停止的容器"
+      },
+      {
+        "key": "D",
+        "text": "两者输出完全相同"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`docker ps` 默认只列 `Up` 状态的容器，`-a`（--all）把 `Exited`、`Created` 的也列出来**，排查「容器启动就退出」时必须用 `-a`，否则会误以为容器根本没创建。配套常用参数：`-q` 只输出 ID（便于 `docker rm $(docker ps -aq)` 批量清理）、`--filter`（如 `--filter status=exited`）、`-s` 显示磁盘占用、`--no-trunc` 显示完整命令。易混点：容器停止后不会自动删除（除非 `--rm`），`docker ps -a` 里堆积的 Exited 容器会占磁盘，要定期 `docker container prune`。排查链路：容器退出先 `docker ps -a` 拿到 ID 与退出码（`Exited (137)` 多为 OOM/被 kill，`Exited (1)` 是应用报错），再 `docker logs <id>` 看原因，最后 `docker inspect` 看 `State.OOMKilled`。案例：某次发布后服务没起来，`docker ps` 空、以为镜像没拉下来，`-a` 一看容器 Created 后立即 Exited。",
+    "tags": [
+      "docker ps",
+      "容器状态",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4653,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`docker logs -f --tail 100 web` 的效果是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "先显示最后 100 行，再持续跟随新日志"
+      },
+      {
+        "key": "B",
+        "text": "只显示最后 100 行后退出"
+      },
+      {
+        "key": "C",
+        "text": "显示容器内日志文件的第 100 行"
+      },
+      {
+        "key": "D",
+        "text": "把日志写入容器内文件"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`--tail 100` 取历史最后 100 行，`-f`（follow）持续输出后续日志，两者组合是排查的常用姿势**。要点：1) `docker logs` 读的是**容器标准输出**（json-file 日志驱动落盘的），应用若只写自己的文件（如 `/var/log/app.log`）这里看不到，得 `docker exec` 进去 `tail`；2) `--since 10m` 按时间过滤、`-t` 加时间戳、`--previous`（或 `docker logs --tail 1 <id>` 配重启）看**上一次运行**的日志，对 CrashLoop 排查很关键；3) 日志驱动配 `none` 或 `journald` 时行为不同（`journalctl -u docker` 才能查）。排查链路：先 `-f --tail 100` 看实时，崩溃型容器加 `--previous` 看崩溃前的报错，再看 `docker inspect` 的退出码。案例：容器反复重启，只看当前日志永远是启动横幅，加 `--previous` 才拿到崩溃栈。",
+    "tags": [
+      "docker logs",
+      "日志",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4654,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Pod 起不来时，`kubectl describe pod` 中最先该看哪部分？",
+    "options": [
+      {
+        "key": "A",
+        "text": "最下方的 Events 段与 Conditions"
+      },
+      {
+        "key": "B",
+        "text": "Pod 的 UID"
+      },
+      {
+        "key": "C",
+        "text": "容器的镜像仓库地址"
+      },
+      {
+        "key": "D",
+        "text": "Pod 的标签列表"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`describe` 的价值在于把调度、镜像拉取、探针、卷挂载各环节的事件汇总到 Events 段**，常见的 `FailedScheduling`（资源/亲和/污点）、`Failed to pull image`（镜像或密钥）、`Unhealthy`（探针）、`FailedMount`（卷）都在这里。Conditions 里 `PodScheduled`/`Initialized`/`Ready` 能快速判断卡在哪一步。排查链路（推荐顺序）：1) `kubectl get pod -o wide` 看状态与节点；2) `kubectl describe pod` 看 Events；3) `kubectl logs <pod> -c <container> --previous` 看应用日志；4) 需要时 `kubectl get events --sort-by=.lastTimestamp` 看集群全量事件。易混点：Events 只保留最近一段时间（默认 1 小时左右）且数量有限，问题发生很久后再查可能已被清空，**现场要第一时间保存 `describe` 输出**。案例：Pod 一直 Pending，describe 末尾显示 `0/3 nodes are available: 3 Insufficient cpu`，直接锁定资源不足。",
+    "tags": [
+      "kubectl describe",
+      "Events",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4655,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "镜像 tag 为 `:latest` 时，`imagePullPolicy` 的实际行为是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "默认 Always，每次启动都尝试重新拉取"
+      },
+      {
+        "key": "B",
+        "text": "默认 IfNotPresent，本地有就不拉"
+      },
+      {
+        "key": "C",
+        "text": "默认 Never，只使用本地镜像"
+      },
+      {
+        "key": "D",
+        "text": "必须显式指定，否则报错"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**K8s 的默认规则：tag 为 `latest`（或省略 tag）→ `Always`；指定了具体 tag → `IfNotPresent`；显式写 `imagePullPolicy` 则以其为准**。这条规则的意义是防止「latest 变了但节点用旧缓存」；代价是每次 Pod 启动都要访问镜像仓库，**仓库抖动会直接导致启动变慢甚至启动失败**（表现为 `ImagePullBackOff` 或长时间 ContainerCreating）。工程实践：1) 生产禁止用 `latest`，用不可变 tag（语义化版本或 commit SHA），并把策略设成 `IfNotPresent`；2) 用 `imagePullSecrets` 配私有仓库；3) 需要强制刷新时改 tag 或加注解触发重建，而不是依赖 `Always`。易混点：`Always` 只是「尝试拉取」，拉取失败时若本地已有镜像，不同运行时行为可能有差异，不要把它当作「一定能拉到最新」的保证。案例：生产用 `latest` 滚动更新，某次仓库限流导致新副本全部拉取失败，更新卡在中途。",
+    "tags": [
+      "imagePullPolicy",
+      "latest",
+      "镜像"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4656,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`kubectl scale deployment web --replicas=5` 的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把 Deployment 的副本数调整为 5"
+      },
+      {
+        "key": "B",
+        "text": "把 Pod 的资源限制改为 5 核"
+      },
+      {
+        "key": "C",
+        "text": "创建 5 个新的 Deployment"
+      },
+      {
+        "key": "D",
+        "text": "把滚动更新的批次设为 5"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`scale` 修改的是 `spec.replicas`，Deployment 控制器据此增删 Pod（由它管理的 ReplicaSet 完成实际动作）**。要点：1) 这是**声明式**操作的即时命令形式，等价于改 YAML 里的 `replicas` 再 apply，但**不会写回你的 YAML 文件**，下次 apply 旧文件会把副本数改回去——这是「扩容后第二天变回原样」的经典原因；2) 有 HPA 时手改 replicas 会被 HPA 覆盖（HPA 是权威），要扩缩容应改 HPA 的 `minReplicas/maxReplicas`；3) `--current-replicas` 可以做乐观并发校验（值不匹配则失败）；4) 缩容时多余 Pod 会被优雅终止（受 `terminationGracePeriodSeconds` 与 `preStop` 影响）。干扰项：B 是 `resources`、C 是创建资源、D 是 `maxSurge`。案例：大促手动扩容到 20，第二天例行 apply 把副本数拉回 5，流量高峰直接打挂。",
+    "tags": [
+      "scale",
+      "replicas",
+      "HPA"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4657,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "默认 `type: ClusterIP` 的 Service 能被谁访问？",
+    "options": [
+      {
+        "key": "A",
+        "text": "集群内部（Pod、节点上的进程）"
+      },
+      {
+        "key": "B",
+        "text": "任何能访问节点 IP 的外部客户端"
+      },
+      {
+        "key": "C",
+        "text": "只有同一命名空间的 Pod"
+      },
+      {
+        "key": "D",
+        "text": "只有 kube-apiserver"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**ClusterIP 分配一个仅集群网络内可路由的虚拟 IP，集群内的 Pod 与节点上的进程可以访问，集群外默认不可达**。对照其他类型：`NodePort` 在每个节点上开一个 30000–32767 的端口对外；`LoadBalancer` 由云厂商分配外部 IP；`ExternalName` 做 CNAME 转发；`Headless`（`clusterIP: None`）不分配 VIP、直接返回 Pod IP 列表（StatefulSet 与需要直连 Pod 的场景用）。易混点两条：1) ClusterIP 能被**跨命名空间**的 Pod 访问（只是 DNS 名要带命名空间），不是「只有同命名空间」；2) Service 靠 selector 选 Pod，**不校验 Pod 是否 Ready**之外的额外条件，但未 Ready 的 Pod 不会进 Endpoints。排查链路：集群外访问不通先 `kubectl get svc` 看类型，再决定是改类型、加 Ingress 还是用 port-forward 临时验证。案例：新服务只建了 ClusterIP，测试同学从办公网访问不通，误判为服务故障。",
+    "tags": [
+      "Service",
+      "ClusterIP",
+      "访问范围"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4658,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`kubectl exec -it web-0 -- sh` 的前提是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Pod 处于 Running 且容器内存在 sh 或 bash"
+      },
+      {
+        "key": "B",
+        "text": "Pod 必须处于 Pending 状态"
+      },
+      {
+        "key": "C",
+        "text": "必须以 root 身份登录节点"
+      },
+      {
+        "key": "D",
+        "text": "容器必须暴露 22 端口"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`exec` 是把命令注入到**正在运行的容器**里执行，所以 Pod 必须 Running，且镜像里得有该 shell**；scratch/distroless 这类精简镜像没有 `sh`，会报 `executable file not found`，这时只能靠 `kubectl debug`（临时容器）或 `kubectl cp` 拷文件分析。常用参数：`-c <container>` 指定容器（多容器 Pod 必加，否则默认第一个）、`-i` 保持 stdin、`-t` 分配 TTY。排查链路与替代手段：1) Pod 不在 Running 时无法 exec，只能看 `logs`/`describe`；2) 没有 shell 时用 `kubectl debug -it <pod> --image=busybox --target=<container>` 挂临时容器共享进程命名空间；3) 查网络可 `kubectl exec` 里跑 `wget`/`nc`，但很多精简镜像连这些也没有。案例：线上排查想进容器看配置，distroless 镜像进去报找不到 sh，改用 `kubectl debug` 才成功。",
+    "tags": [
+      "kubectl exec",
+      "容器调试",
+      "distroless"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4659,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "K8s 的 Namespace 主要解决什么问题？",
+    "options": [
+      {
+        "key": "A",
+        "text": "资源名称隔离与权限边界（同名资源可存在于不同 Namespace）"
+      },
+      {
+        "key": "B",
+        "text": "网络隔离，不同 Namespace 的 Pod 默认不能通信"
+      },
+      {
+        "key": "C",
+        "text": "CPU 与内存的硬隔离"
+      },
+      {
+        "key": "D",
+        "text": "镜像仓库隔离"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Namespace 是 K8s 的逻辑隔离单元：让同名 Deployment/Service 在不同 Namespace 共存，并作为 RBAC、ResourceQuota、NetworkPolicy 的作用域**。易混点（很重要）：1) Namespace **不做网络隔离**——默认所有 Pod 可以跨 Namespace 互访（要隔离得用 NetworkPolicy）；2) 不做资源硬隔离——资源上限靠 `ResourceQuota`（命名空间级）与 `LimitRange`（默认值/区间）约束；3) 与 Linux 的 namespace（pid/net/mount 等内核隔离）**不是同一个概念**，K8s 的 Namespace 只是 API 层的逻辑分组；4) 不是所有资源都是命名空间级，Node、PV、ClusterRole、Namespace 本身是集群级。排查链路：`kubectl get ns`、`kubectl get all -n <ns>`、跨 ns 访问要写全 DNS 名 `svc.ns.svc.cluster.local`。案例：团队把测试与生产的同名 Service 放不同 Namespace，但忘了配 NetworkPolicy，测试环境的误调用打到了生产。",
+    "tags": [
+      "Namespace",
+      "隔离",
+      "易混点"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4660,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Secret 中的值在 K8s 里以什么形式存储？",
+    "options": [
+      {
+        "key": "A",
+        "text": "base64 编码（默认并非加密），可被有读权限者解码"
+      },
+      {
+        "key": "B",
+        "text": "AES 加密后存储，无法解码"
+      },
+      {
+        "key": "C",
+        "text": "明文存储，没有任何保护"
+      },
+      {
+        "key": "D",
+        "text": "哈希摘要，只能校验不能还原"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Secret 的值是 base64 编码（不是加密），`kubectl get secret -o yaml` 就能直接 `base64 -d` 还原**，它的安全性依赖 RBAC 与 etcd 的静态加密（`EncryptionConfiguration`，默认未开启）。工程要点：1) 严格限制 `get/list/watch secret` 的 RBAC 权限；2) 开启 etcd 静态加密（可用 KMS 插件）；3) 不要把 Secret 提交进 Git，用 SealedSecrets/External Secrets/Vault 注入；4) Secret 挂载成文件时默认 `readOnly`，env 注入方式无法热更新；5) `stringData` 可直接写明文，API 会自动转 base64。易混点：ConfigMap 与 Secret 结构几乎一样，区别在于「用途语义 + kubelet 处理方式（如 tmpfs 挂载、不写日志）」，**都不自带加密**。案例：有人以为 Secret 是加密的，把数据库密码放进去后用 `kubectl get secret -o yaml` 截图发群，等同泄露。",
+    "tags": [
+      "Secret",
+      "base64",
+      "安全"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4661,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`docker stats` 主要展示什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "容器的实时 CPU、内存、网络与磁盘 IO 用量"
+      },
+      {
+        "key": "B",
+        "text": "镜像的分层大小"
+      },
+      {
+        "key": "C",
+        "text": "容器内进程的调用栈"
+      },
+      {
+        "key": "D",
+        "text": "宿主机的内核版本"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`docker stats` 输出每个容器的 CPU%、内存用量/上限（MEM USAGE / LIMIT）、NET I/O、BLOCK I/O、PIDs**，是快速判断「谁在吃资源」的手段。读数的几个坑：1) CPU% 是**相对单核**的，多核机器上 200% 表示占满 2 个核；2) 内存上限显示的是容器 limit（未设 limit 时显示宿主总量），实际能否看出接近 OOM 要看 `MEM USAGE`；3) 首次采样不准，要等一两秒；4) `--no-stream` 取一次快照适合脚本。对照工具：宿主层用 `top`/`pidstat`，cgroup 明细用 `cat /sys/fs/cgroup/.../memory.current`（cgroup v2），历史趋势要用 cAdvisor/Prometheus，`docker stats` 只看当前。案例：某容器内存缓慢上涨，`docker stats` 里 MEM USAGE 逼近 LIMIT，随后被 OOMKilled，据此给 JVM 设了 `-Xmx`。",
+    "tags": [
+      "docker stats",
+      "资源监控",
+      "cgroup"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4662,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Deployment 与 ReplicaSet 的关系是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Deployment 管理多个 ReplicaSet，ReplicaSet 负责维持 Pod 副本数"
+      },
+      {
+        "key": "B",
+        "text": "ReplicaSet 管理多个 Deployment"
+      },
+      {
+        "key": "C",
+        "text": "两者是同一资源的两个名字"
+      },
+      {
+        "key": "D",
+        "text": "Deployment 直接创建 Pod，与 ReplicaSet 无关"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**层级是 Deployment → ReplicaSet → Pod**：每次镜像或模板变更，Deployment 会创建一个新的 ReplicaSet 并逐步调整新旧 RS 的副本数，从而实现滚动更新；旧 RS 保留（`revisionHistoryLimit` 默认 10）以便 `rollout undo` 回滚。易混点：1) 直接用 ReplicaSet 可以做副本管理但没有滚动更新与回滚能力，所以生产用 Deployment；2) `kubectl get rs` 里看到多个 RS 是正常的，各自 `DESIRED` 反映更新过程；3) `rollout undo` 是把流量切回旧 RS 的模板，不是「删除新 RS」；4) StatefulSet/DaemonSet 不走 RS。排查链路：更新卡住时 `kubectl get rs` 看新旧副本数是否停在中间态、`kubectl describe rs` 看事件、`kubectl rollout status deploy/x` 看进度。案例：发布后新旧 RS 各留 2 个副本一直不动，最后定位是新 RS 的 Pod 探针不过，滚动更新保护机制主动停住。",
+    "tags": [
+      "Deployment",
+      "ReplicaSet",
+      "滚动更新"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4663,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Pod 模板里 `labels` 的主要用途是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "供 Service、控制器与选择器筛选匹配的 Pod"
+      },
+      {
+        "key": "B",
+        "text": "给 Pod 设置资源配额"
+      },
+      {
+        "key": "C",
+        "text": "决定 Pod 的调度节点"
+      },
+      {
+        "key": "D",
+        "text": "指定容器的镜像版本"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**label 是键值对「可被选择器查询的元数据」**，Service 的 `selector`、Deployment 的 `matchLabels`、NetworkPolicy 的 `podSelector`、`kubectl get -l` 都靠它匹配。几个关键点：1) label 与 annotation 不同——label 用于**选择**（有长度与字符集限制），annotation 用于**记录信息**（如 `kubectl.kubernetes.io/last-applied-configuration`、变更说明），不能被选择器查询；2) 选择器写错是「Service 没有 Endpoints」的头号原因：`kubectl get pods -l app=web` 为空就说明标签对不上；3) label 可以运行时改（`kubectl label pod x k=v`），改完可能立刻被 Service 选中/踢出。干扰项：B 是 `resources`、C 是 nodeSelector/affinity（那是节点标签）、D 是 image。案例：Deployment 模板 label 是 `app:web`，Service selector 写成 `app:web-app`，导致 Endpoints 永远为空、访问 502。",
+    "tags": [
+      "label",
+      "selector",
+      "Endpoints"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4664,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "探针里的 `initialDelaySeconds` 指什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "容器启动后等待多久才开始第一次探测"
+      },
+      {
+        "key": "B",
+        "text": "两次探测之间的间隔"
+      },
+      {
+        "key": "C",
+        "text": "连续失败多少次判定失败"
+      },
+      {
+        "key": "D",
+        "text": "探测超时时间"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`initialDelaySeconds` 是「启动宽限期」，给应用留出初始化时间；`periodSeconds` 是探测间隔、`timeoutSeconds` 是单次超时、`failureThreshold` 是连续失败几次判定失败、`successThreshold` 是连续成功几次判定恢复**。配置不当的两类事故：1) 值太小 → 应用尚未就绪就被判死，触发重启（CrashLoop）；2) 值太大 → 故障发现慢。更好的做法是用 `startupProbe` 专门保护启动阶段（`failureThreshold × periodSeconds` 决定最长启动容忍时间），启动成功后再交给 liveness/readiness，避免为了「启动慢」把 liveness 的延迟调大而牺牲故障响应。排查链路：`kubectl describe pod` 的 Events 里 `Unhealthy` 会写明哪种探针、哪次失败；调参时先用 `kubectl exec` 手工跑探针命令确认返回值。案例：Spring Boot 冷启动 60 秒，liveness 只给了 10 秒宽限，Pod 无限重启，加 startupProbe 后正常。",
+    "tags": [
+      "探针",
+      "initialDelaySeconds",
+      "启动"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4665,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Dockerfile 里的 `EXPOSE 8080` 实际作用是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "声明元数据，不做端口映射，也不影响能否访问"
+      },
+      {
+        "key": "B",
+        "text": "启动容器时自动把 8080 映射到宿主机"
+      },
+      {
+        "key": "C",
+        "text": "强制容器只能监听 8080"
+      },
+      {
+        "key": "D",
+        "text": "在宿主机防火墙上放行 8080"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`EXPOSE` 只是给镜像打一个「此端口用于服务」的元数据标记，供文档和 `docker run -P`（随机映射）参考，本身不发布端口、不改防火墙**；真正决定能否访问的是 `docker run -p 宿主端口:容器端口` 或 `--network host`。易混点：1) EXPOSE 与端口是否能被访问无关，容器没 EXPOSE 也能 `-p` 映射；2) `-P` 会把 EXPOSE 声明的端口随机映射到宿主机高位端口（需 `docker port` 查实际映射）；3) K8s 里 `containerPort` 同样是**声明性元数据**，不影响访问，Service 的 `targetPort` 才决定转发到哪个端口；4) 应用实际监听的端口必须与声明一致，否则映射到空端口。排查链路：`docker port <容器>` 看映射、`ss -lnt` 在容器内确认监听、`docker inspect` 看 `NetworkSettings.Ports`。案例：有人把 EXPOSE 从 8080 改成 80 想「换端口」，容器实际仍监听 8080，结果映射全部失效。",
+    "tags": [
+      "EXPOSE",
+      "端口映射",
+      "元数据"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4666,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`kubectl logs <pod> --previous` 用来查看什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "上一次容器实例（重启前）的日志"
+      },
+      {
+        "key": "B",
+        "text": "上一个 Pod 的日志"
+      },
+      {
+        "key": "C",
+        "text": "上一个命名空间的日志"
+      },
+      {
+        "key": "D",
+        "text": "容器启动脚本的日志"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**容器重启后，当前实例的日志是新的，崩溃前的输出保存在「上一个实例」里，用 `--previous`（简写 `-p`）才能看到**，这是排查 CrashLoopBackOff 的关键一步。配套要点：1) 多容器 Pod 要加 `-c <container>`，否则可能看到错误的容器；2) `--previous` 只能看**上一次**，更早的实例日志已随容器重建丢失，重要现场要先采集归档；3) 如果容器是第一次启动就崩溃，`--previous` 会报「previous terminated container not found」，此时看当前实例日志；4) 日志驱动为 journald 时 `docker logs` 行为不同，K8s 里一般仍是 CRI 的 json 日志。排查链路：`kubectl describe pod` 看 `Last State: Terminated` 与退出码 → `kubectl logs -p` 看崩溃栈 → 结合退出码 137/143 判断是否 OOM 或优雅终止。案例：Java 应用启动 3 秒后退出，当前日志只有启动横幅，`--previous` 才看到 `OutOfMemoryError`。",
+    "tags": [
+      "kubectl logs",
+      "previous",
+      "CrashLoop"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4667,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`kubectl port-forward svc/web 8081:80` 的效果是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "把本机 8081 转发到 Service 的 80 端口"
+      },
+      {
+        "key": "B",
+        "text": "在集群里新建一个 NodePort"
+      },
+      {
+        "key": "C",
+        "text": "把 Service 端口永久改成 8081"
+      },
+      {
+        "key": "D",
+        "text": "把 Pod 的 8081 端口暴露给所有节点"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`port-forward` 通过 apiserver 建立一条临时隧道，把本地端口映射到 Pod 或 Service 的端口，常用于开发调试与验证**。要点：1) 它**只在你执行命令的这台机器上生效**，别人访问不到，进程退出即失效；2) 支持 `资源/端口:目标端口` 形式，对 Service 转发时会随机选中一个后端 Pod（不保证每次同一个）；3) 需要 RBAC 允许 `pods/portforward` 子资源，被拒时排查 RBAC；4) 转发大量流量时性能有限，不要用来做生产发布通道。易混点：它不是 NodePort（不改 Service 类型、不占节点端口），也不是改 Service 配置。排查链路：连不上先看本地 `ss -lnt | grep 8081` 是否监听、再看 `kubectl auth can-i create pods/portforward`、最后看目标 Pod 是否 Running（Pending 的 Pod 无法转发）。案例：验证新 Service 是否通，用 port-forward 直连绕过 Ingress，一步区分「服务问题」还是「入口问题」。",
+    "tags": [
+      "port-forward",
+      "调试",
+      "Service"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4668,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "容器里 `/proc/1/cmdline` 通常指向什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "容器的主进程（PID 1），由 ENTRYPOINT/CMD 决定"
+      },
+      {
+        "key": "B",
+        "text": "宿主机的 init 进程"
+      },
+      {
+        "key": "C",
+        "text": "kubelet 进程"
+      },
+      {
+        "key": "D",
+        "text": "容器的 shell 进程"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**容器有独立的 PID 命名空间，容器内看到的 PID 1 就是镜像里 ENTRYPOINT/CMD 启动的那个进程**；它承担「init 的职责」——回收僵尸进程、转发信号。这解释了三类现场问题：1) 用 `sh -c \"...\"` 启动时，`sh` 是 PID 1 且**不转发信号**，应用收不到 SIGTERM，导致 `docker stop` 等 10 秒超时才 SIGKILL（对应已有题目）；2) 应用不是以 PID 1 运行则无法正确响应停止信号；3) 应用崩溃后 PID 1 退出，容器随之结束。解法：用 exec 形式（`CMD [\"java\",\"-jar\",\"app.jar\"]`）、或用 `tini`/`dumb-init` 做入口、或 K8s 里配 `shareProcessNamespace`。排查链路：`docker exec <id> cat /proc/1/cmdline | tr '\\0' ' '`、`kubectl exec` 同理、再看 `docker inspect` 的 Cmd/Entrypoint。案例：容器停机总是 10 秒，查到 PID 1 是 bash 脚本且没 `exec` 应用。",
+    "tags": [
+      "PID 1",
+      "信号",
+      "ENTRYPOINT"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4669,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "同一节点上两个不同 Pod 的容器，默认网络关系是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "各自独立 netns、独立 IP，可通过 Pod IP 互访"
+      },
+      {
+        "key": "B",
+        "text": "共享同一个 IP 与端口空间"
+      },
+      {
+        "key": "C",
+        "text": "无法互相通信，必须经 Service"
+      },
+      {
+        "key": "D",
+        "text": "只能通过宿主机回环地址通信"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**K8s 网络模型要求「每个 Pod 一个 IP，Pod 间可直接互通（不论是否同节点）」，这是 CNI 插件（Calico/Flannel/Cilium 等）负责实现的**；同节点时通常通过 veth 对 + 网桥或 eBPF 转发，跨节点则走隧道或路由。易混点三条：1) 同 Pod 内的**多个容器**才共享网络命名空间（同 IP、同端口，端口不能重复，可走 localhost）；2) 不同 Pod 即使同节点也不共享 netns，端口可以重复；3) Pod 互访默认**全通**，隔离要显式加 NetworkPolicy（而且需要 CNI 支持）。排查链路：`kubectl exec` 进 Pod 里 `ip addr` 看 IP、`ping`/`curl` 测 Pod IP，不通再看 CNI 组件是否正常（`kubectl get pods -n kube-system`）、节点路由、NetworkPolicy。案例：两个 Pod 同节点却不通，最后是 NetworkPolicy 默认拒绝策略没放行，排查时先看 `calicoctl`/`cilium` 策略再怀疑 CNI。",
+    "tags": [
+      "Pod网络",
+      "CNI",
+      "netns"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4670,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "`kubectl get events --sort-by=.lastTimestamp` 常用于？",
+    "options": [
+      {
+        "key": "A",
+        "text": "按时间查看集群最近发生的调度与失败事件"
+      },
+      {
+        "key": "B",
+        "text": "导出 Pod 的完整 YAML"
+      },
+      {
+        "key": "C",
+        "text": "查看容器内的进程列表"
+      },
+      {
+        "key": "D",
+        "text": "统计各节点的 CPU 使用率"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Event 是 K8s 记录「发生了什么」的资源（调度失败、拉镜像失败、探针失败、卷挂载失败、OOM 等），按 `lastTimestamp` 排序能快速看到最近异常**。实用变体：`-n <ns>` 限定命名空间、`--field-selector type=Warning` 只看告警、`--field-selector involvedObject.name=<pod>` 聚焦单个对象、`watch` 持续观察。重要限制：**Event 默认只保留约 1 小时且每个对象数量有上限（默认 100 条），旧的会被覆盖**，所以现场要第一时间保存（很多团队把 `describe`/`get events -o yaml` 归档到工单）。易混点：`kubectl logs` 是应用日志，Event 是「K8s 控制面看到的对象状态变化」，排查「Pod 为什么没起来」要看 Event，「应用为什么报错」要看 logs。案例：Pod 反复重启但日志干净，`get events --field-selector involvedObject.name=x` 显示 `Liveness probe failed`，问题在探针配置。",
+    "tags": [
+      "Event",
+      "排查",
+      "kubectl"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4671,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 状态 `CrashLoopBackOff` 与 `Error` 的关键区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "前者是容器反复退出后被 kubelet 指数退避重启，后者是容器退出且未在重启"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "C",
+        "text": "前者表示调度失败，后者表示拉镜像失败"
+      },
+      {
+        "key": "D",
+        "text": "前者只出现在 Job 里"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`Error` 表示容器以非 0 退出、当前没有再启动；`CrashLoopBackOff` 是「已经反复崩溃，kubelet 按 10s→20s→40s…最长 5 分钟」的指数退避在等下一次重启**，所以它本身不是错误原因，而是「重启策略在生效」的表现。排查链路（顺序很重要）：1) `kubectl describe pod` 看 `Last State` 的退出码与 Reason（`OOMKilled`/`Error`/`Completed`）；2) `kubectl logs <pod> --previous` 看崩溃前的日志；3) 手工复现：`kubectl run` 同镜像进容器跑同命令；4) 常见根因分四类——应用启动报错（配置/依赖不可达）、OOMKilled（限制太小或内存泄漏）、探针过严（liveness 杀健康 Pod）、权限/文件挂载问题。易混点：`ImagePullBackOff` 是拉镜像失败、`Pending` 是没调度，都不是 CrashLoop。案例：某服务连不上数据库就退出，CrashLoop 日志里全是 `Connection refused`，先修网络与配置而非调重启次数。",
+    "tags": [
+      "CrashLoopBackOff",
+      "重启退避",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4672,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "节点内存紧张时，K8s 驱逐 Pod 的优先级主要由什么决定？",
+    "options": [
+      {
+        "key": "A",
+        "text": "QoS 等级（Guaranteed > Burstable > BestEffort），同级再看用量超出 requests 的程度"
+      },
+      {
+        "key": "B",
+        "text": "Pod 创建时间，越早越先被驱逐"
+      },
+      {
+        "key": "C",
+        "text": "Pod 名字的字母顺序"
+      },
+      {
+        "key": "D",
+        "text": "镜像体积，越大越先被驱逐"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**kubelet 的驱逐顺序：先 BestEffort（没设任何 requests/limits），再 Burstable（设了但 requests < limits），最后 Guaranteed（requests == limits）；同一 QoS 等级内，按「实际用量超出 requests 的幅度」排序，超出越多越先被驱逐**。配套要点：1) 驱逐阈值由 `--eviction-hard`（如 `memory.available<100Mi`）与 `--eviction-soft` 控制；2) 驱逐的 Pod 状态是 `Evicted`，`kubectl describe` 会写 `The node was low on resource: memory`；3) 关键业务应设成 Guaranteed（requests=limits）并配 PriorityClass 提升优先级；4) 驱逐 ≠ OOMKilled——OOM 是内核杀容器内进程，Evicted 是 kubelet 主动赶走 Pod。排查链路：`kubectl get pods --field-selector status.phase=Failed`、`kubectl describe node` 看 `Allocated resources` 与 Conditions、`journalctl -u kubelet | grep evict` 看触发原因。案例：一个没设 requests 的日志采集 Pod 被反复驱逐，加上 requests/limits 后稳定。",
+    "tags": [
+      "驱逐",
+      "QoS",
+      "节点压力"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4673,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "ConfigMap 以 volume 方式挂载（非 subPath）更新后，容器内文件何时生效？",
+    "options": [
+      {
+        "key": "A",
+        "text": "kubelet 同步周期内（通常几十秒到一分钟）自动更新"
+      },
+      {
+        "key": "B",
+        "text": "立即实时生效"
+      },
+      {
+        "key": "C",
+        "text": "必须重建 Pod 才生效"
+      },
+      {
+        "key": "D",
+        "text": "永远不会更新"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**以 volume 整体挂载的 ConfigMap/Secret 会被 kubelet 周期同步（`--sync-frequency` 与 configmap 的 watch 机制决定，通常几十秒级，最多约 1 分钟），容器内文件随之更新；但用 `subPath` 挂载的单文件不会自动更新**——这是最常踩的坑，很多「配置改了不生效」都是因为用了 subPath。另外两点：1) 即使文件更新，**应用是否重新加载**取决于应用本身（Nginx 需 `nginx -s reload`、Java 需重启）；2) 以 env 注入的配置**完全不支持热更新**，必须重建 Pod。排查链路：`kubectl get cm <name> -o yaml` 确认 `resourceVersion` 变过 → 进容器 `cat /path/config` 看内容 → 对比 `ls -l` 的时间戳/`readlink` 判断是 subPath 还是符号链接方式。案例：改 ConfigMap 后 Nginx 配置一直没变，进容器发现挂载用了 subPath，改成整目录挂载才热更新。",
+    "tags": [
+      "ConfigMap",
+      "热更新",
+      "subPath"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4674,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "`livenessProbe` 持续失败会怎样，与 readiness 失败的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "liveness 失败会重启容器；readiness 失败只摘流量不重启"
+      },
+      {
+        "key": "B",
+        "text": "两者都会重启容器"
+      },
+      {
+        "key": "C",
+        "text": "liveness 失败只摘流量；readiness 会重启"
+      },
+      {
+        "key": "D",
+        "text": "两者都只记录事件，不做动作"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**liveness = 「你还活着吗」，失败连续超过 `failureThreshold` 后 kubelet 杀掉容器并按重启策略重启；readiness = 「你能接流量吗」，失败只把 Pod 从 Service 的 Endpoints 摘掉，容器继续运行**。这个区别决定了怎么选：1) liveness 绝不能依赖外部下游（数据库挂了不应重启所有业务 Pod），否则会造成「级联重启风暴」；2) readiness 适合表达「暂时不能服务」（预热、下游不可用、限流中）；3) startup 只用于「启动慢」，成功一次后不再执行，避免把启动时间塞进 liveness。排查链路：`kubectl describe pod` 的 Events 会区分 `Liveness probe failed` 与 `Readiness probe failed`；`kubectl get pod -o wide` 的 READY 列反映 readiness。案例：某服务把 liveness 配成查 DB 连接，DB 抖动 1 分钟导致全量 Pod 被重启，故障放大；改成 readiness 后只摘流量，DB 恢复即自动回归。",
+    "tags": [
+      "liveness",
+      "readiness",
+      "探针区别"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4675,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "`resources.limits.memory` 设为 2Gi 而容器实际用超了，会发生什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "内核 OOM killer 杀掉容器内进程，Pod 显示 OOMKilled"
+      },
+      {
+        "key": "B",
+        "text": "容器被自动扩容到 4Gi"
+      },
+      {
+        "key": "C",
+        "text": "kubelet 自动把 Pod 迁移到其他节点"
+      },
+      {
+        "key": "D",
+        "text": "应用收到 SIGTERM 优雅退出"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**内存 limit 通过 cgroup memory 限制实现，超过即触发内核 OOM killer，退出码 137（128+9），`kubectl describe` 显示 `Reason: OOMKilled`、`Exit Code: 137`**。注意 CPU 与内存行为完全不同：CPU limit 是**节流（throttling）**，不会杀进程，只会变慢（`container_cpu_cfs_throttled` 指标升高）。排查链路：1) `kubectl describe pod` 确认 OOMKilled 与 limit 值；2) `kubectl top pod` 看用量是否贴近 limit；3) 应用侧看堆配置——JVM 要显式设 `-Xmx`（一般设为 limit 的 70%~80%，因为堆外内存、元空间、线程栈、Direct Buffer 都算在 cgroup 里）；4) 观察是否内存泄漏（长时间单调上升）。干扰项：B 自动扩容只发生在 HPA 且需配好，C 不迁移，D SIGTERM 是主动终止流程与 OOM 无关。案例：Java 容器 limit 2Gi、`-Xmx2g`，堆外占用导致频繁 OOMKilled，改成 `-Xmx1500m` 后稳定。",
+    "tags": [
+      "limits",
+      "OOMKilled",
+      "cgroup"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4676,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "`NodePort` 类型的 Service 端口范围默认是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "30000–32767"
+      },
+      {
+        "key": "B",
+        "text": "1024–65535"
+      },
+      {
+        "key": "C",
+        "text": "80–443"
+      },
+      {
+        "key": "D",
+        "text": "1–65535，无限制"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**默认 `service-node-port-range` 是 30000–32767，可通过 apiserver 参数 `--service-node-port-range` 调整**。要点：1) 未显式指定 `nodePort` 时 kube-system 自动从该范围分配；2) 端口在**所有节点**上开放（即使 Pod 不在该节点，靠 kube-proxy/iptables 转发）；3) 同范围端口不能重复占用，冲突会报 `provided port is already allocated`；4) 生产很少直接用 NodePort，前面通常还有 LB/Ingress，NodePort 只作内部入口。易混点：`port`（Service 自身端口）、`targetPort`（容器端口）、`nodePort`（节点端口）三者的关系是「访问节点:nodePort → 转发到 Service 的 port → 再转发到 Pod 的 targetPort」，配错任一段都通不了。排查链路：`kubectl get svc -o wide` 看三个端口 → `kubectl get endpoints <svc>` 看后端是否有地址 → 从节点外 `curl http://节点IP:nodePort` 验证。案例：两个团队都手写 `nodePort: 30080`，第二个创建失败，改成不指定由系统分配才解决。",
+    "tags": [
+      "NodePort",
+      "Service",
+      "端口范围"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4677,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Init Container 与普通容器最关键的行为差异是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "它必须按顺序全部成功执行完，主容器才会启动"
+      },
+      {
+        "key": "B",
+        "text": "它会一直运行并与主容器并行"
+      },
+      {
+        "key": "C",
+        "text": "它不具备独立镜像，必须复用主容器镜像"
+      },
+      {
+        "key": "D",
+        "text": "它只能执行 shell 脚本"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Init Container 在主容器启动前**串行**执行：多个 init 按声明顺序逐个跑，每个都必须成功退出（exit 0）才继续下一个，全部完成后主容器才启动；任何一个失败则按重启策略重试**。典型用途：等待依赖就绪（`until nc -z db 3306`）、拉取/生成配置、下载静态资源、修改权限、数据库迁移。要点：1) init 可以反复重试（Pod 处于 `Init:0/2` 状态时属于正常等待，不是崩溃）；2) 与主容器共享 volume 但不共享网络（较新版本才支持 sidecar 式重启策略）；3) 初始化逻辑放 init 比放主容器启动脚本更清晰，也不影响主容器生命周期与探针。干扰项：B 描述的是 sidecar 或普通多容器；C 错，init 可以完全用另一个镜像；D 错，命令任意。排查链路：`kubectl describe pod` 看 `Init Containers` 的状态与日志、`kubectl logs <pod> -c <init-name>` 单独查。案例：Pod 卡在 `Init:0/1` 半小时，原因是 init 里等一个永久不可达的下游地址。",
+    "tags": [
+      "Init Container",
+      "启动顺序",
+      "依赖等待"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4678,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "`kubectl rollout history deployment/web` 的意义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "列出可回滚的历史修订版本（对应旧 ReplicaSet 模板）"
+      },
+      {
+        "key": "B",
+        "text": "列出所有 Pod 的重启次数"
+      },
+      {
+        "key": "C",
+        "text": "列出 Deployment 的资源用量历史"
+      },
+      {
+        "key": "D",
+        "text": "列出镜像仓库的 tag 历史"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**每次修改 Pod 模板（镜像、环境变量、资源等）都会产生一个新 revision，控制在 `revisionHistoryLimit`（默认 10）以内保留，`rollout history` 列出这些可直接回滚的版本**；`rollout history deployment/web --revision=3` 可以看到该版本的模板摘要（需要加 `--record` 或注解才会有 `CHANGE-CAUSE` 说明）。配套命令：`rollout status` 看进度、`rollout undo --to-revision=2` 回滚到指定版本、`rollout pause/resume` 控制分批。易混点：`rollout history` **不显示镜像 tag**（只显示 revision 号），排查时要用 `kubectl rollout history --revision=N` 或 `kubectl get rs -o wide` 看各 RS 的镜像；另外只有模板变更有记录，`scale` 这类不改模板的操作不产生 revision。案例：上线故障想回滚，`history` 看到 revision 3 是昨晚的稳定版本，`undo --to-revision=3` 一分钟恢复。",
+    "tags": [
+      "rollout",
+      "回滚",
+      "revision"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4679,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "DaemonSet 的典型使用场景是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "每个节点（或指定节点）跑一份守护进程，如日志采集、节点监控"
+      },
+      {
+        "key": "B",
+        "text": "为每个 Pod 分配稳定的持久卷"
+      },
+      {
+        "key": "C",
+        "text": "按定时任务批量执行一次性作业"
+      },
+      {
+        "key": "D",
+        "text": "为一组 Pod 提供负载均衡入口"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**DaemonSet 保证「符合条件的每个节点上都运行恰好一个 Pod」，新增节点会自动补上，节点被移除则对应 Pod 消失**，天然适合节点级的基础设施：日志采集（Filebeat/Fluent Bit）、监控（node-exporter）、网络插件（Calico/Flannel）、存储插件、kube-proxy。配合 `nodeSelector`/`affinity`/`tolerations` 可限定节点（比如只跑在带 GPU 的节点上，或容忍 master 的污点）。干扰项对照：B 是 StatefulSet + PVC 的领域；C 是 CronJob；D 是 Service/Ingress。易混点：DaemonSet 的 Pod 一般不用配副本数（每个节点一个，`desiredNumberScheduled` 随节点数变化），也不需要 Service（除非要暴露节点级端口，可用 hostPort 或 hostNetwork）。排查链路：`kubectl get ds -o wide` 看 `DESIRED/CURRENT/READY`，某节点缺 Pod 就 `describe` 看污点与资源。案例：新扩容 10 台节点后监控数据缺失，`get ds` 显示 desired 增加但 current 没跟上，原因是新节点有未容忍的污点。",
+    "tags": [
+      "DaemonSet",
+      "节点级",
+      "场景"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4680,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "想让 Pod 尽量分散到不同节点，应该用？",
+    "options": [
+      {
+        "key": "A",
+        "text": "podAntiAffinity（或 topologySpreadConstraints）"
+      },
+      {
+        "key": "B",
+        "text": "nodeSelector"
+      },
+      {
+        "key": "C",
+        "text": "resources.requests"
+      },
+      {
+        "key": "D",
+        "text": "hostNetwork: true"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`podAntiAffinity` 表达「不要和某类 Pod 待在一起」，用 `topologyKey: kubernetes.io/hostname` 时就是「同节点互斥」，让副本尽量分散；较新版本更好的写法是 `topologySpreadConstraints`（可指定 `maxSkew`、`whenUnsatisfiable`，比反亲和的「全有或全无」更可控）**。干扰项：`nodeSelector`（B）只是限定节点标签，不解决分散；`requests`（C）只影响调度资源匹配；`hostNetwork`（D）与分散无关。要点：1) `requiredDuringSchedulingIgnoredDuringExecution` 是硬约束（不满足就不调度，可能大量 Pending），`preferred...` 是软约束（尽量满足）；2) 反亲和的作用域可以是主机、机架（用自定义标签）、可用区；3) 硬反亲和 + 副本数大于节点数会直接导致部分 Pod 无法调度。排查链路：Pod 大量 Pending 时 `describe` 会写 `didn't match pod anti-affinity rules`。案例：3 副本配了「同节点硬反亲和」，集群只有 2 个可调度节点，第 3 个副本永远 Pending。",
+    "tags": [
+      "亲和性",
+      "调度",
+      "分散"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4681,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "`docker build` 时改了 Dockerfile 靠后的一行却导致整个镜像重建，主要原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "前面的层缓存失效（前面某层的内容变了）或用了 `--no-cache`"
+      },
+      {
+        "key": "B",
+        "text": "Docker 每次都会全量重建"
+      },
+      {
+        "key": "C",
+        "text": "镜像层数不能超过 10 层"
+      },
+      {
+        "key": "D",
+        "text": "只有第一层会命中缓存"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Docker 层缓存是「按指令 + 输入内容」逐层校验的链式结构：任一层失效，其后所有层都失效**。最常见的实际原因是 `COPY . .` 或 `ADD . .` 放在了依赖安装之前——只要源码有一个文件改动，COPY 层就变了，后面的 `npm install`/`pip install` 全部重跑。优化手法：1) 先拷锁文件（`package.json`+lock、`requirements.txt`、`pom.xml`）→ 装依赖 → 再拷源码，把易变内容放最后；2) 用 `.dockerignore` 排除 `node_modules`、`.git`、日志，避免无关改动破坏缓存；3) 用 BuildKit（`DOCKER_BUILDKIT=1`）与缓存挂载 `--mount=type=cache,target=/root/.npm`；4) 多阶段构建隔离构建环境。干扰项：B、C、D 都不对（层数无硬上限，实践中建议精简）。排查：`docker build --progress=plain` 看每层是否 `CACHED`。案例：CI 构建从 2 分钟涨到 12 分钟，改成先拷 lock 文件后回到 90 秒。",
+    "tags": [
+      "构建缓存",
+      "COPY",
+      "多阶段"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4682,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "`kubectl top pod` 无数据或报错，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "metrics-server 未部署或未正常获取指标"
+      },
+      {
+        "key": "B",
+        "text": "Pod 没有设置 requests"
+      },
+      {
+        "key": "C",
+        "text": "kubectl 版本太新"
+      },
+      {
+        "key": "D",
+        "text": "节点没有开启 swap"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`kubectl top` 的数据来自 metrics-server（或 prometheus-adapter），它通过 apiserver 的聚合层拉取 kubelet 的 `/metrics/resource` 接口**；报 `Metrics API not available` 或 `error: unable to retrieve metrics` 基本都是 metrics-server 的问题。排查链路：1) `kubectl get apiservice v1beta1.metrics.k8s.io`（新版是 `v1beta2`）看 AVAILABLE 是否为 True；2) `kubectl -n kube-system get pods | grep metrics-server` 看是否 Running；3) `kubectl -n kube-system logs deploy/metrics-server` 常见报错是 x509 证书校验失败（需要加 `--kubelet-insecure-tls`）或连不上 kubelet 的 10250；4) 网络策略/防火墙是否放行 apiserver 到 kubelet。干扰项：B 错，resources 只影响调度与 QoS，不影响 top 采集；C 无关；D 无关（新版 K8s 本就不建议开 swap）。案例：自建集群 `top` 一直不可用，日志里是 `x509: cannot validate certificate`，加参数后恢复；注意 HPA 也依赖同一套指标，metrics-server 挂了 HPA 会「不扩缩容」。",
+    "tags": [
+      "metrics-server",
+      "kubectl top",
+      "HPA"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4683,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "`kubectl cordon node1` 与 `drain node1` 的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "cordon 只标记不可调度，drain 还会驱逐该节点上已有的 Pod"
+      },
+      {
+        "key": "B",
+        "text": "cordon 会删除 Pod，drain 只标记"
+      },
+      {
+        "key": "C",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "D",
+        "text": "drain 只能用于 master 节点"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`cordon` 把节点标记为 `SchedulingDisabled`（不再接受新 Pod），已有 Pod 不受影响；`drain` 在 cordon 的基础上**驱逐**节点上可驱逐的 Pod（`--ignore-daemonsets` 要显式加才忽略 DaemonSet，`--delete-emptydir-data` 才会删用 emptyDir 的 Pod，`--force` 才处理不受控制器管理的裸 Pod）**。标准节点维护流程：1) `drain`（保证业务先迁移）→ 2) 维护/升级 → 3) `uncordon` 恢复调度 → 4) 验证 Pod 回迁。注意三点：drain 会遵守 PDB（`PodDisruptionBudget`），配得严会导致 drain 卡住；DaemonSet 的 Pod 默认不驱逐；单副本应用 drain 后就没有服务了，要提前扩副本。干扰项：B 反了，C 不等价，D 无关。案例：升级节点前只做了 cordon，旧 Pod 仍在跑，升级重启导致业务短暂中断；正确做法是先 drain。",
+    "tags": [
+      "cordon",
+      "drain",
+      "节点维护"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4684,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Service 的 `targetPort` 与容器 `containerPort` 不一致会怎样？",
+    "options": [
+      {
+        "key": "A",
+        "text": "访问不通：流量被转发到容器没有监听的端口"
+      },
+      {
+        "key": "B",
+        "text": "kubelet 会自动纠正配置"
+      },
+      {
+        "key": "C",
+        "text": "只是告警，不影响访问"
+      },
+      {
+        "key": "D",
+        "text": "K8s 会拒绝创建 Service"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`containerPort` 只是文档性声明，不校验应用实际监听；`targetPort` 才是 Service 真正转发到的容器端口**。如果 `targetPort` 指向容器里没有监听的端口，SYN 到达后被容器内核回 RST（拒绝），表现为 `Connection refused` 或 502/503，而 Endpoints 里仍有地址（因为 Pod 是 Ready 的）。排查链路：1) `kubectl get svc -o yaml` 看 `port` 与 `targetPort`；2) `kubectl get endpoints <svc>` 确认后端地址存在；3) `kubectl exec` 进 Pod 执行 `ss -lnt`（或 `netstat -lnt`）看应用**实际监听**的端口与地址（注意绑定 127.0.0.1 也会导致从其他 Pod 不可达）；4) `kubectl port-forward pod/<pod> <本地>:<targetPort>` 直连验证。易混点：`port` 是 Service 自己的端口（集群内访问用），`nodePort` 是节点端口，三者别混。案例：应用配置改成 8081 但 Service 的 targetPort 还是 8080，滚动更新后整个服务 503。",
+    "tags": [
+      "targetPort",
+      "Service",
+      "端口不匹配"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4685,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "容器内 `/etc/hosts` 与宿主机的 `/etc/hosts` 是什么关系？",
+    "options": [
+      {
+        "key": "A",
+        "text": "容器有独立的一份，K8s 会额外注入 Pod 自身条目，不继承宿主机"
+      },
+      {
+        "key": "B",
+        "text": "与宿主机完全共享同一文件"
+      },
+      {
+        "key": "C",
+        "text": "容器内没有 `/etc/hosts`"
+      },
+      {
+        "key": "D",
+        "text": "只有 hostNetwork 模式才共享"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**容器有独立的挂载命名空间，`/etc/hosts`、`/etc/hostname`、`/etc/resolv.conf` 都是运行时为容器生成的文件**；K8s 会在 hosts 里自动加入 `localhost`、主机名映射，以及（开启时）Pod 自身的 FQDN 条目。宿主机上手工加的 hosts 记录**不会**自动进入容器，这是「宿主机能解析、容器里解析不到」的常见原因。要点：1) 需要在容器内加解析，用 `hostAliases` 字段（会写进 Pod 的 hosts）或 `dnsConfig`/`dnsPolicy`；2) `hostNetwork: true` 时共享宿主机的网络栈（包括 resolv.conf 与 hosts，具体行为与运行时实现有关）；3) 修改宿主机的 `/etc/hosts` 对已运行的容器无效，需重建。排查链路：`kubectl exec <pod> -- cat /etc/resolv.conf` 看 nameserver 与 search 域 → `cat /etc/hosts` → `getent hosts 域名` 对比。案例：测试环境把数据库域名写进宿主机 hosts，容器化后应用连不上，改用 `hostAliases` 或内网 DNS 才解决。",
+    "tags": [
+      "/etc/hosts",
+      "DNS",
+      "hostAliases"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4686,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "Service 有 Endpoints 但访问间歇性 502，`kubectl logs` 无异常，最该先查什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Pod 是否处于优雅停机窗口（preStop/宽限期）内仍被路由，以及 readiness 是否及时摘除"
+      },
+      {
+        "key": "B",
+        "text": "etcd 的磁盘空间"
+      },
+      {
+        "key": "C",
+        "text": "kube-apiserver 的证书有效期"
+      },
+      {
+        "key": "D",
+        "text": "CoreDNS 的缓存大小"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**滚动更新或缩容时最常见的 502 来源是「停机时序不对」：Pod 收到终止信号开始关闭，但 Endpoints 摘除有延迟（kube-proxy 规则同步 + 端点传播），在此期间新请求仍被转发到正在退出的 Pod**。正确配置：1) `preStop` 里先 `sleep` 几秒（给端点摘除留时间），再触发应用优雅停机；2) `terminationGracePeriodSeconds` 要大于「摘除延迟 + 应用排空时间」；3) 应用侧要能处理 SIGTERM（先停止接收新请求、处理完在途请求再退出）。排查链路：1) `kubectl get endpoints <svc>` 与 `kubectl get pods -w` 在发布期同时观察；2) 应用日志按时间和 Pod 名对齐，看 502 是否集中在正在 Terminating 的 Pod；3) `kubectl describe pod` 看 Terminating 时长；4) 抓包或看网关日志确认错误来源。干扰项：B、C、D 属于控制面健康问题，通常会表现为全局性故障而非间歇 502。案例：某服务发布期间每分钟几十个 502，加 `preStop sleep 10` 与 SIGTERM 处理逻辑后消失。",
+    "tags": [
+      "502",
+      "优雅停机",
+      "Endpoints传播"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4687,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "Pod 卡在 `Terminating` 十几分钟不消失，正确的处置顺序是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "先 describe 看 reason（卷卸载/节点失联/finalizer），再确认业务已下线，最后才考虑强制删"
+      },
+      {
+        "key": "B",
+        "text": "立即 `kubectl delete --force --grace-period=0`"
+      },
+      {
+        "key": "C",
+        "text": "重启 kubelet"
+      },
+      {
+        "key": "D",
+        "text": "直接删掉对应的 ReplicaSet"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Terminating 卡住的常见原因有：1) 节点失联（NotReady），kubelet 无法确认容器已停；2) 卷卸载失败（NFS/CSI 后端异常）；3) finalizer 未完成（如 PV 保护、外部控制器）；4) 进程 D 状态无法被杀；5) 大规模 Pod 同时终止导致 kubelet 处理慢**。处置顺序：`kubectl describe pod` 看 `Reason` 与 Events → 看节点状态 `kubectl get node` → 查卷与 finalizer（`kubectl patch` 移除 finalizer 需谨慎）→ 确认业务确实已下线后，才用 `--force --grace-period=0` 强删（注意：**强删只是从 API 里移除对象，节点上的容器可能仍在运行并占用资源/端口**，需要到节点上手工清理 crictl）。干扰项：B 跳过诊断会掩盖根因并可能留下孤儿容器；C 重启 kubelet 影响整节点；D 删 RS 会连带删除其余正常 Pod。案例：NFS 服务端宕机导致一批 Pod 卸载卷卡住，重启 NFS 后才恢复，强删反而留下了占着挂载点的进程。",
+    "tags": [
+      "Terminating",
+      "finalizer",
+      "强删风险"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4688,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "Java Pod 内存 limit 4Gi 却频繁 OOMKilled，`top` 只显示 2.5Gi，原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "cgroup 统计包含堆外内存（Metaspace、线程栈、Direct Buffer、页缓存），堆用量不代表全部"
+      },
+      {
+        "key": "B",
+        "text": "`kubectl top` 的数据一定准确，所以是内核 bug"
+      },
+      {
+        "key": "C",
+        "text": "OOMKilled 与内存无关"
+      },
+      {
+        "key": "D",
+        "text": "需要把 limit 调小"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**JVM 的内存占用 ≠ 堆占用：`-Xmx` 只管堆，cgroup 还统计 Metaspace、Code Cache、线程栈（每线程约 1MB）、Direct ByteBuffer（Netty 常用）、mmap 文件、以及文件页缓存（容器内读写文件会算进 memory cgroup）**；另外 `kubectl top` 的数据来自 metrics-server 的采样（默认约 15 秒一次、且是 working set 口径），存在延迟与口径差异，**瞬时峰值可能被错过**。排查链路：1) `kubectl describe pod` 看 `Last State: OOMKilled` 与退出码 137；2) 进容器 `cat /sys/fs/cgroup/memory.max` 与 `memory.current`（cgroup v2）或 `memory/memory.usage_in_bytes`（v1），看 `memory.stat` 里的 `anon`/`file`/`slab`；3) JVM 侧开 `-XX:NativeMemoryTracking=summary` 用 `jcmd <pid> VM.native_memory` 看堆外分布；4) 合理配比：`-Xmx` 设为 limit 的 60%~75%，并显式限制 Metaspace 与 Direct 内存。干扰项：B 采样有延迟不等于内核 bug；C 显然错；D 调小 limit 只会更快 OOM。案例：某网关 limit 4Gi、`-Xmx3g`，Netty Direct Buffer 与页缓存叠加触发 OOM，降到 `-Xmx2500m` 并限制 Direct 后稳定。",
+    "tags": [
+      "OOMKilled",
+      "堆外内存",
+      "cgroup统计"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4689,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "集群 DNS 解析偶发失败（`no such host`），CoreDNS 与网络都「看起来正常」，最可能的根因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "CoreDNS 上游转发超时/`ndots` 过高导致多轮查询，或 conntrack 表满丢弃 UDP 包"
+      },
+      {
+        "key": "B",
+        "text": "Pod 的镜像 tag 用了 latest"
+      },
+      {
+        "key": "C",
+        "text": "kubelet 的 cgroup driver 配错"
+      },
+      {
+        "key": "D",
+        "text": "Service 的 targetPort 写错"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**K8s 内 DNS 偶发失败的三大根因：1) `resolv.conf` 里 `ndots:5` 导致查短域名时先拼 search 域做多轮 A/AAAA 查询，超时叠加；2) CoreDNS 上游（外部 DNS）慢或丢包，`forward` 插件超时；3) UDP 包被 conntrack 表满或网络策略丢弃（DNS 默认走 UDP，丢包只表现为超时重试）**。排查链路：1) 在故障 Pod 里 `cat /etc/resolv.conf` 看 `nameserver`（是否指向 CoreDNS 的 ClusterIP）与 `ndots`/`search`；2) `dig @<coredns-ip> 域名` 直连测试绕过 search 域；3) `kubectl -n kube-system logs deploy/coredns` 看是否有 `read udp ... i/o timeout`；4) `kubectl -n kube-system top pod` 与 CoreDNS 的 `-l` 日志看 QPS 是否打满；5) 查 `nf_conntrack_count` 与 `dmesg`；6) 缓解：设 `dnsConfig` 的 `ndots:2`、给 CoreDNS 加副本与缓存、把上游改为就近 DNS。干扰项：B、C、D 与 DNS 解析无关（C 会导致节点问题但不表现为偶发解析失败）。案例：某集群 CoreDNS 只有 2 副本，大促 QPS 翻倍后开始丢查询，扩到 6 副本并开启 `cache` 后恢复。",
+    "tags": [
+      "CoreDNS",
+      "ndots",
+      "偶发解析失败"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4690,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "节点 NotReady，`systemctl status kubelet` 显示 running，下一步最该看什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "kubelet 日志中的 Pleb/运行时通信错误，以及容器运行时与磁盘/内存压力"
+      },
+      {
+        "key": "B",
+        "text": "Pod 的镜像 tag"
+      },
+      {
+        "key": "C",
+        "text": "Service 的 selector"
+      },
+      {
+        "key": "D",
+        "text": "Ingress 的证书"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**kubelet 进程 running 但节点 NotReady，说明「心跳/状态上报失败」，要往三类原因查：1) kubelet 与容器运行时（containerd/CRI-O）通信异常（socket 不通、运行时卡死）；2) 节点资源压力（磁盘满、内存压力、PID 耗尽），`kubectl describe node` 的 Conditions 会显示 `DiskPressure`/`MemoryPressure`/`PIDPressure`；3) 网络或 apiserver 不可达（kubelet 无法上报心跳，超过 `node-monitor-grace-period` 默认 40 秒就变 NotReady）**。排查链路：1) `kubectl describe node <node>` 看 Conditions 与 Events；2) `journalctl -u kubelet -n 200 --no-pager | grep -iE 'error|failed|PLEG'`，`PLEG is not healthy` 通常指向运行时卡死；3) `systemctl status containerd`、`crictl ps`/`crictl info` 看运行时；4) `df -h`、`free -m`、`ss -s` 看资源；5) 检查节点到 apiserver 的网络与证书。恢复顺序：先修根因（清理磁盘/重启运行时）→ 再 `systemctl restart kubelet` → 确认节点回到 Ready 且 Pod 正常。干扰项：B、C、D 都属于应用层配置，不会导致节点 NotReady。案例：某节点磁盘 `/var/lib/containerd` 写满，kubelet 报 `no space left on device`，清理镜像后恢复。",
+    "tags": [
+      "NotReady",
+      "kubelet",
+      "PLEG"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4691,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "Ingress 配置正确、Service 也正常，但外部访问 404，最可能的原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Ingress 的 host/path 规则与实际请求不匹配，或未指定 ingressClassName"
+      },
+      {
+        "key": "B",
+        "text": "Pod 的 liveness 探针失败"
+      },
+      {
+        "key": "C",
+        "text": "etcd 数据不一致"
+      },
+      {
+        "key": "D",
+        "text": "镜像拉取策略是 Always"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**404 是「Ingress 控制器收到了请求，但没有任何规则匹配」**，常见原因：1) `host` 写成了内部域名而请求用的是 IP 或另一个域名（host 不匹配时默认走 default backend → 404）；2) `path` 与 `pathType` 不匹配（`Prefix` 与 `Exact` 语义不同，`/api` 与 `/api/` 也可能不同）；3) 多个 Ingress 共存但没写 `ingressClassName`，被其他控制器忽略；4) 控制器自己也有默认后端行为。排查链路：1) `kubectl get ingress -o wide` 看 CLASS 是否为空；2) `kubectl describe ingress <name>` 看 Rules 与后端解析结果；3) `kubectl get endpoints <svc>` 确认后端存在（Ingress 不直接看 Pod，看 Service 的 Endpoints）；4) 看控制器日志（`kubectl -n ingress-nginx logs deploy/ingress-nginx-controller`）；5) 用 `curl -H 'Host: 期望域名' http://入口IP/path` 验证 host 匹配；6) 若前面还有 CDN/SLB，注意它可能改写 Host 头或路径。干扰项：B 会导致 503/502 而非 404；C 是全局性故障；D 影响启动不影响路由。案例：灰度新域名没在 Ingress 加 host，访问直接 404，加上后立即生效。",
+    "tags": [
+      "Ingress",
+      "404",
+      "host匹配"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4692,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "滚动更新「卡住」既不前进也不回滚，`rollout status` 一直等待，最有效的诊断是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "对比新旧 ReplicaSet 副本数，再对新 Pod 做 describe/logs，看是调度、拉镜像还是探针卡住"
+      },
+      {
+        "key": "B",
+        "text": "立刻 `rollout undo` 回滚"
+      },
+      {
+        "key": "C",
+        "text": "把 `maxUnavailable` 调成 100%"
+      },
+      {
+        "key": "D",
+        "text": "删除 Deployment 重建"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**滚动更新卡住的本质是「新 Pod 迟迟不 Ready，Deployment 控制器就不敢继续推进」**，典型原因：新 Pod 调度不上（资源/亲和/污点）、镜像拉不下来、启动慢超过 `progressDeadlineSeconds`（默认 600 秒后会标记 `ProgressDeadlineExceeded`，但那只是标记，不会自动回滚）、探针配置错误、应用启动依赖缺失。诊断链路：1) `kubectl get rs -o wide` 看新旧 RS 的 DESIRED/CURRENT/READY，新版 READY 为 0 就是新 Pod 有问题；2) `kubectl get pods -l <selector>` 看新 Pod 状态；3) `kubectl describe pod <新pod>` 看 Events（Pending/ImagePull/Unhealthy）；4) `kubectl logs <新pod> --previous`；5) `kubectl rollout status deploy/x --watch=false` 看是否已报 deadline。处置：修根因后重新 apply（会继续推进），或 `rollout undo` 回滚（B 是应急手段但不是诊断）。干扰项：C 会放大风险（一次全量替换）；D 会丢失历史与造成中断。案例：新版本镜像在私有仓库没推上去，滚动更新卡在 2/5 副本，describe 显示 `Failed to pull image`，补推镜像后自动继续。",
+    "tags": [
+      "rollout",
+      "滚动更新卡住",
+      "诊断"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4693,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "Pod 里 `curl` 宿主机的 `127.0.0.1:8080` 不通，但访问宿主机 IP:8080 通，原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "容器有独立 netns，127.0.0.1 指向容器自身而非宿主机"
+      },
+      {
+        "key": "B",
+        "text": "宿主机防火墙只拦回环"
+      },
+      {
+        "key": "C",
+        "text": "curl 版本不兼容"
+      },
+      {
+        "key": "D",
+        "text": "Pod 没有 DNS"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**容器有独立的网络命名空间，容器内的 `127.0.0.1` 是容器自己的回环，与宿主机的回环完全隔离**（只有 `--network host` 或 `hostNetwork: true` 才共享）。所以从 Pod 访问宿主机上的服务必须用宿主机的**实际 IP**（如 `172.17.0.1` 网关地址、节点内网 IP），或者用 `host.docker.internal`（Docker Desktop 提供）、K8s 里的 `status.hostIP` 注入环境变量。要点：1) 反过来「宿主机访问容器 127.0.0.1:端口」同样不通，要走端口映射或 Pod IP；2) Service 的 ClusterIP 是虚拟 IP，在 Pod 内可以访问（kube-proxy 规则生效），但**在宿主机上访问 ClusterIP 通常不通**（取决于实现）；3) hostNetwork 的 Pod 里 `127.0.0.1` 才等于宿主机。干扰项：B 不成立（回环流量不过防火墙链的常规拦截路径）；C、D 无关。案例：监控 agent 在 Pod 里探测宿主机 node-exporter 的 `127.0.0.1:9100`，永远失败，改用 `$(hostIP):9100` 后正常。",
+    "tags": [
+      "netns",
+      "回环",
+      "hostIP"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4694,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "同 Deployment 的部分 Pod 持续 `CreateContainerConfigError`，最可能原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "这些 Pod 依赖的 ConfigMap/Secret 缺失或键名不存在（如挂载的可选文件不存在）"
+      },
+      {
+        "key": "B",
+        "text": "节点 CPU 不足"
+      },
+      {
+        "key": "C",
+        "text": "镜像仓库限流"
+      },
+      {
+        "key": "D",
+        "text": "Service 的 selector 写错"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`CreateContainerConfigError` 发生在「容器配置生成阶段」，最常见于引用的 ConfigMap/Secret 不存在、或 `key` 与实际数据不匹配（env `valueFrom.configMapKeyRef.key` 写错）、或挂载卷引用的对象被删**。为什么「部分 Pod 正常、部分失败」：不同节点上的 Pod 引用的对象可能因命名空间/配置差异不同，更常见的是**滚动更新时新旧模板引用了不同的 ConfigMap 名**，或者 ConfigMap 被删后新调度的 Pod 起不来（已运行的 Pod 不受影响）。排查链路：1) `kubectl describe pod` 的 Events 会明确写 configmap not found 或 could not find key；2) `kubectl get cm/secret <name> -n <ns>` 确认存在与键名；3) 对比正常 Pod 与异常 Pod 的 `kubectl get pod -o yaml` 差异（尤其是 envFrom/volumes 段）；4) 若是 `optional: true` 的卷，缺失不会报错，反而更隐蔽。干扰项：B 表现为 Pending；C 表现为 ImagePullBackOff；D 影响 Service 转发不影响容器创建。案例：某次发布把 Secret 名从 `db-pass` 改成 `db-password` 但只改了一半模板，新 Pod 全部 ConfigError。",
+    "tags": [
+      "CreateContainerConfigError",
+      "ConfigMap",
+      "Secret"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4695,
+    "type": "single",
+    "category": "容器与K8s",
+    "difficulty": "困难",
+    "question": "要判断「Pod 是不是被 OOM 杀的」还是「应用自己退出」，最可靠的证据链是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "describe 的 Last State（Reason/ExitCode）+ 节点 dmesg 的 oom-kill 记录 + cgroup memory.events"
+      },
+      {
+        "key": "B",
+        "text": "只看应用日志有没有报错"
+      },
+      {
+        "key": "C",
+        "text": "只看 `kubectl top` 的当前内存值"
+      },
+      {
+        "key": "D",
+        "text": "看 Pod 的重启次数"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**证据链要三层对齐**：1) **K8s 侧**：`kubectl describe pod` 的 `Last State: Terminated` 里 `Reason: OOMKilled` 与 `Exit Code: 137`（128+SIGKILL=9）是强信号，但 137 也可能来自 `docker kill`/强删，需结合其他证据；2) **内核侧**：节点上 `dmesg -T | grep -i 'oom'`（或 `journalctl -k`）会打印 `Memory cgroup out of memory: Killed process <pid> (java)` 及 cgroup 路径，这是最硬的证据；3) **cgroup 侧**：cgroup v2 的 `memory.events` 里 `oom`/`oom_kill` 计数增加可直接确认；v1 看 `memory.oom_control`。反例：应用自己调用 `exit(1)` 或捕获异常退出时，Reason 是 `Error`、exit code 1，dmesg 里没有 oom 记录。排查链路还要看「是否反复在同一内存水位被杀」（`kubectl top` 时间序列、Prometheus 的 `container_memory_working_set_bytes`），据此区分内存泄漏与 limit 过小。干扰项：B 应用日志在 SIGKILL 时通常什么都来不及打（这正是要查内核的原因）；C 单点采样有延迟；D 重启次数只说明现象。案例：某服务被判定 OOM，但 dmesg 无记录、exit code 1，最后发现是启动脚本检测到配置缺失主动退出。",
+    "tags": [
+      "OOMKilled",
+      "证据链",
+      "exit code 137"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4835,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "流水线里「构建」与「部署」分成两个阶段的核心目的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "让同一份产物经过测试后原样部署到各环境"
+      },
+      {
+        "key": "B",
+        "text": "让构建阶段跑得更快"
+      },
+      {
+        "key": "C",
+        "text": "减少一次流水线的总时长"
+      },
+      {
+        "key": "D",
+        "text": "避免在流水线里写脚本"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**分离构建与部署是为了实现「构建一次、部署多次（build once, deploy many）」：产物一旦生成并打上指纹（版本号/镜像 digest），后续各环境都部署同一份，不再重新构建**。这样测试验证过的就是最终上线的那个东西，才能保证「测试通过的版本可以放心上线」。如果把构建塞进部署阶段，每个环境都重新编译，就可能因依赖漂移、时间戳、随机种子产生不同产物，测试环境过了、生产却挂。干扰项：B、C 都不是目的（分离反而多一次产物存储与下载，通常更慢）；D 无关。落地要点：1) 构建阶段产出 `dist/`、jar 或镜像并上传到制品库（Nexus/Harbor）；2) 部署阶段只做「拉取指定版本 + 配置注入 + 启动」；3) 用镜像 digest 而不是 tag 来锁死版本。案例：某团队测试环境每次重编，某次生产构建因依赖小版本升级引入 bug，改成「产物传递」后问题消失。",
+    "tags": [
+      "构建部署分离",
+      "产物",
+      "可追溯"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4836,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "Jenkinsfile 中 `agent any` 的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "由 Jenkins 任意可用节点执行该流水线"
+      },
+      {
+        "key": "B",
+        "text": "在 master 节点本地执行"
+      },
+      {
+        "key": "C",
+        "text": "在 Docker 容器里执行"
+      },
+      {
+        "key": "D",
+        "text": "不需要任何执行节点"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`agent` 声明式地指定执行节点：`any` 表示交给 Jenkins 从任意可用 executor 中挑选；`none` 表示不分配（由 stage 内部各自指定）；`label 'linux'` 按节点标签选；`docker { image 'maven:3' }` 在容器里跑**。选 `any` 的代价是**构建环境不可控**——不同节点上 JDK 版本、Node 版本、缓存目录可能不同，同一份代码在不同节点上结果不一致（「这次构建又绿了」的经典差异）。工程建议：关键流水线用 `label` 绑定到同构的构建机池，或用 docker agent 把工具链固化到镜像里。排查链路：流水线偶发失败先看 `Jenkinsfile` 的 agent 配置与构建日志里的节点名，再到该节点上 `java -version`/`node -v` 核对版本。干扰项：B 是 `agent { node { label 'master' } }`；C 是 docker agent；D 不存在。案例：两台构建机 JDK 分别是 8 和 11，同一代码打出的包行为不同，最后统一用镜像 agent 才稳定。",
+    "tags": [
+      "Jenkins",
+      "agent",
+      "构建环境"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4837,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "GitLab CI 中 `rules` 相比 `only/except` 的主要优势是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "条件表达更灵活，可按分支、变更文件、变量等组合判断"
+      },
+      {
+        "key": "B",
+        "text": "执行速度更快"
+      },
+      {
+        "key": "C",
+        "text": "可以替代 `stages`"
+      },
+      {
+        "key": "D",
+        "text": "只能在 merge request 中使用"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`rules` 是 GitLab CI 的新一代条件语法：支持 `if`（变量/分支表达式）、`changes`（哪些文件变了）、`exists`（文件是否存在）、`when`（always/never/manual/delayed），且可以组合并逐条匹配，命中第一条即生效**；`only/except` 是老语法，表达力弱且语义易混（`only` 与 `except` 的组合规则反直觉），官方建议迁移到 `rules`。常用示例：`rules` 里 `if` 写 `CI_COMMIT_BRANCH == main` 时配 `when: on_success`，`if` 写 `CI_MERGE_REQUEST_ID` 时配 `when: manual`。注意两个坑：1) `rules` 里没有 `allow_failure` 时要显式写；2) `changes` 在新建分支的首次流水线里判定可能不准；3) 用了 `rules` 就不要混用 `only/except`，会报冲突。干扰项：B 与性能无关；C 错，`stages` 仍定义阶段顺序；D 错，可广泛用于分支/标签/变量场景。案例：单仓多服务项目用 `rules:changes` 只触发改动模块的流水线，构建时长从 40 分钟降到 8 分钟。",
+    "tags": [
+      "GitLab CI",
+      "rules",
+      "条件触发"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4838,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "流水线里的「环境变量」与「密钥」应如何区分管理？",
+    "options": [
+      {
+        "key": "A",
+        "text": "普通配置放环境变量，密钥放凭据管理（Vault/KMS/CI secrets），并做遮蔽"
+      },
+      {
+        "key": "B",
+        "text": "都放在仓库的 `.env` 文件里最方便"
+      },
+      {
+        "key": "C",
+        "text": "都写进 Jenkinsfile，便于查看"
+      },
+      {
+        "key": "D",
+        "text": "密钥放环境变量，普通配置放凭据库"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**分界线是「泄露后的影响」：普通配置（API 地址、日志级别）可以放环境变量或配置仓库；密钥（数据库密码、API token、私钥）必须放受控的凭据存储**，并通过 CI 的 secrets 机制在运行时注入（Jenkins Credentials、GitLab CI/CD Variables(masked)、GitHub Actions Secrets、Vault、云 KMS）。要点：1) 平台的「masked」只是日志遮蔽，**并不能阻止恶意脚本把变量外传**，所以不可信的分支/PR 不应拿到生产密钥（用「受保护分支」限制）；2) 凭据要能轮换、有审计；3) 别把 `.env` 一并上传为 artifact（已有题考点）。干扰项：B、C 都是把密钥提交进仓库的典型错误；D 完全反了。排查场景：日志里出现明文密码，用 `jenkins` 的 `withCredentials` 包装而不是 `echo $PASSWORD`；同时全仓搜一遍是否被 `git log` 记录。案例：某项目 `.env` 曾提交进 Git，后来即使删掉也能从历史里翻出，只能全部轮换密钥。",
+    "tags": [
+      "secrets",
+      "环境变量",
+      "CI安全"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4839,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "流水线「失败即停止后续阶段」通常由什么机制保证？",
+    "options": [
+      {
+        "key": "A",
+        "text": "阶段内命令返回非 0 即判定失败，后续阶段不再执行"
+      },
+      {
+        "key": "B",
+        "text": "靠人工盯着流水线手动停止"
+      },
+      {
+        "key": "C",
+        "text": "靠流水线定时器"
+      },
+      {
+        "key": "D",
+        "text": "靠 Git 的 pre-commit 钩子"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**流水线的失败判定来自「命令退出码」：任一 step 返回非 0，该 stage 失败，后续 stage 默认不执行（除非配了 `allow_failure` 或 `when: always`）**。这要求脚本自身正确传递失败：1) 多命令串联用 `&&` 而不是 `;`；2) Shell 加 `set -e`（或 `set -euo pipefail`，注意管道退出码）；3) 别把失败命令包在 `cmd || true` 里「消错」；4) 测试工具配置成非 0 退出（有些框架默认「测试失败但进程返回 0」，会骗过流水线）。干扰项：B 不是机制而是人肉补救；C 是触发方式不是失败传播；D 是本地钩子，与 CI 阶段无关。排查链路：流水线「绿了但线上有问题」时，先回头查对应步骤是否吞了退出码（如 `mvn test || true`），再看是否需要 `allow_failure: false`。案例：单元测试有 3 个失败，但流水线一直绿，原因是测试脚本末尾加了一句 `exit 0`，掩盖了所有失败。",
+    "tags": [
+      "退出码",
+      "失败传播",
+      "流水线"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4840,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "制品仓库（如 Nexus、Harbor）在 CI/CD 中最核心的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "集中存储与版本化产物，供各环境按版本拉取"
+      },
+      {
+        "key": "B",
+        "text": "替代 Git 做源码版本管理"
+      },
+      {
+        "key": "C",
+        "text": "提供代码评审功能"
+      },
+      {
+        "key": "D",
+        "text": "运行单元测试"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**制品仓库保存构建产物（jar/war/npm 包/镜像/Chart），提供版本寻址（版本号或 digest）、不可变存储、权限控制与保留策略**，让「构建一次、部署多次」真正可落地，同时给依赖提供内网加速与代理（Nexus 的 proxy 仓库、Harbor 的镜像代理）。关键实践：1) 发布版（release）不可覆盖，快照版（snapshot）可覆盖但要能追溯；2) 保留策略防磁盘爆满（Harbor 的 tag 保留规则、Nexus 的清理任务）；3) 权限分离（谁能推、谁能删）；4) 与 CI 的凭据打通，用 token 而非账号密码。干扰项：B 制品库不存源码（源码在 Git）；C 是代码平台的功能；D 是 CI 执行器的职责。排查链路：部署报「制品不存在」先看仓库里该版本是否真的推成功（构建日志里的 `push` 步骤）、再看 deploy 用的地址/命名空间是否匹配。案例：某次镜像推到了错误的 Harbor project，部署时一直 `manifest unknown`，查仓库页面才发现。",
+    "tags": [
+      "制品仓库",
+      "版本化",
+      "Harbor"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4841,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "语义化版本 `1.2.3` 中，第三位数字变化通常表示？",
+    "options": [
+      {
+        "key": "A",
+        "text": "修订号变化，通常是修 bug、不改变接口"
+      },
+      {
+        "key": "B",
+        "text": "不兼容的重大变更"
+      },
+      {
+        "key": "C",
+        "text": "新增了向后兼容的功能"
+      },
+      {
+        "key": "D",
+        "text": "版本号可以随意写"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**SemVer 的规则是「主版本.次版本.修订号（MAJOR.MINOR.PATCH）」：MAJOR 变 = 不兼容的破坏性变更，MINOR 变 = 向后兼容的新功能，PATCH 变 = 向后兼容的修复**。工程意义在于依赖管理：`^1.2.3` 允许升到 `<2.0.0`（不改 MAJOR），`~1.2.3` 只允许升 PATCH（`<1.3.0`），精确锁定则写死版本。常见坑：1) 团队不遵守约定，把破坏性变更塞进 MINOR，导致下游 `^` 升级后炸；2) 0.x 版本语义放宽（`0.x.y` 里任意变动都可能不兼容），依赖时要更谨慎；3) 预发布加后缀 `1.2.3-beta.1`，排序规则特殊。干扰项：B 是第一位、C 是第二位、D 显然错。案例：某 SDK 在 `1.3.0` 里改了返回结构却没升 MAJOR，所有用 `^1.2` 的调用方自动升级后集体报错。",
+    "tags": [
+      "语义化版本",
+      "依赖管理",
+      "版本号"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4842,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "「部署」与「发布」的区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "部署是把代码放到环境，发布是让用户真正用到新功能"
+      },
+      {
+        "key": "B",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "C",
+        "text": "部署只针对生产，发布只针对测试"
+      },
+      {
+        "key": "D",
+        "text": "发布是运维的活，部署是开发的活"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**部署（deploy）是技术动作——把新版本装到目标环境并跑起来；发布（release）是业务动作——让用户流量或功能开关指向新版本**。解耦二者是高级发布策略的基础：功能开关（feature flag）可以「先部署、后发布」，代码已经上线但功能对用户关闭；蓝绿/金丝雀则是「部署新旧两套、逐步把流量切过去」。这个区分能解释很多问题：部署成功不代表用户受影响，回滚时也要想清楚是回滚部署还是只关开关（后者更快、更安全）。干扰项：B 错在混淆了技术与业务；C、D 都是想当然的划分。落地建议：1) 数据库变更用「先兼容后切换」的两步走，避免部署与发布强耦合；2) 用开关管理未完成的功能，减少长分支；3) 记录「部署时间」与「发布（放量）时间」两个指标，便于度量。案例：大促前把新功能部署上去但开关关着，当天只改配置放量，风险与耗时都大幅降低。",
+    "tags": [
+      "部署与发布",
+      "功能开关",
+      "概念"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4843,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "CI 中「代码静态检查（lint）」最适合放在哪个阶段？",
+    "options": [
+      {
+        "key": "A",
+        "text": "构建之前的早期阶段，快速失败省时间"
+      },
+      {
+        "key": "B",
+        "text": "部署到生产之后"
+      },
+      {
+        "key": "C",
+        "text": "只在发布评审时人工看"
+      },
+      {
+        "key": "D",
+        "text": "放在压测阶段之后"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**流水线设计原则是「越便宜、越快的检查越靠前」：lint/格式检查/编译通常在几十秒内完成，放在最前面能在几分钟内给开发者反馈，避免跑到构建、测试、部署阶段才发现一个分号问题**，也能节约构建机资源。分层建议：1) 提交前本地钩子（pre-commit）先拦一道；2) CI 第一阶段跑 lint + 编译；3) 第二阶段单测；4) 再往下是集成测试、镜像构建、安全扫描、部署。注意两点：1) lint 规则要**可执行且不吵**，规则太多或历史代码存量大会导致「一直红」→ 团队直接忽略（可用「增量检查/只查改动文件」过渡）；2) lint 失败要阻断合入（配合分支保护），否则形同虚设。干扰项：B、C、D 都把快速反馈拖到后期，成本极高。案例：某团队把 lint 放最后，平均反馈时间 20 分钟，开发者转而本地跳过检查，规则彻底失效。",
+    "tags": [
+      "lint",
+      "阶段顺序",
+      "快速反馈"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4844,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "流水线里 `mvn -B clean package` 的 `-B` 参数作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "批处理模式，不交互、输出更适合日志"
+      },
+      {
+        "key": "B",
+        "text": "跳过测试"
+      },
+      {
+        "key": "C",
+        "text": "只构建指定模块"
+      },
+      {
+        "key": "D",
+        "text": "启用并行构建"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`-B`（batch mode）让 Maven 不进入交互模式，也不会输出下载进度条与彩色控制字符，日志更干净、便于 CI 解析**；不写它时 CI 日志会被进度条刷屏。对照常用参数：`-DskipTests`（跳过测试执行但仍编译测试代码）、`-Dmaven.test.skip=true`（连测试代码都不编译）、`-T 1C`（并行构建，按核数）、`-pl <模块> -am`（只构建指定模块及其依赖）、`-U`（强制更新快照依赖）、`-o`（离线，需要本地仓库已就绪）。排查要点：CI 里构建慢先看是否每次都重新下载依赖（本地仓库缓存是否持久化）、再看是否串行构建多模块。案例：镜像里没缓存 `~/.m2`，每次构建都要下载 200MB 依赖，加了缓存目录后从 6 分钟降到 1 分半。",
+    "tags": [
+      "Maven",
+      "CI参数",
+      "构建"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4845,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "流水线中「版本号来自 commit SHA」相比人工填版本号的优势是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "可追溯到具体提交，且天然唯一、无需人工协调"
+      },
+      {
+        "key": "B",
+        "text": "数字更短更好看"
+      },
+      {
+        "key": "C",
+        "text": "能自动通过所有测试"
+      },
+      {
+        "key": "D",
+        "text": "可以绕过制品仓库"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**用 commit SHA（或 `git describe`、构建号）做版本标识，能保证「同一个版本号永远对应同一份代码」，排查问题时可以直接 `git show <sha>` 定位改动**；人工填版本号则容易出现重号、漏改、与代码不对应。实践建议：1) 内部构建用 `分支-短sha-构建号`（如 `main-a1b2c3d-42`），发布版再用语义化版本并打 Git tag；2) 镜像用 digest 锁定（`@sha256:...`），因为 tag 可被覆盖；3) 把版本号注入应用（`/version` 接口、构建信息文件），线上可查。干扰项：B 无技术意义；C 版本号与测试无关；D 反而更需要制品库来存这些版本。案例：线上报错但不知道跑的是哪版代码，查 `/actuator/info` 才拿到 sha，直接定位到引入 bug 的提交。",
+    "tags": [
+      "版本标识",
+      "commit SHA",
+      "可追溯"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4846,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "流水线并发（多个 Job 并行跑）最需要注意的风险是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "共享资源竞争（同一构建机、同一数据库、同一目录、同一制品版本）"
+      },
+      {
+        "key": "B",
+        "text": "日志会变少"
+      },
+      {
+        "key": "C",
+        "text": "Git 仓库会被删除"
+      },
+      {
+        "key": "D",
+        "text": "并行一定比串行慢"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**并行能压短总时长，但多个 Job 争用共享资源会引入不确定性**：同一台构建机上的工作目录互相覆盖、同一个测试数据库被多个 Job 同时写、同一个镜像 tag 被两个分支同时推送、端口冲突、缓存目录锁竞争。这些问题的特征是「单独跑没问题、并发跑偶发失败」，很难复现。治理手段：1) 每次构建用独立的 workspace（`Jenkinsfile` 的 `agent` 隔离、或临时目录 + PID 后缀）；2) 测试用独立库/schema 或用容器化的临时依赖（testcontainers）；3) 镜像 tag 带分支与 sha，避免互相覆盖；4) 有状态资源用锁或队列串行化；5) 构建机池化，避免单机多 executor 抢占内存。干扰项：B、C 无稽；D 错，并行的目的就是缩短时长。案例：两个分支同时跑集成测试，共用同一个 MySQL 库，互相清表导致随机失败，改成一 Job 一库后消失。",
+    "tags": [
+      "并行",
+      "资源竞争",
+      "稳定性"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4847,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "「构建缓存」在 CI 中最常见的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "复用依赖下载与编译产物，缩短构建时间"
+      },
+      {
+        "key": "B",
+        "text": "保存测试报告供审计"
+      },
+      {
+        "key": "C",
+        "text": "作为部署产物分发到各环境"
+      },
+      {
+        "key": "D",
+        "text": "替代版本控制系统"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**缓存的典型对象是「依赖目录」与「编译中间产物」：`~/.m2`、`node_modules`/`~/.npm`、`~/.gradle/caches`、pip 缓存、Docker 层缓存**，命中后能省掉大量网络下载与计算。与 artifact 的区别：缓存是**可丢弃、可重建**的加速手段，不保证完整性；artifact 是**必须保留**的交付物。使用要点：1) 缓存 key 要与依赖锁文件绑定（`package-lock.json`、`pom.xml` 的哈希），否则依赖变了还用旧缓存会出问题；2) 缓存要有淘汰策略，否则无限增长撑爆磁盘；3) 不要缓存工作目录里的构建输出（可能被污染），敏感文件（含密钥的配置）绝不能进缓存。干扰项：B 是测试报告归档；C 是 artifact；D 与 Git 无关。案例：加了 npm 缓存后前端构建从 5 分钟降到 1 分钟，但 key 没绑 lock 文件，升级依赖后仍用旧缓存，出现「本地正常、CI 报错」的诡异问题。",
+    "tags": [
+      "缓存",
+      "依赖",
+      "构建加速"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4848,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "流水线里执行 `ssh deploy@host 'bash -s' < deploy.sh` 的主要风险是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "凭据与主机指纹未校验，且脚本在远端以交互环境执行、失败难回传"
+      },
+      {
+        "key": "B",
+        "text": "ssh 不支持执行脚本"
+      },
+      {
+        "key": "C",
+        "text": "脚本内容会被自动加密"
+      },
+      {
+        "key": "D",
+        "text": "这种写法无法传输参数"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**风险集中在三处：1) 认证——私钥存哪、是否有 passphrase、是否每次 `StrictHostKeyChecking=no` 跳过主机指纹校验（可被中间人劫持）；2) 执行环境——远端 shell 可能是非交互的，PATH、环境变量与手工登录不同，`set -e` 是否生效要看脚本自己；3) 错误回传——`ssh` 的退出码是远端命令的退出码，但脚本里若吞掉失败仍会返回 0，流水线就误判成功**。改进做法：1) 用专用的部署密钥（只允许部署、限定来源 IP），或用现代方式（K8s/ArgoCD/云 API）替代 SSH；2) 第一次连接时校验并固定 `known_hosts`；3) 脚本开头 `set -euo pipefail`，关键步骤显式检查；4) 部署后做健康检查验证，不只看退出码；5) 记录部署日志。干扰项：B 错，`bash -s` 正是把 stdin 当脚本执行；C 无稽；D 错，可传参 `ssh host 'bash -s' -- arg1`。案例：某脚本中间 `rm` 失败但末尾 `exit 0`，流水线绿灯，实际只更新了一半文件。",
+    "tags": [
+      "SSH部署",
+      "凭据",
+      "失败回传"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4849,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "「流水线即代码（Pipeline as Code）」的主要好处是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "配置随代码版本化、可评审、可复用与回滚"
+      },
+      {
+        "key": "B",
+        "text": "流水线执行速度更快"
+      },
+      {
+        "key": "C",
+        "text": "不再需要人工审批"
+      },
+      {
+        "key": "D",
+        "text": "可以不做测试"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**把流水线定义写进仓库（Jenkinsfile、.gitlab-ci.yml、workflow.yml）后，它就和代码一样享受版本管理：谁改的、为什么改有记录，可以 code review，可以随分支切换不同配置，出问题能回滚到上一个可用版本**。对比「在 Web UI 里点配置」的老方式：不可追溯、无法复用、环境间靠手工复制容易漂移。落地要点：1) 用共享库（Jenkins Shared Library）或 include/templates 抽取公共逻辑，避免 50 个仓库复制同一份配置；2) 变更流水线本身要像改代码一样评审（它有权部署到生产）；3) 敏感信息用凭据引用，不写死在文件里。干扰项：B 与速度无关（甚至可能因抽象而略慢）；C 审批仍需按需保留；D 与测试无关。案例：某次有人直接在 UI 上改了构建命令，导致所有分支的构建都变了，排查时没有任何变更记录——改成 Jenkinsfile 后此类事故绝迹。",
+    "tags": [
+      "Pipeline as Code",
+      "版本化",
+      "复用"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4850,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "流水线触发方式中，「定时触发」最不适合用于？",
+    "options": [
+      {
+        "key": "A",
+        "text": "要求秒级响应的紧急热修复发布"
+      },
+      {
+        "key": "B",
+        "text": "每日夜间的全量回归测试"
+      },
+      {
+        "key": "C",
+        "text": "定期的依赖安全扫描"
+      },
+      {
+        "key": "D",
+        "text": "每日构建的镜像同步任务"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**定时触发（cron）适合「周期性、可延后」的任务：夜间全量回归、定期依赖扫描、每日构建/同步**；它天然有延迟（最小粒度通常是分钟），且与被触发事件无关，用在紧急热修复上会延误时机。常见触发方式对比：`push`（提交即跑，最常用）、`merge request`（评审前跑）、`tag`（发布触发）、`webhook`（外部系统触发）、`manual`（人工点）、`cron`（定时）、`upstream`（上游流水线完成后触发）。要点：1) 定时任务要避免与发布高峰冲突，且要防止「多实例叠加」（同一 cron 上一次没跑完又触发，需加锁或 `concurrent: false`）；2) cron 用的是时区敏感的表达式，跨时区团队要确认；3) 高频 cron 会吃掉构建资源。案例：把热修复上线也配成「每小时检查一次」，故障期间最需要快速发布时反而卡住，改成 push/tag 触发才合理。",
+    "tags": [
+      "触发方式",
+      "cron",
+      "适用场景"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4851,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "流水线「卡在拉取依赖」几分钟不动，最先应该怀疑？",
+    "options": [
+      {
+        "key": "A",
+        "text": "依赖源（公网仓库/代理/镜像）不可达或限流，或本地缓存未命中"
+      },
+      {
+        "key": "B",
+        "text": "代码有语法错误"
+      },
+      {
+        "key": "C",
+        "text": "测试用例失败"
+      },
+      {
+        "key": "D",
+        "text": "部署脚本写错"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「卡住不动」与「报错退出」是两种不同的信号：卡住通常是网络层在等超时——拉不到依赖、连不上仓库、DNS 解析慢、代理不通，或者被限流后不停重试**。排查链路：1) 看日志最后一行停在哪（`Downloading from central: https://...` 说明在拉 Maven 依赖）；2) 在构建机上手工复现 `curl -I <仓库地址>`、`mvn -X` 看具体网址与超时；3) 查是否有内网制品库代理（Nexus/Artifactory）而配置里仍指向公网；4) 查缓存是否命中（缓存 key 变了会导致全量重下）；5) 公网仓库（Maven Central、npm、Docker Hub）本身有速率限制，匿名拉取更容易被限。干扰项：B 会在编译阶段立刻报错而非卡住；C 会给出测试失败输出；D 在部署阶段。案例：构建机出口 IP 被 Docker Hub 限流，镜像拉取卡 5 分钟后超时，配置内网镜像代理后恢复。",
+    "tags": [
+      "依赖拉取",
+      "卡住",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4852,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "发布前「冒烟测试（smoke test）」的典型内容是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "少量关键路径验证：能否启动、核心接口是否可用"
+      },
+      {
+        "key": "B",
+        "text": "全量回归所有用例"
+      },
+      {
+        "key": "C",
+        "text": "长时间压力测试"
+      },
+      {
+        "key": "D",
+        "text": "代码静态扫描"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**冒烟测试是「部署后最快的一道验证」：进程能否起来、健康检查是否通过、登录/核心接口/关键页面是否可用，通常几分钟内完成**，目的是尽早发现「部署失败或配置不对」这类低级但致命的问题，而不是验证功能正确性。它在流水线里的位置很关键：部署到测试/预发环境后先跑冒烟，通过才继续往下（跑全量回归或往生产推进）。对照概念：全量回归（B）耗时长，通常在冒烟通过后跑；压测（C）是性能验证；静态扫描（D）在构建前。落地要点：1) 冒烟用例要少而稳（10~30 条），避免自身不稳定造成误判；2) 要检查「新版本真的生效」（如 `/version` 返回的 sha 与预期一致），否则可能验证的仍是旧实例；3) 失败要能自动阻断。案例：某次部署后进程起来了但配置指向测试库，冒烟用例一跑就发现订单查不到，避免了一次生产事故。",
+    "tags": [
+      "冒烟测试",
+      "发布验证",
+      "阻断"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4853,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "「流水线制品保留策略」不合理最直接的后果是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "存储被占满，甚至导致构建/部署失败"
+      },
+      {
+        "key": "B",
+        "text": "构建速度变快"
+      },
+      {
+        "key": "C",
+        "text": "测试覆盖率下降"
+      },
+      {
+        "key": "D",
+        "text": "Git 提交变多"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**每次构建都产生产物（jar、镜像层、测试报告、日志归档），不设保留策略就会无限增长：Nexus/Harbor 的存储打满、构建机磁盘爆、Jenkins 主目录被 `builds/` 撑爆**，最终表现为「构建失败」甚至「服务不可用」这类看起来毫不相关的问题。合理策略：1) 按「时间 + 数量 + 重要性」组合，如保留最近 30 天、每个项目保留最近 50 个、release 版本永久保留；2) 快照/临时分支的产物短期保留；3) 定期清理任务要验证真的执行了（很多团队配了任务但从未生效）；4) 清理前确认没有环境正在引用该版本（镜像 digest 引用比 tag 安全）。排查链路：磁盘告警时 `du -sh` 逐层下钻，常见大户就是制品库与 Jenkins 的 `jobs/*/builds`。干扰项：B、C、D 均无关。案例：Harbor 存储涨到 90%，清理策略只保留了每个仓库 10 个 tag，一周内恢复正常水位。",
+    "tags": [
+      "制品保留",
+      "存储",
+      "清理"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4854,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "简单",
+    "question": "「自动化测试在流水线中的分层」通常遵循什么原则？",
+    "options": [
+      {
+        "key": "A",
+        "text": "单元测试多而快、集成与端到端少而慢，逐层向上"
+      },
+      {
+        "key": "B",
+        "text": "端到端测试越多越可靠"
+      },
+      {
+        "key": "C",
+        "text": "只保留手工测试"
+      },
+      {
+        "key": "D",
+        "text": "所有测试都放在同一阶段一起跑"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**测试金字塔：底层大量单元测试（毫秒级、稳定、定位准），中层集成测试（秒级、验证组件与依赖交互），顶层少量端到端/UI 测试（分钟级、易碎、维护成本高）**。倒金字塔（大量 E2E）的代价非常具体：流水线从 10 分钟变成 1 小时、随机失败率飙升、开发者开始习惯性重跑（「flaky 就再点一次」），质量门禁随之失效。落地建议：1) 按层配置不同的触发时机（单元测试每次提交、集成测试合并前、E2E 在预发环境）；2) 对 flaky 用例要治理（隔离、重试上限、责任到人），不能靠重跑续命；3) 覆盖率关注增量而非绝对值。干扰项：B 与金字塔相反；C、D 都不符合分层思路。案例：某项目 E2E 有 800 条，每次跑 50 分钟且 5% 随机失败，后来压到 60 条关键路径 + 补单元测试，总时长回到 12 分钟。",
+    "tags": [
+      "测试金字塔",
+      "分层",
+      "flaky"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4855,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "流水线偶发失败、重跑就通过，最合理的处置顺序是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "记录失败日志与用例、分类归因（环境/并发/依赖/时序），再修根因或隔离"
+      },
+      {
+        "key": "B",
+        "text": "给流水线加重试，跑过为止"
+      },
+      {
+        "key": "C",
+        "text": "关闭失败阶段的检查"
+      },
+      {
+        "key": "D",
+        "text": "让所有人重跑三次再说"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「flaky（偶发失败）」是 CI 的头号信任杀手：一旦团队习惯了「重跑就绿」，质量门禁就实质失效，真正的回归也会被当成噪音忽略**。正确处置：1) 保存失败现场（完整日志、失败用例名、时间戳、构建号、节点）；2) 分类归因——最常见是并发资源共享（同一数据库/端口/目录）、外部依赖不稳（公网源、第三方接口）、时序问题（异步等待不足、固定 `sleep`）、环境漂移（节点版本不同）、磁盘/内存不足；3) 对症处理：并发问题隔离资源、外部依赖打桩或加重试+超时、时序问题改用条件等待、环境统一镜像；4) 短期可用「自动重试 + 记录重试次数」止血，但必须有人负责清理存量 flaky 用例，并把 flaky 率纳入度量。干扰项：B 只是掩盖（且会不断累积），C 等于放弃门禁，D 是组织层面的坏习惯。案例：某团队 flaky 率 8%，每月浪费上百小时重跑，治理后降到 1%，发布节奏明显变快。",
+    "tags": [
+      "flaky",
+      "重试",
+      "质量门禁"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4856,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "「测试环境与生产环境不一致」导致发布后故障，最有效的根治办法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "用同一份镜像与同一套配置模板（差异只走参数/密钥），基础设施用 IaC 管理"
+      },
+      {
+        "key": "B",
+        "text": "在测试环境多跑几轮测试"
+      },
+      {
+        "key": "C",
+        "text": "让测试环境配置更宽松，先保证能测通"
+      },
+      {
+        "key": "D",
+        "text": "生产环境手工调优追平测试"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**环境差异是「测试通过、上线出事」的最大来源：镜像/基础镜像版本不同、依赖包版本不同、配置项遗漏、网络与中间件版本不同、时区与内核参数不同**。根治思路是「把差异收敛成参数」：1) 构建产物唯一（同一镜像 digest 从测试走到生产）；2) 配置用模板/ConfigMap + 环境变量，**差异只在参数文件里**，且用 schema 校验必填项；3) 基础设施用 IaC（Terraform/Ansible/K8s YAML）统一，环境靠同一套代码创建；4) 依赖版本锁死（lock 文件、基础镜像用 digest）；5) 定期做「配置漂移检测」。干扰项：B 只能增加覆盖，不能消除差异（不一致的坑仍会漏）；C 会让测试失真（更宽松的环境掩盖问题）；D 是反向操作，把生产改成测试的样子风险更大。案例：测试与生产的 JDK 小版本不同，某 API 在 8u302 与 8u292 上行为不一致，统一基础镜像后消失。",
+    "tags": [
+      "环境一致性",
+      "配置管理",
+      "IaC"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4857,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "「分支保护 + 必需检查」在 CI/CD 中的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "阻止未通过流水线检查的代码合入主干"
+      },
+      {
+        "key": "B",
+        "text": "加快流水线执行速度"
+      },
+      {
+        "key": "C",
+        "text": "自动修复代码风格问题"
+      },
+      {
+        "key": "D",
+        "text": "替代代码评审"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**分支保护把「必须通过的状态检查（status checks）」变成合入的硬门槛：CI 失败、评审未通过、冲突未解决时无法 merge**，这是让质量门禁真正生效的机制——否则流水线再完善，也只是「参考信息」。配置要点：1) 保护主干（main/master/release），禁止直接 push、禁止强推；2) 勾选必需检查项（构建、测试、lint、安全扫描），并选「要求分支在合并前是最新的」以避免组合问题；3) 要求评审人数与 CODEOWNERS；4) 管理员也应受约束（或至少留审计）。常见坑：必需检查太久会让开发者想绕过、检查名与 job 名不一致会导致「一直等不到」、紧急修复通道要有明确流程（而不是关掉保护）。干扰项：B、C 与分支保护无关；D 错，检查不能替代人工评审对设计与逻辑的判断。案例：某仓库允许直接 push 主干，某次跳过了 CI 合并进去导致构建全线红，加保护后绝迹。",
+    "tags": [
+      "分支保护",
+      "必需检查",
+      "门禁"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4858,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "GitLab CI 的 `needs` 相比 `stages` 顺序执行的关键区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "允许 Job 跳过阶段顺序，只等它依赖的 Job 完成即可开始（DAG）"
+      },
+      {
+        "key": "B",
+        "text": "`needs` 会让 Job 串行得更久"
+      },
+      {
+        "key": "C",
+        "text": "`needs` 只能用于测试阶段"
+      },
+      {
+        "key": "D",
+        "text": "两者完全等价"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**默认模式下，一个 stage 的所有 Job 都要完成，下一个 stage 才开始（同步屏障）；`needs` 把流水线变成 DAG：某 Job 只等它显式依赖的那些 Job 完成就能起跑，不必等整个前序 stage**。典型收益：单仓多模块时，`build-a` 完成后立刻跑 `test-a`，不用等 `build-b` 慢慢跑完，整体时长明显缩短。要点与坑：1) `needs` 引用的 Job 必须存在且在同一 pipeline 图里；2) 跨 stage 依赖时如果被依赖 Job 被 `rules` 跳过，当前 Job 可能无法启动（可配 `needs:optional: true`）；3) 与 `dependencies` 混用（后者控制 artifact 下载范围）容易产生意外；4) DAG 过长时可视化会变复杂，排查用 pipeline graph 看。干扰项：B 反了；C 无限制；D 明确不等价。案例：单仓 12 个模块，改成 needs 后 CI 从 35 分钟降到 14 分钟。",
+    "tags": [
+      "GitLab CI",
+      "needs",
+      "DAG"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4859,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "多环境部署时用 Helm values 与用 Kustomize 的主要差别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Helm 用模板+values 生成清单，Kustomize 用覆盖（patch）叠加到基础清单"
+      },
+      {
+        "key": "B",
+        "text": "Helm 只能部署到测试环境"
+      },
+      {
+        "key": "C",
+        "text": "Kustomize 不支持多环境"
+      },
+      {
+        "key": "D",
+        "text": "两者都是镜像构建工具"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Helm 是「模板渲染」：Chart 里写 `{{ .Values.x }}` 模板，用不同 values 文件渲染出不同环境的清单，功能强（依赖管理、hook、打包分发），但模板语法复杂、渲染后难读**；**Kustomize 是「无模板覆盖」：base 是标准 YAML，overlay 用 patch/镜像替换/标签注入做环境差异，产物仍是标准清单，可读性好、适合 GitOps**。选型经验：需要分发给别人、需要复杂逻辑与生命周期钩子 → Helm；只是自己团队多环境微调、想保持清单可读 → Kustomize（也可两者结合：Helm 出 base，Kustomize 做覆盖）。差异澄清：B 无稽；C 错，多 overlay 就是 Kustomize 的核心用法；D 错，两者都不构建镜像。案例：某团队用 Helm 给 5 个环境写 5 套 values，模板改一次要验 5 遍；改成 base + overlay 后差异集中且可读。",
+    "tags": [
+      "Helm",
+      "Kustomize",
+      "多环境"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4860,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "流水线里「质量门禁」失败但业务方要求强制上线，最合理的做法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "走显式的紧急豁免流程：记录原因、审批人、补偿措施与后续修复计划"
+      },
+      {
+        "key": "B",
+        "text": "悄悄关闭门禁，事后不提"
+      },
+      {
+        "key": "C",
+        "text": "把门禁阈值改宽，让它通过"
+      },
+      {
+        "key": "D",
+        "text": "让测试同学口头保证没问题"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**门禁的价值在于「例外必须显式且可追溯」，而不是「绝对不能破」**。标准做法：1) 设一个「紧急通道」（如 `hotfix` 标签或 `allow_failure` 的一次性标记），要求填写豁免理由、风险等级、影响面、回滚方案；2) 需指定角色审批（技术负责人 + 业务方），留痕在流水线与工单里；3) 上线后加强监控与值守，并设定「补偿期限」（比如 48 小时内补齐测试或修复）；4) 定期复盘豁免次数——**豁免次数是流程质量的指标**，频繁豁免说明门禁本身不合理（太慢或太严），应优化流程而不是常态化绕过。干扰项：B 会摧毁门禁的公信力且无法追溯；C 是「把规则改到能过」，属于制度性劣化；D 无凭据。案例：某团队每月豁免 20 次，复盘发现是流水线太慢（40 分钟），优化到 12 分钟后豁免降到 2 次。",
+    "tags": [
+      "门禁豁免",
+      "流程",
+      "审批"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4861,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "Jenkins 共享库（Shared Library）主要解决什么问题？",
+    "options": [
+      {
+        "key": "A",
+        "text": "多仓库流水线逻辑重复、难以统一升级"
+      },
+      {
+        "key": "B",
+        "text": "构建机数量不足"
+      },
+      {
+        "key": "C",
+        "text": "镜像仓库容量不足"
+      },
+      {
+        "key": "D",
+        "text": "代码评审效率低"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**当 50 个仓库都复制粘贴同一段 Jenkinsfile 时，任何改进（加安全扫描、改部署方式）都要改 50 次，且一定会漂移**；共享库把这些逻辑抽成 `vars/` 里的全局步骤（如 `standardPipeline()`、`buildAndPush()`），各仓库只写一行调用 + 参数，升级只需改一处并打 tag。要点：1) 共享库本身要版本化（用 tag/分支锁版本，避免「今天改了库，所有流水线明天全变」）；2) 库里的变更要有测试（可以用一个 demo 仓库跑）；3) 避免把业务逻辑塞进库（保持通用）；4) 权限：库有部署到生产的能力，改库要评审。对照同类方案：GitLab 的 `include` + template、GitHub Actions 的 reusable workflow/composite action。干扰项：B、C、D 都不是它解决的问题。案例：某团队把部署逻辑从 80 个 Jenkinsfile 抽到共享库，一次安全加固在所有项目当天生效。",
+    "tags": [
+      "Jenkins",
+      "共享库",
+      "复用"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4862,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "「发布后自动回滚」最常见的触发条件是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "发布后一段时间内错误率/延迟/健康检查等关键指标超过阈值"
+      },
+      {
+        "key": "B",
+        "text": "构建日志里出现 warning"
+      },
+      {
+        "key": "C",
+        "text": "代码覆盖率低于 80%"
+      },
+      {
+        "key": "D",
+        "text": "有人提交了新代码"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**自动回滚要用「运行时信号」而不是「构建期指标」：错误率（5xx 比例）、P99 延迟、健康检查失败数、业务指标（下单成功率）在发布后窗口内超过阈值即回滚**。工程要点：1) 必须有可对比的基线（发布前 15~30 分钟或同期上周），否则阈值拍不准；2) 观察窗口要覆盖「启动预热 + 流量爬坡」，太短会漏掉慢故障、太长会扩大影响；3) 回滚要幂等且快速（镜像回退比重新构建快得多）；4) 要有熔断条件（如「连续 3 个采样点超标」）避免单点抖动误触发；5) 数据库变更往往不可回滚，需要「先兼容后切换」的迁移策略。干扰项：B 是构建期噪音；C 是代码质量指标，与线上健康无直接关系；D 是触发构建而非回滚。案例：某服务发布后 5xx 从 0.1% 升到 3%，自动回滚在 3 分钟内完成，用户几乎无感。",
+    "tags": [
+      "自动回滚",
+      "阈值",
+      "监控指标"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4863,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "流水线里跑数据库迁移脚本（如 Flyway/Liquibase），最关键的设计要求是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "迁移脚本版本化、可重复执行且与应用版本兼容（先兼容后切换）"
+      },
+      {
+        "key": "B",
+        "text": "每次发布前清空数据库重建"
+      },
+      {
+        "key": "C",
+        "text": "迁移脚本只在生产手工执行"
+      },
+      {
+        "key": "D",
+        "text": "迁移与应用必须同时原子生效"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**数据库是唯一「回滚困难」的组件，所以迁移设计要围绕兼容性：1) 脚本纳入版本控制（V1、V2…，Flyway 用 `schema_version` 表记录已执行版本，保证幂等与顺序）；2) 采用「扩展-收缩（expand-contract）」：先加新列/新表（应用双写或兼容读）→ 切流量 → 再删旧列，避免「删列导致旧版本应用报错」；3) 迁移与应用要能独立发布，**不要在一个事务里同时改代码和表结构**（大表 DDL 还会锁表）；4) 生产迁移前必须在同规模环境演练并评估耗时（MySQL 8 的 instant DDL 也有限制）；5) 有备份与回退脚本，回滚方案要写清楚。干扰项：B 会丢数据；C 手工执行不可追溯且易漏；D 正是要避免的强耦合。案例：某次发布把字段改名并同时删旧字段，回滚镜像后发现新代码不认旧表，只能紧急恢复备份。",
+    "tags": [
+      "数据库迁移",
+      "expand-contract",
+      "Flyway"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4864,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "「预发环境（staging）验证」最重要的价值是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "在与生产同构的环境里验证发布流程与配置，含依赖与权限"
+      },
+      {
+        "key": "B",
+        "text": "替代所有单元测试"
+      },
+      {
+        "key": "C",
+        "text": "作为开发自测环境"
+      },
+      {
+        "key": "D",
+        "text": "用来跑压力测试即可"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**staging 的核心价值是「验证那些只有在接近生产的环境里才会暴露的问题」：配置是否正确、密钥与权限是否够、依赖服务是否可达、DNS/证书是否生效、发布脚本与回滚流程是否可行、初始化数据与迁移是否顺畅**。它与测试环境的区别在于「同构程度」，与生产的区别在于「数据与流量规模」。要点：1) staging 必须用与生产同样的部署方式（同一个 Helm chart/流水线），否则验证的意义打折；2) 要有生产级别的中间件版本与网络拓扑；3) 数据脱敏后尽量接近真实规模（至少能暴露性能问题）；4) 不能长期「只读不写」导致漂移。干扰项：B 错，单元测试是金字塔底层；C 定位不同（开发自测用 dev）；D 压测只是其中一项。案例：某次 TLS 证书链在 staging 就报错，提前发现并修复，避免生产事故。",
+    "tags": [
+      "staging",
+      "同构验证",
+      "发布流程"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4865,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "流水线构建镜像时用 `docker build --build-arg` 传密钥，主要问题是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "build-arg 会被写入镜像历史（`docker history` 可查），等同泄露"
+      },
+      {
+        "key": "B",
+        "text": "build-arg 会显著拖慢构建"
+      },
+      {
+        "key": "C",
+        "text": "build-arg 只能传数字"
+      },
+      {
+        "key": "D",
+        "text": "build-arg 会导致镜像无法推送"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`ARG` 的值会记录在镜像的构建历史与元数据里，`docker history --no-trunc` 就能看到明文**；即使后续层删除了相关文件，值仍留在历史层，镜像一旦外泄就等于密码外泄。正确做法：1) BuildKit 的 secret 挂载 `--mount=type=secret,id=npmrc,target=/root/.npmrc`，构建期可用但不落层；2) 私有依赖用构建期临时 token（只读、短有效期、用后即废）；3) 运行时密钥通过 K8s Secret/环境变量注入，**永远不烘进镜像**；4) 多阶段构建把构建工具与凭据留在 builder 阶段。干扰项：B 与性能无关；C 错，字符串也可；D 无必然关系。排查链路：审镜像时 `docker history --no-trunc <image>`、`dive` 逐层看，或 `trivy` 扫描敏感信息。案例：某镜像里 npm token 被人从 history 里翻出来，导致私有包被恶意发布。",
+    "tags": [
+      "build-arg",
+      "镜像安全",
+      "BuildKit secret"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4866,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "「部署清单直接写在流水线脚本里」的主要弊端是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "部署配置无法独立版本化与评审，与代码耦合、难复用"
+      },
+      {
+        "key": "B",
+        "text": "会让流水线执行更慢"
+      },
+      {
+        "key": "C",
+        "text": "会导致镜像无法构建"
+      },
+      {
+        "key": "D",
+        "text": "YAML 不能写在脚本里"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**部署配置（K8s YAML、Helm values、compose 文件）属于「运行时契约」，应该独立版本化、可评审、可被多个流水线复用**。把它硬编码进流水线脚本会带来：1) 变更无法追溯（脚本改了没记录）；2) 多环境要复制粘贴（三套脚本各自漂移）；3) 无法被 GitOps 工具消费；4) 回滚部署配置时只能回滚代码仓库，粒度粗。推荐做法：部署清单放独立仓库或用 Kustomize/Helm 目录管理，流水线只负责「选版本 + 应用清单」；采用 GitOps 时由 ArgoCD/Flux 监听清单仓库自动同步。干扰项：B 与性能无关；C 无稽；D 错，heredoc 完全能写。案例：某团队把 30 行 YAML 内嵌在 Jenkinsfile 里，改一次资源配置要在 3 个环境各改一遍，最终漏了生产的 requests 导致 OOM。",
+    "tags": [
+      "部署清单",
+      "GitOps",
+      "配置管理"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4867,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "「一次构建、多处部署」中，镜像用 tag 还是 digest 更可靠？",
+    "options": [
+      {
+        "key": "A",
+        "text": "digest（`@sha256:...`），因为 tag 可被重新推送覆盖"
+      },
+      {
+        "key": "B",
+        "text": "tag 更可靠，因为它可读"
+      },
+      {
+        "key": "C",
+        "text": "两者完全等价"
+      },
+      {
+        "key": "D",
+        "text": "digest 不能用于 K8s"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**tag 是可变引用：`web:1.0.0` 今天指向 A 镜像，明天可能被重新 push 成 B 镜像**，于是「测试环境验证过的版本」与「生产实际拉到的版本」可能不同；**digest 是内容哈希（`@sha256:...`），由内容唯一决定，不可变**，能真正保证「部署的就是验证过的那一份」。实践建议：1) 用 tag 便于人读、用 digest 锁定部署（`image: web@sha256:<值>`）；2) 流水线在构建后把 digest 记录到部署参数里；3) 仓库开启「tag 不可覆盖」策略；4) 排查时 `docker inspect --format='{{index .RepoDigests 0}}'` 或 `crictl inspecti` 看实际 digest。干扰项：B 与可读性无关的判断；C 在有覆盖场景下不等价；D 错，K8s 完全支持 digest。案例：某次 hotfix 覆盖了同 tag 的镜像，导致两个集群跑的不是同一份代码，排查耗费半天。",
+    "tags": [
+      "镜像digest",
+      "不可变",
+      "版本锁定"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4868,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "流水线「人工审批（manual approval）」放在哪个位置最合理？",
+    "options": [
+      {
+        "key": "A",
+        "text": "所有自动检查通过、临近生产部署前，作为最后一道人工闸门"
+      },
+      {
+        "key": "B",
+        "text": "流水线最开始，先让人点一下"
+      },
+      {
+        "key": "C",
+        "text": "每个阶段之间都插入一次"
+      },
+      {
+        "key": "D",
+        "text": "部署完成之后"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**审批应该放在「信息最完整、风险最高」的位置：自动检查（构建、测试、扫描）全绿之后、真正推生产之前**，此时审批人能看到测试结果、变更内容、影响面，决策质量最高。放在开头（B）时信息不足，等于盲签；每阶段都插（C）会让流程拖沓，团队会习惯性盲点「通过」；部署后（D）已经失去拦截意义。配套实践：1) 审批界面要展示关键上下文（变更 diff、测试摘要、安全检查结果、回滚方案）；2) 审批人要有明确授权与值守安排（避免「找不到人」阻塞）；3) 低风险变更（配置/文案）可自动放行，高风险（数据库、核心服务）才需审批——**分级审批**比一律审批更可持续；4) 豁免要留痕。案例：某团队在每个 stage 间都审批，平均发布耗时 3 小时，改成「仅在推生产前审批」后降到 25 分钟且风险未增加。",
+    "tags": [
+      "人工审批",
+      "发布闸门",
+      "分级"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4869,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "中等",
+    "question": "「构建产物可复现（reproducible build）」要求最关键的一点是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "固定工具链与依赖版本，消除时间戳/随机等不确定输入"
+      },
+      {
+        "key": "B",
+        "text": "每次构建都清空所有缓存"
+      },
+      {
+        "key": "C",
+        "text": "每次构建都用不同机器"
+      },
+      {
+        "key": "D",
+        "text": "把构建日志全部上传"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**可复现构建指「同样的源码 + 同样的构建环境（工具链版本、依赖版本、环境变量、时区等）→ 得到逐字节相同或行为等价的产物」**。要做的事情：1) 工具链固定（基础镜像用 digest、JDK/Node 锁小版本、构建工具锁版本）；2) 依赖锁定（`pom.xml` 版本明确、npm `package-lock`、pip `requirements.txt` 带 hash、Go 用 `go.sum`）；3) 消除不确定输入——构建时间戳（可用 `SOURCE_DATE_EPOCH`）、随机 build-id、zip 内文件顺序、绝对路径；4) 构建在容器/隔离环境里跑，避免机器级差异；5) 支持离线构建或内网代理。干扰项：B 过度（合理缓存不影响可复现性，只要 key 正确）；C 反而引入差异；D 与可复现无关。验证方法：同一 commit 在干净环境连构两次，比对哈希。案例：某次「本地能跑、CI 不能跑」源于 pip 版本解析差异，锁 version 后消失。",
+    "tags": [
+      "可复现构建",
+      "版本锁定",
+      "依赖"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4870,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "流水线部署 K8s 后应用起不来，日志显示连不上数据库，排查链路第一步是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "确认 Pod 状态与 Events、再看配置来源（ConfigMap/Secret 是否正确挂载注入）"
+      },
+      {
+        "key": "B",
+        "text": "直接改数据库连接串重试"
+      },
+      {
+        "key": "C",
+        "text": "重启数据库"
+      },
+      {
+        "key": "D",
+        "text": "回滚镜像再说"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「连不上数据库」在部署后最常见的原因其实不是网络，而是「配置没进去 / 密钥不对 / 环境变量注入错名字」**。排查链路：1) `kubectl get pod` 看状态（CrashLoop/Pending）与 READY；2) `kubectl describe pod` 看 Events 与 volume 挂载错误；3) 确认配置来源——`kubectl get cm/secret -o yaml` 对比 Pod 里实际生效的值（`kubectl exec -- env | grep DB`、`cat /etc/config/db.conf`）；4) 测试连通性：`kubectl exec -- nc -zv db-host 3306`（或 `ss -tn` 看是否有 SYN-SENT）；5) 只看通了但认证失败，再看账号/库名/权限；6) 若配置都对，再查 NetworkPolicy、Service 端口、DNS 解析（`getent hosts db-host`）。干扰项：B 在配置源不明时盲改会引入新问题；C 重启共享数据库会影响其他业务；D 回滚可能掩盖一个本来就存在的新需求问题。案例：某次部署环境变量名从 `DB_HOST` 改成 `DATASOURCE_URL` 但 Secret 没更新，Pod 起来就报连不上库，加配置校验后杜绝。",
+    "tags": [
+      "部署排障",
+      "配置注入",
+      "K8s"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4871,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "金丝雀发布期间，灰度 10% 的用户报错而其余用户正常，最应该怎么做？",
+    "options": [
+      {
+        "key": "A",
+        "text": "立刻停止放量或回滚该批次，按用户特征/请求特征定位差异根因"
+      },
+      {
+        "key": "B",
+        "text": "直接把灰度比例提到 50% 看是否复现"
+      },
+      {
+        "key": "C",
+        "text": "忽略，因为它只影响 10%"
+      },
+      {
+        "key": "D",
+        "text": "先把老版本下线，只留新版本"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**金丝雀的核心价值就是「用小流量尽早暴露问题并限制爆炸半径」，此时正确动作是先止血（停止放量/回滚灰度批次），再在受控范围内定位**。定位思路（按差异维度）：1) 用户特征——地域/运营商/老用户与新用户/特定租户；2) 请求特征——特定接口、特定参数、大请求体、长连接；3) 环境特征——只有某可用区/某节点组的新版本异常（可能是配置或依赖差异）；4) 依赖差异——新版本调用了新接口或新表结构；5) 对照实验：把同一请求分别打到新老版本对比响应。常见根因是「新版本依赖了一个只在部分环境存在的配置」或「灰度路由把特定用户分到了不兼容的后端」。干扰项：B 会扩大影响面；C 违背发布纪律（10% 也可能是核心大客户）；D 会彻底失去对照组，无法定位。案例：灰度 5% 时某省运营商用户全挂，抓包发现新版本启用了 IPv6 优先，而该线路 IPv6 不通，回滚并修配置后重新灰度。",
+    "tags": [
+      "金丝雀",
+      "止血",
+      "差异定位"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4872,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "某次发布把「配置项默认值」改了，回滚镜像后行为仍异常，根本原因是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "配置与镜像独立演进，回滚镜像不会回滚外部配置/数据变更"
+      },
+      {
+        "key": "B",
+        "text": "回滚镜像一定不生效"
+      },
+      {
+        "key": "C",
+        "text": "镜像里有不可变层"
+      },
+      {
+        "key": "D",
+        "text": "K8s 会缓存旧配置"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**发布单位往往不止「镜像」：ConfigMap/Secret、环境变量、数据库结构、缓存里的数据、特性开关状态都可能一起变了**。回滚只回退镜像，配置仍是新值，行为自然异常——这就是「回滚不彻底」的经典场景。正确做法：1) 把「发布单元」定义为「镜像 + 配置 + 迁移」的组合，并给它们统一版本号（如 release 2026.10.30-1），回滚时整体回退；2) 配置变更也要走版本控制与发布流程（GitOps 里 ConfigMap 就在清单仓库）；3) 数据库变更用 expand-contract，保证新旧版本都能跑；4) 缓存要有版本化的 key 或主动清理策略。排查链路：对比新旧版本运行时的配置快照（`kubectl get cm/secret`、`env`、`/actuator/env`），逐项 diff。干扰项：B 说法过强（多数情况镜像回滚是有效的）；C 镜像层不可变但可换镜像；D K8s 不缓存配置值（挂载的会同步）。案例：某服务把超时默认值从 3s 改成 30s 放进 ConfigMap，故障后回滚镜像未回滚 ConfigMap，问题依旧。",
+    "tags": [
+      "回滚不彻底",
+      "配置版本",
+      "发布单元"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4873,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "CI 构建机磁盘被打满导致流水线集体失败，最系统的治理思路是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "定位占用大户（工作区/镜像/缓存/日志），配保留与清理策略并加监控告警"
+      },
+      {
+        "key": "B",
+        "text": "每次失败就手工删文件"
+      },
+      {
+        "key": "C",
+        "text": "把所有构建改成在开发本地跑"
+      },
+      {
+        "key": "D",
+        "text": "换一台更大磁盘的机器"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**构机磁盘的典型大户：1) 工作区（每次构建的 checkout 与产物，常按构建号堆积）；2) Docker/containerd 的镜像与悬空层（`docker system df` 一看便知）；3) 依赖缓存（`~/.m2`、`node_modules`、`~/.gradle`）；4) 构建日志与测试报告；5) 未清理的临时文件与 core dump**。治理链路：1) `df -h` 找满的挂载点 → `du -sh --max-depth=1` 逐层下钻 → `docker system df`/`crictl rmi --prune` 看镜像 → `journalctl --disk-usage` 看日志；2) 配置策略：Jenkins 的 `buildDiscarder` 保留 N 天/N 个、workspace 定期清理、镜像定期 prune、Nexus/Harbor 保留规则；3) 把缓存目录挂到独立大盘并设配额；4) 加磁盘水位监控（80% 告警）与自动清理任务，并定期验证清理任务真的生效。干扰项：B 是重复救火；C 破坏一致性；D 拖延问题（还会再满）。案例：某构建机 `/var/lib/docker` 占 200G，配置每周 `prune` + 磁盘告警后一年未再复发。",
+    "tags": [
+      "构建机",
+      "磁盘治理",
+      "保留策略"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4874,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "「流水线绿灯但线上功能不可用」，最系统的排查顺序是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "先确认部署是否真的生效（版本/实例），再查配置与环境差异，最后查测试覆盖盲区"
+      },
+      {
+        "key": "B",
+        "text": "先怀疑流水线平台故障"
+      },
+      {
+        "key": "C",
+        "text": "先回滚，不做任何分析"
+      },
+      {
+        "key": "D",
+        "text": "先加大测试数量"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「绿灯但不可用」要区分三种情况：1) 部署没真正生效——镜像 tag 没变、只更新了部分实例、发布到了错误的命名空间/集群、Pod 没 Ready；2) 生效了但环境不同——配置项、密钥、依赖服务、网络策略、数据状态与测试环境不一致；3) 生效了且环境一致，但测试没覆盖到——用例只测了 happy path、新代码路径无测试、集成测试用了 mock 掩盖了真实依赖问题**。排查顺序：先 `kubectl get pod -o jsonpath` 看实际镜像 digest 与启动时间、`/version` 接口核对版本 → 对比配置与依赖 → 再回到测试覆盖。这一步的价值在于**避免把「部署问题」误判成「代码问题」而盲目改代码**。干扰项：B 概率极低却常被先怀疑；C 放弃现场；D 事后补救但未解决当下故障。案例：某次发布 Jenkins 显示成功，实际 Helm 部署到了 staging 命名空间，生产仍是旧版本，功能自然「不可用」，一查镜像就定位了。",
+    "tags": [
+      "绿灯故障",
+      "部署验证",
+      "覆盖盲区"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4875,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "多分支并行开发时，发布流水线互相阻塞（同一环境只能一人发），最优解是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "环境隔离（每分支/每 PR 独立命名空间）+ 主干发布串行化与队列"
+      },
+      {
+        "key": "B",
+        "text": "让所有人排队手工协调"
+      },
+      {
+        "key": "C",
+        "text": "取消环境隔离，谁先发谁算"
+      },
+      {
+        "key": "D",
+        "text": "禁止并行开发"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「发布排队」的本质是共享环境（尤其是 staging/预发）成了瓶颈资源**。两条互补的解：1) **隔离**——为每个分支/PR 提供独立的临时环境（K8s 的 ephemeral namespace、review app、动态子域名），用完即销毁，谁都不影响谁；2) **串行化关键路径**——真正共享的生产/预发用「部署锁 + 队列」保证同一时刻只有一个发布（`concurrency` 组、资源锁、deploy 队列），并在 UI 上显示排队与预计时间。配套：合并前用「合并队列（merge queue）」避免多个 PR 各自绿灯但合并后互相破坏。干扰项：B 靠人肉协调会持续摩擦；C 并发写同一环境会互相覆盖、故障难归因；D 是对业务的伤害。案例：某团队用每 PR 独立 namespace 后，环境冲突类故障下降 90%，发布等待从 1 小时降到 5 分钟。",
+    "tags": [
+      "环境隔离",
+      "发布排队",
+      "merge queue"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4876,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "GitOps 中「集群实际状态与期望状态漂移」，ArgoCD 显示 OutOfSync，正确处置是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "先查明是人手工改了集群还是清单仓库变了，再决定同步（可能需保留手工变更并回写清单）"
+      },
+      {
+        "key": "B",
+        "text": "直接 Sync 覆盖，越快越好"
+      },
+      {
+        "key": "C",
+        "text": "关闭自动同步以免再漂移"
+      },
+      {
+        "key": "D",
+        "text": "删除应用重建"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**漂移意味着「集群里的实际状态」与「Git 里的期望状态」不一致，来源只有两种：有人绕过流程直接改了集群（kubectl edit/scale），或者清单仓库改了但还没同步**。直接 Sync（B）会把手改的变更（可能是紧急修复或调参）抹掉，甚至造成故障；正确顺序：1) ArgoCD 里看 diff，确认差异内容；2) 判断来源——查审计日志（`kubectl` 的 API 审计、变更平台记录）；3) 有价值的紧急变更要**回写进清单仓库**（补 PR）再同步，让 Git 重新成为唯一真相；4) 若确认是误操作则回滚到清单状态；5) 治本：收紧集群写权限、开启自动同步与 self-heal、把「临时调参」也走流程。干扰项：C 只是逃避（漂移依旧存在且无人知晓）；D 会造成中断且丢失历史。案例：某次线上排障时手工把副本数从 3 调到 10，第二天自动同步把副本数改回 3 导致容量不足，复盘后规定「临时变更必须当天回写清单」。",
+    "tags": [
+      "GitOps",
+      "漂移",
+      "ArgoCD"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4877,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "流水线里并行跑 20 个端到端测试用例组，结果频繁偶发失败且构建机 CPU 打满，应如何改造？",
+    "options": [
+      {
+        "key": "A",
+        "text": "限制并发度、按资源需求分组、拆分为独立环境/数据，并把慢用例下沉到更低层级测试"
+      },
+      {
+        "key": "B",
+        "text": "再并行到 50 个，跑得更快"
+      },
+      {
+        "key": "C",
+        "text": "把 E2E 全部改成手工测试"
+      },
+      {
+        "key": "D",
+        "text": "给每个用例加长 sleep 避免冲突"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**并行度过高会产生「资源争抢型偶发失败」：CPU/内存打满导致超时、同一测试数据被并发修改、同一端口冲突、共享外部服务被限流**，看起来像「测试不稳定」，实际是并发与隔离不足。改造路径：1) 量化瓶颈——看构建机 CPU/内存曲线与失败用例的资源画像；2) 限流——设 `max-forks`/`parallel` 上限（如按核数 × 1.5），或按「资源标签」分组调度；3) 隔离——每组分独立数据库 schema/独立租户 ID/独立 namespace，避免数据竞争；4) 分层——大量场景其实可以用集成测试覆盖，把真正的端到端压到少量关键路径（测试金字塔）；5) 用例自身要能等待条件而非固定 sleep。干扰项：B 会加剧争抢；C 放弃自动化；D 会让总时长失控且更不稳定。案例：20 组 E2E 并行在同一 DB 上跑，改成 4 组并行 + 每组独立 schema 后，失败率从 15% 降到 1%。",
+    "tags": [
+      "并发控制",
+      "E2E",
+      "资源隔离"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4878,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "需要「先扩容再缩容」的安全发布（如双写期），流水线该怎么表达？",
+    "options": [
+      {
+        "key": "A",
+        "text": "多阶段人工/条件闸门：扩容→验证→切流→观察→缩容，每阶段可独立回滚"
+      },
+      {
+        "key": "B",
+        "text": "写成一个原子操作，一次执行完最快"
+      },
+      {
+        "key": "C",
+        "text": "只保留最后一步缩容"
+      },
+      {
+        "key": "D",
+        "text": "全部交给运维手工执行，流水线不管"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「先扩容后缩容」本质是一个有风险的时序过程（常见于数据库双写、集群迁移、大版本升级），流水线必须把它表达成可观测、可中断的多阶段流程**：1) 扩容/双写开启 → 2) 验证一致性（对比双写数据、监控错误率）→ 3) 切读/切流量（金丝雀放量）→ 4) 观察稳定窗口（覆盖业务峰值）→ 5) 关闭旧路径/缩容。每阶段之间用审批或条件闸门（`when: manual`、指标检查 job），且**每个阶段都要有独立回滚点**（不要设计成「只能整体回滚」）。要点：阶段间要能暂停足够久（不是几分钟就自动过），要有明确的「观察指标与阈值」。干扰项：B 把高风险过程压成不可中断的一步；C 丢掉了验证环节；D 失去自动化与可追溯。案例：某次 MySQL 迁移用单脚本一次跑完，切流后才发现双写漏了字段，只能回滚重来；改成分阶段后问题在第 2 步就被拦住。",
+    "tags": [
+      "多阶段发布",
+      "闸门",
+      "回滚点"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4879,
+    "type": "single",
+    "category": "CI/CD",
+    "difficulty": "困难",
+    "question": "衡量 CI/CD 改进效果时，最该关注的指标组合是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "变更前置时间、部署频率、失败率/恢复时间，加上流水线时长与 flaky 率"
+      },
+      {
+        "key": "B",
+        "text": "流水线数量与构建机 CPU 使用率"
+      },
+      {
+        "key": "C",
+        "text": "代码行数与提交次数"
+      },
+      {
+        "key": "D",
+        "text": "Jenkins 插件数量"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**DORA 四项指标是业界公认的骨架：1) 变更前置时间（commit 到上线）；2) 部署频率；3) 变更失败率；4) 故障恢复时间（MTTR）**。再补两个「流水线自身健康」的指标：**流水线总时长（反馈速度）** 与 **flaky 率（可信度）**——前者决定开发者是否愿意等结果，后者决定门禁是否被信任，这两个不改善，前四项也上不去。度量要点：1) 指标要能自动采集（从 CI/CD 系统与监控取数，别靠人工统计）；2) 看趋势而非单点；3) 避免用指标考核个人（会诱发「刷指标」与隐瞒失败）；4) 结合业务指标（可用性、错误率）验证是否真的改善了交付质量。干扰项：B、C、D 都是「易得但无意义」的指标（CPU 高不一定是坏事、代码行数与交付能力无关）。案例：某团队把前置时间从 5 天降到 4 小时、flaky 率从 8% 降到 1%，发布事故数同比下降一半。",
+    "tags": [
+      "DORA指标",
+      "度量",
+      "持续改进"
+    ],
+    "frequency": "中频"
+  }
+]
