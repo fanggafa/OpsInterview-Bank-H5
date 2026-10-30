@@ -80,6 +80,14 @@ import K8sResourcesQos from './K8sResourcesQos.vue'
 import LvsThreeLayers from './LvsThreeLayers.vue'
 import VpcLayers from './VpcLayers.vue'
 import EsShardDesign from './EsShardDesign.vue'
+import DnsFailureLayers from './DnsFailureLayers.vue'
+import DnsNdotsSearch from './DnsNdotsSearch.vue'
+import MultiARecords from './MultiARecords.vue'
+import ConntrackFull from './ConntrackFull.vue'
+import FirewalldVsIptables from './FirewalldVsIptables.vue'
+import TomcatRequestFlow from './TomcatRequestFlow.vue'
+import Cpu100Locate from './Cpu100Locate.vue'
+import AnsibleVarPriority from './AnsibleVarPriority.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -222,6 +230,14 @@ export const FIGURES = {
   'lvs-three-layers': LvsThreeLayers,
   'vpc-layers': VpcLayers,
   'es-shard-design': EsShardDesign,
+  'dns-failure-layers': DnsFailureLayers,
+  'dns-ndots-search': DnsNdotsSearch,
+  'multi-a-records': MultiARecords,
+  'conntrack-full': ConntrackFull,
+  'firewalld-vs-iptables': FirewalldVsIptables,
+  'tomcat-request-flow': TomcatRequestFlow,
+  'cpu-100-locate': Cpu100Locate,
+  'ansible-var-priority': AnsibleVarPriority,
 }
 
 /**

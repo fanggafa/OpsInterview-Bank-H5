@@ -2276,7 +2276,7 @@
     "category": "DNS",
     "difficulty": "中等",
     "question": "DNS 解析失败时，怎么一步步定位是哪一层出的问题？",
-    "answer": "按缓存层级从近到远排查，用 dig 逐跳验证：\n\n1. 先看本机缓存和 hosts：cat /etc/hosts，确认没被写死\n2. 直接问本地 DNS：dig @<resolv.conf里的IP> example.com\n3. 逐跳追踪：dig example.com +trace —— 会依次输出根、顶级、权威的返回，看在哪一跳断了\n4. 换公共 DNS 对比：dig @8.8.8.8 example.com，能解析说明是本地 DNS 的问题\n5. 检查权威记录是否真的存在：直接问权威服务器 dig @ns1.example.com example.com\n\n常见结论：\n- +trace 在第 1 跳就失败 → 本地 DNS 不可达或防火墙拦了 53\n- 换公共 DNS 能解析 → 本地 DNS 缓存污染或配置错误\n- 权威返回 NXDOMAIN → 记录压根没配，找域名服务商\n- 全部正常但应用报错 → 看 ndots/search 域，或应用侧缓存",
+    "answer": "按缓存层级从近到远排查，用 dig 逐跳验证：\n\n1. 先看本机缓存和 hosts：cat /etc/hosts，确认没被写死\n2. 直接问本地 [[图:dns-failure-layers]]\n\nDNS：dig @<resolv.conf里的IP> example.com\n3. 逐跳追踪：dig example.com +trace —— 会依次输出根、顶级、权威的返回，看在哪一跳断了\n4. 换公共 DNS 对比：dig @8.8.8.8 example.com，能解析说明是本地 DNS 的问题\n5. 检查权威记录是否真的存在：直接问权威服务器 dig @ns1.example.com example.com\n\n常见结论：\n- +trace 在第 1 跳就失败 → 本地 DNS 不可达或防火墙拦了 53\n- 换公共 DNS 能解析 → 本地 DNS 缓存污染或配置错误\n- 权威返回 NXDOMAIN → 记录压根没配，找域名服务商\n- 全部正常但应用报错 → 看 ndots/search 域，或应用侧缓存",
     "tags": [
       "排障",
       "dig",
@@ -2424,7 +2424,7 @@
     "category": "DNS",
     "difficulty": "中等",
     "question": "/etc/resolv.conf 里的 search 和 ndots 是什么？配错会有什么影响？",
-    "answer": "它们决定「问域名时自动补哪些后缀」。\n\n- search：给不完整的域名自动追加后缀。例如 search example.com，查 api 会自动试 api.example.com\n- ndots:N：如果域名里的点少于 N 个，就先尝试追加 search 后缀，再试原样查询\n\n配置示例：\nsearch example.svc.cluster.local svc.cluster.local\noptions ndots:5\n\n常见问题：\n- ndots 设太大（如 K8s 默认 5）：查外部域名 xxx.com 只有 1 个点 < 5，于是会先试 5 个无效后缀，产生大量无用查询和延迟\n- search 域太多且 DNS 不可达：每次查询都要等超时串联，解析奇慢\n- 多个 nameserver 时是「串行尝试」，第一个不可达会白等几秒\n\n经验：容器环境优先用 FQDN（域名末尾加点，如 api.example.com.）可跳过 search 组装，显著减少解析耗时。",
+    "answer": "它们决定「问域名时自动补哪些后缀」。\n\n- [[图:dns-ndots-search]]\n\nsearch：给不完整的域名自动追加后缀。例如 search example.com，查 api 会自动试 api.example.com\n- ndots:N：如果域名里的点少于 N 个，就先尝试追加 search 后缀，再试原样查询\n\n配置示例：\nsearch example.svc.cluster.local svc.cluster.local\noptions ndots:5\n\n常见问题：\n- ndots 设太大（如 K8s 默认 5）：查外部域名 xxx.com 只有 1 个点 < 5，于是会先试 5 个无效后缀，产生大量无用查询和延迟\n- search 域太多且 DNS 不可达：每次查询都要等超时串联，解析奇慢\n- 多个 nameserver 时是「串行尝试」，第一个不可达会白等几秒\n\n经验：容器环境优先用 FQDN（域名末尾加点，如 api.example.com.）可跳过 search 组装，显著减少解析耗时。",
     "tags": [
       "resolv.conf",
       "search",
@@ -2438,7 +2438,7 @@
     "category": "DNS",
     "difficulty": "困难",
     "question": "同一域名解析到多个 IP（多 A 记录）时，客户端如何选择？有什么隐患？",
-    "answer": "DNS 本身不保证顺序，也不做健康检查：\n\n1. 权威服务器返回多条 A 记录的先后顺序并不稳定\n2. 客户端/操作系统可能按返回顺序用第一个，也可能做轮询\n3. 大多数客户端会缓存整组结果，失败后不一定立刻切到下一个\n\n隐患：\n- 其中一台挂了，客户端可能仍连已挂的 IP，直到超时或缓存过期\n- 没有真正的健康检查，DNS 层看不到后端存活\n\n正确做法：\n- 把高可用交给负载均衡（LVS/Nginx/SLB）：DNS 只指向 VIP\n- 需要 DNS 级容灾时用专门的 GSLB/智能解析，带健康检查\n- 临时方案：调小 TTL，故障时快速换记录\n\n不要指望「多 A 记录」等于高可用，它只是分流，不是故障转移。",
+    "answer": "DNS 本身不保证顺序，也不做健康检查：\n\n1. 权威服务器返回多条 A 记录的先后顺序并不稳定\n2. 客户端/操作系统可能按返回顺序用第一个，也可能做轮询\n3. 大多数客户端会缓存整组结果，失败后不一定立刻切到下一个\n\n隐患：\n- 其中一台挂了，客户端可能仍连已挂的 IP，直到超时或缓存过期\n- 没有真正的健康检查，DNS 层看不到后端存活\n\n正确做法：\n- 把高可用交给负载均衡（LVS/Nginx/SLB）：DNS 只指向 VIP\n- 需要 DNS 级容灾时用专门的 GSLB/智能解析，带健康检查\n- 临时方案：调小 TTL，故障时快速换记录\n\n不要指望「[[图:multi-a-records]]\n\n多 A 记录」等于高可用，它只是分流，不是故障转移。",
     "tags": [
       "多A记录",
       "高可用",
@@ -5237,7 +5237,7 @@
     "category": "iptables/firewalld",
     "difficulty": "困难",
     "question": "conntrack 表满会有什么现象？如何排查和调优？",
-    "answer": "现象（非常容易被误判）：\n- 偶发、不规律的连接超时或失败，重试有时能成功\n- 已建立的连接能通，新连接建不上\n- 应用日志报连接超时，但网络看起来是通的\n- dmesg 里出现：nf_conntrack: table full, dropping packet\n\n排查：\n- cat /proc/sys/net/netfilter/nf_conntrack_count（当前数量）\n- cat /proc/sys/net/netfilter/nf_conntrack_max（上限）\n- dmesg -T | grep conntrack\n\n调优：\n- 调大上限：sysctl -w net.netfilter.nf_conntrack_max=1048576\n- 缩短超时（默认 ESTABLISHED 5 天太长）：\n  net.netfilter.nf_conntrack_tcp_timeout_established = 600\n- 减少不必要的跟踪：对不需要 nat 的流量在 raw 表 NOTRACK\n- 优化应用侧：用连接池，减少短连接\n\n特别注意：做 NAT/负载均衡的机器（LVS、K8s node）连接数大，最容易撞到这个上限。",
+    "answer": "现象（非常容易被误判）：\n- 偶发、不规律的连接超时或失败，重试有时能成功\n- 已建立的连接能通，新连接建不上\n- 应用日志报连接超时，但网络看起来是通的\n- dmesg 里出现：nf_[[图:conntrack-full]]\n\nconntrack: table full, dropping packet\n\n排查：\n- cat /proc/sys/net/netfilter/nf_conntrack_count（当前数量）\n- cat /proc/sys/net/netfilter/nf_conntrack_max（上限）\n- dmesg -T | grep conntrack\n\n调优：\n- 调大上限：sysctl -w net.netfilter.nf_conntrack_max=1048576\n- 缩短超时（默认 ESTABLISHED 5 天太长）：\n  net.netfilter.nf_conntrack_tcp_timeout_established = 600\n- 减少不必要的跟踪：对不需要 nat 的流量在 raw 表 NOTRACK\n- 优化应用侧：用连接池，减少短连接\n\n特别注意：做 NAT/负载均衡的机器（LVS、K8s node）连接数大，最容易撞到这个上限。",
     "tags": [
       "conntrack",
       "表满",
@@ -5338,7 +5338,7 @@
     "category": "iptables/firewalld",
     "difficulty": "中等",
     "question": "firewalld 和 iptables 是什么关系？zone 是干什么的？",
-    "answer": "关系：\n- firewalld 是 iptables/nftables 的前端管理工具，底层最终还是生成 iptables 规则\n- 不建议两个同时用：CentOS 7+ 装 firewalld 后，手写的 iptables 规则会被它接管/覆盖，容易冲突\n\nzone（区域）的作用：按「信任程度」分组管理规则。网卡加入某个 zone，就套用该 zone 的规则集。\n\n常用 zone：\n- drop：全部丢弃\n- block：拒绝入向，允许出向\n- public：默认区，只放行选定服务\n- trusted：全部放行\n\n常用命令：\n- firewall-cmd --get-active-zones（看网卡在哪个区）\n- firewall-cmd --zone=public --add-port=8080/tcp --permanent\n- firewall-cmd --reload（--permanent 必须 reload 才生效）\n- firewall-cmd --list-all\n\n高频坑：加了 --permanent 但忘了 reload，规则「看起来配了却不生效」。",
+    "answer": "关系：\n- [[图:firewalld-vs-iptables]]\n\nfirewalld 是 iptables/nftables 的前端管理工具，底层最终还是生成 iptables 规则\n- 不建议两个同时用：CentOS 7+ 装 firewalld 后，手写的 iptables 规则会被它接管/覆盖，容易冲突\n\nzone（区域）的作用：按「信任程度」分组管理规则。网卡加入某个 zone，就套用该 zone 的规则集。\n\n常用 zone：\n- drop：全部丢弃\n- block：拒绝入向，允许出向\n- public：默认区，只放行选定服务\n- trusted：全部放行\n\n常用命令：\n- firewall-cmd --get-active-zones（看网卡在哪个区）\n- firewall-cmd --zone=public --add-port=8080/tcp --permanent\n- firewall-cmd --reload（--permanent 必须 reload 才生效）\n- firewall-cmd --list-all\n\n高频坑：加了 --permanent 但忘了 reload，规则「看起来配了却不生效」。",
     "tags": [
       "firewalld",
       "zone",
@@ -13949,7 +13949,7 @@
     "category": "Tomcat/JVM",
     "difficulty": "中等",
     "question": "Tomcat 有哪些核心组件？一个 HTTP 请求是怎么被处理的？",
-    "answer": "**核心组件（从外到内）**：\n\n1. **Server**：最外层容器，代表整个 Tomcat 实例\n2. **Service**：把 Connector 和 Engine 绑定在一起\n3. **Connector**：负责网络连接与协议解析（HTTP/1.1、HTTP/2、AJP）\n4. **Engine**：请求处理引擎，内部有 Host\n5. **Host**：虚拟主机（对应一个域名），内部有 Context\n6. **Context**：一个 Web 应用的上下文（对应一个 WAR 或目录）\n7. **Wrapper**：一个 Servlet，最内层\n\n**请求处理流程**：\n```\n客户端\n → Connector（监听端口，解析 HTTP，封装成 Request/Response）\n → Engine → Host（按域名匹配）→ Context（按 path 匹配应用）\n → Wrapper（按 URL 匹配 Servlet）\n → Servlet 处理\n → 响应原路返回\n```\n\n**Connector 的关键参数**：\n```xml\n<Connector port=\"8080\" protocol=\"Http11NioProtocol\"\n    maxThreads=\"500\"          <!-- 工作线程上限，不够会排队 -->\n    acceptCount=\"200\"         <!-- 队列长度，线程满了排队到这里 -->\n    maxConnections=\"10000\"    <!-- 最大连接数 -->\n    connectionTimeout=\"20000\" <!-- 连接超时 -->\n    minSpareThreads=\"50\"\n/>\n```\n\n**关键概念：「最多能接多少并发」由三个参数共同决定**\n- `maxThreads`：同时处理的请求数\n- `acceptCount`：排队的请求数\n- 超出两者之和 → 直接拒绝（表现为连接超时或 RST）\n\n**排障要点**：Tomcat 卡住时先看线程栈（`jstack`），确认是「线程都在等 DB/下游」还是「线程都在执行 CPU 密集任务」——前者要扩线程或优化下游，后者扩线程无效。",
+    "answer": "**核心组件（从外到内）**：\n\n1. **Server**：最外层容器，代表整个 [[图:tomcat-request-flow]]\n\nTomcat 实例\n2. **Service**：把 Connector 和 Engine 绑定在一起\n3. **Connector**：负责网络连接与协议解析（HTTP/1.1、HTTP/2、AJP）\n4. **Engine**：请求处理引擎，内部有 Host\n5. **Host**：虚拟主机（对应一个域名），内部有 Context\n6. **Context**：一个 Web 应用的上下文（对应一个 WAR 或目录）\n7. **Wrapper**：一个 Servlet，最内层\n\n**请求处理流程**：\n```\n客户端\n → Connector（监听端口，解析 HTTP，封装成 Request/Response）\n → Engine → Host（按域名匹配）→ Context（按 path 匹配应用）\n → Wrapper（按 URL 匹配 Servlet）\n → Servlet 处理\n → 响应原路返回\n```\n\n**Connector 的关键参数**：\n```xml\n<Connector port=\"8080\" protocol=\"Http11NioProtocol\"\n    maxThreads=\"500\"          <!-- 工作线程上限，不够会排队 -->\n    acceptCount=\"200\"         <!-- 队列长度，线程满了排队到这里 -->\n    maxConnections=\"10000\"    <!-- 最大连接数 -->\n    connectionTimeout=\"20000\" <!-- 连接超时 -->\n    minSpareThreads=\"50\"\n/>\n```\n\n**关键概念：「最多能接多少并发」由三个参数共同决定**\n- `maxThreads`：同时处理的请求数\n- `acceptCount`：排队的请求数\n- 超出两者之和 → 直接拒绝（表现为连接超时或 RST）\n\n**排障要点**：Tomcat 卡住时先看线程栈（`jstack`），确认是「线程都在等 DB/下游」还是「线程都在执行 CPU 密集任务」——前者要扩线程或优化下游，后者扩线程无效。",
     "tags": [
       "Tomcat",
       "架构",
@@ -14162,7 +14162,7 @@
     "category": "Tomcat/JVM",
     "difficulty": "困难",
     "question": "线上 Java 应用 CPU 100%，如何定位到具体代码行？",
-    "answer": "**五步定位法**（这是运维/面试必会的硬技能）：\n\n**1. 确认是 Java 进程**\n```\ntop\n```\n找到 CPU 高的进程 PID，确认是 java。\n\n**2. 找占用最高的线程**\n```\ntop -Hp <pid>                      -- 看线程级\n# 或用\nps -Lp <pid> -o tid,pcpu,stat,comm --sort=-pcpu | head\n\n# 或一步到位\nprintf '%x\\n' <tid>                -- 把 TID 转成十六进制\n```\n\n**3. 抓线程栈**\n```\njstack <pid> > /tmp/jstack.txt\n```\n**4. 在栈里搜索那个十六进制 TID**\n```\ngrep -A 30 'nid=0x<十六进制TID>' /tmp/jstack.txt\n```\n找到的栈顶就指向具体方法：\n- 栈顶是业务方法 → 业务代码死循环/正则回溯/大计算\n- 栈顶是 GC 线程 → 内存问题，不是 CPU 问题\n- 栈顶是 `Object.wait` / `park` → 不是真占 CPU，可能看错了线程\n\n**5. 确认根因**\n- **死循环/正则回溯**：栈固定在某个方法，多次采样都相同\n- **频繁 GC**：`jstat -gcutil 1` 看 FGC 频率与耗时 → 是 GC 吃 CPU，要查内存\n- **锁竞争**：大量线程 BLOCKED（但这类通常是 CPU 不高、吞吐低）\n- **大量短连接/加解密**：栈在 socket/加解密相关方法\n\n**多次采样法（关键技巧）**：\n```\nfor i in 1 2 3 4 5; do jstack <pid> | grep -A 5 'nid=0x<tid>'; sleep 1; done\n```\n如果每次栈顶都在同一个方法 → **确定是它**。若每次都不同 → 是 GC 或系统调用。\n\n**进阶工具**：\n- `arthas`：`thread -n 3`（找最忙的 3 个线程）、`profiler start` 生成火焰图\n- `async-profiler`：采样生成火焰图，能看到方法级耗时分布\n- `perf` + FlameGraph（Linux 层）\n\n**注意**：jstack 会 STW（安全点），大堆时可能停顿；生产上优先用 arthas 或异步采样工具。",
+    "answer": "**五步定位法**（这是运维/面试必会的硬技能）：\n\n**1. 确认是 Java 进程**\n```\ntop\n```\n找到 [[图:cpu-100-locate]]\n\nCPU 高的进程 PID，确认是 java。\n\n**2. 找占用最高的线程**\n```\ntop -Hp <pid>                      -- 看线程级\n# 或用\nps -Lp <pid> -o tid,pcpu,stat,comm --sort=-pcpu | head\n\n# 或一步到位\nprintf '%x\\n' <tid>                -- 把 TID 转成十六进制\n```\n\n**3. 抓线程栈**\n```\njstack <pid> > /tmp/jstack.txt\n```\n**4. 在栈里搜索那个十六进制 TID**\n```\ngrep -A 30 'nid=0x<十六进制TID>' /tmp/jstack.txt\n```\n找到的栈顶就指向具体方法：\n- 栈顶是业务方法 → 业务代码死循环/正则回溯/大计算\n- 栈顶是 GC 线程 → 内存问题，不是 CPU 问题\n- 栈顶是 `Object.wait` / `park` → 不是真占 CPU，可能看错了线程\n\n**5. 确认根因**\n- **死循环/正则回溯**：栈固定在某个方法，多次采样都相同\n- **频繁 GC**：`jstat -gcutil 1` 看 FGC 频率与耗时 → 是 GC 吃 CPU，要查内存\n- **锁竞争**：大量线程 BLOCKED（但这类通常是 CPU 不高、吞吐低）\n- **大量短连接/加解密**：栈在 socket/加解密相关方法\n\n**多次采样法（关键技巧）**：\n```\nfor i in 1 2 3 4 5; do jstack <pid> | grep -A 5 'nid=0x<tid>'; sleep 1; done\n```\n如果每次栈顶都在同一个方法 → **确定是它**。若每次都不同 → 是 GC 或系统调用。\n\n**进阶工具**：\n- `arthas`：`thread -n 3`（找最忙的 3 个线程）、`profiler start` 生成火焰图\n- `async-profiler`：采样生成火焰图，能看到方法级耗时分布\n- `perf` + FlameGraph（Linux 层）\n\n**注意**：jstack 会 STW（安全点），大堆时可能停顿；生产上优先用 arthas 或异步采样工具。",
     "tags": [
       "CPU100%",
       "jstack",
@@ -34450,7 +34450,7 @@
     "category": "自动化与配置管理",
     "difficulty": "中等",
     "question": "Ansible 的变量优先级是怎样的？为什么「变量被覆盖了找不到原因」很常见？",
-    "answer": "**Ansible 有 20 多层变量优先级——这是它最反直觉的设计。**\n\n**从低到高（简化版，记 6 个关键的即可）**：\n```\n1. command line -e（最低，但会被覆盖）\n2. role defaults/main.yml          ← 给用户改的\n3. inventory group_vars/all\n4. inventory group_vars/<group>\n5. inventory host_vars/<host>\n6. playbook vars\n7. playbook vars_files\n8. block vars\n9. task vars\n10. set_fact / registered vars\n11. role vars/main.yml             ← 常常意外覆盖别人\n12. include_vars\n13. extra vars (-e)                ← 最高，永远赢\n```\n\n**「变量被覆盖找不到原因」的三个高频原因**：\n\n**1. 用了 `vars/main.yml` 而不是 `defaults/main.yml`**\n```\nrole 的 vars/main.yml 优先级很高（接近最高）\n→ inventory 里设的值会被它覆盖 → 用户改了不生效\n→ 给用户可配置的变量必须放 defaults\n```\n**这是 Ansible 最常见的「配置不生效」原因。**\n\n**2. inventory 里同时有 group_vars 和 host_vars**\n```\ngroup_vars/web.yml:  port: 80\nhost_vars/web1.yml:  port: 8080\n→ web1 用 8080（host 优先）\n但如果有多个 group 且都有定义，按「group 名的字母顺序」后者覆盖前者\n```\n\n**3. `set_fact` 会覆盖一切（除 extra vars）**\n```\n- set_fact: port=9090\n→ 后续所有引用 port 的地方都是 9090，即使 inventory 里定义了 80\n```\n\n**调试变量的方法（最实用）**：\n```yaml\n- name: 看变量到底是多少\n  debug:\n    var: my_var\n\n# 看所有变量来源的完整清单\n- debug: var=hostvars[inventory_hostname]\n```\n```bash\n# 命令行查\nansible web1 -m debug -a 'var=port'\n```\n\n**命名规范（预防混乱的关键）**：\n```\n✓ 角色变量加前缀：nginx_port、nginx_user\n✗ 裸名：port、user（必然与别处冲突）\n```\n**「所有变量都加 role 前缀」是最有效的一条规范**。\n\n**一句话**：**变量优先级混乱的根因是「可配置项放进了 vars 而不是 defaults」，以及「变量名没加前缀」——这两条规则能避免 90% 的坑。**",
+    "answer": "**Ansible 有 20 多层[[图:ansible-var-priority]]\n\n变量优先级——这是它最反直觉的设计。**\n\n**从低到高（简化版，记 6 个关键的即可）**：\n```\n1. command line -e（最低，但会被覆盖）\n2. role defaults/main.yml          ← 给用户改的\n3. inventory group_vars/all\n4. inventory group_vars/<group>\n5. inventory host_vars/<host>\n6. playbook vars\n7. playbook vars_files\n8. block vars\n9. task vars\n10. set_fact / registered vars\n11. role vars/main.yml             ← 常常意外覆盖别人\n12. include_vars\n13. extra vars (-e)                ← 最高，永远赢\n```\n\n**「变量被覆盖找不到原因」的三个高频原因**：\n\n**1. 用了 `vars/main.yml` 而不是 `defaults/main.yml`**\n```\nrole 的 vars/main.yml 优先级很高（接近最高）\n→ inventory 里设的值会被它覆盖 → 用户改了不生效\n→ 给用户可配置的变量必须放 defaults\n```\n**这是 Ansible 最常见的「配置不生效」原因。**\n\n**2. inventory 里同时有 group_vars 和 host_vars**\n```\ngroup_vars/web.yml:  port: 80\nhost_vars/web1.yml:  port: 8080\n→ web1 用 8080（host 优先）\n但如果有多个 group 且都有定义，按「group 名的字母顺序」后者覆盖前者\n```\n\n**3. `set_fact` 会覆盖一切（除 extra vars）**\n```\n- set_fact: port=9090\n→ 后续所有引用 port 的地方都是 9090，即使 inventory 里定义了 80\n```\n\n**调试变量的方法（最实用）**：\n```yaml\n- name: 看变量到底是多少\n  debug:\n    var: my_var\n\n# 看所有变量来源的完整清单\n- debug: var=hostvars[inventory_hostname]\n```\n```bash\n# 命令行查\nansible web1 -m debug -a 'var=port'\n```\n\n**命名规范（预防混乱的关键）**：\n```\n✓ 角色变量加前缀：nginx_port、nginx_user\n✗ 裸名：port、user（必然与别处冲突）\n```\n**「所有变量都加 role 前缀」是最有效的一条规范**。\n\n**一句话**：**变量优先级混乱的根因是「可配置项放进了 vars 而不是 defaults」，以及「变量名没加前缀」——这两条规则能避免 90% 的坑。**",
     "tags": [
       "Terraform",
       "IaC",
