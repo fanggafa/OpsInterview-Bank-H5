@@ -104,6 +104,14 @@ import MongoDeployModes from './MongoDeployModes.vue'
 import SloErrorBudget from './SloErrorBudget.vue'
 import OncallResponseFlow from './OncallResponseFlow.vue'
 import TcpVsUdp from './TcpVsUdp.vue'
+import HttpsTlsHandshake from './HttpsTlsHandshake.vue'
+import HttpCacheLevels from './HttpCacheLevels.vue'
+import CdnPrinciples from './CdnPrinciples.vue'
+import KeepaliveVsHeartbeat from './KeepaliveVsHeartbeat.vue'
+import SsVsNetstat from './SsVsNetstat.vue'
+import TracerouteVsMtr from './TracerouteVsMtr.vue'
+import CrossDcNetwork from './CrossDcNetwork.vue'
+import PingFailTriage from './PingFailTriage.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -270,6 +278,14 @@ export const FIGURES = {
   'slo-error-budget': SloErrorBudget,
   'oncall-response-flow': OncallResponseFlow,
   'tcp-vs-udp': TcpVsUdp,
+  'https-tls-handshake': HttpsTlsHandshake,
+  'http-cache-levels': HttpCacheLevels,
+  'cdn-principles': CdnPrinciples,
+  'keepalive-vs-heartbeat': KeepaliveVsHeartbeat,
+  'ss-vs-netstat': SsVsNetstat,
+  'traceroute-vs-mtr': TracerouteVsMtr,
+  'cross-dc-network': CrossDcNetwork,
+  'ping-fail-triage': PingFailTriage,
 }
 
 /**
