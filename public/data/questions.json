@@ -46153,7 +46153,7 @@
     "category": "Linux基础",
     "difficulty": "简单",
     "question": "僵尸进程和孤儿进程有什么区别？分别怎么处理？",
-    "answer": "**本质区别：有没有父进程来收尸。**\n\n| | 僵尸（Zombie，Z） | 孤儿（Orphan） |\n|---|---|---|\n| 是什么 | 子进程已退出，父进程没调 `wait()` 回收 | 父进程先退出，子进程还活着 |\n| 占用资源 | 只占 PID 表项，不占 CPU/内存 | 正常占资源 |\n| 由谁接管 | 无，需父进程处理 | 被 init(1) 或 subreaper 收养 |\n[[图:zombie-vs-orphan]]\n\n| 危害 | 大量累积耗尽 PID | 一般无害 |\n\n**僵尸怎么处理**：\n\n1. **正确做法**：让父进程调用 `wait()`/`waitpid()`，或正确处理 `SIGCHLD`\n2. **应急手段**：杀掉父进程，僵尸会被 init 接管并回收\n```\nps -eo stat,ppid,pid,cmd | awk '$1 ~ /^Z/ {print $2}' | sort -u\nkill <父进程PID>\n```\n3. **不能直接 kill -9 僵尸本身**——它已经死了，信号无处可投\n\n**排查口诀**：`ps` 里 STAT 是 `Z` 或 `Z+` → 找它的 **PPID** → 看那个父进程为什么没 wait。\n\n**容器场景的特殊坑**：PID 1 进程（如 shell 脚本）不处理 `SIGCHLD`，僵尸会堆满容器。加 `tini` / `dumb-init` 作为 init 即可解决。",
+    "answer": "**本质区别：有没有父进程来收尸。**\n\n| | 僵尸（Zombie，Z） | 孤儿（Orphan） |\n|---|---|---|\n| 是什么 | 子进程已退出，父进程没调 `wait()` 回收 | 父进程先退出，子进程还活着 |\n| 占用资源 | 只占 PID 表项，不占 CPU/内存 | 正常占资源 |\n| 由谁接管 | 无，需父进程处理 | 被 init(1) 或 subreaper 收养 |\n| 危害 | 大量累积耗尽 PID | 一般无害 |\n\n[[图:zombie-vs-orphan]]\n\n**僵尸怎么处理**：\n\n1. **正确做法**：让父进程调用 `wait()`/`waitpid()`，或正确处理 `SIGCHLD`\n2. **应急手段**：杀掉父进程，僵尸会被 init 接管并回收\n```\nps -eo stat,ppid,pid,cmd | awk '$1 ~ /^Z/ {print $2}' | sort -u\nkill <父进程PID>\n```\n3. **不能直接 kill -9 僵尸本身**——它已经死了，信号无处可投\n\n**排查口诀**：`ps` 里 STAT 是 `Z` 或 `Z+` → 找它的 **PPID** → 看那个父进程为什么没 wait。\n\n**容器场景的特殊坑**：PID 1 进程（如 shell 脚本）不处理 `SIGCHLD`，僵尸会堆满容器。加 `tini` / `dumb-init` 作为 init 即可解决。",
     "tags": [
       "僵尸进程",
       "孤儿进程",
