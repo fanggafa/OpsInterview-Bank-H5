@@ -28,6 +28,18 @@ import MicroserviceObservability from './MicroserviceObservability.vue'
 import AlertFatigueTriage from './AlertFatigueTriage.vue'
 import MonitorBlindSpots from './MonitorBlindSpots.vue'
 import EnvParityGap from './EnvParityGap.vue'
+import ZombieVsOrphan from './ZombieVsOrphan.vue'
+import InodeVsBlock from './InodeVsBlock.vue'
+import NicePriorityLevels from './NicePriorityLevels.vue'
+import FlowVsCongestion from './FlowVsCongestion.vue'
+import HttpCodeTriage from './HttpCodeTriage.vue'
+import CurlLayers from './CurlLayers.vue'
+import ObjectVsFileSystem from './ObjectVsFileSystem.vue'
+import LiveMigrationPhases from './LiveMigrationPhases.vue'
+import MqComparison from './MqComparison.vue'
+import KafkaIsrMechanism from './KafkaIsrMechanism.vue'
+import EsThreadPoolTriage from './EsThreadPoolTriage.vue'
+import PrometheusScaling from './PrometheusScaling.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -118,6 +130,18 @@ export const FIGURES = {
   'alert-fatigue-triage': AlertFatigueTriage,
   'monitor-blind-spots': MonitorBlindSpots,
   'env-parity-gap': EnvParityGap,
+  'zombie-vs-orphan': ZombieVsOrphan,
+  'inode-vs-block': InodeVsBlock,
+  'nice-priority-levels': NicePriorityLevels,
+  'flow-vs-congestion': FlowVsCongestion,
+  'http-code-triage': HttpCodeTriage,
+  'curl-layers': CurlLayers,
+  'object-vs-filesystem': ObjectVsFileSystem,
+  'live-migration-phases': LiveMigrationPhases,
+  'mq-comparison': MqComparison,
+  'kafka-isr-mechanism': KafkaIsrMechanism,
+  'es-thread-pool-triage': EsThreadPoolTriage,
+  'prometheus-scaling': PrometheusScaling,
 }
 
 /**
