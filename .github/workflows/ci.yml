@@ -15,7 +15,9 @@ concurrency:
 jobs:
   verify:
     name: 测试与构建
-    runs-on: ubuntu-latest
+    # 固定镜像版本而不是 ubuntu-latest：避免镜像漂移（如 24.04 -> 26.04）带来的
+    # 偶发环境差异。注意 ubuntu-latest 目前就是 24.04，所以这次切换没有风险。
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     strategy:
@@ -49,15 +51,22 @@ jobs:
       - name: 单元测试
         run: npm run test
 
+      # ---------- 以下「生产构建」两个版本都跑 ----------
       - name: 生产构建
         run: npm run build
 
+      # ---------- 以下仅 22.x：子目录构建与产物校验 ----------
+      # 20.x 的职责是「旧版本兼容性验证」，只需要证明测试与构建能过；
+      # 子目录构建（BASE_PATH）与产物校验属于「发布前验证」，交给 22.x 跑一次即可，
+      # 这样能把 matrix 的总耗时砍掉近一半。
       - name: 子目录构建（BASE_PATH）
+        if: matrix.node-version == '22.x'
         run: npm run build
         env:
           BASE_PATH: /ops/
 
       - name: 校验构建产物完整
+        if: matrix.node-version == '22.x'
         run: |
           set -e
           test -f dist/index.html                      || { echo "缺少 index.html"; exit 1; }
