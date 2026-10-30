@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **53 张内联 SVG 图解**（55 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **65 张内联 SVG 图解**（67 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（53 张，23 个分类全覆盖）
+### 已注册的插图（65 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1135,6 +1135,18 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `alert-fatigue-triage` | 告警疲劳：量化后四类分别处理 | 题 5418 |
 | `monitor-blind-spots` | 指标正常但用户不满的四个盲区 | 题 5442 |
 | `env-parity-gap` | 测试与生产的六类差异与四项治理 | 题 5426 |
+| `zombie-vs-orphan` | 僵尸进程 vs 孤儿进程对比 | 题 4001 |
+| `inode-vs-block` | inode 与数据块是两个独立上限 | 题 4002 |
+| `nice-priority-levels` | nice / PR / RT 三层优先级 | 题 4004 |
+| `flow-vs-congestion` | 流量控制 vs 拥塞控制 + 四阶段 | 题 4400 |
+| `http-code-triage` | HTTP 状态码分类与排查方向 | 题 4411 |
+| `curl-layers` | curl 按 DNS→TCP→TLS→HTTP 分层 | 题 4412 |
+| `object-vs-filesystem` | 对象存储 vs 文件系统 | 题 2403 |
+| `live-migration-phases` | 热迁移的迭代拷贝与脏页收敛 | 题 2605 |
+| `mq-comparison` | Kafka / RabbitMQ / RocketMQ 选型 | 题 2200 |
+| `kafka-isr-mechanism` | Kafka ISR 机制与 min.insync.replicas | 题 2204 |
+| `es-thread-pool-triage` | ES 拒绝按线程池分流 | 题 3005 |
+| `prometheus-scaling` | Prometheus 四条扩展路线 | 题 5010 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。

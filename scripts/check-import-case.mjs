@@ -9,18 +9,21 @@
  * 用法：node scripts/check-import-case.mjs
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
 const IDX = 'src/components/figures/index.js'
 const DIR = resolve('src/components/figures')
 
-// 用 git 索引里的真实文件名（git 是大小写敏感的，比 readdir 更可靠）
-const realFiles = execFileSync('git', ['ls-files', DIR], { encoding: 'utf8' })
+// 真实文件名：git 索引（大小写敏感，最可靠）∪ 磁盘上的文件（覆盖尚未 git add 的新文件）。
+// 只用 git ls-files 的话，新建但未 add 的文件会被误判为「不存在」。
+const fromGit = execFileSync('git', ['ls-files', DIR], { encoding: 'utf8' })
   .trim()
   .split('\n')
   .filter(Boolean)
   .map((p) => basename(p))
+const fromDisk = readdirSync(DIR).filter((f) => f.endsWith('.vue'))
+const realFiles = [...new Set([...fromGit, ...fromDisk])]
 
 const src = readFileSync(IDX, 'utf8')
 const imports = [...src.matchAll(/import\s+\w+\s+from\s+'\.\/([^']+)'/g)].map((m) => m[1])
