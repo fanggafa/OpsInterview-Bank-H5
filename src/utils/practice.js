@@ -33,11 +33,23 @@ function byCategory(questions, category) {
 
 /**
  * 按练习模式过滤题目。
- * memorize 只保留简答题；practice 全保留。
+ *
+ * - practice（做题模式）：**只有选择题**
+ * - memorize（背题模式）：**只有简答题**
+ *
+ * 两个模式的题型互斥，不再有交集。用户要求：
+ * 「刷题模式改成全部为选择题，只有背题模式才是简答题」。
+ *
+ * 这样划分的道理：选择题「点一下就判对错」，是快节奏的做；
+ * 简答题要自己讲出来再对照答案自评，节奏慢，是背。
+ * 混在一个队列里，两种节奏会互相打断。
+ *
+ * 导出供复习赛复用（复习赛不走 buildQueue，但题型规则必须一致）。
  */
-function byStudyMode(questions, studyMode) {
-  if (normalizeStudyMode(studyMode) === 'memorize') return questions.filter((q) => isShort(q))
-  return questions.slice()
+export function byStudyMode(questions, studyMode) {
+  const list = Array.isArray(questions) ? questions : []
+  if (normalizeStudyMode(studyMode) === 'memorize') return list.filter((q) => isShort(q))
+  return list.filter((q) => !isShort(q))
 }
 
 /**
@@ -155,7 +167,7 @@ export function describeProgress(progress) {
   if (!progress) return null
   const modeLabel =
     progress.mode === 'random' ? '随机' : progress.mode === 'wrong' ? '错题' : '顺序'
-  const studyModeLabel = normalizeStudyMode(progress.studyMode) === 'memorize' ? '背题' : '刷题'
+  const studyModeLabel = normalizeStudyMode(progress.studyMode) === 'memorize' ? '背题' : '做题'
   return {
     category: progress.category || '全部题目',
     modeLabel,

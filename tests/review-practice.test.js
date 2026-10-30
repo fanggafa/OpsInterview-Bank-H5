@@ -22,19 +22,44 @@ import { REVIEW_SIZES, STATUS } from '@/utils/constants'
  * - 错题复习的题池就是错题本
  */
 
-const mk = (i, type = 'short', extra = {}) => ({
+/**
+ * 夹具：默认全部是选择题。
+ *
+ * 复习赛默认使用做题模式（practice），而该模式**只含选择题** ——
+ * 所以简答题会被 byStudyMode 过滤掉，题池就是空的。
+ * 需要验证「背题模式的复习」时用 SHORT_FIXTURE。
+ */
+const mk = (i, type = 'single', extra = {}) => ({
   id: i,
   type,
   category: 'Linux基础',
   difficulty: '中等',
   frequency: '高频',
   question: `题目 ${i}`,
-  answer: `答案 ${i}`,
+  answer: ['A'],
+  options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }],
+  explanation: '解析文本够长了吧',
   tags: ['t'],
   ...extra,
 })
 
 const FIXTURE = Array.from({ length: 20 }, (_, i) => mk(i + 1))
+/**
+ * 简答题夹具（用于背题模式的复习赛）。
+ *
+ * 注意简答题的 answer 必须是**字符串**（选择题才是 key 数组），
+ * 否则 PracticeView 会把数组传给 AnswerText，触发 prop 类型警告。
+ */
+const SHORT_FIXTURE = Array.from({ length: 20 }, (_, i) => ({
+  id: i + 1,
+  type: 'short',
+  category: 'Linux基础',
+  difficulty: '中等',
+  frequency: '高频',
+  question: `简答题 ${i + 1}`,
+  answer: `答案 ${i + 1}`,
+  tags: ['t'],
+}))
 
 function makeRouter() {
   return createRouter({
@@ -170,12 +195,20 @@ describe('复习赛 · 错题复习', () => {
   it('复习赛答对会累加连对计数（用于移出错题本）', async () => {
     study.markUnknown(1)
     const { wrapper } = await mountPractice({ review: 'wrong' })
-    // 简答题：点「会」
-    const know = wrapper.findAll('.actions__btn').find((b) => b.text() === '会')
-    await know.trigger('click')
+    // 做题模式的复习赛是单选题：点正确选项即判定
+    const option = wrapper.findAll('.option').find((o) => o.text().includes('a'))
+    await option.trigger('click')
     await flushPromises()
     expect(study.streakOf(1)).toBe(1)
     expect(study.isWrong(1)).toBe(true)
+  })
+
+  it('背题模式的复习赛只抽简答题', async () => {
+    bank.questions = SHORT_FIXTURE
+    const { wrapper } = await mountPractice({ review: 'daily', studyMode: 'memorize' })
+    // 简答题没有选项列表，且操作区是「不会/会」
+    expect(wrapper.findAll('.option')).toHaveLength(0)
+    expect(wrapper.findAll('.actions__btn')).toHaveLength(2)
   })
 })
 
@@ -188,13 +221,18 @@ describe('复习赛 · 完成态', () => {
       const { wrapper } = await mountPractice({ review: 'daily' })
       expect(wrapper.find('.ptop__count').text()).toContain('/ 2 题')
 
-      const know = () => wrapper.findAll('.actions__btn').find((b) => b.text() === '会')
-      await know().trigger('click')
-      await vi.advanceTimersByTimeAsync(400)
-      await wrapper.vm.$nextTick()
+      // 选择题：点正确选项 → 判定 → 点「完成本轮 / 下一题」
+      const answerOne = async () => {
+        const option = wrapper.findAll('.option')[0]
+        await option.trigger('click')
+        await wrapper.vm.$nextTick()
+        await wrapper.find('.actions__submit').trigger('click')
+        await vi.advanceTimersByTimeAsync(400)
+        await wrapper.vm.$nextTick()
+      }
 
-      await know().trigger('click')
-      await vi.advanceTimersByTimeAsync(400)
+      await answerOne()
+      await answerOne()
       await wrapper.vm.$nextTick()
 
       expect(wrapper.find('.done__title').text()).toBe('每日复习完成')

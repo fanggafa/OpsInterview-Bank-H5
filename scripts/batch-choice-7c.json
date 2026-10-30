@@ -1,0 +1,1577 @@
+[
+  {
+    "id": 2241,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "Kafka 里「分区（partition）」与「副本（replica）」的关系是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "一个分区可以有多个副本（1 个 leader + N 个 follower），副本是分区的冗余"
+      },
+      {
+        "key": "B",
+        "text": "一个副本包含多个分区，副本是数据的容器"
+      },
+      {
+        "key": "C",
+        "text": "分区与副本是两个独立的维度，互不相关"
+      },
+      {
+        "key": "D",
+        "text": "副本只存在于 ZooKeeper，不在 broker 上"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Kafka 的数据组织是「Topic → Partition → Replica」三层：Topic 是逻辑概念，Partition 是**并行与顺序的单位**（同一分区内有序），Replica 是分区的**冗余副本**（`replication-factor` 决定有几个）。**\n\n- 每个分区在任一时刻只有 1 个 **leader** 处理读写，其余是 **follower** 同步数据；\n- leader 挂掉后，由 ISR（同步中的副本）里选新 leader；\n- 副本数 ≤ broker 数，否则会有副本分不到 broker。\n\nB 把层级搞反了；C 错在副本必然依附于某个分区；D 错在副本就在 broker 上（ZooKeeper/KRaft 只存元数据）。\n\n运维要点：\n- `--describe` 能看到每个分区的 leader/replicas/isr；\n- **ISR 收缩**说明有副本同步跟不上（网络或磁盘慢）；\n- 副本数只决定「能容忍几台 broker 挂」，**不提升读吞吐**（只有 leader 提供读，除非用 follower 读特性）。\n\n案例：某 Topic `replication-factor=1`，一台 broker 磁盘故障直接丢数据；改成 3 副本 + `min.insync.replicas=2` 后才具备容错能力。",
+    "tags": [
+      "分区",
+      "副本",
+      "Kafka"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2242,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "消费者组（consumer group）的核心作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "组内消费者分摊分区（一条消息只被组内一个消费者消费），实现并行消费与水平扩展"
+      },
+      {
+        "key": "B",
+        "text": "让同一条消息被所有消费者都消费一次"
+      },
+      {
+        "key": "C",
+        "text": "给消息加密"
+      },
+      {
+        "key": "D",
+        "text": "自动清理过期消息"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**消费者组是 Kafka 实现「广播 vs 队列」两种语义的开关：**\n- **同一 group 内**：分区被瓜分，一条消息只被组内**一个**消费者处理 → 等价于「队列」语义，可水平扩展；\n- **不同 group**：各自独立消费全量消息 → 等价于「广播」语义（如同时给风控、报表、搜索建索引消费同一 Topic）。\n\nB 描述的是「不同 group」的效果，不是组内；C/D 与该机制无关。\n\n关键约束（高频考点）：\n1. **消费者数 ≤ 分区数**才有意义：8 个消费者 + 3 个分区 → 5 个消费者空转（`--describe` 里能看到闲置成员）；\n2. 扩容/缩容会触发 **rebalance**，期间消费会短暂停顿；\n3. 组内**分区分配策略**（`range`/`roundrobin`/`sticky`/`cooperative-sticky`）影响分配均匀度与 rebalance 抖动；\n4. `session.timeout.ms`/`heartbeat.interval.ms` 配不当会导致「假死成员」反复触发 rebalance。\n\n案例：某 Topic 只有 3 个分区，却起了 12 个消费者实例想提升吞吐 —— 结果 9 个实例纯空转；把分区扩到 12 后才真正并行。",
+    "tags": [
+      "consumer group",
+      "并行消费",
+      "rebalance"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2243,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "想查看某消费组的积压（LAG）情况，用哪个命令？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`kafka-consumer-groups.sh --describe --group <group>`"
+      },
+      {
+        "key": "B",
+        "text": "`kafka-topics.sh --list`"
+      },
+      {
+        "key": "C",
+        "text": "`kafka-console-producer.sh`"
+      },
+      {
+        "key": "D",
+        "text": "`kafka-run-class.sh kafka.tools.DumpLogSegments`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`--describe` 会按分区输出 `CURRENT-OFFSET`（已消费位点）、`LOG-END-OFFSET`（最新位点）与 `LAG`（差值），这是判断「积压多少」的标准方式。**\n\nLAG 的含义与解读：\n- LAG 稳定在小值 → 实时消费，正常；\n- LAG **持续增长** → 消费速度 < 生产速度（消费者不够、单条处理慢、或下游阻塞）；\n- LAG 突然为 0 且 `CURRENT-OFFSET` 被重置 → 可能发生了 **offset 重置**（`--reset-offsets` 或组被删）；\n- 某几个分区 LAG 特别大 → **分区倾斜**（key 设计不均或消费者分配不均）。\n\nB 只列 Topic；C 是生产工具；D 是查看日志段文件（排「消息到底写进文件没有」时有用）。\n\n配套排查：\n1. `--describe` 看 LAG 趋势；\n2. 消费者端看处理耗时与错误率（是否反复重试）；\n3. broker 侧看 `UnderReplicatedPartitions`、磁盘与网络；\n4. 必要时扩分区/扩消费者，但注意「分区数增加会破坏同键顺序」。\n\n案例：某消费组 LAG 从 5 万涨到 200 万，`--describe` 显示只有 2 个分区的 LAG 特别大（key 是租户 ID，大客户集中）；把分区键加随机后缀后分布均匀。",
+    "tags": [
+      "LAG",
+      "consumer-groups",
+      "积压"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2244,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "`acks=all`（或 `-1`）的含义是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "所有 ISR 副本都写入成功后才算发送成功"
+      },
+      {
+        "key": "B",
+        "text": "只要 leader 收到就算成功"
+      },
+      {
+        "key": "C",
+        "text": "不需要任何确认"
+      },
+      {
+        "key": "D",
+        "text": "只等一个 follower 确认"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`acks` 决定生产者「等多少确认才算发送成功」，三档要分清：**\n| 值 | 含义 | 可靠性 | 性能 |\n|---|---|---|---|\n| `0` | 不等确认（fire-and-forget） | 最低（可能静默丢失） | 最高 |\n| `1` | leader 落盘即返回 | 中（leader 挂且未同步时丢） | 中 |\n| `all`/`-1` | **所有 ISR** 确认 | 最高 | 最低 |\n\n所以 B 是 `1`；C 是 `0`；D 没有一个「只等一个」的档（`acks` 是「全部 ISR」，不是「任意一个」）。\n\n**关键联动（必考）**：`acks=all` 必须配合 `min.insync.replicas`（broker 侧）才有意义。\n- 若 `min.insync.replicas=1`，`acks=all` 实际上**退化**为「只要 leader 写成功」；\n- 常见配置 `replication-factor=3` + `min.insync.replicas=2` + `acks=all`，可容忍 1 台 broker 故障；\n- 当可用 ISR < `min.insync.replicas` 时，broker 会**拒绝写入**（`NOT_ENOUGH_REPLICAS`），这是「故意降级为不可写」以保一致性。\n\n案例：某团队用 `acks=all` 但 `min.insync.replicas` 仍是默认 1，broker 挂一台后仍丢消息；三者配齐后才真正可靠。",
+    "tags": [
+      "acks",
+      "min.insync.replicas",
+      "可靠性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2245,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 中保证「同一 key 的消息有序」的前提是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "相同 key 被路由到同一分区，且该分区只被一个消费者消费"
+      },
+      {
+        "key": "B",
+        "text": "Topic 只设 1 个副本"
+      },
+      {
+        "key": "C",
+        "text": "消费者开多线程即可"
+      },
+      {
+        "key": "D",
+        "text": "生产者设置 `acks=0`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Kafka 只保证「分区内有序」，所以「同 key 有序」要靠两件事：写入端按 key 哈希到同一分区 + 消费端对该分区单线程处理。**\n\n拆开看：\n1. **生产者侧**：默认分区器对 `key` 做 murmur2 哈希 → 同 key 必落同分区；**不设 key 时**会轮询/粘性分区，顺序无保证；\n2. **分区数**：增加分区后，同 key 的哈希结果可能变化（`partitions` 参与哈希），**历史消息与新消息可能落在不同分区** → 顺序被破坏；\n3. **消费端**：一个分区只能被组内一个消费者处理，但**消费者内部开多线程并行处理**就会乱序 —— 要按 key 分发给同一线程（或使用支持「按 key 串行」的框架）。\n\nB 错（副本数与顺序无关）；C 恰恰会**破坏**顺序；D 与顺序无关（只影响可靠性）。\n\n实践要点：\n- 需要严格顺序的场景（订单状态流转、账务）应「按业务主键分区 + 单线程/按 key 串行」；\n- 极端场景可用**单分区**（顺序最强，但吞吐受限）；\n- 别在顺序场景随意扩分区（这是最常见的隐性事故）。\n\n案例：某订单状态 Topic 从 6 分区扩到 24 分区后，出现「先发货后付款」的乱序事件；回滚分区数并对消费端做按订单号串行才修复。",
+    "tags": [
+      "顺序性",
+      "分区",
+      "consumer"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2246,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "RabbitMQ 里「交换机（exchange）」的作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "接收生产者消息并按路由规则（direct/fanout/topic/headers）投递到一个或多个队列"
+      },
+      {
+        "key": "B",
+        "text": "长期存储消息"
+      },
+      {
+        "key": "C",
+        "text": "直接给消费者推送消息（不经队列）"
+      },
+      {
+        "key": "D",
+        "text": "负责副本同步"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**RabbitMQ 的核心模型是「Producer → Exchange → (routing) → Queue → Consumer」，交换机只做路由、**不存消息**。**\n\n四种常用类型：\n| 类型 | 路由规则 |\n|---|---|\n| `direct` | 按 routing key 精确匹配 |\n| `fanout` | 广播到所有绑定队列 |\n| `topic` | 按通配符模式（`*` 单词、`#` 多个） |\n| `headers` | 按消息头字段匹配 |\n\nB 错在交换机不存储（消息存在 Queue 里）；C 错在推送由队列→消费者完成；D 与副本无关（RabbitMQ 集群/镜像队列是另一套）。\n\n**高频坑**：\n1. **交换机存在但没有绑定队列**时，消息会被**丢弃**（生产端看不到错误，除非开启 `mandatory` + 处理 `Return`）；\n2. 队列不存在（且未声明）时同样丢；\n3. 声明交换机与队列要一致（`durable`/`autoDelete`/参数），不一致会报 `PRECONDITION_FAILED`。\n\n排查链路：`rabbitmqctl list_exchanges` → `list_bindings` → `list_queues name messages consumers` 看队列是否有消息与消费者。\n\n案例：某次上线把 routing key 改错，消息全进「无绑定」的交换机，生产端无报错、消费端一直空闲；开启 `mandatory` 并记录未路由消息后才暴露问题。",
+    "tags": [
+      "exchange",
+      "路由",
+      "RabbitMQ"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2247,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "RabbitMQ 的 `ack` 与 `nack/reject` 分别表示什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`ack` 确认处理成功（消息可删除）；`nack`/`reject` 表示处理失败，可要求重回队列或丢弃"
+      },
+      {
+        "key": "B",
+        "text": "`ack` 表示拒收，`nack` 表示接收"
+      },
+      {
+        "key": "C",
+        "text": "两者都表示删除消息"
+      },
+      {
+        "key": "D",
+        "text": "`ack` 只对交换机有效"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**手动确认模式下，消费者处理完必须显式 `ack`，否则消息一直处于 unacked 状态、队列会堆积；失败则 `nack`（或 `reject`）并决定 `requeue`。**\n\n关键区别：\n- `reject` 只能拒单条，`nack` 可带 `multiple=true` 批量拒；\n- `requeue=true` 会把消息**重新入队**（它可能立刻被同一个消费者再取到，形成**死循环**）；\n- `requeue=false` 则按配置进入死信交换机（DLX）或直接丢弃。\n\nB 完全反了；C 错（nack 不等于删除）；D 错（ack 是消费者与队列之间的事）。\n\n高频故障与治理：\n1. **忘记 ack** → `unacked` 一直涨，队列看似有消费者却不消费；`rabbitmqctl list_queues name messages_unacknowledged` 能看出来；\n2. **反复 requeue** → CPU 与日志暴涨，必须配合「重试次数上限 + 死信队列」；\n3. **自动 ack（`autoAck=true`）** 会在投递即删除，进程崩溃就丢消息 —— 生产不要用。\n\n案例：某消费端抛异常后 `nack requeue=true`，消息瞬间被重投数千次，打满 CPU；改为「重试 3 次后进入死信队列」后稳定。",
+    "tags": [
+      "ack",
+      "nack",
+      "死信队列"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2248,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "「死信队列（DLQ / DLX）」通常用来解决什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "收集处理失败、超时未被 ack、或被拒绝的消息，便于人工排查与重放，避免无限重试"
+      },
+      {
+        "key": "B",
+        "text": "提高消息吞吐"
+      },
+      {
+        "key": "C",
+        "text": "替代备份"
+      },
+      {
+        "key": "D",
+        "text": "压缩消息体积"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**死信（dead letter）是「无法正常消费」的消息，通过 DLX 转投到专门的队列，把「失败消息」与「正常消息」隔离，避免它们阻塞主队列或无限重试。**\n\nRabbitMQ 中消息进入死信的条件：\n1. 被 `basic.reject`/`nack` 且 `requeue=false`；\n2. 超过 `x-message-ttl` 未消费；\n3. 队列达到最大长度（`x-max-length`）被挤出。\n\nKafka 没有内置 DLQ，通常靠「重试 Topic + 人工/定时重放」或框架（如 Spring Kafka 的 `DeadLetterPublishingRecoverer`）实现。\n\nB/C/D 都不是它的目的（它不提升吞吐、不是备份、不压缩）。\n\n运维价值（重点）：\n- **可观测**：DLQ 的堆积量是「业务失败率」的直接指标，应设告警；\n- **可恢复**：排障后能把 DLQ 消息重放回主队列（要注意幂等）；\n- **防雪崩**：没有 DLQ 时「失败消息无限 requeue」会拖垮消费者与 broker。\n\n案例：某支付回调消费者因下游接口超时反复 requeue，把 3 个 broker 打满；加 DLX + 重试上限（3 次）后，失败消息进 DLQ，人工修复下游后批量重放，业务零丢失。",
+    "tags": [
+      "死信队列",
+      "DLX",
+      "重试"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2249,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "「至少一次（at-least-once）」投递语义意味着业务要做什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "消费端必须实现幂等，因为同一条消息可能被处理多次"
+      },
+      {
+        "key": "B",
+        "text": "消息一定会丢，需做补偿"
+      },
+      {
+        "key": "C",
+        "text": "消息只会投递一次，无需额外处理"
+      },
+      {
+        "key": "D",
+        "text": "必须关掉重试"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**三种投递语义：**\n| 语义 | 保证 | 代价 |\n|---|---|---|\n| at-most-once | 最多一次（可能丢） | 简单，但不适合交易 |\n| **at-least-once** | 至少一次（**可能重复**） | 需幂等 |\n| exactly-once | 恰好一次 | 实现复杂、性能代价高 |\n\n绝大多数 MQ 的默认/推荐配置都是 at-least-once（Kafka `acks=all` + 消费后提交 offset；RabbitMQ 手动 ack）。**重复的来源**：\n- 消费成功后、提交 offset 前崩溃 → 重启后重投；\n- 网络超时导致 broker 认为未消费成功；\n- 消费者 rebalance 时未提交的 offset 被回退。\n\n所以幂等是**业务侧必须承担的责任**，常见做法：\n1. **唯一键去重**（数据库唯一索引，插入冲突即忽略）；\n2. **状态机校验**（只在「待支付」才能置「已支付」，重复消息直接跳过）；\n3. 去重表/Redis `SETNX`（注意过期与容量）。\n\nB 错在至少一次不保证不丢（异常场景仍可能丢），但语义重点是「可能重复」；C 是 exactly-once；D 关掉重试只会增加丢失风险。\n\n案例：某账务消费者未做幂等，重平衡后重复处理导致用户被扣两次款；加「唯一流水号 + 唯一索引」后解决。",
+    "tags": [
+      "投递语义",
+      "幂等",
+      "at-least-once"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2250,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 的 offset 提交方式 `auto.commit` 与手动提交，关键差别？",
+    "options": [
+      {
+        "key": "A",
+        "text": "自动提交按固定间隔提交，可能在「未真正处理完」就提交导致丢消息；手动提交可精确控制"
+      },
+      {
+        "key": "B",
+        "text": "自动提交更可靠"
+      },
+      {
+        "key": "C",
+        "text": "手动提交会丢消息"
+      },
+      {
+        "key": "D",
+        "text": "两者完全等价"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`enable.auto.commit=true`（默认）会按 `auto.commit.interval.ms`（默认 5s）周期提交「已拉取到的最大 offset」，而不是「已处理完的 offset」——若消费者在处理期间崩溃，重启后从上次提交点开始，**已拉取未处理的消息会丢**（相对于业务而言）。**\n\n手动提交（`enable.auto.commit=false` + `commitSync`/`commitAsync`）能精确控制「处理完再提交」，语义清晰。但要注意：\n- `commitSync` 会阻塞，适合关键业务；`commitAsync` 更快但不保证最后一次提交成功（需在关闭时补一次同步提交）；\n- 批处理时「整批处理完再提交」；\n- 提交失败要重试，否则会重复消费（at-least-once）。\n\nB 恰恰相反；C 错在「会不会丢」取决于提交点与处理先后，不是提交方式本身；D 错在语义差异很大。\n\n典型配置组合（生产推荐）：`enable.auto.commit=false` + `acks=all` + `min.insync.replicas=2` + 业务幂等。\n\n案例：某消费者开启自动提交，处理一条消息要 3s，而提交间隔 5s —— 崩溃时最多丢 5s 内已拉取未处理的消息；改为手动提交后「丢」变成「可能重复」，再靠幂等兜住。",
+    "tags": [
+      "offset",
+      "auto.commit",
+      "手动提交"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2251,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Topic 的 `retention.ms` 与 `cleanup.policy` 分别控制什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`retention.ms` 控制消息保留时长；`cleanup.policy` 决定按时间/大小删除（delete）还是按 key 压缩（compact）"
+      },
+      {
+        "key": "B",
+        "text": "两者都控制分区数"
+      },
+      {
+        "key": "C",
+        "text": "`retention.ms` 控制副本数"
+      },
+      {
+        "key": "D",
+        "text": "`cleanup.policy` 控制压缩算法"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**这两个是 Kafka 数据生命周期的核心配置：**\n- `retention.ms`（默认 7 天）与 `retention.bytes`（默认 -1 不限）决定「消息能留多久/多大」，超出的段文件会被删除；\n- `cleanup.policy`：\n  - `delete`（默认）：按时间/大小删除整段；\n  - `compact`：按 key 保留**最新一条**（适合「状态类」Topic，如 `__consumer_offsets`、配置同步）；\n  - `compact,delete`：两者兼有。\n\nB/C/D 都不对（分区与副本是另一组配置，压缩指 `compression.type`）。\n\n实践要点：\n- **compact** 的 Topic 会持续后台合并，注意磁盘与 IO；\n- `retention.ms` 太小会导致「下游消费慢于过期速度 → 直接丢消息」，必须让保留时间 ≥ 最长消费延迟；\n- 还有 `segment.ms`/`segment.bytes`（切段粒度）会影响删除的精细度。\n\n排查：`kafka-configs.sh --describe --entity-type topics --entity-name <t>` 看实际生效值；`kafka-log-dirs.sh` 看各 broker 的磁盘占用。\n\n案例：某 Topic 保留 24h，但下游批量任务每 36h 跑一次，导致「每次跑都缺数据」；调大到 72h 后正常。",
+    "tags": [
+      "retention",
+      "cleanup.policy",
+      "生命周期"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2252,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "RabbitMQ 队列的 `durable` 与消息的 `persistent` 是否等价？",
+    "options": [
+      {
+        "key": "A",
+        "text": "不等价：`durable` 是队列定义持久化，`persistent` 是消息落盘；两者都要有才真正不丢"
+      },
+      {
+        "key": "B",
+        "text": "完全等价"
+      },
+      {
+        "key": "C",
+        "text": "只要 durable 就够了"
+      },
+      {
+        "key": "D",
+        "text": "只要 persistent 就够了"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**两者是不同层面的持久化，必须成对使用：**\n- `durable=true`：**队列元数据**在重启后还在（队列不会被删）；\n- `delivery_mode=2`（persistent）：**消息**写入磁盘（重启后消息还在）；\n\n只开 `durable`：队列还在，但消息在内存里，重启即丢；\n只开 `persistent`：消息落盘了，但队列定义没了 → 重启后**队列消失**，落盘的消息也访问不到（实际效果也是丢）。\n\nB/C/D 都错，这是 RabbitMQ 面试的经典陷阱。\n\n配套要点：\n1. **持久化不等于不丢**：RabbitMQ 的确认是「写入内存 + 定期落盘」，`publisher confirms` 也只能保证 broker 收到；真正稳妥要用「持久队列 + 持久消息 + publisher confirm + 手动 ack」组合；\n2. **性能代价**：persistent 会显著降低吞吐（磁盘写），高吞吐场景常改成「非持久 + 镜像/多副本」权衡；\n3. **镜像队列/Quorum Queue**（3.8+ 推荐 Quorum）提供副本级可靠，比单纯持久化更强。\n\n案例：某次重启后消息全丢，排查发现队列是 durable 但生产者没设 `delivery_mode=2`；两者配齐后跨重启仍有消息（并补 confirm 与手动 ack）。",
+    "tags": [
+      "durable",
+      "persistent",
+      "持久化"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2253,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "生产端「发送成功但下游没收到」，最先要核对什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "消息是否真的进了预期的 Topic/交换机与队列（路由、绑定、Topic 名与分区）"
+      },
+      {
+        "key": "B",
+        "text": "磁盘是否满了"
+      },
+      {
+        "key": "C",
+        "text": "GC 参数"
+      },
+      {
+        "key": "D",
+        "text": "网络带宽"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「发送成功」只说明「broker/交换机接收成功」，不说明「路由到了有人消费的队列」。所以先核对路由链路：**\n\nKafka：\n- Topic 名是否拼对（大小写、环境前缀）；\n- 是否发到了**分区**而消费组读的是另一个 Topic；\n- 消费端 LAG 是否在涨（`kafka-consumer-groups --describe`）；\n- 是否有 **retention 到期**（消息已过期被删）。\n\nRabbitMQ：\n- 交换机 → 绑定 → 队列（`list_bindings`）；\n- 交换机**没有绑定队列**时消息被丢弃（这是最常见的「静默丢失」）；\n- 队列是否有消费者（`list_queues consumers`）；\n- routing key 是否与绑定规则匹配（尤其 `topic` 通配符）。\n\nB/C/D 更像是「性能/稳定性」问题，通常伴随报错或延迟，而不是「静默不投递」。\n\n排查链路（建议按顺序）：确认客户端连的集群/环境 → 核对 Topic/交换机与路由 → 看队列积压与消费者数 → 打开生产端 `mandatory`/消费端日志 → 最后才怀疑权限（ACL 拒绝也会表现成「发不进去」）。\n\n案例：某次发布把 routing key 从 `order.created` 改成 `order_create`，topic 交换机规则不匹配，消息全部未路由、生产端无报错，消费端空转 2 小时。",
+    "tags": [
+      "路由",
+      "丢消息",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2254,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 的 `replication-factor` 设为 1 的风险是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "没有副本冗余：broker 磁盘/节点故障会直接丢分区数据且不可用"
+      },
+      {
+        "key": "B",
+        "text": "吞吐会下降"
+      },
+      {
+        "key": "C",
+        "text": "消息会自动重复"
+      },
+      {
+        "key": "D",
+        "text": "无法再增加分区"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`replication-factor=1` 意味着每个分区只有 leader、没有 follower：一旦那台 broker 不可用，分区就**不可读也不可写**，且磁盘损坏即永久丢数据。**\n\n- B 错：副本少反而写放大更小（吞吐可能更高），可靠性才是问题；\n- C 错：与重复无关；\n- D 错：分区数可以增加（与此无关）。\n\n生产最小配置：\n- **`replication-factor=3`**（3 broker 起）+ **`min.insync.replicas=2`** + 生产者 `acks=all`；\n- 这样能容忍 1 台 broker 故障且不丢消息；\n- 副本数不能超过 broker 数（否则有副本无处安放，创建 Topic 会失败或一直 `replication-factor` 报错）。\n\n排查信号：\n- `UnderReplicatedPartitions > 0`：有分区副本不足；\n- `OfflinePartitionsCount > 0`：分区不可用（通常就是副本不足/leader 不可选）；\n- `kafka-topics --describe` 的 `Isr` 列表比 `Replicas` 短 → ISR 收缩。\n\n案例：某 Topic 建 Topic 时用了默认 `replication-factor=1`（或脚本写死 1），一次磁盘故障丢了一个分区的全部数据，且期间该分区业务不可用 40 分钟。",
+    "tags": [
+      "replication-factor",
+      "副本",
+      "可用性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2255,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "RabbitMQ 的「镜像队列」与「Quorum Queue」主要区别是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "镜像队列把消息复制到所有节点（经典模式，扩展性差）；Quorum Queue 基于 Raft，多数派确认、更适合大规模"
+      },
+      {
+        "key": "B",
+        "text": "两者完全一样"
+      },
+      {
+        "key": "C",
+        "text": "Quorum Queue 不做复制"
+      },
+      {
+        "key": "D",
+        "text": "镜像队列只支持 Kafka"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**这是 RabbitMQ 高可用的两代方案：**\n\n| | 镜像队列（classic mirror） | Quorum Queue（3.8+） |\n|---|---|---|\n| 复制模型 | 全量镜像到多个节点，主节点处理 | **Raft 共识，多数派确认** |\n| 扩展性 | 队列多/节点多时性能衰减明显 | 更适合大规模与多队列 |\n| 一致性 | 弱（切换可能丢少量消息） | 强（基于 Raft） |\n| 内存 | 每节点都存全量 | 也存全量但更省管理开销 |\n\n所以 B 错（差异很大）；C 错（Quorum 必做复制）；D 错（与 Kafka 无关）。\n\n选择建议：\n- **新集群优先 Quorum Queue**（官方推荐，一致性与可运维性更好）；\n- 镜像队列在 3.9+ 已标记为「将废弃」，大集群迁移是趋势；\n- 注意 Quorum Queue 的**性能与延迟**比 classic 略高（Raft 落盘与多数派），极端高吞吐场景要压测。\n\n排查要点：`rabbitmqctl list_queues name type` 能看队列类型；Quorum 的健康用 `rabbitmqctl list_queues name members` 看成员与 leader。\n\n案例：某集群用了上百个镜像队列，节点间全量复制导致内存与网络压力巨大；迁移到 Quorum Queue 并减少队列数量后稳定。",
+    "tags": [
+      "镜像队列",
+      "Quorum",
+      "高可用"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2256,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 的 broker 磁盘「写满」后会发生什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "写入失败、分区可能变为不可用（`OfflinePartitions`），消费与生产都会受影响"
+      },
+      {
+        "key": "B",
+        "text": "自动清理所有消息，正常继续"
+      },
+      {
+        "key": "C",
+        "text": "只影响消费不影响生产"
+      },
+      {
+        "key": "D",
+        "text": "Kafka 会自动扩容磁盘"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**磁盘是 Kafka 的硬约束：写满后新消息追加会失败，日志段无法滚动，分区可能进入 offline，生产者报错（`KafkaStorageException`/`NOT_ENOUGH_REPLICAS`），消费端也可能因 ISR 收缩受影响。**\n\n- B 错：`retention` 是按时间/大小删段，不会因为「满」立刻清空；且段文件被删除也有前提（不能有活跃消费需要的）。\n- C 错：生产先挂，消费随后（leader 不可用/ISR 不足）。\n- D 错：没有自动扩容能力。\n\n预防与治理：\n1. **容量规划**：按「日写入量 × 保留天数 × 副本数 × 余量」估算，并留 20%~30% 缓冲；\n2. **监控**：`kafka-log-dirs.sh --describe` 看各 broker 占用；`UnderReplicatedPartitions` 与 `OfflinePartitions` 告警；\n3. **策略**：调小 `retention.ms`/`retention.bytes`，或加磁盘/加 broker，并触发分区迁移（`kafka-reassign-partitions.sh`）；\n4. **隔离**：把大流量 Topic 分到单独集群，避免一个 Topic 打满全集群。\n\n案例：某集群某 Topic 日志保留 30 天，双十一写入翻 5 倍直接把 3 台 broker 写满，分区 offline 导致下游结算延迟；改成按大小保留（`retention.bytes`）+ 磁盘水位告警后可控。",
+    "tags": [
+      "磁盘",
+      "OfflinePartitions",
+      "容量"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2257,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "生产者「重试」与「幂等」的关系，正确的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "重试可能导致重复投递，所以要么开生产者幂等（`enable.idempotence=true`），要么消费端做幂等"
+      },
+      {
+        "key": "B",
+        "text": "开启重试一定不会重复"
+      },
+      {
+        "key": "C",
+        "text": "幂等只能由消费者做，生产者做不到"
+      },
+      {
+        "key": "D",
+        "text": "重试会丢消息"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**重试的本质是「不确定上次是否成功 → 再发一次」，所以**天然可能重复**；安全性要靠幂等来兜。**\n\nKafka 的两层幂等：\n1. **生产者幂等**（`enable.idempotence=true`，0.11+）：靠 `producer id + sequence number` 让 broker 丢弃重复的同序号消息，防止「重试导致重复」；\n2. **消费端幂等**：跨进程/跨重启的去重（唯一索引、状态机），因为生产者幂等**只管单次会话内**的重试，不解决「已消费未提交 offset 就崩溃」的重复。\n\nB 错（不开幂等时重试就会重复）；C 错（生产者幂等是有的）；D 错（重试是防丢的手段，本身不丢）。\n\n生产推荐组合：\n- `enable.idempotence=true` + `acks=all` + `retries` 适度 + `delivery.timeout.ms` 合理；\n- 业务侧仍做幂等（这是 at-least-once 的根本要求）；\n- 想「恰好一次」还要配合事务（`transactional.id`）与消费端事务，代价较高。\n\n案例：某服务网络抖动触发批量重试，重复订单被创建了两次（未开幂等、消费端也无去重）；开启生产者幂等 + 订单唯一索引后消除。",
+    "tags": [
+      "幂等",
+      "重试",
+      "enable.idempotence"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2258,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "RabbitMQ 的 `prefetch`（`basic_qos`）设得过大会怎样？",
+    "options": [
+      {
+        "key": "A",
+        "text": "单个消费者一次拉取过多消息，忙不过来时其他消费者闲着，且未 ack 消息大量堆积、内存压力大"
+      },
+      {
+        "key": "B",
+        "text": "会让消息被自动删除"
+      },
+      {
+        "key": "C",
+        "text": "只影响交换机路由"
+      },
+      {
+        "key": "D",
+        "text": "没有任何影响"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`prefetch_count` 是「一个消费者最多同时持有多少条未 ack 的消息」，它决定**负载在消费者之间如何分摊**：**\n- 设太大（如 1000）：先抢到消息的消费者囤积大量未处理消息，**其他消费者空闲**，整体吞吐反而下降，且未 ack 消息占内存（`messages_unacknowledged` 上涨）；\n- 设太小（如 1）：每条都要等 ack 后再取下一条，**网络往返开销变大**，吞吐下降；\n- 经验值：按「单条处理耗时 × 期望并发」估算，常用 10~100，并压测确认。\n\nB/C/D 都不对（与删除、路由无关）。\n\n排查：`rabbitmqctl list_queues name messages messages_unacknowledged consumers` 看未确认量与消费者数；若「有多个消费者但 unacked 集中在一个」，就是 prefetch 或处理不均问题。\n\n注意：**自动 ack 模式下 prefetch 不生效**（消息投递即删）；必须用手动 ack 才能发挥它的削峰作用。\n\n案例：某消费者 prefetch=500，处理一条要 200ms，结果它囤了 500 条、其他 3 个消费者空闲，队列积压反而升高；调到 20 后负载均衡、积压下降。",
+    "tags": [
+      "prefetch",
+      "basic_qos",
+      "负载均衡"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2259,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 里「消息丢失」的典型三种场景是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "生产端未确认成功（`acks=0/1`）、broker 副本不足时故障、消费端先提交 offset 后处理（处理失败但 offset 已提交）"
+      },
+      {
+        "key": "B",
+        "text": "只有磁盘损坏才会丢"
+      },
+      {
+        "key": "C",
+        "text": "只有消费端会丢"
+      },
+      {
+        "key": "D",
+        "text": "Kafka 保证不丢，无需考虑"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**丢消息发生在链路的三个位置，逐段看：**\n\n1. **生产端**：`acks=0`（不等确认）或 `acks=1`（leader 挂了且未同步）；网络超时未重试也等于丢；\n2. **broker 端**：`replication-factor=1` 或 `min.insync.replicas` 太小，leader 故障时数据随节点一起丢；\n3. **消费端**：**先提交 offset 再处理业务**（处理失败/崩溃时消息已被「标记为消费」）；或自动提交在未处理完时提交。\n\nB/C 都太绝对；D 是彻底的误解（Kafka 只保证「按配置尽力」，不保证绝对不丢）。\n\n对应的加固：\n- 生产：`acks=all` + `enable.idempotence` + 合理重试；\n- broker：`replication-factor=3` + `min.insync.replicas=2`；\n- 消费：**先处理成功再手动提交 offset**，批量场景整批成功再提交；\n- 全链路：幂等 + 对账（最终一致性兜底，这是真实生产里最后一道防线）。\n\n案例：某消费端「先 commitSync 再调下游」，下游超时后消息被判为已消费，账少记 3 笔；改成「处理成功再提交 + 失败进 DLQ」后修复。",
+    "tags": [
+      "丢消息",
+      "acks",
+      "offset"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2260,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Topic 分区数增加后，会对「按 key 的消费顺序」产生什么影响？",
+    "options": [
+      {
+        "key": "A",
+        "text": "同一 key 可能因哈希结果变化而落到不同分区，导致顺序不再保证"
+      },
+      {
+        "key": "B",
+        "text": "没有影响，Kafka 会自动保持同 key 同分区"
+      },
+      {
+        "key": "C",
+        "text": "会增加副本数"
+      },
+      {
+        "key": "D",
+        "text": "会重置所有 offset"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Kafka 的分区选择是 `hash(key) % partitions`（murmur2），`partitions` 变了，同 key 的落点就可能变化 —— 于是「历史消息在旧分区、新消息在新分区」，跨分区的顺序自然无法保证。**\n\n- B 错：有 key 才保证「同分区」，但扩分区会破坏映射的稳定性；\n- C 错：分区数与副本数是独立配置；\n- D 错：扩分区不改 offset（但**消费端的分配会 rebalance**）。\n\n实践守则：\n1. **顺序敏感的业务不要随意扩分区**；确需扩时，接受「切换期间可能乱序」，或用「双写过渡 + 下游按业务键重排」；\n2. 顺序场景也可以改用「消费端按 key 排序（如按业务 ID 聚合后再处理）」；\n3. 若必须极高顺序，用单分区 Topic（吞吐受限）。\n\n案例：某订单状态 Topic 从 12 分区扩到 36 分区，同一订单的「创建/支付」事件跨分区，下游出现「先发货后付款」；最终回滚分区数并引入按订单号串行消费。",
+    "tags": [
+      "分区数",
+      "顺序性",
+      "哈希"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2261,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "`kafka-reassign-partitions.sh` 的典型用途是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "重新分配分区的副本所在 broker（扩容/缩容或均衡磁盘时用）"
+      },
+      {
+        "key": "B",
+        "text": "修改 Topic 的保留时间"
+      },
+      {
+        "key": "C",
+        "text": "重置消费组 offset"
+      },
+      {
+        "key": "D",
+        "text": "查看消费者 LAG"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**这是「副本迁移工具」：先生成迁移计划（JSON 描述每个分区的副本分布），再执行，触发 broker 间的数据搬迁。**典型场景：\n1. 新增 broker 后把部分分区迁过去（**Kafka 不会自动均衡存量分区**）；\n2. 某台 broker 磁盘快满，把分区挪走；\n3. 下线 broker 前把分区迁空。\n\nB 是 `kafka-configs.sh --alter`；C 是 `kafka-consumer-groups.sh --reset-offsets`；D 是 `--describe`。\n\n操作要点（很容易出事故）：\n1. 迁移会**大量占用网络与磁盘 IO**，要限速（`--throttle`）并在低峰做；\n2. 计划里要包含 `replicas` 与 `log_dirs`，用 `--generate` 生成再 `--execute`；\n3. 迁移期间关注 `UnderReplicatedPartitions` 与 ISR；\n4. `--verify` 确认完成，`--cancel` 可中止（注意别在关键阶段硬停）。\n\n案例：新增 3 台 broker 后没做 reassign，新 broker 空闲、旧 broker 磁盘仍满；用 `--generate` 生成计划并限速 50MB/s 迁移后均衡。",
+    "tags": [
+      "reassign",
+      "副本迁移",
+      "均衡"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2262,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 的「vhost」是什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "逻辑隔离单元：交换机、队列、权限都在 vhost 内独立，不同业务互不影响"
+      },
+      {
+        "key": "B",
+        "text": "一台物理机"
+      },
+      {
+        "key": "C",
+        "text": "一个消费者的名字"
+      },
+      {
+        "key": "D",
+        "text": "一种消息格式"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**vhost（virtual host）是 RabbitMQ 的「逻辑租户/命名空间」：每个 vhost 里有自己的交换机、队列、绑定与权限，名字可以重复（不同 vhost 内同名队列互不冲突）。**\n\n- 默认只有 `/`；\n- 客户端连接时要指定 `vhost`（URI 里的路径，如 `amqp://host:5672/prod`）；\n- 用户权限按 vhost 授予（`rabbitmqctl set_permissions -p <vhost> ...`）。\n\nB/C/D 都不对。\n\n运维用途：\n1. **环境隔离**（prod/staging）或按业务线拆分；\n2. 资源使用大户单独 vhost，便于统计与限流；\n3. 迁移/下线某业务时整 vhost 清理更干净。\n\n排查常见坑：**连错 vhost** 是最常见的「队列明明有消息，消费者却收不到」——`rabbitmqctl list_queues -p <vhost>` 与客户端配置要一致；权限没给到该 vhost 会报 `ACCESS_REFUSED`。\n\n案例：某上线后消费端一直空闲，最后发现连接串写的是 `amqp://user:pass@host:5672/`（vhost 为 `/`），而队列在 `prod` vhost 下。",
+    "tags": [
+      "vhost",
+      "隔离",
+      "RabbitMQ"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 2263,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 的 `__consumer_offsets` Topic 是做什么的？",
+    "options": [
+      {
+        "key": "A",
+        "text": "存储各消费组的 offset 提交记录（compact 策略，按 group+topic+partition 保留最新值）"
+      },
+      {
+        "key": "B",
+        "text": "存放 broker 的配置"
+      },
+      {
+        "key": "C",
+        "text": "存放 Topic 的元数据"
+      },
+      {
+        "key": "D",
+        "text": "存放日志文件"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`__consumer_offsets` 是 Kafka 内部 Topic（默认 50 个分区），用来持久化「消费组提交的 offset」，这样消费者重启/rebalance 后能接着消费。**\n\n- 它用 **`cleanup.policy=compact`**（按 key 保留最新），所以不会无限增长；\n- key 大致是 `group + topic + partition`，value 是 offset 与元数据；\n- 早期（0.9 之前）offset 存在 ZooKeeper，性能差且易成为瓶颈（`/consumers` 节点）。\n\nB/C/D 都不对（元数据在 ZooKeeper/KRaft，配置在 `server.properties`/`kafka-configs`）。\n\n运维要点：\n1. **不要手动删**这个 Topic（会丢全部消费组的位点）；\n2. 它的分区数默认 50，组很多时可能成为瓶颈（`offsets.topic.num.partitions` 可在创建前调整）；\n3. `kafka-consumer-groups --describe` 读的就是它；\n4. 若发现「消费组 offset 被重置」，先查是否有人执行了 `--reset-offsets` 或组被删除（`--delete`）。\n\n案例：某次误删了 `__consumer_offsets`，所有消费组重启后从 `earliest` 或 `latest` 重置，造成大规模重复/漏消费 —— 该 Topic 必须有严格的操作审批。",
+    "tags": [
+      "__consumer_offsets",
+      "offset",
+      "内部Topic"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2264,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "消费者报 `GroupCoordinatorNotAvailable` / 频繁 rebalance，常见原因？",
+    "options": [
+      {
+        "key": "A",
+        "text": "心跳/会话超时配置不当、处理单条耗时超过 `max.poll.interval.ms`、或协调器所在 broker 异常"
+      },
+      {
+        "key": "B",
+        "text": "磁盘写满"
+      },
+      {
+        "key": "C",
+        "text": "Topic 名太长"
+      },
+      {
+        "key": "D",
+        "text": "生产者 `acks=0`"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**rebalance 的触发条件有四类：成员加入/离开、会话超时、订阅变化、以及**消费者处理太慢被踢出组**。**\n\n`GroupCoordinatorNotAvailable` 通常指「协调器不可用/正在迁移」，常伴随以下配置问题：\n1. `session.timeout.ms`（默认 45s）太小 + 网络抖动 → 成员被判定死亡；\n2. `heartbeat.interval.ms` 太大（应约为 session 的 1/3）；\n3. **`max.poll.interval.ms`（默认 5min）**：单次 `poll` 后的处理时间超过它 → 消费者被移出组（这是「处理慢导致反复 rebalance」的头号原因）；\n4. 协调器所在 broker 重启/负载高。\n\nB/C/D 都不是直接原因（磁盘满会导致写入失败；Topic 名长度无关；`acks` 属生产端）。\n\n排查与治理：\n- 看消费日志里的 `Attempt to heartbeat failed`、`Member ... has left the group`；\n- 降单批处理量（`max.poll.records`）、异步化耗时操作，或调大 `max.poll.interval.ms`；\n- 组内成员数稳定（避免频繁扩缩容）；\n- 用 `cooperative-sticky` 分配策略减少「全量重平衡」的抖动。\n\n案例：某消费者一批处理 500 条、每条 1s，`max.poll.interval.ms` 默认 5min → 每分钟都被踢出组、反复 rebalance、积压暴涨；把 `max.poll.records` 降到 50 后稳定。",
+    "tags": [
+      "rebalance",
+      "max.poll.interval.ms",
+      "心跳"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2265,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 的「日志段（log segment）」设计带来什么好处？",
+    "options": [
+      {
+        "key": "A",
+        "text": "便于按段整体删除（retention）与顺序追加，减少随机写；同时利于索引与快速定位"
+      },
+      {
+        "key": "B",
+        "text": "让消息自动加密"
+      },
+      {
+        "key": "C",
+        "text": "保证跨分区顺序"
+      },
+      {
+        "key": "D",
+        "text": "替代副本机制"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Kafka 把分区日志切成多个段文件（`segment.ms`/`segment.bytes` 控制），带来三个关键好处：**\n1. **删除成本低**：过期就删整个段文件，不用逐条清理；\n2. **顺序追加**：只在活跃段末尾追加，几乎全是顺序 IO（这是 Kafka 高吞吐的基础）；\n3. **索引与定位**：每段配 `.index`/`.timeindex`，按 offset/时间很快定位到段再二分。\n\nB/C/D 都不对（加密是客户端/传输层的事、顺序是分区内、副本是另一套机制）。\n\n实践要点：\n- 段太小 → 文件数暴增、打开句柄与索引开销大；段太大 → 删除粒度粗（可能保留过多数据）；\n- `retention` 判断以「段」为单位，所以「消息到期但所在段未滚」时会多留一会儿；\n- 排查用 `kafka-log-dirs.sh --describe` 与 `kafka-run-class.sh ... DumpLogSegments --dump-logs` 查看具体段内容。\n\n案例：某集群 `segment.bytes` 设得极小（几十 MB），单分区一天产生上千段文件，broker 打开文件数飙升触发 `Too many open files`；调大到 1GB 后恢复。",
+    "tags": [
+      "log segment",
+      "retention",
+      "顺序写"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2266,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 的「消息确认（publisher confirm）」解决什么问题？",
+    "options": [
+      {
+        "key": "A",
+        "text": "让生产者知道消息是否真的被 broker 接收（而不是发出去了却不知道成功与否）"
+      },
+      {
+        "key": "B",
+        "text": "让消费者自动 ack"
+      },
+      {
+        "key": "C",
+        "text": "压缩消息体积"
+      },
+      {
+        "key": "D",
+        "text": "加密消息内容"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**AMQP 0-9-1 的 `basic.publish` 本身是「发出去就返回」，不告诉生产者 broker 是否收到；开启 **publisher confirm** 后，broker 会异步返回 `ack`/`nack`，生产者据此判断是否需要重试。**\n\n- 与「消费者 ack」是两回事（B 混淆了）；\n- 与压缩/加密无关（C/D）。\n\n三档可靠性渐进（常考）：\n1. **普通 publish**：发出去就算成功，可能丢；\n2. **+ publisher confirm**：知道 broker 是否收到（未收到可重试）；\n3. **+ 持久队列与持久消息 + 手动 ack**：跨重启与崩溃仍不丢。\n\n实践要点：\n- confirm 有异步批量模式（`waitForConfirmsOrDie` 是同步，会拖慢吞吐）；\n- 没被 broker 接收的消息不会重投，需要业务侧重试；\n- 结合 `mandatory` 还能发现「交换机路由不到队列」的情况（需要处理 `basic.return`）。\n\n案例：某服务未开 confirm，broker 重启窗口内的消息静默丢失且日志无异常；开启 confirm + 重试后错误可见、可补偿。",
+    "tags": [
+      "publisher confirm",
+      "可靠性",
+      "RabbitMQ"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2267,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 的 `unclean leader election` 打开会带来什么风险？",
+    "options": [
+      {
+        "key": "A",
+        "text": "可能选出一个落后较多的副本当 leader，导致部分消息被丢弃（牺牲一致性换可用性）"
+      },
+      {
+        "key": "B",
+        "text": "会提升吞吐"
+      },
+      {
+        "key": "C",
+        "text": "会自动增加副本"
+      },
+      {
+        "key": "D",
+        "text": "会锁定 Topic 不可写"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**正常情况下，leader 只能从 **ISR（同步副本）**里选；当 ISR 里没有可用副本（全部 broker 挂掉只剩落后的副本）时：**\n- `unclean.leader.election.enable=false`（新版本默认）：**拒绝选主**，分区离线（宁可用不了，也不丢数据）；\n- `=true`：允许从「非 ISR 副本」里选 leader，分区恢复可用，但**落后于旧 leader 的消息会丢失**。\n\nB/D 都不对（不提升吞吐、不是锁定）；C 与副本数无关。\n\n决策指南：\n- **交易/账务类**：保持 `false`，宁可短暂不可用也不丢；\n- **可重算的指标/缓存类**：可以开 `true`，先恢复可用再补数据；\n- 无论哪种，都要配合「副本数 ≥ 3 + `min.insync.replicas=2`」减少走到这一步的概率。\n\n排查信号：日志里出现 `unclean leader election` 或分区 `OfflinePartitionsCount` 长期 > 0。\n\n案例：某集群 3 台 broker 中 2 台同时断电，剩 1 台是落后副本；因未开 unclean 选举，分区一直离线（消费端报 `LeaderNotAvailable`），恢复供电后自动补齐；若开了 unclean，则能立即恢复但会丢最后几分钟数据。",
+    "tags": [
+      "unclean election",
+      "ISR",
+      "一致性"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2268,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "RabbitMQ 的「队列积压」排查，优先看哪几个指标？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`messages_ready`（待消费）、`messages_unacknowledged`（已投未确认）、`consumers`（消费者数）与消费速率"
+      },
+      {
+        "key": "B",
+        "text": "只看磁盘剩余"
+      },
+      {
+        "key": "C",
+        "text": "只看交换机数量"
+      },
+      {
+        "key": "D",
+        "text": "只看集群节点数"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**积压的三态分析是 RabbitMQ 排障的基本功：**\n\n| 指标 | 含义 | 积压上涨时的判断 |\n|---|---|---|\n| `messages_ready` | 等待投递的消息 | 消费者**不够快**（处理慢/消费者少） |\n| `messages_unacknowledged` | 已投递但未 ack | **消费者卡住**（在处理中阻塞、忘记 ack、或下游超时） |\n| `consumers` | 消费者数量 | 为 0 说明**没人消费**（部署/连接/vhost 问题） |\n\n再配合「消费速率」：`messages_ready` 不涨但 `unacked` 高 → 卡在处理环节；两者都涨 → 处理能力不足。\n\nB/C/D 都是外围信息（磁盘决定能存多深，交换机/节点数与积压关系不大）。\n\n治理路径：\n1. 消费者数不足 → 扩实例（注意 prefetch 影响分摊）；\n2. 处理慢 → 优化下游、批量、异步；\n3. 忘记 ack / 反复 requeue → 查代码与死信配置；\n4. 突发流量 → 限流 + 削峰 + 队列持久化防丢。\n\n命令：`rabbitmqctl list_queues name messages messages_ready messages_unacknowledged consumers`，或管理台（`rabbitmq-plugins enable rabbitmq_management`）看曲线。\n\n案例：某队列积压 200 万，`ready` 与 `unacked` 同时很高、`consumers=0` —— 消费服务因配置错误连到了 `/` vhost，根本没在消费。",
+    "tags": [
+      "积压",
+      "unacked",
+      "RabbitMQ"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2269,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "Kafka `compression.type` 对生产者/消费者的影响是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "生产者压缩减少网络与磁盘占用（省 CPU），消费者需解压（也能省带宽）；常用 lz4/zstd 权衡"
+      },
+      {
+        "key": "B",
+        "text": "只影响消费者，不影响磁盘"
+      },
+      {
+        "key": "C",
+        "text": "压缩会让消息顺序失效"
+      },
+      {
+        "key": "D",
+        "text": "必须与 broker 端配置完全一致，否则报错"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Kafka 的压缩在**生产者**端完成（按 batch 压缩），broker 存的是压缩后的数据，消费者按头部信息解压。所以「省的是网络与磁盘」，代价是 CPU。**\n\n常见选择：\n- `lz4`：速度快、压缩比中等，适合高吞吐；\n- `zstd`（2.1+）：压缩比更高，CPU 也可接受，逐渐成为首选；\n- `snappy`：均衡；\n- `gzip`：压缩比高但 CPU 重，通常不用于高吞吐 Topic。\n\nB 错（磁盘占用来自 broker 存储的压缩数据）；C 错（压缩不影响分区内顺序，消费者按 offset 顺序解压）；D 错（broker 端 `compression.type` 可以设 `producer`（跟随生产者）或重新压缩，**不需要两端一致**）。\n\n实践要点：\n1. 压缩比小批次（`linger.ms`/`batch.size` 合理）才有效——单条压缩收益低；\n2. 高压缩比在高吞吐 Topic 上可能让 broker 端重新压缩成为 CPU 瓶颈（`compression.type` 设 `producer` 可避免）、\n3. 消费者解压成本要评估（尤其 Python/低性能客户端）。\n\n案例：某集群网络带宽打满，把 `compression.type` 从 `none` 改 `lz4` 后网络流量降 60%，CPU 只涨 5%。",
+    "tags": [
+      "压缩",
+      "compression.type",
+      "Kafka"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2270,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "要「按消息内容路由到不同队列」，RabbitMQ 哪种交换机最合适？",
+    "options": [
+      {
+        "key": "A",
+        "text": "`topic` 交换机（routing key 支持通配符）或 `headers`（按头字段匹配）"
+      },
+      {
+        "key": "B",
+        "text": "`fanout`"
+      },
+      {
+        "key": "C",
+        "text": "`direct`"
+      },
+      {
+        "key": "D",
+        "text": "不需要交换机"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**按「内容/属性」路由，主要两条路：**\n1. **`topic` 交换机**：路由键形如 `order.created.cn.paid`，绑定用 `order.*.cn`、`order.#` 通配（`*` 匹配一个词、`#` 匹配零或多个词）—— 最常用且灵活；\n2. **`headers` 交换机**：按消息头键值对匹配（`x-match: all/any`），适合「内容维度多变」的场景。\n\nB `fanout` 是无条件广播（忽略 routing key）；C `direct` 只能精确匹配一个键（也能路由，但组合多时要建大量绑定，不如 topic 灵活）；D 错在必须有交换机（默认交换机也只是个特殊的 direct）。\n\n实践建议：\n- 业务分层用 `topic`（如按地域/类型）；\n- 需要「按属性组合」用 `headers`（但性能略低，绑定多了要评估）；\n- 绑定关系要纳入版本管理，避免「上线才发现在代码里偷偷绑」。\n\n案例：某系统从 `direct` 迁到 `topic`，把「按省分流」的 34 个绑定收敛到 3 个通配绑定，配置量下降且新增省份无需改绑定。",
+    "tags": [
+      "topic exchange",
+      "路由",
+      "通配符"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2271,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "「消费端限流」在 MQ 架构里通常怎么实现？",
+    "options": [
+      {
+        "key": "A",
+        "text": "减少并发/拉取批量（`prefetch`、`max.poll.records`）、给下游加信号量或令牌桶，必要时暂停消费"
+      },
+      {
+        "key": "B",
+        "text": "提高硬件配置"
+      },
+      {
+        "key": "C",
+        "text": "把消息体积压缩"
+      },
+      {
+        "key": "D",
+        "text": "扩大 Topic 分区数"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**限流的目的是「保护下游」，手段分两层：**\n\n1. **拉取节奏**：\n   - RabbitMQ：`basic_qos(prefetch_count)` 控制单消费者未 ack 上限；\n   - Kafka：`max.poll.records`（每批条数）与降低消费者并发线程数；\n2. **处理节奏**：应用内**信号量/令牌桶/并发上限**（如 Semaphore 控制在调下游的并发），必要时 `pause`/`resume`（Kafka `pause()`）暂停拉取；\n3. **下游保护**：连接池上限、超时与熔断、降级（回退到本地缓存或稍后重试）。\n\nB 是「加资源」而非限流（有时反而加剧下游压力）；C 只减少带宽；D 提高并行度，与限流相反。\n\n配套：**积压是可接受的成本**——限流的本质是「宁可积压也别打挂下游」，所以要有积压监控与容量告警，并明确「积压到多少触发扩容/告警」。\n\n案例：大促时下游数据库连接数被打满，消费端加上「并发 20 的信号量 + 超时 200ms + 失败重试进 DLQ」，DB 稳定，积压靠扩容消费者消化。",
+    "tags": [
+      "限流",
+      "prefetch",
+      "保护下游"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2272,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 的 `linger.ms` 与 `batch.size` 对吞吐/延迟的影响是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "两者都让生产者攒批次：增大可提升吞吐（压缩更有效）但增加单条延迟"
+      },
+      {
+        "key": "B",
+        "text": "只影响磁盘占用"
+      },
+      {
+        "key": "C",
+        "text": "越大延迟越低"
+      },
+      {
+        "key": "D",
+        "text": "与吞吐无关"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**生产者不是「来一条发一条」，而是攒成 batch 再发：**\n- `batch.size`（默认 16KB）：单批最大字节数；\n- `linger.ms`（默认 0，即尽快发）：最多等多久凑批。\n\n两个参数的作用：\n1. **增大 → 批次更大** → 压缩更有效、网络往返更少 → **吞吐上升**；\n2. **代价**：单条消息要在缓冲区里等 → **端到端延迟上升**（`linger.ms=100` 意味着最多等 100ms）。\n\nB/D 错（这对参数直接决定吞吐与延迟的权衡）；C 完全反了。\n\n调参思路：\n- **高吞吐、可容忍延迟**（日志、埋点）：`linger.ms` 5~50、`batch.size` 64KB~1MB；\n- **低延迟**（实时通知）：`linger.ms=0`、batch 小；\n- 配合 `compression.type=lz4/zstd` 才能把「大批次」的收益吃满；\n- 注意 `buffer.memory` 与 `max.block.ms`：缓冲满时 `send` 会阻塞，影响业务线程。\n\n案例：某埋点服务吞吐不足，把 `linger.ms` 从 0 调到 20、`batch.size` 调大，吞吐提升 3 倍，P99 延迟从 5ms 增到 25ms（业务可接受）。",
+    "tags": [
+      "linger.ms",
+      "batch.size",
+      "吞吐延迟"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2273,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "消费组 LAG 持续增长但每个消费者 CPU 都只有 20%，最可能的结构性原因？",
+    "options": [
+      {
+        "key": "A",
+        "text": "分区数不足（消费者数 > 分区数导致空转），或单条处理被下游阻塞（同步 IO）"
+      },
+      {
+        "key": "B",
+        "text": "broker 磁盘满"
+      },
+      {
+        "key": "C",
+        "text": "生产端 `acks` 太低"
+      },
+      {
+        "key": "D",
+        "text": "Topic 保留时间太长"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「积压涨 + CPU 低」是典型「消费能力受限但不是在算」：**\n\n1. **并行度不足**：消费者实例数 > 分区数时，多出来的实例**分不到分区**（`--describe` 能看到 `CONSUMER-ID` 为空或闲置成员），实际并行度被分区数卡死；\n2. **单条耗时高**（下游同步调用慢/超时重试）→ 每个消费者都很闲地在等，CPU 自然低；\n3. 拉取配置过保守（`max.poll.records` 太小、`fetch.min.bytes` 太大导致每次等不满）。\n\nB 会让写入失败/分区离线，不是「消费慢」；C 影响生产可靠性；D 影响保留时长而非消费速度。\n\n排查链：\n1. `kafka-consumer-groups --describe` 看分区分配是否均匀、有无未分配分区；\n2. 消费者日志看单批耗时与下游调用耗时（是否卡在远程调用）；\n3. `kafka-consumer-groups` 的 LAG 曲线 vs 生产速率，确认是「产大于消」还是「消费卡住」；\n4. 线程 dump / 火焰图确认是 IO 等待还是锁等待。\n\n解决：**扩分区 → 再扩消费者**（顺序很重要），或减少单条处理耗时（批量、异步、缓存）。\n\n案例：某 Topic 12 分区、消费实例 20 个，8 个实例空转、LAG 涨到百万；扩到 48 分区后并行度提升 4 倍，LAG 归零。",
+    "tags": [
+      "LAG",
+      "并行度",
+      "分区数"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2274,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 出现「队列里消息很多但消费者收不到」，怎么定位？",
+    "options": [
+      {
+        "key": "A",
+        "text": "查 vhost 与队列名是否一致、消费者是否连接成功（`consumers=0`）、权限与 prefetch/自动 ack 配置"
+      },
+      {
+        "key": "B",
+        "text": "直接扩容集群节点"
+      },
+      {
+        "key": "C",
+        "text": "调整保留时间"
+      },
+      {
+        "key": "D",
+        "text": "提高交换机数量"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「有消息、无消费」的排查要顺着「连接 → vhost → 队列 → 消费方式」四层走：**\n\n1. **连接**：`rabbitmqctl list_consumers` 是否能看到消费者；应用日志有无 `ACCESS_REFUSED`/`CONNECTION_REFUSED`；\n2. **vhost**：连接串里的 vhost 与队列所在 vhost 是否一致（最常见坑）；\n3. **队列与交换机**：同一 vhost、队列名拼写、是否被 `autoDelete` 删掉；`list_queues name messages consumers` 看 `consumers` 是否为 0；\n4. **消费方式**：`autoAck` 下消息投递即删（看起来「收到了但没处理」）；`prefetch` 过小导致吞吐低（表现为「很慢」而非「收不到」）；消费者是否被 `basic.cancel`（管理台能看到）。\n\nB/C/D 都不对症（集群节点数、保留时间、交换机数量都不解决「没人消费」）。\n\n进阶：\n- 用管理台看队列的「message rates」是否为零；\n- 若 `consumers > 0` 但 `messages_ready` 不降，看 `messages_unacknowledged`：高则说明「投递了但没 ack」（处理卡住/忘记 ack）。\n\n案例：某服务上线后消费者一直空闲，`list_queues` 显示 `consumers=0`，最后发现连接串 vhost 写成了 `/` 而队列在 `prod`。",
+    "tags": [
+      "消费者",
+      "vhost",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2275,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 集群「部分分区 UnderReplicated」持续存在，优先排查什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "副本所在 broker 的网络/磁盘 IO、ISR 收缩日志、以及是否某台 broker 负载异常"
+      },
+      {
+        "key": "B",
+        "text": "生产者 `linger.ms` 太大"
+      },
+      {
+        "key": "C",
+        "text": "消费者 `max.poll.records` 太大"
+      },
+      {
+        "key": "D",
+        "text": "Topic 名有特殊字符"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**`UnderReplicatedPartitions > 0` 表示「某分区的副本数与期望不符（有副本掉出 ISR）」，根因通常在 broker 侧资源：**\n\n1. **网络**：机房间带宽打满/延迟抖动 → follower 追不上；\n2. **磁盘 IO**：某台 broker 磁盘慢（`iostat` 的 `%util` 高、`await` 大）→ 日志写入跟不上；\n3. **broker 负载**：CPU/内存压力、GC（Kafka 是 JVM 应用）、线程被打满；\n4. **单机热点**：分区分布不均导致某台 broker 流量远高于其他。\n\nB/C 属客户端配置，影响吞吐但不直接造成 ISR 收缩；D 无关。\n\n排查链：\n1. `kafka-topics --describe` 看哪个分区的 ISR 短、副本在哪台 broker；\n2. 定位到具体 broker：`iostat -x 1`、`sar -n DEV 1`、JVM GC 日志；\n3. 看 broker 日志的 `Shrinking ISR`/`Partition ... is under replicated`；\n4. 必要时 `kafka-reassign-partitions` 把热点分区迁走，或加磁盘/加 broker。\n\n案例：某集群 20 个分区持续 under-replicated，最终定位到一台 broker 的云盘 IOPS 被限流（`iostat` 的 `%util` 100%、`await` 300ms），迁走分区并换盘后恢复。",
+    "tags": [
+      "ISR",
+      "UnderReplicated",
+      "broker"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2276,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "要保证「订单消息不丢且不重复入账」，架构上最少要做哪几件事？",
+    "options": [
+      {
+        "key": "A",
+        "text": "生产端 `acks=all`+幂等、broker 多副本、消费端「处理成功再提交」+ 业务幂等（唯一流水/状态机）、并对账兜底"
+      },
+      {
+        "key": "B",
+        "text": "只把 `acks` 设为 all"
+      },
+      {
+        "key": "C",
+        "text": "只要消费端事务即可"
+      },
+      {
+        "key": "D",
+        "text": "只要提高重试次数"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「不丢 + 不重复入账」是端到端问题，必须四段都覆盖：**\n\n1. **生产端**：`acks=all` + `enable.idempotence=true`（防重试重复）+ 合理重试与超时；\n2. **broker**：`replication-factor=3` + `min.insync.replicas=2`（容忍 1 台故障不丢）；\n3. **消费端**：**先处理成功再提交 offset**（防「提交了但没处理」），处理失败进 DLQ 而非静默跳过；\n4. **业务幂等**：唯一流水号 + 数据库唯一索引 / 状态机校验（这是防重复入账的最后一道）；\n5. **对账兜底**：定时比对消息流与账务流水，发现差异自动修复（真实生产里必做）。\n\nB 只做了一环（且不配 `min.insync.replicas` 会退化）；C 只解决消费侧且事务代价大；D 重试次数与「不重复」无关，反而增加重复概率。\n\n权衡提示：\n- 「恰好一次」在分布式下很难靠 MQ 单独保证，**工程上通常是「至少一次 + 业务幂等 + 对账」**；\n- 幂等键要选「业务唯一标识」（订单号+事件类型），不要用时间戳。\n\n案例：某系统只做了 `acks=all`，broker 故障切主时丢了十几条订单；补齐副本 + 消费端幂等 + 对账后，即使出现重复也能被幂等挡掉、丢失能被对账发现。",
+    "tags": [
+      "可靠性",
+      "幂等",
+      "对账"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2277,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Topic 保留 7 天，但下游每天只跑一次批处理且偶发超时重跑，该如何设计才不丢数据？",
+    "options": [
+      {
+        "key": "A",
+        "text": "保留时间覆盖「最长重跑窗口」（如 14 天），批处理用 offset 断点续跑，并加失败告警与数据校验"
+      },
+      {
+        "key": "B",
+        "text": "把保留时间调成 1 天以省空间"
+      },
+      {
+        "key": "C",
+        "text": "让消费者每天从头消费"
+      },
+      {
+        "key": "D",
+        "text": "增加分区数即可"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**批处理与流消费的关键差异是「消费窗口」：若数据只保留 7 天，而任务可能需要重跑 2~3 天，窗口一旦不够，消息会被删除且**无任何报错**（消费端只是「少读到」）。**\n\n正确设计：\n1. **保留时间 ≥ 最长重跑/补数窗口**（如 14~30 天），按写入量估算磁盘；\n2. **断点续跑**：把每次处理到的 offset 落库/落文件，失败可从断点重来（而不是从头）；\n3. **数据校验**：处理前后比对条数/金额，发现缺口即告警；\n4. **失败告警**：任务失败要能第一时间知道，而不是「第二天发现数据少了」；\n5. 大批量场景可考虑「分层」：原始流进 Kafka（长保留）+ 每日快照进离线存储（长期归档）。\n\nB 是反向操作（缩短窗口更易丢）；C 每天从头会重复处理且耗时；D 与保留窗口无关。\n\n案例：某日报任务失败后重跑需要 5 天数据，而 Topic 只保留 3 天 → 永远补不齐；把保留调到 14 天 + 落 offset 断点后，重跑可精确补齐。",
+    "tags": [
+      "retention",
+      "批处理",
+      "断点续跑"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2278,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 集群「脑裂」后会出现什么现象，怎么预防？",
+    "options": [
+      {
+        "key": "A",
+        "text": "网络分区导致两侧各自认为自己存活，出现队列/消息不一致或部分不可用；用 Quorum Queue 与合理 partition handling（`pause_minority`）预防"
+      },
+      {
+        "key": "B",
+        "text": "脑裂会自动合并且无损"
+      },
+      {
+        "key": "C",
+        "text": "脑裂只影响管理台"
+      },
+      {
+        "key": "D",
+        "text": "只需增加磁盘即可预防"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**RabbitMQ 集群是「元数据共享 + 队列数据分布」的结构，网络分区时两侧节点各自继续运行，可能出现：**\n1. 队列在两侧的「副本状态」不一致；\n2. 生产/消费落在不同分区，导致消息「发进去后取不到」；\n3. 恢复网络后部分节点被重启/丢弃，队列状态需要人工干预（`rabbitmqctl forget_cluster_node`）。\n\n预防与处置：\n- **`cluster_partition_handling`**：`pause_minority`（少数派自动暂停，推荐）、`autoheal`（自动恢复但可能丢消息）、`ignore`（不处理，最危险）；\n- **Quorum Queue**（基于 Raft）在分区时按多数派决策，一致性好得多；\n- 机房间网络质量与心跳参数（`heartbeat`、`net_ticktime`）要调好；\n- 有分区事件时查 `rabbitmqctl cluster_status` 的 `partitions` 字段。\n\nB/C/D 都不对（不会自动无损合并、影响不止管理台、与磁盘无关）。\n\n案例：跨机房集群因交换机故障分区 3 分钟，恢复后部分镜像队列状态错乱，出现「有消息但消费不到」；改为 Quorum Queue + `pause_minority` 后同类事件不再致业务异常。",
+    "tags": [
+      "脑裂",
+      "partition",
+      "Quorum"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2279,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka `retention` 到期删除消息，与「消费者还没消费完」会冲突吗？",
+    "options": [
+      {
+        "key": "A",
+        "text": "会：到期即删（与是否被消费无关），消费者只能跳过这段，表现为「消费位点被强制前移/GAP」"
+      },
+      {
+        "key": "B",
+        "text": "不会，Kafka 会等消费完再删"
+      },
+      {
+        "key": "C",
+        "text": "只有开启了事务才不冲突"
+      },
+      {
+        "key": "D",
+        "text": "到期删除会报错并阻塞"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Kafka 的 retention 是「按时间/大小删除」，**不看消费进度**。所以：**\n- 若消费者 LAG 超过保留窗口对应的区间，早于窗口的消息已被删；\n- 消费者下次拉取时，其 offset 可能已「早于最早可用 offset」→ 客户端报 `OffsetOutOfRange`（或按 `auto.offset.reset` 跳到 `earliest`/`latest`），业务上表现为**数据缺口**。\n\nB 是「消费后才删」的误解（那是某些 MQ 的确认语义，不是 Kafka）；C/D 不对（事务不等于保留策略、删除不会阻塞消费者）。\n\n识别与治理：\n1. 监控 LAG 对应的「时间滞后」而不只是条数（`LAG × 平均延迟`）；\n2. 保留时间 ≥ 最长消费延迟（含故障重跑窗口）；\n3. 消费者用 `auto.offset.reset=earliest` 时，**要记录「跳过了多少条」并告警**，不要静默继续；\n4. 出现 `OffsetOutOfRange` 时，先用 `kafka-topics --describe` 看分区最早 offset，再评估缺口。\n\n案例：某下游任务停摆两天，期间 Topic 保留 24 小时，恢复后从 `latest` 开始消费，中间一天的数据永久缺失；把保留调到 7 天 + LAG 时间告警后避免。",
+    "tags": [
+      "retention",
+      "OffsetOutOfRange",
+      "数据缺口"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2280,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "同一 Topic 既要有「多个消费组各自全量处理」，又要「组内水平扩展」，怎么配？",
+    "options": [
+      {
+        "key": "A",
+        "text": "为每个业务各建一个 consumer group（各自全量），组内多实例 + 分区数 ≥ 组内实例数"
+      },
+      {
+        "key": "B",
+        "text": "所有业务用同一个 group"
+      },
+      {
+        "key": "C",
+        "text": "建多个 Topic 复制数据"
+      },
+      {
+        "key": "D",
+        "text": "把分区数设成 1"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**这是「广播 + 并行」的组合需求，用 consumer group 机制天然满足：**\n- **不同 group** → 各自拿到全量消息（广播语义），如风控、报表、搜索索引三个 group 各消费一遍；\n- **组内多实例 + 足够分区** → 水平扩展（一条消息只被组内一个实例处理）。\n\nB 会让多个业务「抢」消息（每个业务只能拿到部分），是常见事故；C 多建 Topic 复制数据会放大写入成本，通常不必要（除非隔离或不同保留策略）；D 单分区无法水平扩展。\n\n配置要点：\n1. **分区数 ≥ 单组最大实例数**（否则实例空转，见 `--describe`）；\n2. 每个 group 独立提交 offset（互不影响）；\n3. 不同业务对「顺序性/延迟」的要求可能不同：顺序敏感的业务组内用按 key 串行，报表类可用批处理；\n4. 监控要**按 group 分维度**看 LAG（某 group 慢不能拖累其他）。\n\n案例：订单 Topic 同时被「履约」「对账」「数仓」三个服务消费，各自建 group；数仓组用批处理节奏慢但 LAG 只影响数仓，不影响履约实时性。",
+    "tags": [
+      "consumer group",
+      "广播",
+      "水平扩展"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2281,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "MQ 的「消息顺序」在不同 MQ 中的保证粒度，正确的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Kafka 保证分区内有序；RabbitMQ 单队列单消费者有序（多消费者会乱序）；SQS 标准队列不保证顺序"
+      },
+      {
+        "key": "B",
+        "text": "所有 MQ 都保证全局顺序"
+      },
+      {
+        "key": "C",
+        "text": "Kafka 保证跨分区顺序"
+      },
+      {
+        "key": "D",
+        "text": "RabbitMQ 多消费者也保证顺序"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**各 MQ 的顺序保证粒度差别很大，必须按「队列/分区 + 消费并发」来判断：**\n\n| MQ | 顺序保证 |\n|---|---|\n| **Kafka** | **分区内**（同 key 落同分区才有序）；跨分区无序 |\n| **RabbitMQ** | **队列内**，且要求「单消费者串行」；多消费者同时消费同一队列会乱序 |\n| **AWS SQS** | 标准队列**不保证**；FIFO 队列保证（但有吞吐限制） |\n| RocketMQ | 同一 MessageQueue 内有序（顺序消息按 key 选择队列） |\n\nB 是错误认知（没有 MQ 保证全局顺序且高吞吐，二者天生冲突）；C 错（跨分区无序是 Kafka 的设计前提）；D 错（RabbitMQ 多消费者会并发取消息）。\n\n实践守则：\n1. 需要顺序 → **按业务键分区/路由 + 消费端串行**；\n2. 别为「顺序」牺牲全部并行度（吞吐会崩），按业务键分段即可；\n3. 消费端多线程时要「按 key 分发到同一线程」；\n4. 顺序与幂等要一起考虑（重试/重投都会打乱严格顺序）。\n\n案例：某团队用 RabbitMQ 单队列 + 10 个消费者处理订单，出现「先支付后创建」的乱序日志；改成「按订单号 hash 到多个队列，每个队列单消费者」后有序且仍有并行。",
+    "tags": [
+      "顺序性",
+      "跨MQ",
+      "对比"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2282,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "Kafka 消费端出现「大量重复消息」，排查方向应包含哪些？",
+    "options": [
+      {
+        "key": "A",
+        "text": "rebalance 导致未提交 offset 回退、处理超 `max.poll.interval.ms` 被踢、提交失败重试、以及生产端重试/x`idempotence` 未开"
+      },
+      {
+        "key": "B",
+        "text": "只可能是 broker 故障"
+      },
+      {
+        "key": "C",
+        "text": "只可能是磁盘满"
+      },
+      {
+        "key": "D",
+        "text": "Kafka 不会重复，一定是业务 bug"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**Kafka 的 at-least-once 语义下，「重复」有明确的几个来源，逐个排查：**\n\n1. **消费端**：\n   - 处理期间发生 **rebalance**，未提交的 offset 被回退 → 重启后重投（最常见）；\n   - 单批处理超过 `max.poll.interval.ms` → 被移出组，rebalance 后重投；\n   - `commitAsync` 失败未重试 / 关闭时未补 `commitSync`；\n   - 处理成功但提交前崩溃；\n2. **生产端**：\n   - 网络超时触发重试，而 `enable.idempotence=false` → 同一条被写入两次；\n   - 上游「重发逻辑」与 MQ 重试叠加；\n3. **运维操作**：`--reset-offsets` 到较早位点、或消费组被删后重建。\n\nB/C 太窄（broker 故障会造成重复，但不是唯一原因；磁盘满导致写入失败而非重复）；D 是错误前提。\n\n排查动作：\n- 消费者日志搜 `Revoking previously assigned partitions`、`Commit failed`、`Member ... has left the group`；\n- 比对「重复消息的 key」看是否集中在 rebalance 时间窗；\n- 生产端确认 `enable.idempotence=true`；\n- 最终靠**业务幂等**兜底（这是必须的，不能只靠调优）。\n\n案例：某消费者单批处理 20 秒、`max.poll.interval.ms` 默认 5 分钟但偶发下游慢到 6 分钟 → 周期性被踢出组，重复率约 3%；降批量 + 调大间隔 + 幂等键后降到 0。",
+    "tags": [
+      "重复消费",
+      "rebalance",
+      "幂等"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2283,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "大促前 MQ 容量评估要算哪些量，才能避免「积压到爆」？",
+    "options": [
+      {
+        "key": "A",
+        "text": "峰值生产速率、消费单条耗时与并行度（分区数×消费者数）、可接受积压深度、以及磁盘/保留时间是否够放积压"
+      },
+      {
+        "key": "B",
+        "text": "只看磁盘大小"
+      },
+      {
+        "key": "C",
+        "text": "只看消费者 CPU"
+      },
+      {
+        "key": "D",
+        "text": "只看副本数"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**容量评估的核心是「产消平衡 + 兜底空间」：**\n\n1. **生产侧**：峰值 TPS × 平均消息大小 = 峰值带宽/日写入量；\n2. **消费侧**：最大消费能力 ≈（分区数 × 消费者实例数）×（1 / 单条处理耗时）；**并行度受分区数封顶**；\n3. **缓冲能力**：\n   - 可接受积压深度（如峰值持续 30 分钟，需能存下「产 - 消」的差值）；\n   - 磁盘容量 = 日写入量 × 保留天数 × 副本数 ×（1 + 余量）；\n4. **下游承受力**：消费端限流后，积压会变长，需确认磁盘与保留时间撑得住；\n5. **故障场景**：一台 broker 挂掉时剩余容量是否仍够（副本重平衡会增加 IO）。\n\nB/C/D 都是单点视角：只看磁盘会忽略「消费跟不上」、只看 CPU 会忽略分区瓶颈、只看副本数与容量无关。\n\n输出物建议：一张表写「峰值 TPS / 单条大小 / 分区数 / 消费者数 / 单条耗时 / 消费上限 / 积压 30min 需多少 GB / 保留天数 / 副本数 / 磁盘需求 / 告警阈值」，并在压测中验证。\n\n案例：某次大促生产峰值 3 万 TPS、消费上限只有 8000 TPS（分区数 24 封顶），2 小时后积压 2 亿条、磁盘打满；评估时漏了「并行度受分区数限制」，事后扩分区 + 增加消费者实例才够。",
+    "tags": [
+      "容量评估",
+      "积压",
+      "大促"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2284,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "「MQ 积压告警」应该按什么来设，才既能早发现又不误报？",
+    "options": [
+      {
+        "key": "A",
+        "text": "按「LAG 对应的滞后时间」+「积压增长速率」+「预计清空时间」多维组合，并对不同业务设不同阈值"
+      },
+      {
+        "key": "B",
+        "text": "固定按条数（如 > 10 万）"
+      },
+      {
+        "key": "C",
+        "text": "只看消费者是否存活"
+      },
+      {
+        "key": "D",
+        "text": "等用户投诉再处理"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**「条数阈值」是最容易误报也最容易漏报的做法**：10 万条对不同 Topic 意味着完全不同的严重性（大流量 Topic 10 万条可能只滞后 10 秒，小流量可能滞后 2 小时）。\n\n更可靠的组合指标：\n1. **滞后时间**（LAG 换算成「最新消息距今多久」）——直接对应业务影响；\n2. **增长速率**（LAG 的斜率）：持续正斜率 = 消费跟不上，比绝对量更敏感；\n3. **预计清空时间**（当前 LAG / 当前消费速率）——超过 SLA 就要告警；\n4. **未分配分区/消费者数下降**——结构性异常（如实例挂掉）；\n5. 不同业务分级（支付类 1 分钟滞后即告警，埋点类可放宽）。\n\nB 单一阈值会误报（夜间低峰）或漏报（大流量）；C 只看存活会漏「活着但消费卡住」；D 是事后。\n\n落地建议：\n- `for` 持续时间（如持续 3 分钟）避免抖动误报；\n- 告警里带上「LAG、滞后时间、消费速率、分区分布」，值班人不用再手工查；\n- 分级：预警（滞后 5 分钟）→ 告警（滞后 15 分钟）→ 紧急（预计清空 > 1 小时）。\n\n案例：某团队按「LAG > 10 万」告警，大促时 10 万条只滞后 30 秒却疯狂报警，而真正的「滞后 1 小时」问题在低峰期没触发；改成按滞后时间后准确率显著提升。",
+    "tags": [
+      "告警",
+      "LAG",
+      "SLO"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2285,
+    "type": "single",
+    "category": "消息队列",
+    "difficulty": "困难",
+    "question": "跨机房双活场景下，MQ 的「消息不丢 + 不重复」很难兼顾，工程上常见的折中方案是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "单机房内强一致（多副本+acks=all+幂等），跨机房异步复制并对「机房级故障」承认有限 RPO，配合对账与补偿"
+      },
+      {
+        "key": "B",
+        "text": "两端都做强同步，接受延迟无限增大"
+      },
+      {
+        "key": "C",
+        "text": "关闭副本以提升性能"
+      },
+      {
+        "key": "D",
+        "text": "让两端独立对等写入同一 Topic"
+      }
+    ],
+    "answer": [
+      "A"
+    ],
+    "explanation": "**跨机房双活的核心矛盾：强同步（两地都要确认）会把延迟与可用性拖垮；异步复制则必然有 RPO（可能丢最后一段）。**\n\n工程折中：\n1. **机房内强一致**：3 副本 + `min.insync.replicas=2` + `acks=all` + 生产幂等 —— 单机房故障不丢；\n2. **跨机房异步复制**（MirrorMaker 2 / 云厂商跨区复制）：接受「机房级灾难时丢最后 N 秒/N 分钟」，并把这个 RPO 写进 SLA；\n3. **不重复靠业务幂等**：跨机房复制本身会带来重复（重放、双写），幂等键是必需品；\n4. **对账与补偿**：定时比对（消息流 vs 账务/订单表），差异自动修复；\n5. **双写场景要定主**：同一业务键只在一个机房生产（或用分区归属），避免两端对等写入产生冲突。\n\nB 会让吞吐与可用性不可接受（跨机房 RTT × 每次写）；C 直接放弃容错；D 会产生双写冲突与顺序错乱（需要「主写端」或冲突解决策略）。\n\n案例：某支付系统跨城双活，采用「同城 3 副本强一致 + 跨城异步复制 + 幂等 + 每日对账」，机房级故障 RPO 约 30 秒，业务可接受并写进预案。",
+    "tags": [
+      "双活",
+      "RPO",
+      "跨机房"
+    ],
+    "frequency": "中频"
+  }
+]

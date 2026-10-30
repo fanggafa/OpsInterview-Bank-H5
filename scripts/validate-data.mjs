@@ -17,10 +17,15 @@ const DATA_PATH = resolve(__dirname, '../public/data/questions.json')
 const TYPES = QUESTION_TYPES
 const PENDING = new Set(PENDING_CATEGORIES)
 
-// 题库随分类扩展会持续增长，上限放宽到 2000；
-// 下限保持 90 以免误删导致题库残缺。
+/**
+ * 题库规模上下限。
+ *
+ * 上限原本是 2000，但「做题模式只含选择题」改造后每类补 45 道选择题
+ * （23 类 × 45 = 1035），合并完会到 2465，所以上调到 3000 留出余量。
+ * 下限保持 90，避免误删导致题库残缺。
+ */
 const MIN_TOTAL = 90
-const MAX_TOTAL = 2000
+const MAX_TOTAL = 3000
 const MIN_PER_CATEGORY = 6
 const MIN_CHOICE_TOTAL = 20
 const MAX_QUESTION_LEN = 120

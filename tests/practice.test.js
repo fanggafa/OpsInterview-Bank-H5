@@ -7,12 +7,19 @@ import {
   summarizeRound,
 } from '@/utils/practice'
 
+/**
+ * 队列构建测试用的题池。
+ *
+ * 注意：默认练习模式是 practice（做题模式），它**只含选择题**。
+ * 这里全部标成 single，让这些用例专心验证「队列怎么排/怎么筛」，
+ * 题型过滤本身由 studyMode.test.js 单独覆盖。
+ */
 const QUESTIONS = [
-  { id: 1, category: 'A', question: 'q1' },
-  { id: 2, category: 'A', question: 'q2' },
-  { id: 3, category: 'B', question: 'q3' },
-  { id: 4, category: 'B', question: 'q4' },
-  { id: 5, category: 'C', question: 'q5' },
+  { id: 1, type: 'single', category: 'A', question: 'q1' },
+  { id: 2, type: 'single', category: 'A', question: 'q2' },
+  { id: 3, type: 'single', category: 'B', question: 'q3' },
+  { id: 4, type: 'single', category: 'B', question: 'q4' },
+  { id: 5, type: 'single', category: 'C', question: 'q5' },
 ]
 
 describe('normalizeMode', () => {
@@ -163,7 +170,7 @@ describe('describeProgress', () => {
     expect(describeProgress({ mode: 'sequential', category: 'MySQL', index: 2 })).toEqual({
       category: 'MySQL',
       modeLabel: '顺序',
-      studyModeLabel: '刷题',
+      studyModeLabel: '做题',
       studyMode: 'practice',
       mode: 'sequential',
       index: 2,

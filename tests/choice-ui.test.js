@@ -114,7 +114,7 @@ async function mountPractice(query = {}) {
   const memorize = query.studyMode === 'memorize'
   const btn = wrapper
     .findAll('.picker__btn')
-    .find((b) => (memorize ? b.text().includes('背题模式') : b.text().includes('刷题模式')))
+    .find((b) => (memorize ? b.text().includes('背题模式') : b.text().includes('做题模式')))
   if (btn) {
     await btn.trigger('click')
     await flushPromises()
@@ -383,8 +383,9 @@ describe('刷题页 · 选择题', () => {
     expect(submit2.text()).toContain('已选 1')
   })
 
-  it('简答题操作区仍是「不会/会」两按钮', async () => {
-    const { wrapper } = await mountPractice({ category: 'MySQL' })
+  it('简答题操作区仍是「不会/会」两按钮（背题模式）', async () => {
+    // 做题模式只含选择题 → 要看简答题的自评按钮，必须进背题模式
+    const { wrapper } = await mountPractice({ category: 'MySQL', studyMode: 'memorize' })
     expect(wrapper.findAll('.actions__btn')).toHaveLength(2)
     expect(wrapper.find('.actions__submit').exists()).toBe(false)
   })

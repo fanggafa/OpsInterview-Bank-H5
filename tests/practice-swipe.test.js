@@ -13,10 +13,16 @@ import { useStudyStore } from '@/stores/studyStore'
  * （这是第三步的真实 bug：原实现只在 onMounted 里绑，那时 DOM 还是骨架屏）。
  */
 
+/**
+ * 夹具：全部选择题。
+ *
+ * 默认练习模式是 practice（做题模式），它只含选择题 ——
+ * 这里标成 single 才能让滑动用例拿到题卡。
+ */
 const FIXTURE = [
-  { id: 1, category: 'Linux基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
-  { id: 2, category: 'Linux基础', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t2'], frequency: '中频' },
-  { id: 3, category: 'MySQL', difficulty: '困难', question: 'q3', answer: 'a3', tags: ['t3'], frequency: '高频' },
+  { id: 1, type: 'single', category: 'Linux基础', difficulty: '简单', question: 'q1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧', tags: ['t1'], frequency: '高频' },
+  { id: 2, type: 'single', category: 'Linux基础', difficulty: '中等', question: 'q2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧', tags: ['t2'], frequency: '中频' },
+  { id: 3, type: 'single', category: 'MySQL', difficulty: '困难', question: 'q3', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧', tags: ['t3'], frequency: '高频' },
 ]
 
 function pointerEvent(type, { x = 0, y = 0, pointerType = 'mouse', button = 0 } = {}) {
@@ -104,7 +110,7 @@ async function mountWithAsyncLoad(query = {}) {
       // 数据就绪后先落在「选择练习方式」页，点一下才出题卡
       const btn = wrapper
         .findAll('.picker__btn')
-        .find((b) => b.text().includes('刷题模式'))
+        .find((b) => b.text().includes('做题模式'))
       if (btn) {
         await btn.trigger('click')
         await flushPromises()
@@ -212,13 +218,17 @@ describe('滑动切题 · 异步加载后仍可用（核心回归）', () => {
   it('完成小结出现后滑动手势不再切题', async () => {
     vi.useFakeTimers()
     try {
+      // 只留 1 道选择题：答完即进入完成态
       const { wrapper, finishLoading } = await mountWithAsyncLoad({ category: 'MySQL' })
       vi.useRealTimers()
       await finishLoading()
       vi.useFakeTimers()
 
-      // 自评触发完成态
-      await wrapper.findAll('.actions__btn')[1].trigger('click')
+      // 做题模式是选择题：点第一个选项即判定
+      await wrapper.findAll('.option')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      // 判定后不自动翻页，点「完成本轮」
+      await wrapper.find('.actions__submit').trigger('click')
       await vi.advanceTimersByTimeAsync(400)
       await wrapper.vm.$nextTick()
       expect(wrapper.text()).toContain('本轮完成')

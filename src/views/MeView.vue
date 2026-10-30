@@ -273,10 +273,6 @@ const categoryChoice = computed(() => {
         <span class="row__chev" aria-hidden="true">›</span>
       </router-link>
     </div>
-
-    <Transition name="toast">
-      <div v-if="toastText" class="toast" role="status">{{ toastText }}</div>
-    </Transition>
   </div>
 </template>
 

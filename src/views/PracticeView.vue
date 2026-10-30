@@ -18,6 +18,7 @@ import {
 } from '@/utils/constants'
 import {
   buildQueue,
+  byStudyMode,
   pickReviewSet,
   resolveStartIndex,
   normalizeMode,
@@ -141,16 +142,24 @@ function build() {
 
   // 复习赛：直接从指定题池里抽一批，跳过队列与断点逻辑
   if (isReview.value) {
-    const pool =
+    /**
+     * 题池 = 来源（错题本 / 全库）× 练习模式的题型。
+     *
+     * 复习赛也必须遵守「刷题只考选择题、背题只背简答题」：
+     * 否则从刷题页进来复习，抽到简答题还得手点「看答案」+ 自评，
+     * 节奏跟选择题完全两回事。
+     */
+    const source =
       reviewKind.value === 'wrong'
         ? bank.questions.filter((q) => study.isWrong(q.id))
-        : bank.questions
+        : bank.questions.slice()
+    const pool = byStudyMode(source, studyMode.value)
     queue.value = pickReviewSet(pool, { size: REVIEW_SIZES[reviewKind.value] })
     cursor.value = 0
     resumed.value = false
     // 复习赛直接进入题卡（不显示「选择练习方式」）
     started.value = true
-    expanded.value = false
+    expanded.value = studyMode.value === 'memorize'
     finished.value = false
     roundAnswers.value = {}
     resetChoice()
@@ -190,7 +199,7 @@ function build() {
   }
 
   // 背题模式默认展开答案（它的用途就是「看题背答案」）；
-  // 刷题模式仍默认收起，先自己想再看
+  // 做题模式默认收起，先自己选再看解析
   expanded.value = studyMode.value === 'memorize'
   finished.value = false
   roundAnswers.value = {}
@@ -555,9 +564,14 @@ const emptyDesc = computed(() => {
       ? '答错或自评「不会」的题会进入错题本，连对 3 次才移出。'
       : '换一个分类，或到题库页浏览全部题目。'
   }
-  return mode.value === 'wrong'
-    ? `答错 / 自评「不会」的题会自动进入错题本；之后任意方式连对 ${WRONG_CLEAR_STREAK} 次自动移出。`
-    : '换一个分类，或到题库页浏览全部题目。'
+  if (mode.value === 'wrong') {
+    return `答错 / 自评「不会」的题会自动进入错题本；之后任意方式连对 ${WRONG_CLEAR_STREAK} 次自动移出。`
+  }
+  // 做题模式只含选择题、背题模式只含简答题，空态要说清是「这个模式的题型没了」，
+  // 否则用户会以为整个分类没题。
+  return studyMode.value === 'memorize'
+    ? '该分类下没有简答题，试试做题模式或换一个分类。'
+    : '该分类下没有选择题，试试背题模式或换一个分类。'
 })
 </script>
 
@@ -652,7 +666,7 @@ const emptyDesc = computed(() => {
     <section v-if="!started && !finished" class="picker">
       <h1 class="picker__title">选择练习方式</h1>
       <p class="picker__tip muted">
-        两种方式共用同一套题库，随时可在右上角切换
+        两种方式题型不同：刷题只考选择题，背题只背简答题
       </p>
 
       <button class="picker__btn picker__btn--practice" @click="startStudy('practice')">
@@ -662,8 +676,8 @@ const emptyDesc = computed(() => {
           </svg>
         </span>
         <span class="picker__body">
-          <span class="picker__name">刷题模式</span>
-          <span class="picker__desc">全部题 · 简答自评 / 选择作答</span>
+          <span class="picker__name">{{ STUDY_MODE_LABEL.practice }}</span>
+          <span class="picker__desc">{{ STUDY_MODE_DESC.practice }}</span>
         </span>
       </button>
 
@@ -677,8 +691,8 @@ const emptyDesc = computed(() => {
           </svg>
         </span>
         <span class="picker__body">
-          <span class="picker__name">背题模式</span>
-          <span class="picker__desc">只有简答题 · 答案默认展开</span>
+          <span class="picker__name">{{ STUDY_MODE_LABEL.memorize }}</span>
+          <span class="picker__desc">{{ STUDY_MODE_DESC.memorize }}</span>
         </span>
       </button>
 
@@ -943,7 +957,7 @@ const emptyDesc = computed(() => {
 .practice__mode-btn:active {
   transform: scale(0.96);
 }
-/* 刷题模式：主色（靛蓝） */
+/* 做题模式：主色（靛蓝） */
 .practice__mode-btn--practice {
   color: var(--c-primary);
   background: var(--c-primary-weak);

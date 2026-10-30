@@ -12,16 +12,23 @@ import { useStudyStore } from '@/stores/studyStore'
  * 刷题页的「两步流程」：
  *
  * 1. 进入 `/practice` 先只显示**选择页**（两个居中按钮，不展示题目）
- * 2. 点选「刷题模式」或「背题模式」后才渲染题卡
+ * 2. 点选「做题模式」或「背题模式」后才渲染题卡
  *
  * 需求背景：之前进入页面即出题卡、顶部有模式按钮，用户要求
  * 「只要两个按钮居中做选择，不用展示题目」。
  */
 
+/**
+ * 夹具：简答与选择题并存，用来验证「两个模式题型互斥」。
+ *
+ * - 做题模式（practice）只看选择题：id 2、4（共 2 题）
+ * - 背题模式（memorize）只看简答题：id 1、3（共 2 题）
+ */
 const FIXTURE = [
   { id: 1, type: 'short', category: 'Linux基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
   { id: 2, type: 'single', category: 'MySQL', difficulty: '中等', question: 'q2', answer: ['B'], tags: ['t2'], frequency: '中频', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧' },
   { id: 3, type: 'short', category: 'MySQL', difficulty: '困难', question: 'q3', answer: 'a3', tags: ['t3'], frequency: '低频' },
+  { id: 4, type: 'single', category: 'Linux基础', difficulty: '简单', question: 'q4', answer: ['A'], tags: ['t1'], frequency: '高频', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧' },
 ]
 
 function makeRouter() {
@@ -73,27 +80,29 @@ describe('刷题页 · 选择页（两个居中按钮）', () => {
     expect(wrapper.find('.qcard-p').exists()).toBe(false)
   })
 
-  it('选择页恰好两个按钮：刷题模式 / 背题模式', async () => {
+  it('选择页恰好两个按钮：做题模式 / 背题模式', async () => {
     const { wrapper } = await mountPractice()
     const btns = wrapper.findAll('.picker__btn')
     expect(btns).toHaveLength(2)
-    expect(btns[0].text()).toContain('刷题模式')
+    expect(btns[0].text()).toContain('做题模式')
     expect(btns[1].text()).toContain('背题模式')
   })
 
-  it('两个按钮各自带一句模式说明', async () => {
+  it('两个按钮各自说明自己的题型（互斥，不是共用同一套题库）', async () => {
     const { wrapper } = await mountPractice()
     const btns = wrapper.findAll('.picker__btn')
-    expect(btns[0].text()).toContain('全部题')
-    expect(btns[1].text()).toContain('简答题')
+    expect(btns[0].text()).toContain('只有选择题')
+    expect(btns[1].text()).toContain('只有简答题')
   })
 
-  it('点「刷题模式」后进入题卡', async () => {
+  it('点「做题模式」后进入题卡，且只剩选择题', async () => {
     const { wrapper } = await mountPractice()
-    await pick(wrapper, '刷题模式')
+    await pick(wrapper, '做题模式')
     expect(wrapper.find('.picker').exists()).toBe(false)
     expect(wrapper.find('.qcard-p').exists()).toBe(true)
-    expect(wrapper.text()).toContain('第 1 / 3 题')
+    expect(wrapper.text()).toContain('第 1 / 2 题')
+    // 选择题才有选项列表，简答题没有
+    expect(wrapper.findAll('.option').length).toBeGreaterThan(0)
   })
 
   it('点「背题模式」后进入题卡，且只剩简答题', async () => {
@@ -101,6 +110,7 @@ describe('刷题页 · 选择页（两个居中按钮）', () => {
     await pick(wrapper, '背题模式')
     expect(wrapper.find('.qcard-p').exists()).toBe(true)
     expect(wrapper.text()).toContain('第 1 / 2 题')
+    expect(wrapper.findAll('.option')).toHaveLength(0)
   })
 
   it('背题按钮把 studyMode 写进 URL', async () => {
@@ -130,9 +140,9 @@ describe('刷题页 · 选择页（两个居中按钮）', () => {
 })
 
 describe('刷题页 · 进入后的紧凑顶栏', () => {
-  it('刷题中不再显示大标题栏，改为 44px 紧凑顶栏', async () => {
+  it('刷题中不再显示大标题栏，改为紧凑顶栏', async () => {
     const { wrapper } = await mountPractice()
-    await pick(wrapper, '刷题模式')
+    await pick(wrapper, '做题模式')
 
     // 大标题栏（AppHeader）不在了
     expect(wrapper.find('.header').exists()).toBe(false)
@@ -142,9 +152,8 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
 
   it('题目顺序做成顶栏里的分段胶囊，不再单独占一行', async () => {
     const { wrapper } = await mountPractice()
-    await pick(wrapper, '刷题模式')
+    await pick(wrapper, '做题模式')
 
-    // 顶栏里有分段胶囊（有 role=radiogroup，但是紧凑版而非整行）
     const seg = wrapper.find('.ptop__seg')
     expect(seg.exists()).toBe(true)
     expect(seg.attributes('role')).toBe('radiogroup')
@@ -154,19 +163,19 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
 
   it('练习方式仍收在右上角一个按钮', async () => {
     const { wrapper } = await mountPractice()
-    await pick(wrapper, '刷题模式')
+    await pick(wrapper, '做题模式')
     expect(wrapper.find('.ptop .practice__mode-btn').exists()).toBe(true)
   })
 
   it('顶栏带「返回」按钮、进度文字与进度条', async () => {
     const { wrapper } = await mountPractice()
-    await pick(wrapper, '刷题模式')
+    await pick(wrapper, '做题模式')
     // 返回用箭头（不是 ✕，语义是「退回选择页」）
     const back = wrapper.find('.ptop__back')
     expect(back.exists()).toBe(true)
     expect(back.attributes('aria-label')).toContain('返回')
     expect(wrapper.find('.ptop__bar').exists()).toBe(true)
-    expect(wrapper.find('.ptop__count').text()).toContain('第 1 / 3 题')
+    expect(wrapper.find('.ptop__count').text()).toContain('第 1 / 2 题')
   })
 
   it('返回箭头是「横线+箭头」的标准样式，不是孤立的小 chevron', () => {
@@ -187,7 +196,7 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
 
   it('点返回回到「选择练习方式」页（而不是跳走）', async () => {
     const { wrapper, router } = await mountPractice()
-    await pick(wrapper, '刷题模式')
+    await pick(wrapper, '做题模式')
     expect(wrapper.find('.ptop').exists()).toBe(true)
 
     const before = router.currentRoute.value.path
@@ -203,9 +212,9 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
 
   it('点右上角模式按钮会切到另一种练习方式', async () => {
     const { wrapper } = await mountPractice()
-    await pick(wrapper, '刷题模式')
-    expect(wrapper.text()).toContain('第 1 / 3 题')
-    expect(wrapper.find('.practice__mode-btn').text()).toContain('刷题模式')
+    await pick(wrapper, '做题模式')
+    expect(wrapper.text()).toContain('第 1 / 2 题')
+    expect(wrapper.find('.practice__mode-btn').text()).toContain('做题模式')
 
     await wrapper.find('.practice__mode-btn').trigger('click')
     await flushPromises()
@@ -237,7 +246,7 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
 
   it('收藏按钮在题卡内，不在页头', async () => {
     const { wrapper } = await mountPractice()
-    await pick(wrapper, '刷题模式')
+    await pick(wrapper, '做题模式')
     // 页头里不应有收藏按钮
     expect(wrapper.find('.header__right .qcard-p__fav').exists()).toBe(false)
     // 收藏按钮在题卡的题头行里
@@ -246,7 +255,7 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
 
   it('顶栏点「随机」写入 mode=random', async () => {
     const { wrapper, router } = await mountPractice()
-    await pick(wrapper, '刷题模式')
+    await pick(wrapper, '做题模式')
 
     const items = wrapper.findAll('.ptop__seg-item')
     await items[1].trigger('click')

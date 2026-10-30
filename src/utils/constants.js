@@ -190,11 +190,16 @@ export const WRONG_CLEAR_STREAK = 3
 /**
  * 练习模式（怎么练）——与上面的「队列模式」是两个正交维度：
  *
- * - practice（刷题模式）：全部题，简答自评 + 选择题作答判定
- * - memorize（背题模式）：只有简答题，以「看题背答案」为主
+ * - practice（做题模式）：**只有选择题**，点选项即判定，快节奏
+ * - memorize（背题模式）：**只有简答题**，以「看题背答案」为主
  *
- * 区分原因：选择题考的是「记住细节」，简答题考的是「能自己讲出来」，
- * 很多人在考前只需要反复背简答题的答案。
+ * 两个模式的题型互斥。选择题考「记住细节」，简答题考「能自己讲出来」；
+ * 前者点一下就出结果，后者要讲完再自查，节奏完全不同，
+ * 混在一个队列里会互相打断。
+ *
+ * 为什么把 practice 叫「做题模式」而不是「刷题模式」：它现在只含选择题，
+ * 而「刷题」在运维人的语感里泛指所有练习，名字会误导。
+ * 「做题 / 背题」两字对仗，一眼看出差别：一个动手选，一个开口背。
  */
 export const STUDY_MODES = ['practice', 'memorize']
 
@@ -202,12 +207,12 @@ export const DEFAULT_STUDY_MODE = 'practice'
 
 /** 练习模式展示文案 */
 export const STUDY_MODE_LABEL = {
-  practice: '刷题模式',
+  practice: '做题模式',
   memorize: '背题模式',
 }
 
 export const STUDY_MODE_DESC = {
-  practice: '全部题 · 简答自评 / 选择作答',
+  practice: '只有选择题 · 点选项即判定',
   memorize: '只有简答题 · 看题背答案',
 }
 
