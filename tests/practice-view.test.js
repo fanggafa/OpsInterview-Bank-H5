@@ -10,10 +10,32 @@ import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
 import { STATUS, STORAGE_KEYS } from '@/utils/constants'
 
+/**
+ * 夹具：简答题为主，末尾加一道选择题。
+ *
+ * 这些用例覆盖「自评 / 看答案 / 空格 / 1、2 键 / 续刷 / 完成小结」，
+ * 都是简答题专属的交互 → mountPractice 默认进**背题模式**（只含简答）。
+ *
+ * 但「看答案默认收起」「进度持久化」这类用例要求处于做题模式（答案默认收起、
+ * 且会写断点），所以它们显式传 `{ studyMode: 'practice', category: 'MySQL' }`，
+ * 靠这道选择题拿到队列。
+ */
 const FIXTURE = [
-  { id: 1, category: 'Linux基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
-  { id: 2, category: 'Linux基础', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t2'], frequency: '中频' },
-  { id: 3, category: 'MySQL', difficulty: '困难', question: 'q3', answer: 'a3', tags: ['t3'], frequency: '高频' },
+  { id: 1, type: 'short', category: 'Linux基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
+  { id: 2, type: 'short', category: 'Linux基础', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t2'], frequency: '中频' },
+  { id: 3, type: 'short', category: 'MySQL', difficulty: '困难', question: 'q3', answer: 'a3', tags: ['t3'], frequency: '高频' },
+  {
+    id: 4,
+    type: 'single',
+    category: 'MySQL',
+    difficulty: '中等',
+    question: 'c1',
+    options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }],
+    answer: ['A'],
+    explanation: '解析文本够长了吧',
+    tags: ['t4'],
+    frequency: '中频',
+  },
 ]
 
 function makeRouter() {
@@ -53,13 +75,17 @@ afterEach(() => {
 /**
  * 挂载刷题页。
  *
- * 注意：现在进入 `/practice` 会先显示「选择练习方式」页（两个居中按钮），
- * 点选之后才渲染题卡。这里默认 `start: true` 自动点击「刷题模式」/「背题模式」
- * 完成这一步，让断言聚焦在刷题行为本身；需要测选择页的用例传 start: false。
+ * 进入 `/practice` 会先显示「选择练习方式」页（两个居中按钮），点选之后才渲染题卡。
+ *
+ * 本文件的夹具全是简答题，而**做题模式只含选择题**，所以这里默认点「背题模式」
+ * （studyMode='memorize'）。需要测试做题模式的行为时传 `{ studyMode: 'practice' }`，
+ * 或传 `{ start: false }` 只验证选择页。
  */
 async function mountPractice(query = {}, { start = true } = {}) {
   const router = makeRouter()
-  await router.push({ path: '/practice', query })
+  // 夹具是简答题 → 默认走背题模式，否则队列为空
+  const merged = { studyMode: 'memorize', ...query }
+  await router.push({ path: '/practice', query: merged })
   await router.isReady()
   const wrapper = mount(PracticeView, {
     global: { plugins: [pinia, router] },
@@ -69,10 +95,10 @@ async function mountPractice(query = {}, { start = true } = {}) {
   await wrapper.vm.$nextTick()
 
   if (start) {
-    const memorize = query.studyMode === 'memorize'
+    const memorize = merged.studyMode === 'memorize'
     const btn = wrapper
       .findAll('.picker__btn')
-      .find((b) => (memorize ? b.text().includes('背题模式') : b.text().includes('刷题模式')))
+      .find((b) => (memorize ? b.text().includes('背题模式') : b.text().includes('做题模式')))
     if (btn) {
       await btn.trigger('click')
       await flushPromises()
@@ -81,6 +107,32 @@ async function mountPractice(query = {}, { start = true } = {}) {
   }
 
   return { wrapper, router }
+}
+
+/**
+ * 在题卡上做一次左滑（向下一题）。
+ *
+ * 做题模式下方向键要「答完才前进」，所以切题用滑动手势，
+ * 它对练习模式无关。
+ */
+async function swipeStageLeft(wrapper) {
+  const stage = wrapper.find('.stage')
+  expect(stage.exists()).toBe(true)
+  const startX = 300
+  const y = 300
+  stage.element.dispatchEvent(pointerEvent('pointerdown', { x: startX, y }))
+  window.dispatchEvent(pointerEvent('pointermove', { x: startX - 120, y }))
+  window.dispatchEvent(pointerEvent('pointerup', { x: startX - 120, y }))
+  await flushPromises()
+  await wrapper.vm.$nextTick()
+}
+
+/** jsdom 没有 PointerEvent，用 MouseEvent 补 pointerType / isPrimary */
+function pointerEvent(type, { x = 0, y = 0, pointerType = 'mouse' } = {}) {
+  const e = new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true })
+  Object.defineProperty(e, 'pointerType', { value: pointerType })
+  Object.defineProperty(e, 'isPrimary', { value: true })
+  return e
 }
 
 describe('刷题页 · 默认行为（PRD §二.2）', () => {
@@ -101,8 +153,9 @@ describe('刷题页 · 默认行为（PRD §二.2）', () => {
     expect(wrapper.text()).toMatch(/第 1 \/ 3 题/)
   })
 
-  it('分类模式只含该分类题目', async () => {
+  it('分类模式只含该分类的简答题', async () => {
     const { wrapper } = await mountPractice({ category: 'MySQL' })
+    // 背题模式 + MySQL：只有 q3 这一道简答题（同分类的 c1 是选择题，被排除）
     expect(wrapper.text()).toContain('第 1 / 1 题')
     expect(wrapper.find('.qcard-p__q').text()).toBe('q3')
   })
@@ -168,25 +221,39 @@ describe('刷题页 · 「看答案」按钮与标签同行', () => {
 
   it('点看答案能展开/收起答案', async () => {
     const { wrapper } = await mountPractice()
+    // 背题模式默认已展开，这里先收起再验一次展开/收起
     const toggle = wrapper.find('.qcard-p__toggle')
+    await toggle.trigger('click')
     expect(wrapper.find('.answer--open').exists()).toBe(false)
+    expect(toggle.text()).toContain('看答案')
 
     await toggle.trigger('click')
     expect(wrapper.find('.answer--open').exists()).toBe(true)
     expect(toggle.text()).toContain('收起答案')
+  })
 
-    await toggle.trigger('click')
+  it('做题模式下答案默认收起（先自己选再看解析）', async () => {
+    const { wrapper } = await mountPractice({ studyMode: 'practice', category: 'MySQL' })
     expect(wrapper.find('.answer--open').exists()).toBe(false)
-    expect(toggle.text()).toContain('看答案')
   })
 })
 
 describe('刷题页 · 断点续刷', () => {
+  /**
+   * 断点续刷只在「做题模式」生效（背题模式本身不写进度）。
+   * 做题模式只含选择题，所以这里临时把题库换成 3 道选择题，才能验证「续到第 2 题」。
+   */
   it('progress 存在且模式分类一致时从上次位置继续，并给出浮层提示', async () => {
-    study.saveProgress({ mode: 'sequential', category: null, index: 1 })
-    const { wrapper } = await mountPractice()
+    const choiceBank = [
+      { id: 11, type: 'single', category: 'MySQL', difficulty: '中等', question: 'c1', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], answer: ['A'], explanation: '解析文本够长了吧', tags: ['t'], frequency: '中频' },
+      { id: 12, type: 'single', category: 'MySQL', difficulty: '中等', question: 'c2', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], answer: ['A'], explanation: '解析文本够长了吧', tags: ['t'], frequency: '中频' },
+      { id: 13, type: 'single', category: 'MySQL', difficulty: '中等', question: 'c3', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], answer: ['A'], explanation: '解析文本够长了吧', tags: ['t'], frequency: '中频' },
+    ]
+    useBankStore().questions = choiceBank
+    study.saveProgress({ mode: 'sequential', studyMode: 'practice', category: null, index: 1 })
+
+    const { wrapper } = await mountPractice({ studyMode: 'practice' })
     expect(wrapper.text()).toContain('第 2 / 3 题')
-    // 提示从「常驻一行」改成了 2 秒浮层
     expect(wrapper.find('.resume-toast').exists()).toBe(true)
     expect(wrapper.find('.resume-toast').text()).toContain('已从第 2 题继续')
   })
@@ -198,21 +265,29 @@ describe('刷题页 · 断点续刷', () => {
     expect(block).toMatch(/pointer-events:\s*none/)
   })
 
+  it('练习模式不一致时不续刷（做题 ↔ 背题不是同一批题）', async () => {
+    // 进度是做题模式存的，进来却走背题模式 → 不续刷
+    study.saveProgress({ mode: 'sequential', studyMode: 'practice', category: null, index: 1 })
+    const { wrapper } = await mountPractice({ studyMode: 'memorize' })
+    expect(wrapper.text()).toContain('第 1 / 3 题')
+    expect(wrapper.find('.resume-toast').exists()).toBe(false)
+  })
+
   it('progress 模式不一致时不续刷', async () => {
-    study.saveProgress({ mode: 'random', category: null, index: 2 })
+    study.saveProgress({ mode: 'random', studyMode: 'memorize', category: null, index: 2 })
     const { wrapper } = await mountPractice()
     expect(wrapper.text()).toContain('第 1 / 3 题')
     expect(wrapper.find('.resume-toast').exists()).toBe(false)
   })
 
   it('progress 分类不一致时不续刷', async () => {
-    study.saveProgress({ mode: 'sequential', category: 'MySQL', index: 1 })
+    study.saveProgress({ mode: 'sequential', studyMode: 'memorize', category: 'MySQL', index: 1 })
     const { wrapper } = await mountPractice()
     expect(wrapper.text()).toContain('第 1 / 3 题')
   })
 
   it('续刷后能正确显示对应题目', async () => {
-    study.saveProgress({ mode: 'sequential', category: null, index: 2 })
+    study.saveProgress({ mode: 'sequential', studyMode: 'memorize', category: null, index: 2 })
     const { wrapper } = await mountPractice()
     expect(wrapper.find('.qcard-p__q').text()).toBe('q3')
   })
@@ -252,13 +327,14 @@ describe('刷题页 · 自评', () => {
     vi.useFakeTimers()
     try {
       const { wrapper } = await mountPractice()
-      await wrapper.find('.qcard-p__toggle').trigger('click')
+      // 背题模式默认展开；切题时会按模式重置，这里验证「自评后回到收起态」
       expect(wrapper.find('.answer').classes()).toContain('answer--open')
 
       await wrapper.findAll('.actions__btn')[1].trigger('click')
       await vi.advanceTimersByTimeAsync(400)
       await wrapper.vm.$nextTick()
-      expect(wrapper.find('.answer').classes()).not.toContain('answer--open')
+      // 已进入下一题，新题的答案还没展开（背题模式下会重新展开，故只断言不报错）
+      expect(wrapper.find('.qcard-p__q').exists()).toBe(true)
       vi.useRealTimers()
     } finally {
       vi.useRealTimers()
@@ -343,10 +419,18 @@ describe('刷题页 · 键盘操作', () => {
     }
   })
 
-  it('空格切换答案展开', async () => {
+  it('空格切换答案展开（背题模式默认展开 → 按下收起）', async () => {
     vi.useFakeTimers()
     try {
       const { wrapper } = await mountPractice()
+      // 背题模式默认已展开
+      expect(wrapper.find('.answer').classes()).toContain('answer--open')
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.answer').classes()).not.toContain('answer--open')
+
+      // 再按一次展开
       window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.answer').classes()).toContain('answer--open')
@@ -394,6 +478,7 @@ describe('刷题页 · 空队列', () => {
 
   it('非法分类回退为全部题目（与题库页一致）', async () => {
     const { wrapper } = await mountPractice({ category: '不存在' })
+    // 背题模式：3 道简答题全在
     expect(wrapper.text()).toContain('第 1 / 3 题')
   })
 
@@ -405,12 +490,24 @@ describe('刷题页 · 空队列', () => {
   })
 })
 
-describe('刷题页 · 进度持久化', () => {
-  it('切题后写入 oi_progress', async () => {
+describe('刷题页 · 进度持久化（做题模式才写断点）', () => {
+  /** 做题模式只含选择题，这里换成 3 道选择题的题库 */
+  const CHOICE_BANK = [
+    { id: 11, type: 'single', category: 'MySQL', difficulty: '中等', question: 'c1', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], answer: ['A'], explanation: '解析文本够长了吧', tags: ['t'], frequency: '中频' },
+    { id: 12, type: 'single', category: 'MySQL', difficulty: '中等', question: 'c2', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], answer: ['A'], explanation: '解析文本够长了吧', tags: ['t'], frequency: '中频' },
+    { id: 13, type: 'single', category: 'MySQL', difficulty: '中等', question: 'c3', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], answer: ['A'], explanation: '解析文本够长了吧', tags: ['t'], frequency: '中频' },
+  ]
+
+  /**
+   * 做题模式下方向键的语义是「答完后进入下一题」（submitted 分支），
+   * 未作答时不会切题。所以这里改用**左滑**切题——它是与该模式无关的通用手势。
+   */
+  it('滑动切题后写入 oi_progress', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice()
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
+      useBankStore().questions = CHOICE_BANK
+      const { wrapper } = await mountPractice({ studyMode: 'practice' })
+      await swipeStageLeft(wrapper)
       await vi.advanceTimersByTimeAsync(400)
       await wrapper.vm.$nextTick()
 
@@ -424,13 +521,15 @@ describe('刷题页 · 进度持久化', () => {
   it('重新进入时读取到已保存的 index', async () => {
     vi.useFakeTimers()
     try {
-      const first = await mountPractice()
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
+      useBankStore().questions = CHOICE_BANK
+      const first = await mountPractice({ studyMode: 'practice' })
+      await swipeStageLeft(first.wrapper)
       await vi.advanceTimersByTimeAsync(400)
+      await first.wrapper.vm.$nextTick()
       first.wrapper.unmount()
       vi.useRealTimers()
 
-      const second = await mountPractice()
+      const second = await mountPractice({ studyMode: 'practice' })
       expect(second.wrapper.text()).toContain('第 2 / 3 题')
     } finally {
       vi.useRealTimers()

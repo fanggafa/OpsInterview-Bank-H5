@@ -147,7 +147,7 @@ function openDaily() {
       </div>
     </header>
 
-    <!-- 继续刷题：一个明确的行动入口，首页不再只是看数据 -->
+    <!-- 开始练习：一个明确的行动入口，首页不再只是看数据 -->
     <button class="cta" @click="router.push('/practice')">
       <span class="cta__icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="20" height="20">
@@ -155,9 +155,9 @@ function openDaily() {
         </svg>
       </span>
       <span class="cta__text">
-        <span class="cta__title">{{ todayDone ? '继续刷题' : '开始刷题' }}</span>
+        <span class="cta__title">{{ todayDone ? '继续练习' : '开始练习' }}</span>
         <span class="cta__desc">
-          {{ todayDone ? `今天已刷 ${study.todayReviewedCount} 题` : '选刷题或背题模式开始' }}
+          {{ todayDone ? `今天已刷 ${study.todayReviewedCount} 题` : '选做题或背题模式开始' }}
         </span>
       </span>
       <span class="cta__arrow" aria-hidden="true">→</span>
