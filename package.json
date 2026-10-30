@@ -13,7 +13,8 @@
     "validate:data": "node scripts/validate-data.mjs",
     "check:encoding": "node scripts/check-encoding.mjs",
     "check:figures": "node scripts/check-figure-text.mjs",
-    "verify": "npm run check:encoding && npm run validate:data && npm run check:figures && npm run test && npm run build"
+    "verify": "npm run check:encoding && npm run validate:data && npm run check:figures && npm run check:import-case && npm run test && npm run build",
+    "check:import-case": "node scripts/check-import-case.mjs"
   },
   "dependencies": {
     "pinia": "^2.2.6",
