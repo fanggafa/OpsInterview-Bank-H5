@@ -9,6 +9,25 @@
  * 注意：id 一经使用就不要改名（题库里的 [[图:id]] 会失效），
  *       tests/figures.test.js 会校验「所有引用的 id 都已注册」。
  */
+import WaitNotComputeTree from './WaitNotComputeTree.vue'
+import HalfUsersDimensions from './HalfUsersDimensions.vue'
+import DualActivePhases from './DualActivePhases.vue'
+import HourlySpikeTriage from './HourlySpikeTriage.vue'
+import IntermittentIssueStrategy from './IntermittentIssueStrategy.vue'
+import RedisTimeoutPaths from './RedisTimeoutPaths.vue'
+import MidnightCpuSurge from './MidnightCpuSurge.vue'
+import ReplicationLagTriage from './ReplicationLagTriage.vue'
+import FixedTimeSlowness from './FixedTimeSlowness.vue'
+import MultiRegionLayers from './MultiRegionLayers.vue'
+import ConfigDriftDecision from './ConfigDriftDecision.vue'
+import CodeVsEnvBisect from './CodeVsEnvBisect.vue'
+import MemoryGrowthDecision from './MemoryGrowthDecision.vue'
+import RestartTriggers from './RestartTriggers.vue'
+import DiskFullSafeTriage from './DiskFullSafeTriage.vue'
+import MicroserviceObservability from './MicroserviceObservability.vue'
+import AlertFatigueTriage from './AlertFatigueTriage.vue'
+import MonitorBlindSpots from './MonitorBlindSpots.vue'
+import EnvParityGap from './EnvParityGap.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -80,6 +99,25 @@ export const FIGURES = {
   'docker-layers': DockerLayers,
   'cache-problems': CacheProblems,
   'alert-funnel': AlertFunnel,
+  'wait-not-compute-tree': WaitNotComputeTree,
+  'half-users-dimensions': HalfUsersDimensions,
+  'dual-active-phases': DualActivePhases,
+  'hourly-spike-triage': HourlySpikeTriage,
+  'intermittent-issue-strategy': IntermittentIssueStrategy,
+  'redis-timeout-paths': RedisTimeoutPaths,
+  'midnight-cpu-surge': MidnightCpuSurge,
+  'replication-lag-triage': ReplicationLagTriage,
+  'fixed-time-slowness': FixedTimeSlowness,
+  'multi-region-layers': MultiRegionLayers,
+  'config-drift-decision': ConfigDriftDecision,
+  'code-vs-env-bisect': CodeVsEnvBisect,
+  'memory-growth-decision': MemoryGrowthDecision,
+  'restart-triggers': RestartTriggers,
+  'disk-full-safe-triage': DiskFullSafeTriage,
+  'microservice-observability': MicroserviceObservability,
+  'alert-fatigue-triage': AlertFatigueTriage,
+  'monitor-blind-spots': MonitorBlindSpots,
+  'env-parity-gap': EnvParityGap,
 }
 
 /**

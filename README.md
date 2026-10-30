@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **34 张内联 SVG 图解**（37 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **53 张内联 SVG 图解**（55 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（34 张，23 个分类全覆盖）
+### 已注册的插图（53 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1116,6 +1116,25 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `docker-layers` | 镜像分层与构建缓存顺序 | 题 42 |
 | `cache-problems` | 穿透 / 击穿 / 雪崩对照 | 题 33 |
 | `alert-funnel` | 告警治理漏斗（抑制/分组/分级） | 题 57 |
+| `wait-not-compute-tree` | 「资源不高却超时」的五个等待点排查树 | 题 67 |
+| `half-users-dimensions` | 「一半用户受影响」的五维分流 | 题 5401 |
+| `dual-active-phases` | 单主库做双活的三阶段演进 | 题 5417 |
+| `hourly-spike-triage` | 整点前后变差的排查与整点任务清单 | 题 5422 |
+| `intermittent-issue-strategy` | 偶发问题：定义→观测→抓现场→固化 | 题 5439 |
+| `redis-timeout-paths` | Redis 超时的五个方向分流 | 题 5416 |
+| `midnight-cpu-surge` | 凌晨多机 CPU 飙高：止血→us/sy/wa 分流→复盘 | 题 113 |
+| `replication-lag-triage` | 主从延迟：读回主库止血 + 五类原因 | 题 5402 |
+| `fixed-time-slowness` | 固定时间变慢：时间轴对齐找撞车 | 题 5405 |
+| `multi-region-layers` | 异地多活四层与「单元化」消除写冲突 | 题 5404 |
+| `config-drift-decision` | 一台配置不一致：查原因→评估→三种决策 | 题 5430 |
+| `code-vs-env-bisect` | 代码还是环境问题：最小差异实验二分 | 题 5433 |
+| `memory-growth-decision` | 内存上涨：泄漏 vs 缓存，堆内 vs 堆外 | 题 71 |
+| `restart-triggers` | 准时重启：进程 / Pod / 整机三路分流 | 题 5412 |
+| `disk-full-safe-triage` | 磁盘将满：按安全等级从高到低处理 | 题 5427 |
+| `microservice-observability` | 微服务排查三件套与 trace_id 断点 | 题 5437 |
+| `alert-fatigue-triage` | 告警疲劳：量化后四类分别处理 | 题 5418 |
+| `monitor-blind-spots` | 指标正常但用户不满的四个盲区 | 题 5442 |
+| `env-parity-gap` | 测试与生产的六类差异与四项治理 | 题 5426 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
