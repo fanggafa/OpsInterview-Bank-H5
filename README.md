@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **129 张内联 SVG 图解**（129 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **150 张内联 SVG 图解**（150 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（129 张，23 个分类全覆盖）
+### 已注册的插图（150 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1211,6 +1211,26 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `oncall-response-flow` | 值班故障响应六步 | 题 60 |
 | `mongo-deploy-modes` | MongoDB 三种部署形态与节点数 | 题 2002 |
 | `mongo-esr-principle` | MongoDB 复合索引 ESR 原则 | 题 2008 |
+| `https-tls-handshake` | HTTPS 与 TLS 握手五步 | 题 102 |
+| `http-cache-levels` | 强缓存 / 协商缓存 / 不缓存 | 题 4431 |
+| `cdn-principles` | CDN 原理与命中率、回源排查 | 题 4432 |
+| `keepalive-vs-heartbeat` | TCP keepalive 与应用心跳 | 题 4424 |
+| `ss-vs-netstat` | ss 与 netstat 的原理与迁移 | 题 4418 |
+| `traceroute-vs-mtr` | traceroute 与 mtr、星号的含义 | 题 4414 |
+| `cross-dc-network` | 跨机房组网方案对比 | 题 4417 |
+| `ping-fail-triage` | ping 不通的分层排查 | 题 103 |
+| `backup-vs-dr` | 备份与容灾的区别、RTO/RPO | 题 2430 |
+| `backup-design-elements` | 备份方案四要素 | 题 2404 |
+| `storage-active-active` | 存储双活与主备的区别 | 题 2429 |
+| `hot-cold-tiering` | 冷热数据分层与成本 | 题 2411 |
+| `es-ilm-stages` | ES ILM 四阶段与日志保留 | 题 3011 |
+| `loki-vs-elk` | Loki 与 ELK 的定位与选型 | 题 3019 |
+| `es-oom-triage` | ES 节点 OOM 的原因与排查 | 题 3027 |
+| `log-trace-correlation` | 日志与追踪如何用 trace_id 串联 | 题 3038 |
+| `shell-operators` | Shell 的 ; &amp;&amp; || 与 {} () 分组 | 题 4203 |
+| `background-run-modes` | &amp;/nohup/disown/setsid/systemd 五种后台 | 题 4233 |
+| `shell-test-syntax` | [ ] / [[ ]] / (( )) 的区别 | 题 4230 |
+| `find-exec-vs-xargs` | find -exec 与 xargs 的三种写法 | 题 4214 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。

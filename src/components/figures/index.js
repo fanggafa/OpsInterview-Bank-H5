@@ -104,6 +104,27 @@ import MongoDeployModes from './MongoDeployModes.vue'
 import SloErrorBudget from './SloErrorBudget.vue'
 import OncallResponseFlow from './OncallResponseFlow.vue'
 import TcpVsUdp from './TcpVsUdp.vue'
+import HttpsTlsHandshake from './HttpsTlsHandshake.vue'
+import HttpCacheLevels from './HttpCacheLevels.vue'
+import CdnPrinciples from './CdnPrinciples.vue'
+import KeepaliveVsHeartbeat from './KeepaliveVsHeartbeat.vue'
+import SsVsNetstat from './SsVsNetstat.vue'
+import TracerouteVsMtr from './TracerouteVsMtr.vue'
+import CrossDcNetwork from './CrossDcNetwork.vue'
+import PingFailTriage from './PingFailTriage.vue'
+import BackupVsDr from './BackupVsDr.vue'
+import BackupDesignElements from './BackupDesignElements.vue'
+import StorageActiveActive from './StorageActiveActive.vue'
+import HotColdTiering from './HotColdTiering.vue'
+import EsIlmStages from './EsIlmStages.vue'
+import LokiVsElk from './LokiVsElk.vue'
+import EsOomTriage from './EsOomTriage.vue'
+import LogTraceCorrelation from './LogTraceCorrelation.vue'
+import ShellOperators from './ShellOperators.vue'
+import BackgroundRunModes from './BackgroundRunModes.vue'
+import ShellTestSytax from './ShellTestSytax.vue'
+import FindExecVsXargs from './FindExecVsXargs.vue'
+import ZeroTrustVsPerimeter from './ZeroTrustVsPerimeter.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -270,6 +291,27 @@ export const FIGURES = {
   'slo-error-budget': SloErrorBudget,
   'oncall-response-flow': OncallResponseFlow,
   'tcp-vs-udp': TcpVsUdp,
+  'https-tls-handshake': HttpsTlsHandshake,
+  'http-cache-levels': HttpCacheLevels,
+  'cdn-principles': CdnPrinciples,
+  'keepalive-vs-heartbeat': KeepaliveVsHeartbeat,
+  'ss-vs-netstat': SsVsNetstat,
+  'traceroute-vs-mtr': TracerouteVsMtr,
+  'cross-dc-network': CrossDcNetwork,
+  'ping-fail-triage': PingFailTriage,
+  'backup-vs-dr': BackupVsDr,
+  'backup-design-elements': BackupDesignElements,
+  'storage-active-active': StorageActiveActive,
+  'hot-cold-tiering': HotColdTiering,
+  'es-ilm-stages': EsIlmStages,
+  'loki-vs-elk': LokiVsElk,
+  'es-oom-triage': EsOomTriage,
+  'log-trace-correlation': LogTraceCorrelation,
+  'shell-operators': ShellOperators,
+  'background-run-modes': BackgroundRunModes,
+  'shell-test-syntax': ShellTestSytax,
+  'find-exec-vs-xargs': FindExecVsXargs,
+  'zero-trust-vs-perimeter': ZeroTrustVsPerimeter,
 }
 
 /**
