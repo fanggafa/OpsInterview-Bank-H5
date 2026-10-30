@@ -116,6 +116,10 @@ import BackupVsDr from './BackupVsDr.vue'
 import BackupDesignElements from './BackupDesignElements.vue'
 import StorageActiveActive from './StorageActiveActive.vue'
 import HotColdTiering from './HotColdTiering.vue'
+import EsIlmStages from './EsIlmStages.vue'
+import LokiVsElk from './LokiVsElk.vue'
+import EsOomTriage from './EsOomTriage.vue'
+import LogTraceCorrelation from './LogTraceCorrelation.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -294,6 +298,10 @@ export const FIGURES = {
   'backup-design-elements': BackupDesignElements,
   'storage-active-active': StorageActiveActive,
   'hot-cold-tiering': HotColdTiering,
+  'es-ilm-stages': EsIlmStages,
+  'loki-vs-elk': LokiVsElk,
+  'es-oom-triage': EsOomTriage,
+  'log-trace-correlation': LogTraceCorrelation,
 }
 
 /**
