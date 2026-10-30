@@ -112,6 +112,10 @@ import SsVsNetstat from './SsVsNetstat.vue'
 import TracerouteVsMtr from './TracerouteVsMtr.vue'
 import CrossDcNetwork from './CrossDcNetwork.vue'
 import PingFailTriage from './PingFailTriage.vue'
+import BackupVsDr from './BackupVsDr.vue'
+import BackupDesignElements from './BackupDesignElements.vue'
+import StorageActiveActive from './StorageActiveActive.vue'
+import HotColdTiering from './HotColdTiering.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -286,6 +290,10 @@ export const FIGURES = {
   'traceroute-vs-mtr': TracerouteVsMtr,
   'cross-dc-network': CrossDcNetwork,
   'ping-fail-triage': PingFailTriage,
+  'backup-vs-dr': BackupVsDr,
+  'backup-design-elements': BackupDesignElements,
+  'storage-active-active': StorageActiveActive,
+  'hot-cold-tiering': HotColdTiering,
 }
 
 /**
