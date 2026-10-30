@@ -88,6 +88,14 @@ import FirewalldVsIptables from './FirewalldVsIptables.vue'
 import TomcatRequestFlow from './TomcatRequestFlow.vue'
 import Cpu100Locate from './Cpu100Locate.vue'
 import AnsibleVarPriority from './AnsibleVarPriority.vue'
+import ShellQuotes from './ShellQuotes.vue'
+import LeastPrivilegeLayers from './LeastPrivilegeLayers.vue'
+import TlsCertLifecycle from './TlsCertLifecycle.vue'
+import RsyncIncremental from './RsyncIncremental.vue'
+import CephComponents from './CephComponents.vue'
+import KvmVsXenVmware from './KvmVsXenVmware.vue'
+import LvsScheduling from './LvsScheduling.vue'
+import GitStash from './GitStash.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -238,6 +246,14 @@ export const FIGURES = {
   'tomcat-request-flow': TomcatRequestFlow,
   'cpu-100-locate': Cpu100Locate,
   'ansible-var-priority': AnsibleVarPriority,
+  'shell-quotes': ShellQuotes,
+  'least-privilege-layers': LeastPrivilegeLayers,
+  'tls-cert-lifecycle': TlsCertLifecycle,
+  'rsync-incremental': RsyncIncremental,
+  'ceph-components': CephComponents,
+  'kvm-vs-xen-vmware': KvmVsXenVmware,
+  'lvs-scheduling': LvsScheduling,
+  'git-stash': GitStash,
 }
 
 /**
