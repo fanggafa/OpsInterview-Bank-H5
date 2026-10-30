@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **98 张内联 SVG 图解**（99 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **129 张内联 SVG 图解**（129 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（98 张，23 个分类全覆盖）
+### 已注册的插图（129 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1180,6 +1180,37 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `crash-loop-triage` | CrashLoopBackOff 排查与退出码 | 题 46 |
 | `prometheus-metric-types` | 四种指标类型与 rate | 题 55 |
 | `nginx-timing-split` | request_time vs upstream_response_time | 题 1414 |
+| `b-plus-tree-reason` | B+ 树为何胜过 B 树/红黑树/哈希 | 题 24 |
+| `leftmost-prefix` | 最左前缀与索引失效场景 | 题 25 |
+| `explain-fields` | EXPLAIN 四个关键字段读法 | 题 26 |
+| `k8s-resources-qos` | requests/limits 与三种 QoS | 题 44 |
+| `lvs-three-layers` | LVS + Keepalived + Nginx 三层职责 | 题 1621 |
+| `vpc-layers` | VPC / 子网 / 安全组 / 路由表 | 题 3401 |
+| `es-shard-design` | ES 分片与副本的设计权衡 | 题 3003 |
+| `dns-failure-layers` | DNS 失败的三层定位与状态码分流 | 题 1003 |
+| `dns-ndots-search` | search/ndots 导致的解析变慢 | 题 1009 |
+| `multi-a-records` | 多 A 记录的选择与三个隐患 | 题 1010 |
+| `conntrack-full` | conntrack 表满的现象与调优 | 题 1205 |
+| `firewalld-vs-iptables` | firewalld 与 iptables 的关系与 zone | 题 1209 |
+| `tomcat-request-flow` | Tomcat 组件层级与请求处理 | 题 1802 |
+| `cpu-100-locate` | CPU 100% 定位到具体代码行 | 题 1811 |
+| `ansible-var-priority` | Ansible 变量优先级顺序 | 题 3202 |
+| `shell-quotes` | Shell 四种引号与命令替换 | 题 98 |
+| `least-privilege-layers` | 最小权限的四层落地 | 题 63 |
+| `tls-cert-lifecycle` | 证书监控/续期/重载三件事 | 题 65 |
+| `rsync-incremental` | rsync 增量判断与 --delete 风险 | 题 2405 |
+| `ceph-components` | Ceph 的 MON / OSD / MDS 职责 | 题 2408 |
+| `kvm-vs-xen-vmware` | KVM 与 Xen / VMware 架构差异 | 题 2600 |
+| `lvs-scheduling` | LVS 调度算法与选择 | 题 1604 |
+| `git-stash` | git stash 与临时分支的区别 | 题 2811 |
+| `tcpdump-connect-fail` | tcpdump 判断连接失败在哪一步 | 题 19 |
+| `tcp-vs-udp` | TCP 与 UDP 的取舍与选型 | 题 22 |
+| `rate-vs-irate` | rate 与 irate、P99 正确写法 | 题 56 |
+| `observability-pillars` | metrics / tracing / logging 分工 | 题 58 |
+| `slo-error-budget` | SLI / SLO / SLA 与错误预算 | 题 59 |
+| `oncall-response-flow` | 值班故障响应六步 | 题 60 |
+| `mongo-deploy-modes` | MongoDB 三种部署形态与节点数 | 题 2002 |
+| `mongo-esr-principle` | MongoDB 复合索引 ESR 原则 | 题 2008 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。

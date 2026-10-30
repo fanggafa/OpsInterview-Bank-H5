@@ -72,6 +72,12 @@ for (const f of files) {
   if (svgCount !== 1) errs.push(`<svg> 出现 ${svgCount} 次（应为 1 次）`)
   else if (!/<svg[^>]*viewBox=/.test(src)) errs.push('<svg> 缺少 viewBox')
 
+  // 4) 标签前出现孤立字符（如 `< <text`，标签数量正确但渲染出错）
+  //    正常的 `<` 后面必须紧跟字母、`/` 或 `!`；`>` 之后到下一个 `<` 之间是文本内容。
+  for (const [i, line] of src.split('\n').entries()) {
+    if (/<\s+<[a-zA-Z]/.test(line)) errs.push(`第 ${i + 1} 行：\`< <\` —— 标签前有多余字符`)
+  }
+
   // 5) 顶层块之后不应再有内容（正常文件以 </style> 结尾）
   const styleClose = src.lastIndexOf('</style>')
   if (styleClose === -1) {

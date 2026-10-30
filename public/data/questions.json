@@ -254,7 +254,7 @@
     "category": "网络基础",
     "difficulty": "中等",
     "question": "如何用 tcpdump 定位一个「客户端连不上服务端」的问题？请给出抓包命令和分析思路。",
-    "answer": "抓包命令（服务端侧）：\ntcpdump -i eth0 -nn -s0 -c 100 'host 10.0.0.5 and port 8080' -w /tmp/cap.pcap\n客户端侧：tcpdump -i any -nn 'tcp port 8080'\n\n分析思路（按握手阶段）：\n1. 只有 SYN、没有 SYN-ACK ⇒ 服务端未收到或被拦截：查防火墙/安全组、服务是否监听（ss -lntp）、端口是否正确。\n2. SYN 到达但回 RST ⇒ 端口没监听或进程已退出；也可能是中间设备重置。\n3. 有 SYN-ACK 但客户端收不到 ⇒ 回程路由问题、客户端防火墙。\n4. 卡在 TLS 握手 ⇒ 证书/协议版本/SNI 问题。\n5. 连上后很快 RST/FIN ⇒ 服务端进程崩溃或超时策略。\n\n常用辅助：\n- ss -s 看连接状态分布；\n- netstat -s 看重传与 listen 溢出（overflowed/synqueue）；\n- cap.pcap 用 Wireshark 看「Expert Info」与 TCP 流图更快定位。",
+    "answer": "[[图:tcpdump-connect-fail]]\n\n抓包命令（服务端侧）：\ntcpdump -i eth0 -nn -s0 -c 100 'host 10.0.0.5 and port 8080' -w /tmp/cap.pcap\n客户端侧：tcpdump -i any -nn 'tcp port 8080'\n\n分析思路（按握手阶段）：\n1. 只有 SYN、没有 SYN-ACK ⇒ 服务端未收到或被拦截：查防火墙/安全组、服务是否监听（ss -lntp）、端口是否正确。\n2. SYN 到达但回 RST ⇒ 端口没监听或进程已退出；也可能是中间设备重置。\n3. 有 SYN-ACK 但客户端收不到 ⇒ 回程路由问题、客户端防火墙。\n4. 卡在 TLS 握手 ⇒ 证书/协议版本/SNI 问题。\n5. 连上后很快 RST/FIN ⇒ 服务端进程崩溃或超时策略。\n\n常用辅助：\n- ss -s 看连接状态分布；\n- netstat -s 看重传与 listen 溢出（overflowed/synqueue）；\n- cap.pcap 用 Wireshark 看「Expert Info」与 TCP 流图更快定位。",
     "tags": [
       "tcpdump",
       "抓包",
@@ -296,7 +296,7 @@
     "category": "网络基础",
     "difficulty": "简单",
     "question": "TCP 和 UDP 的核心区别是什么？各自适用的业务场景有哪些？",
-    "answer": "TCP：面向连接、可靠、有序、有流量控制与拥塞控制，有重传与确认，开销大（三次握手、头部 20 字节起）。\nUDP：无连接、不可靠、不保序、无拥塞控制，头部仅 8 字节，开销小、延迟低，支持广播/组播。\n\n适用场景：\n- TCP：HTTP/HTTPS、数据库连接、SSH、文件传输等要求数据完整准确的场景。\n- UDP：DNS、DHCP、VoIP、视频直播、游戏实时同步、QUIC/HTTP3、监控指标上报（可容忍少量丢失）。\n\n工程权衡：\n- 需要可靠但想低延迟 ⇒ 在 UDP 上自建可靠性（如 QUIC）；\n- 内网服务发现/指标采集用 UDP 可减少连接开销但要处理丢包与乱序；\n- 高并发短请求场景 TCP 的握手与 TIME_WAIT 成本不可忽视。",
+    "answer": "[[图:tcp-vs-udp]]\n\nTCP：面向连接、可靠、有序、有流量控制与拥塞控制，有重传与确认，开销大（三次握手、头部 20 字节起）。\nUDP：无连接、不可靠、不保序、无拥塞控制，头部仅 8 字节，开销小、延迟低，支持广播/组播。\n\n适用场景：\n- TCP：HTTP/HTTPS、数据库连接、SSH、文件传输等要求数据完整准确的场景。\n- UDP：DNS、DHCP、VoIP、视频直播、游戏实时同步、QUIC/HTTP3、监控指标上报（可容忍少量丢失）。\n\n工程权衡：\n- 需要可靠但想低延迟 ⇒ 在 UDP 上自建可靠性（如 QUIC）；\n- 内网服务发现/指标采集用 UDP 可减少连接开销但要处理丢包与乱序；\n- 高并发短请求场景 TCP 的握手与 TIME_WAIT 成本不可忽视。",
     "tags": [
       "TCP",
       "UDP",
@@ -325,7 +325,7 @@
     "category": "MySQL",
     "difficulty": "中等",
     "question": "MySQL 的索引为什么使用 B+ 树而不是 B 树、红黑树或哈希表？",
-    "answer": "核心原因是「磁盘 IO 次数」与「范围查询」。\n\n对比：\n- 哈希表：等值查询 O(1)，但不支持范围查询、排序，且有哈希冲突；仅 Memory 引擎支持。\n- 红黑树/二叉搜索树：树高过大，每层一次磁盘随机 IO，几百万行数据树高 ~20 层，不可接受。\n- B 树：非叶子节点也存数据，单页能放的索引 key 更少，树更高；且范围查询需要中序遍历，跨层跳转多。\n- B+ 树：非叶子只存 key，扇出大（一页可放几百个 key），树高通常 3-4 层；数据全部在叶子节点且用双向链表串联，范围查询与排序只需顺序扫描叶子。\n\n补充：\n- InnoDB 聚簇索引叶子存整行数据，二级索引叶子存主键值（需回表）；\n- 页大小默认 16KB，三层 B+ 树可支撑约 2000 万行；\n- 覆盖索引可避免回表。",
+    "answer": "[[图:b-plus-tree-reason]]\n\n核心原因是「磁盘 IO 次数」与「范围查询」。\n\n对比：\n- 哈希表：等值查询 O(1)，但不支持范围查询、排序，且有哈希冲突；仅 Memory 引擎支持。\n- 红黑树/二叉搜索树：树高过大，每层一次磁盘随机 IO，几百万行数据树高 ~20 层，不可接受。\n- B 树：非叶子节点也存数据，单页能放的索引 key 更少，树更高；且范围查询需要中序遍历，跨层跳转多。\n- B+ 树：非叶子只存 key，扇出大（一页可放几百个 key），树高通常 3-4 层；数据全部在叶子节点且用双向链表串联，范围查询与排序只需顺序扫描叶子。\n\n补充：\n- InnoDB 聚簇索引叶子存整行数据，二级索引叶子存主键值（需回表）；\n- 页大小默认 16KB，三层 B+ 树可支撑约 2000 万行；\n- 覆盖索引可避免回表。",
     "tags": [
       "索引",
       "B+树",
@@ -339,7 +339,7 @@
     "category": "MySQL",
     "difficulty": "中等",
     "question": "什么是联合索引的最左前缀原则？哪些写法会导致索引失效？",
-    "answer": "最左前缀：联合索引 (a, b, c) 相当于建立了 (a)、(a,b)、(a,b,c) 三个索引。查询必须从最左列开始且连续匹配才能用上索引。\n\n能用索引：where a=? / a=? and b=? / a=? and b=? and c=? / a=? and c=?（c 用不上，但 a 可用）。\n不能用：where b=? / c=? / b=? and c=?。\n\n常见索引失效场景：\n1. 对索引列做函数或运算：where date(create_time)=... 、where id+1=10；\n2. 隐式类型转换：字符串列用数字比较 where phone=13800000000；\n3. 前导模糊：like '%abc'；\n4. 使用 != 、not in、is not null 大量过滤（视数据分布而定，优化器可能放弃索引）；\n5. or 连接非索引列；\n6. 范围查询后的列无法再用于排序/过滤（a>10 and b=1，b 用不上）；\n7. 优化器认为全表扫描更快（区分度低、表很小）。\n\n验证手段：EXPLAIN 看 type/key/rows/Extra（Using index 表示覆盖索引）。",
+    "answer": "[[图:leftmost-prefix]]\n\n最左前缀：联合索引 (a, b, c) 相当于建立了 (a)、(a,b)、(a,b,c) 三个索引。查询必须从最左列开始且连续匹配才能用上索引。\n\n能用索引：where a=? / a=? and b=? / a=? and b=? and c=? / a=? and c=?（c 用不上，但 a 可用）。\n不能用：where b=? / c=? / b=? and c=?。\n\n常见索引失效场景：\n1. 对索引列做函数或运算：where date(create_time)=... 、where id+1=10；\n2. 隐式类型转换：字符串列用数字比较 where phone=13800000000；\n3. 前导模糊：like '%abc'；\n4. 使用 != 、not in、is not null 大量过滤（视数据分布而定，优化器可能放弃索引）；\n5. or 连接非索引列；\n6. 范围查询后的列无法再用于排序/过滤（a>10 and b=1，b 用不上）；\n7. 优化器认为全表扫描更快（区分度低、表很小）。\n\n验证手段：EXPLAIN 看 type/key/rows/Extra（Using index 表示覆盖索引）。",
     "tags": [
       "索引",
       "最左前缀",
@@ -353,7 +353,7 @@
     "category": "MySQL",
     "difficulty": "中等",
     "question": "EXPLAIN 输出中 type、key、rows、Extra 各代表什么？你重点关注哪些值？",
-    "answer": "type（访问类型，性能由好到差）：\nsystem > const > eq_ref > ref > range > index > ALL。出现 ALL 或 index 需警惕。\n\nkey：实际使用的索引；key 为 NULL 说明没走索引。possible_keys 是候选。\n\nrows：预估扫描行数，越小越好；结合 filtered 估算实际返回比例。\n\nExtra 关键值：\n- Using index：覆盖索引，无需回表，最优；\n- Using where：回表后再过滤，可优化；\n- Using index condition：索引下推（ICP），较好；\n- Using filesort：文件排序，需优化（加合适索引或调整 ORDER BY）；\n- Using temporary：使用临时表，常见于 GROUP BY/DISTINCT，需优化；\n- Using join buffer：JOIN 无索引。\n\n进阶：EXPLAIN ANALYZE（8.0.18+）给出真实执行耗时，比估算更可靠；optimizer_trace 看优化器决策。",
+    "answer": "type（访问类型，性能由好到差）：\nsystem > const > eq_ref > ref > range > index > ALL。出现 ALL 或 index 需警惕。\n\nkey：实际使用的索引；key 为 NULL 说明没走索引。possible_keys 是候选。\n\nrows：预估扫描行数，越小越好；结合 filtered 估算实际返回比例。\n\nExtra 关键值：\n- Using index：覆盖索引，无需回表，最优；\n- Using where：回表后再过滤，可优化；\n- Using index condition：索引下推（ICP），较好；\n- Using filesort：文件排序，需优化（加合适索引或调整 ORDER BY）；\n- Using temporary：使用临时表，常见于 GROUP BY/DISTINCT，需优化；\n- Using join buffer：JOIN 无索引。\n\n进阶：[[图:explain-fields]]\n\nEXPLAIN ANALYZE（8.0.18+）给出真实执行耗时，比估算更可靠；optimizer_trace 看优化器决策。",
     "tags": [
       "EXPLAIN",
       "执行计划",
@@ -610,7 +610,7 @@
     "category": "容器与K8s",
     "difficulty": "困难",
     "question": "Pod 被 OOMKilled 的原因是什么？requests 和 limits 如何影响调度与运行时行为？",
-    "answer": "OOMKilled 表示容器内存使用超过 limits.memory，被 cgroup OOM killer 杀掉（kubectl describe 显示 Last State: Terminated, Reason: OOMKilled, Exit Code: 137）。\n\nrequests 与 limits：\n- requests：调度依据，kube-scheduler 按 requests 找有足够资源的节点；也是 QoS 的依据。\n- limits：运行时上限，CPU 超限被节流（throttle，不会杀），内存超限直接 OOMKill。\n\nQoS 等级：\n- Guaranteed：requests == limits（所有容器）；节点资源紧张时最后被驱逐。\n- Burstable：requests < limits；中间优先级。\n- BestEffort：都没设置；最先被驱逐。\n\n排查：\n1. kubectl describe pod 看 OOMKilled 与 limits；\n2. kubectl top pod 看实际使用；\n3. 应用是否有内存泄漏（堆 dump、GC 日志）；\n4. 是否因 JVM 未设 -Xmx 或未感知 cgroup 限制（老版本 JDK 坑，需 -XX:+UseContainerSupport）。\n\n调优：设合理 requests（略低于峰值）与 limits（留 20-30% 余量）；不要为了「省资源」把 limits 设得刚好等于常态用量。",
+    "answer": "OOMKilled 表示容器内存使用超过 limits.memory，被 cgroup OOM killer 杀掉（kubectl describe 显示 Last State: Terminated, Reason: OOMKilled, Exit Code: 137）。\n\n[[图:k8s-resources-qos]]\n\nrequests 与 limits：\n- requests：调度依据，kube-scheduler 按 requests 找有足够资源的节点；也是 QoS 的依据。\n- limits：运行时上限，CPU 超限被节流（throttle，不会杀），内存超限直接 OOMKill。\n\nQoS 等级：\n- Guaranteed：requests == limits（所有容器）；节点资源紧张时最后被驱逐。\n- Burstable：requests < limits；中间优先级。\n- BestEffort：都没设置；最先被驱逐。\n\n排查：\n1. kubectl describe pod 看 OOMKilled 与 limits；\n2. kubectl top pod 看实际使用；\n3. 应用是否有内存泄漏（堆 dump、GC 日志）；\n4. 是否因 JVM 未设 -Xmx 或未感知 cgroup 限制（老版本 JDK 坑，需 -XX:+UseContainerSupport）。\n\n调优：设合理 requests（略低于峰值）与 limits（留 20-30% 余量）；不要为了「省资源」把 limits 设得刚好等于常态用量。",
     "tags": [
       "OOM",
       "resources",
@@ -780,7 +780,7 @@
     "category": "监控告警",
     "difficulty": "困难",
     "question": "PromQL 中 rate 和 irate 有什么区别？计算 P99 时为什么常写 histogram_quantile(0.99, sum by (le) (rate(...[5m])))？",
-    "answer": "rate vs irate：\n- rate(v[5m])：用窗口首尾两个样本计算平均每秒增长率，平滑、稳定，适合告警与时序展示。\n- irate(v[5m])：只用窗口内最后两个样本，反映「瞬时」速率，灵敏但抖动大，适合调试与快速变化场景。\n- 两者都要求 Counter，且窗口内至少 2 个样本（rate 实际建议 ≥4 个）。\n\nP99 计算式解读：\nhistogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))\n1. rate(..._bucket[5m])：把累计桶转成每秒速率，并处理重启；\n2. sum by (le)：按桶边界 le 聚合所有实例，得到全局分布（分位数必须在聚合后计算，否则不能合并）；\n3. histogram_quantile(0.99, ...)：在桶边界上做线性插值估算 P99。\n\n关键点：\n- 顺序不能反：先 rate 再 sum by (le)，最后 quantile；\n- 直接对 summary 的分位做平均是错的（分位数不可加）；\n- 桶边界设置要贴合业务 SLO（如 .1 .2 .5 1 2 5 秒），桶太粗误差大；\n- 无数据或样本不足时返回 NaN，需在面板与告警里处理。",
+    "answer": "[[图:rate-vs-irate]]\n\nrate vs irate：\n- rate(v[5m])：用窗口首尾两个样本计算平均每秒增长率，平滑、稳定，适合告警与时序展示。\n- irate(v[5m])：只用窗口内最后两个样本，反映「瞬时」速率，灵敏但抖动大，适合调试与快速变化场景。\n- 两者都要求 Counter，且窗口内至少 2 个样本（rate 实际建议 ≥4 个）。\n\nP99 计算式解读：\nhistogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))\n1. rate(..._bucket[5m])：把累计桶转成每秒速率，并处理重启；\n2. sum by (le)：按桶边界 le 聚合所有实例，得到全局分布（分位数必须在聚合后计算，否则不能合并）；\n3. histogram_quantile(0.99, ...)：在桶边界上做线性插值估算 P99。\n\n关键点：\n- 顺序不能反：先 rate 再 sum by (le)，最后 quantile；\n- 直接对 summary 的分位做平均是错的（分位数不可加）；\n- 桶边界设置要贴合业务 SLO（如 .1 .2 .5 1 2 5 秒），桶太粗误差大；\n- 无数据或样本不足时返回 NaN，需在面板与告警里处理。",
     "tags": [
       "PromQL",
       "P99",
@@ -809,7 +809,7 @@
     "category": "监控告警",
     "difficulty": "中等",
     "question": "监控体系中的 metrics、logging、tracing 三者有什么区别与联系？什么场景该用哪个？",
-    "answer": "Metrics（指标）：聚合数值（QPS、延迟分位、CPU），成本低、适合长期存储与告警，但缺乏上下文，无法定位到具体请求。\nLogging（日志）：离散事件文本，上下文丰富（错误堆栈、参数），适合排查个案，但量大、存储成本高，不适合做聚合告警。\nTracing（链路追踪）：一次请求跨服务的调用链（trace → span），能定位耗时在哪个环节，适合微服务性能分析，采样存储。\n\n区别一句话：metrics 告诉你「有问题」，logging 告诉你「什么错」，tracing 告诉你「慢/错在哪一跳」。\n\n实践组合：\n- 告警用 metrics（快、稳）；\n- 定位用 tracing 找异常链路，再拉该 trace 的日志看详情；\n- 三者通过 trace_id / request_id 关联（日志里打印 trace_id，指标带服务维度标签）；\n- 常见栈：Prometheus + Loki/ELK + Jaeger/Tempo/SkyWalking + Grafana 统一展示。\n\n成本控制：metrics 全量、tracing 采样（如 1%-10% 或头部采样）、logging 分级 + 冷热分层。",
+    "answer": "Metrics（指标）：聚合数值（QPS、延迟分位、CPU），成本低、适合长期存储与告警，但缺乏上下文，无法定位到具体请求。\nLogging（日志）：离散事件文本，上下文丰富（错误堆栈、参数），适合排查个案，但量大、存储成本高，不适合做聚合告警。\nTracing（链路追踪）：一次请求跨服务的调用链（trace → span），能定位耗时在哪个环节，适合微服务性能分析，采样存储。\n\n区别一句话：[[图:observability-pillars]]\n\nmetrics 告诉你「有问题」，logging 告诉你「什么错」，tracing 告诉你「慢/错在哪一跳」。\n\n实践组合：\n- 告警用 metrics（快、稳）；\n- 定位用 tracing 找异常链路，再拉该 trace 的日志看详情；\n- 三者通过 trace_id / request_id 关联（日志里打印 trace_id，指标带服务维度标签）；\n- 常见栈：Prometheus + Loki/ELK + Jaeger/Tempo/SkyWalking + Grafana 统一展示。\n\n成本控制：metrics 全量、tracing 采样（如 1%-10% 或头部采样）、logging 分级 + 冷热分层。",
     "tags": [
       "可观测性",
       "日志",
@@ -823,7 +823,7 @@
     "category": "监控告警",
     "difficulty": "困难",
     "question": "SLI、SLO、SLA 分别是什么？如何用错误预算（Error Budget）指导发布决策？",
-    "answer": "SLI（Indicator）：可量化的服务质量指标，如「HTTP 请求成功率」「P99 延迟」。要定义清楚测量点与口径。\nSLO（Objective）：对 SLI 的目标值，如「99.9% 的请求在 300ms 内成功」，是内部承诺。\nSLA（Agreement）：对客户的合同化承诺，通常含赔付条款，SLA ≤ SLO（留缓冲）。\n\n错误预算：\n错误预算 = 1 - SLO。例如 SLO 99.9%（月度），错误预算 = 0.1% 的请求量。\n\n指导发布：\n- 预算充足：可加快发布节奏、尝试风险变更；\n- 预算消耗过快（如一周用掉 60%）：冻结非必要发布，优先稳定性治理；\n- 预算耗尽：只允许修复类变更，触发复盘。\n\n实践要点：\n- 用燃烧率（burn rate）做多窗口告警：短时间内快速燃烧（1h 窗口 14.4x）对应 P0，缓慢燃烧（6h/3d）对应工单；\n- SLO 要少而精（核心用户路径 3-5 个），避免全站一刀切；\n- 预算统计要排除计划内维护窗口。",
+    "answer": "[[图:slo-error-budget]]\n\nSLI（Indicator）：可量化的服务质量指标，如「HTTP 请求成功率」「P99 延迟」。要定义清楚测量点与口径。\nSLO（Objective）：对 SLI 的目标值，如「99.9% 的请求在 300ms 内成功」，是内部承诺。\nSLA（Agreement）：对客户的合同化承诺，通常含赔付条款，SLA ≤ SLO（留缓冲）。\n\n错误预算：\n错误预算 = 1 - SLO。例如 SLO 99.9%（月度），错误预算 = 0.1% 的请求量。\n\n指导发布：\n- 预算充足：可加快发布节奏、尝试风险变更；\n- 预算消耗过快（如一周用掉 60%）：冻结非必要发布，优先稳定性治理；\n- 预算耗尽：只允许修复类变更，触发复盘。\n\n实践要点：\n- 用燃烧率（burn rate）做多窗口告警：短时间内快速燃烧（1h 窗口 14.4x）对应 P0，缓慢燃烧（6h/3d）对应工单；\n- SLO 要少而精（核心用户路径 3-5 个），避免全站一刀切；\n- 预算统计要排除计划内维护窗口。",
     "tags": [
       "SLO",
       "错误预算",
@@ -838,7 +838,7 @@
     "category": "监控告警",
     "difficulty": "中等",
     "question": "线上故障时，值班工程师的标准响应流程是什么？如何做到快速止血并有效升级？",
-    "answer": "标准流程：\n1. 确认与分级（0-5 分钟）：看告警、确认影响面（用户/业务/地域）、定级 P0-P3，拉起应急群。\n2. 止血优先（5-15 分钟）：先恢复可用性再找根因。常用手段：回滚、扩容、切流/降级、限流、重启、摘除异常节点、开关关闭新功能。\n3. 定位（并行）：看监控大盘与最近变更（发布、配置、DB 变更、网络），用链路追踪定位瓶颈服务。\n4. 沟通：指定一人做「信息同步」，固定节奏对外通报（如每 15 分钟），避免多头指挥。\n5. 恢复验证：核心指标回基线、冒烟通过、观察 30 分钟无反复。\n6. 复盘：24-48 小时内完成，产出时间线、根因、改进项（有 owner 与 deadline），不追责个人。\n\n升级原则：\n- 超过 X 分钟未定位或影响扩大，立即升级到二线/架构/负责人；\n- 权限不足（如无法回滚、需要 DB 操作）立即升级，不要死磕；\n- 明确「谁有权决定回滚」，避免决策卡顿。",
+    "answer": "[[图:oncall-response-flow]]\n\n标准流程：\n1. 确认与分级（0-5 分钟）：看告警、确认影响面（用户/业务/地域）、定级 P0-P3，拉起应急群。\n2. 止血优先（5-15 分钟）：先恢复可用性再找根因。常用手段：回滚、扩容、切流/降级、限流、重启、摘除异常节点、开关关闭新功能。\n3. 定位（并行）：看监控大盘与最近变更（发布、配置、DB 变更、网络），用链路追踪定位瓶颈服务。\n4. 沟通：指定一人做「信息同步」，固定节奏对外通报（如每 15 分钟），避免多头指挥。\n5. 恢复验证：核心指标回基线、冒烟通过、观察 30 分钟无反复。\n6. 复盘：24-48 小时内完成，产出时间线、根因、改进项（有 owner 与 deadline），不追责个人。\n\n升级原则：\n- 超过 X 分钟未定位或影响扩大，立即升级到二线/架构/负责人；\n- 权限不足（如无法回滚、需要 DB 操作）立即升级，不要死磕；\n- 明确「谁有权决定回滚」，避免决策卡顿。",
     "tags": [
       "故障响应",
       "应急",
@@ -883,7 +883,7 @@
     "category": "安全与跳板机",
     "difficulty": "中等",
     "question": "什么是最小权限原则？在 Linux 运维和容器环境中如何落地？",
-    "answer": "最小权限原则：主体只应拥有完成其工作所必需的最小权限，且时限尽可能短（JIT）。\n\nLinux 落地：\n- 不用 root 日常操作，用普通账号 + sudo 精确授权（/etc/sudoers.d 中指定命令白名单，避免 ALL）；\n- 文件权限最小化，敏感文件 600，目录 750，避免 777；\n- 服务以专用低权限用户运行（如 nginx/www-data、mysql）；\n- 使用 capability 拆分 root 权限（setcap），减少全 root；\n- 密钥/凭据按用途隔离，定期轮换。\n\n容器/K8s 落地：\n- 镜像 USER 非 root，runAsNonRoot: true；\n- securityContext 设置 readOnlyRootFilesystem、allowPrivilegeEscalation: false、capabilities.drop 设为 ['ALL']；\n- 不用 privileged、不挂 /var/run/docker.sock；\n- 用 RBAC 精确授权 ServiceAccount，避免 cluster-admin；\n- 网络策略（NetworkPolicy）限制 Pod 间东西向流量。\n\n审计：定期用工具核查实际权限（如 kube-bench、CIS 扫描），并移除长期未使用的权限。",
+    "answer": "[[图:least-privilege-layers]]\n\n最小权限原则：主体只应拥有完成其工作所必需的最小权限，且时限尽可能短（JIT）。\n\nLinux 落地：\n- 不用 root 日常操作，用普通账号 + sudo 精确授权（/etc/sudoers.d 中指定命令白名单，避免 ALL）；\n- 文件权限最小化，敏感文件 600，目录 750，避免 777；\n- 服务以专用低权限用户运行（如 nginx/www-data、mysql）；\n- 使用 capability 拆分 root 权限（setcap），减少全 root；\n- 密钥/凭据按用途隔离，定期轮换。\n\n容器/K8s 落地：\n- 镜像 USER 非 root，runAsNonRoot: true；\n- securityContext 设置 readOnlyRootFilesystem、allowPrivilegeEscalation: false、capabilities.drop 设为 ['ALL']；\n- 不用 privileged、不挂 /var/run/docker.sock；\n- 用 RBAC 精确授权 ServiceAccount，避免 cluster-admin；\n- 网络策略（NetworkPolicy）限制 Pod 间东西向流量。\n\n审计：定期用工具核查实际权限（如 kube-bench、CIS 扫描），并移除长期未使用的权限。",
     "tags": [
       "最小权限",
       "RBAC",
@@ -912,7 +912,7 @@
     "category": "安全与跳板机",
     "difficulty": "中等",
     "question": "TLS 证书过期导致服务不可用，如何提前发现并做到自动续期？",
-    "answer": "检测：\n1. 主动探测：echo | openssl s_client -connect host:443 -servername host 2>/dev/null | openssl x509 -noout -dates，或 curl -vI 看证书有效期；\n2. 黑盒探针：黑盒监控（如 blackbox_exporter 的 probe_ssl_earliest_cert_expiry）采集剩余天数并告警（<30 天预警，<7 天严重）；\n3. 盘点所有对外域名与内部 mTLS 证书，建立到期清单（自动化登记）。\n\n自动续期：\n- Let's Encrypt 用 certbot/acme.sh 自动续期，配 cron 或 systemd timer，续期后 reload（nginx -s reload 而非 restart）；\n- 云上可用 ACM/托管证书自动轮换；\n- K8s 用 cert-manager + Ingress 注解自动签发与续期；\n- 内部服务网格用 Istio 自动轮换工作负载证书。\n\n工程要点：\n- 续期后必须有 reload 动作，否则仍用旧证书（最常见事故点）；\n- 验证链路完整（中间证书要一起下发），否则部分客户端失败；\n- 变更后监控有效性，而不是只看文件时间戳。",
+    "answer": "[[图:tls-cert-lifecycle]]\n\n检测：\n1. 主动探测：echo | openssl s_client -connect host:443 -servername host 2>/dev/null | openssl x509 -noout -dates，或 curl -vI 看证书有效期；\n2. 黑盒探针：黑盒监控（如 blackbox_exporter 的 probe_ssl_earliest_cert_expiry）采集剩余天数并告警（<30 天预警，<7 天严重）；\n3. 盘点所有对外域名与内部 mTLS 证书，建立到期清单（自动化登记）。\n\n自动续期：\n- Let's Encrypt 用 certbot/acme.sh 自动续期，配 cron 或 systemd timer，续期后 reload（nginx -s reload 而非 restart）；\n- 云上可用 ACM/托管证书自动轮换；\n- K8s 用 cert-manager + Ingress 注解自动签发与续期；\n- 内部服务网格用 Istio 自动轮换工作负载证书。\n\n工程要点：\n- 续期后必须有 reload 动作，否则仍用旧证书（最常见事故点）；\n- 验证链路完整（中间证书要一起下发），否则部分客户端失败；\n- 变更后监控有效性，而不是只看文件时间戳。",
     "tags": [
       "TLS",
       "证书",
@@ -1899,7 +1899,7 @@
     "category": "Shell脚本",
     "difficulty": "简单",
     "question": "Shell 中单引号、双引号、反引号和 $() 有什么区别？",
-    "answer": "**四种写法本质是「是否展开变量 / 是否允许命令替换」的组合，选错最容易出的问题是「变量没展开」或「被意外执行」。**\n\n| 写法 | 变量展开 | 命令替换 | 常见用途 |\n|---|---|---|---|\n| `'单引号'` | ❌ 全部原样 | ❌ | 正则、awk 脚本、含 `$` 的原文 |\n| `\"双引号\"` | ✅ | ✅ | 一般字符串、拼接 |\n| `` `反引号` `` | ✅ | ✅ | 旧式命令替换（**不推荐**） |\n| `$(命令)` | ✅ | ✅ | 现代命令替换（**推荐**） |\n\n```bash\nname=world\necho 'hello $name'   # hello $name（不展开）\necho \"hello $name\"   # hello world\necho $(date +%F)     # 2026-10-30\necho `date +%F`      # 同上，但嵌套困难\n```\n\n**为什么推荐 `$()`**：反引号在嵌套时要用反斜杠转义，可读性极差；`$()` 可自然嵌套：`echo $(echo $(date +%Y))`。\n\n**常见坑**：\n1. 用单引号包 awk 脚本（`awk '{print $1}'`）是对的 —— 因为 `$1` 要留给 awk；\n2. 用双引号包 awk 脚本会被 shell 先展开 `$1`，结果变成 `awk '{print }'`；\n3. 变量里含空格时**必须加双引号**：`cp $file /bak/` 在文件名带空格时会拆成多个参数（应写 `cp \"$file\" /bak/`）。\n\n**排查思路**：`bash -x script.sh` 看实际展开后的命令，或用 `set -x` 局部调试。",
+    "answer": "**四种写法本质是「是否展开变量 / 是否允许命令替换」的组合，选错最容易出的问题是「变量没展开」或「被意外执行」。**\n\n| 写法 | 变量展开 | 命令替换 | 常见用途 |\n|---|---|---|---|\n| `'单引号'` | ❌ 全部原样 | ❌ | 正则、awk 脚本、含 `$` 的原文 |\n| `\"双引号\"` | ✅ | ✅ | 一般字符串、拼接 |\n| `` `反引号` `` | ✅ | ✅ | 旧式命令替换（**不推荐**） |\n| `$(命令)` | ✅ | ✅ | 现代命令替换（**推荐**） |\n\n[[图:shell-quotes]]\n\n```bash\nname=world\necho 'hello $name'   # hello $name（不展开）\necho \"hello $name\"   # hello world\necho $(date +%F)     # 2026-10-30\necho `date +%F`      # 同上，但嵌套困难\n```\n\n**为什么推荐 `$()`**：反引号在嵌套时要用反斜杠转义，可读性极差；`$()` 可自然嵌套：`echo $(echo $(date +%Y))`。\n\n**常见坑**：\n1. 用单引号包 awk 脚本（`awk '{print $1}'`）是对的 —— 因为 `$1` 要留给 awk；\n2. 用双引号包 awk 脚本会被 shell 先展开 `$1`，结果变成 `awk '{print }'`；\n3. 变量里含空格时**必须加双引号**：`cp $file /bak/` 在文件名带空格时会拆成多个参数（应写 `cp \"$file\" /bak/`）。\n\n**排查思路**：`bash -x script.sh` 看实际展开后的命令，或用 `set -x` 局部调试。",
     "tags": [
       "引号",
       "命令替换"
@@ -2276,7 +2276,7 @@
     "category": "DNS",
     "difficulty": "中等",
     "question": "DNS 解析失败时，怎么一步步定位是哪一层出的问题？",
-    "answer": "按缓存层级从近到远排查，用 dig 逐跳验证：\n\n1. 先看本机缓存和 hosts：cat /etc/hosts，确认没被写死\n2. 直接问本地 DNS：dig @<resolv.conf里的IP> example.com\n3. 逐跳追踪：dig example.com +trace —— 会依次输出根、顶级、权威的返回，看在哪一跳断了\n4. 换公共 DNS 对比：dig @8.8.8.8 example.com，能解析说明是本地 DNS 的问题\n5. 检查权威记录是否真的存在：直接问权威服务器 dig @ns1.example.com example.com\n\n常见结论：\n- +trace 在第 1 跳就失败 → 本地 DNS 不可达或防火墙拦了 53\n- 换公共 DNS 能解析 → 本地 DNS 缓存污染或配置错误\n- 权威返回 NXDOMAIN → 记录压根没配，找域名服务商\n- 全部正常但应用报错 → 看 ndots/search 域，或应用侧缓存",
+    "answer": "按缓存层级从近到远排查，用 dig 逐跳验证：\n\n1. 先看本机缓存和 hosts：cat /etc/hosts，确认没被写死\n2. 直接问本地 [[图:dns-failure-layers]]\n\nDNS：dig @<resolv.conf里的IP> example.com\n3. 逐跳追踪：dig example.com +trace —— 会依次输出根、顶级、权威的返回，看在哪一跳断了\n4. 换公共 DNS 对比：dig @8.8.8.8 example.com，能解析说明是本地 DNS 的问题\n5. 检查权威记录是否真的存在：直接问权威服务器 dig @ns1.example.com example.com\n\n常见结论：\n- +trace 在第 1 跳就失败 → 本地 DNS 不可达或防火墙拦了 53\n- 换公共 DNS 能解析 → 本地 DNS 缓存污染或配置错误\n- 权威返回 NXDOMAIN → 记录压根没配，找域名服务商\n- 全部正常但应用报错 → 看 ndots/search 域，或应用侧缓存",
     "tags": [
       "排障",
       "dig",
@@ -2424,7 +2424,7 @@
     "category": "DNS",
     "difficulty": "中等",
     "question": "/etc/resolv.conf 里的 search 和 ndots 是什么？配错会有什么影响？",
-    "answer": "它们决定「问域名时自动补哪些后缀」。\n\n- search：给不完整的域名自动追加后缀。例如 search example.com，查 api 会自动试 api.example.com\n- ndots:N：如果域名里的点少于 N 个，就先尝试追加 search 后缀，再试原样查询\n\n配置示例：\nsearch example.svc.cluster.local svc.cluster.local\noptions ndots:5\n\n常见问题：\n- ndots 设太大（如 K8s 默认 5）：查外部域名 xxx.com 只有 1 个点 < 5，于是会先试 5 个无效后缀，产生大量无用查询和延迟\n- search 域太多且 DNS 不可达：每次查询都要等超时串联，解析奇慢\n- 多个 nameserver 时是「串行尝试」，第一个不可达会白等几秒\n\n经验：容器环境优先用 FQDN（域名末尾加点，如 api.example.com.）可跳过 search 组装，显著减少解析耗时。",
+    "answer": "它们决定「问域名时自动补哪些后缀」。\n\n- [[图:dns-ndots-search]]\n\nsearch：给不完整的域名自动追加后缀。例如 search example.com，查 api 会自动试 api.example.com\n- ndots:N：如果域名里的点少于 N 个，就先尝试追加 search 后缀，再试原样查询\n\n配置示例：\nsearch example.svc.cluster.local svc.cluster.local\noptions ndots:5\n\n常见问题：\n- ndots 设太大（如 K8s 默认 5）：查外部域名 xxx.com 只有 1 个点 < 5，于是会先试 5 个无效后缀，产生大量无用查询和延迟\n- search 域太多且 DNS 不可达：每次查询都要等超时串联，解析奇慢\n- 多个 nameserver 时是「串行尝试」，第一个不可达会白等几秒\n\n经验：容器环境优先用 FQDN（域名末尾加点，如 api.example.com.）可跳过 search 组装，显著减少解析耗时。",
     "tags": [
       "resolv.conf",
       "search",
@@ -2438,7 +2438,7 @@
     "category": "DNS",
     "difficulty": "困难",
     "question": "同一域名解析到多个 IP（多 A 记录）时，客户端如何选择？有什么隐患？",
-    "answer": "DNS 本身不保证顺序，也不做健康检查：\n\n1. 权威服务器返回多条 A 记录的先后顺序并不稳定\n2. 客户端/操作系统可能按返回顺序用第一个，也可能做轮询\n3. 大多数客户端会缓存整组结果，失败后不一定立刻切到下一个\n\n隐患：\n- 其中一台挂了，客户端可能仍连已挂的 IP，直到超时或缓存过期\n- 没有真正的健康检查，DNS 层看不到后端存活\n\n正确做法：\n- 把高可用交给负载均衡（LVS/Nginx/SLB）：DNS 只指向 VIP\n- 需要 DNS 级容灾时用专门的 GSLB/智能解析，带健康检查\n- 临时方案：调小 TTL，故障时快速换记录\n\n不要指望「多 A 记录」等于高可用，它只是分流，不是故障转移。",
+    "answer": "DNS 本身不保证顺序，也不做健康检查：\n\n1. 权威服务器返回多条 A 记录的先后顺序并不稳定\n2. 客户端/操作系统可能按返回顺序用第一个，也可能做轮询\n3. 大多数客户端会缓存整组结果，失败后不一定立刻切到下一个\n\n隐患：\n- 其中一台挂了，客户端可能仍连已挂的 IP，直到超时或缓存过期\n- 没有真正的健康检查，DNS 层看不到后端存活\n\n正确做法：\n- 把高可用交给负载均衡（LVS/Nginx/SLB）：DNS 只指向 VIP\n- 需要 DNS 级容灾时用专门的 GSLB/智能解析，带健康检查\n- 临时方案：调小 TTL，故障时快速换记录\n\n不要指望「[[图:multi-a-records]]\n\n多 A 记录」等于高可用，它只是分流，不是故障转移。",
     "tags": [
       "多A记录",
       "高可用",
@@ -5237,7 +5237,7 @@
     "category": "iptables/firewalld",
     "difficulty": "困难",
     "question": "conntrack 表满会有什么现象？如何排查和调优？",
-    "answer": "现象（非常容易被误判）：\n- 偶发、不规律的连接超时或失败，重试有时能成功\n- 已建立的连接能通，新连接建不上\n- 应用日志报连接超时，但网络看起来是通的\n- dmesg 里出现：nf_conntrack: table full, dropping packet\n\n排查：\n- cat /proc/sys/net/netfilter/nf_conntrack_count（当前数量）\n- cat /proc/sys/net/netfilter/nf_conntrack_max（上限）\n- dmesg -T | grep conntrack\n\n调优：\n- 调大上限：sysctl -w net.netfilter.nf_conntrack_max=1048576\n- 缩短超时（默认 ESTABLISHED 5 天太长）：\n  net.netfilter.nf_conntrack_tcp_timeout_established = 600\n- 减少不必要的跟踪：对不需要 nat 的流量在 raw 表 NOTRACK\n- 优化应用侧：用连接池，减少短连接\n\n特别注意：做 NAT/负载均衡的机器（LVS、K8s node）连接数大，最容易撞到这个上限。",
+    "answer": "现象（非常容易被误判）：\n- 偶发、不规律的连接超时或失败，重试有时能成功\n- 已建立的连接能通，新连接建不上\n- 应用日志报连接超时，但网络看起来是通的\n- dmesg 里出现：nf_[[图:conntrack-full]]\n\nconntrack: table full, dropping packet\n\n排查：\n- cat /proc/sys/net/netfilter/nf_conntrack_count（当前数量）\n- cat /proc/sys/net/netfilter/nf_conntrack_max（上限）\n- dmesg -T | grep conntrack\n\n调优：\n- 调大上限：sysctl -w net.netfilter.nf_conntrack_max=1048576\n- 缩短超时（默认 ESTABLISHED 5 天太长）：\n  net.netfilter.nf_conntrack_tcp_timeout_established = 600\n- 减少不必要的跟踪：对不需要 nat 的流量在 raw 表 NOTRACK\n- 优化应用侧：用连接池，减少短连接\n\n特别注意：做 NAT/负载均衡的机器（LVS、K8s node）连接数大，最容易撞到这个上限。",
     "tags": [
       "conntrack",
       "表满",
@@ -5338,7 +5338,7 @@
     "category": "iptables/firewalld",
     "difficulty": "中等",
     "question": "firewalld 和 iptables 是什么关系？zone 是干什么的？",
-    "answer": "关系：\n- firewalld 是 iptables/nftables 的前端管理工具，底层最终还是生成 iptables 规则\n- 不建议两个同时用：CentOS 7+ 装 firewalld 后，手写的 iptables 规则会被它接管/覆盖，容易冲突\n\nzone（区域）的作用：按「信任程度」分组管理规则。网卡加入某个 zone，就套用该 zone 的规则集。\n\n常用 zone：\n- drop：全部丢弃\n- block：拒绝入向，允许出向\n- public：默认区，只放行选定服务\n- trusted：全部放行\n\n常用命令：\n- firewall-cmd --get-active-zones（看网卡在哪个区）\n- firewall-cmd --zone=public --add-port=8080/tcp --permanent\n- firewall-cmd --reload（--permanent 必须 reload 才生效）\n- firewall-cmd --list-all\n\n高频坑：加了 --permanent 但忘了 reload，规则「看起来配了却不生效」。",
+    "answer": "关系：\n- [[图:firewalld-vs-iptables]]\n\nfirewalld 是 iptables/nftables 的前端管理工具，底层最终还是生成 iptables 规则\n- 不建议两个同时用：CentOS 7+ 装 firewalld 后，手写的 iptables 规则会被它接管/覆盖，容易冲突\n\nzone（区域）的作用：按「信任程度」分组管理规则。网卡加入某个 zone，就套用该 zone 的规则集。\n\n常用 zone：\n- drop：全部丢弃\n- block：拒绝入向，允许出向\n- public：默认区，只放行选定服务\n- trusted：全部放行\n\n常用命令：\n- firewall-cmd --get-active-zones（看网卡在哪个区）\n- firewall-cmd --zone=public --add-port=8080/tcp --permanent\n- firewall-cmd --reload（--permanent 必须 reload 才生效）\n- firewall-cmd --list-all\n\n高频坑：加了 --permanent 但忘了 reload，规则「看起来配了却不生效」。",
     "tags": [
       "firewalld",
       "zone",
@@ -10991,7 +10991,7 @@
     "category": "LVS/HAProxy",
     "difficulty": "中等",
     "question": "LVS 的八种调度算法有哪些？最常用哪几个？",
-    "answer": "八种算法，分静态与动态两类。\n\n**静态算法**（不考虑后端当前负载）：\n1. **rr**（轮询）：请求依次分发，最简单\n2. **wrr**（加权轮询）：按权重分配，性能好的机器权重高\n3. **dh**（目标地址哈希）：按目标 IP 哈希，用于缓存集群\n4. **sh**（源地址哈希）：按客户端 IP 哈希，实现会话保持\n\n**动态算法**（根据实时连接数判断）：\n5. **lc**（最少连接）：连接数最少的优先，适合长连接\n6. **wlc**（加权最少连接）：**最常用**，兼顾权重与实时负载\n7. **sed**（最短延迟）：wlc 的改进版，考虑权重与连接数的比值\n8. **nq**（永不排队）：新连接优先给空闲机器，避免空转\n\n**最常用的三个**：\n\n| 算法 | 场景 |\n|---|---|\n| **wlc** | 默认算法，后端性能不均时最合适（生产首选） |\n| **rr / wrr** | 后端性能一致、请求耗时均匀（如静态资源） |\n| **sh** | 需要会话保持的老应用（无共享 session） |\n\n**sh 的坑**：NAT 环境下大量用户共用出口 IP，会导致严重倾斜（全压到一台）。有共享 session 时优先解决会话共享，而不是靠 sh。\n\n**配置示例**：\n```\nipvsadm -A -t 192.168.1.100:80 -s wlc     # -s 指定算法\nipvsadm -a -t 192.168.1.100:80 -r 10.0.0.1:80 -g -w 10\nipvsadm -a -t 192.168.1.100:80 -r 10.0.0.2:80 -g -w 5\n```",
+    "answer": "[[图:lvs-scheduling]]\n\n八种算法，分静态与动态两类。\n\n**静态算法**（不考虑后端当前负载）：\n1. **rr**（轮询）：请求依次分发，最简单\n2. **wrr**（加权轮询）：按权重分配，性能好的机器权重高\n3. **dh**（目标地址哈希）：按目标 IP 哈希，用于缓存集群\n4. **sh**（源地址哈希）：按客户端 IP 哈希，实现会话保持\n\n**动态算法**（根据实时连接数判断）：\n5. **lc**（最少连接）：连接数最少的优先，适合长连接\n6. **wlc**（加权最少连接）：**最常用**，兼顾权重与实时负载\n7. **sed**（最短延迟）：wlc 的改进版，考虑权重与连接数的比值\n8. **nq**（永不排队）：新连接优先给空闲机器，避免空转\n\n**最常用的三个**：\n\n| 算法 | 场景 |\n|---|---|\n| **wlc** | 默认算法，后端性能不均时最合适（生产首选） |\n| **rr / wrr** | 后端性能一致、请求耗时均匀（如静态资源） |\n| **sh** | 需要会话保持的老应用（无共享 session） |\n\n**sh 的坑**：NAT 环境下大量用户共用出口 IP，会导致严重倾斜（全压到一台）。有共享 session 时优先解决会话共享，而不是靠 sh。\n\n**配置示例**：\n```\nipvsadm -A -t 192.168.1.100:80 -s wlc     # -s 指定算法\nipvsadm -a -t 192.168.1.100:80 -r 10.0.0.1:80 -g -w 10\nipvsadm -a -t 192.168.1.100:80 -r 10.0.0.2:80 -g -w 5\n```",
     "tags": [
       "调度算法",
       "wlc",
@@ -11381,7 +11381,7 @@
     "category": "LVS/HAProxy",
     "difficulty": "困难",
     "question": "LVS + Keepalived + Nginx 三层架构各承担什么职责？为什么需要三层？",
-    "answer": "典型的高可用入口架构，由下到上（或由外到内）三层：\n\n```\n客户端\n  ↓\n[LVS + Keepalived]     四层：VIP、高可用、高吞吐\n  ↓\n[Nginx 集群]            七层：按域名/URL 分流、SSL 卸载、缓存\n  ↓\n[应用服务器]            业务逻辑\n```\n\n**各层职责**：\n\n| 层 | 职责 | 为什么不省 |\n|---|---|---|\n| **LVS** | 四层转发、承载大并发 | Nginx 单机连接数/CPU 有上限，LVS 在内核态转发性能高一个量级 |\n| **Keepalived** | VIP 漂移、LVS 主备 | 否则 LVS 本身是单点 |\n| **Nginx** | 七层路由、SSL、缓存、限流 | LVS 是四层，看不到 URL，无法按路径分发 |\n\n**为什么需要三层（而不是两层）**：\n\n1. **性能分层**：LVS 扛住流量峰值（四层几乎无解析开销），Nginx 只处理经过筛选的七层逻辑\n2. **功能分层**：SSL 卸载、URL 路由、Header 改写都在 Nginx 做，LVS 不参与\n3. **故障隔离**：Nginx 挂了 LVS 能摘除；LVS 挂了 Keepalived 能切换\n4. **扩展性**：Nginx 层可水平扩容（加机器到 LVS 后端池），不影响入口\n\n**简化场景**：\n- 流量不大（QPS < 数千）→ **LVS + Keepalived 可省略**，直接 Nginx 双机 + Keepalived 就够\n- 云环境 → 直接用云 SLB（已包含四层能力），不需要自建 LVS\n- 需要更灵活的路由（灰度、A/B）→ Nginx/Ingress 层做，LVS 只做入口\n\n**一句话判断**：只有当 **Nginx 成为瓶颈、且流量确实很大** 时，才值得引入 LVS。否则两层（Nginx + Keepalived）更简单、故障面更小。",
+    "answer": "[[图:lvs-three-layers]]\n\n典型的高可用入口架构，由下到上（或由外到内）三层：\n\n```\n客户端\n  ↓\n[LVS + Keepalived]     四层：VIP、高可用、高吞吐\n  ↓\n[Nginx 集群]            七层：按域名/URL 分流、SSL 卸载、缓存\n  ↓\n[应用服务器]            业务逻辑\n```\n\n**各层职责**：\n\n| 层 | 职责 | 为什么不省 |\n|---|---|---|\n| **LVS** | 四层转发、承载大并发 | Nginx 单机连接数/CPU 有上限，LVS 在内核态转发性能高一个量级 |\n| **Keepalived** | VIP 漂移、LVS 主备 | 否则 LVS 本身是单点 |\n| **Nginx** | 七层路由、SSL、缓存、限流 | LVS 是四层，看不到 URL，无法按路径分发 |\n\n**为什么需要三层（而不是两层）**：\n\n1. **性能分层**：LVS 扛住流量峰值（四层几乎无解析开销），Nginx 只处理经过筛选的七层逻辑\n2. **功能分层**：SSL 卸载、URL 路由、Header 改写都在 Nginx 做，LVS 不参与\n3. **故障隔离**：Nginx 挂了 LVS 能摘除；LVS 挂了 Keepalived 能切换\n4. **扩展性**：Nginx 层可水平扩容（加机器到 LVS 后端池），不影响入口\n\n**简化场景**：\n- 流量不大（QPS < 数千）→ **LVS + Keepalived 可省略**，直接 Nginx 双机 + Keepalived 就够\n- 云环境 → 直接用云 SLB（已包含四层能力），不需要自建 LVS\n- 需要更灵活的路由（灰度、A/B）→ Nginx/Ingress 层做，LVS 只做入口\n\n**一句话判断**：只有当 **Nginx 成为瓶颈、且流量确实很大** 时，才值得引入 LVS。否则两层（Nginx + Keepalived）更简单、故障面更小。",
     "tags": [
       "架构",
       "三层",
@@ -13949,7 +13949,7 @@
     "category": "Tomcat/JVM",
     "difficulty": "中等",
     "question": "Tomcat 有哪些核心组件？一个 HTTP 请求是怎么被处理的？",
-    "answer": "**核心组件（从外到内）**：\n\n1. **Server**：最外层容器，代表整个 Tomcat 实例\n2. **Service**：把 Connector 和 Engine 绑定在一起\n3. **Connector**：负责网络连接与协议解析（HTTP/1.1、HTTP/2、AJP）\n4. **Engine**：请求处理引擎，内部有 Host\n5. **Host**：虚拟主机（对应一个域名），内部有 Context\n6. **Context**：一个 Web 应用的上下文（对应一个 WAR 或目录）\n7. **Wrapper**：一个 Servlet，最内层\n\n**请求处理流程**：\n```\n客户端\n → Connector（监听端口，解析 HTTP，封装成 Request/Response）\n → Engine → Host（按域名匹配）→ Context（按 path 匹配应用）\n → Wrapper（按 URL 匹配 Servlet）\n → Servlet 处理\n → 响应原路返回\n```\n\n**Connector 的关键参数**：\n```xml\n<Connector port=\"8080\" protocol=\"Http11NioProtocol\"\n    maxThreads=\"500\"          <!-- 工作线程上限，不够会排队 -->\n    acceptCount=\"200\"         <!-- 队列长度，线程满了排队到这里 -->\n    maxConnections=\"10000\"    <!-- 最大连接数 -->\n    connectionTimeout=\"20000\" <!-- 连接超时 -->\n    minSpareThreads=\"50\"\n/>\n```\n\n**关键概念：「最多能接多少并发」由三个参数共同决定**\n- `maxThreads`：同时处理的请求数\n- `acceptCount`：排队的请求数\n- 超出两者之和 → 直接拒绝（表现为连接超时或 RST）\n\n**排障要点**：Tomcat 卡住时先看线程栈（`jstack`），确认是「线程都在等 DB/下游」还是「线程都在执行 CPU 密集任务」——前者要扩线程或优化下游，后者扩线程无效。",
+    "answer": "**核心组件（从外到内）**：\n\n1. **Server**：最外层容器，代表整个 [[图:tomcat-request-flow]]\n\nTomcat 实例\n2. **Service**：把 Connector 和 Engine 绑定在一起\n3. **Connector**：负责网络连接与协议解析（HTTP/1.1、HTTP/2、AJP）\n4. **Engine**：请求处理引擎，内部有 Host\n5. **Host**：虚拟主机（对应一个域名），内部有 Context\n6. **Context**：一个 Web 应用的上下文（对应一个 WAR 或目录）\n7. **Wrapper**：一个 Servlet，最内层\n\n**请求处理流程**：\n```\n客户端\n → Connector（监听端口，解析 HTTP，封装成 Request/Response）\n → Engine → Host（按域名匹配）→ Context（按 path 匹配应用）\n → Wrapper（按 URL 匹配 Servlet）\n → Servlet 处理\n → 响应原路返回\n```\n\n**Connector 的关键参数**：\n```xml\n<Connector port=\"8080\" protocol=\"Http11NioProtocol\"\n    maxThreads=\"500\"          <!-- 工作线程上限，不够会排队 -->\n    acceptCount=\"200\"         <!-- 队列长度，线程满了排队到这里 -->\n    maxConnections=\"10000\"    <!-- 最大连接数 -->\n    connectionTimeout=\"20000\" <!-- 连接超时 -->\n    minSpareThreads=\"50\"\n/>\n```\n\n**关键概念：「最多能接多少并发」由三个参数共同决定**\n- `maxThreads`：同时处理的请求数\n- `acceptCount`：排队的请求数\n- 超出两者之和 → 直接拒绝（表现为连接超时或 RST）\n\n**排障要点**：Tomcat 卡住时先看线程栈（`jstack`），确认是「线程都在等 DB/下游」还是「线程都在执行 CPU 密集任务」——前者要扩线程或优化下游，后者扩线程无效。",
     "tags": [
       "Tomcat",
       "架构",
@@ -14162,7 +14162,7 @@
     "category": "Tomcat/JVM",
     "difficulty": "困难",
     "question": "线上 Java 应用 CPU 100%，如何定位到具体代码行？",
-    "answer": "**五步定位法**（这是运维/面试必会的硬技能）：\n\n**1. 确认是 Java 进程**\n```\ntop\n```\n找到 CPU 高的进程 PID，确认是 java。\n\n**2. 找占用最高的线程**\n```\ntop -Hp <pid>                      -- 看线程级\n# 或用\nps -Lp <pid> -o tid,pcpu,stat,comm --sort=-pcpu | head\n\n# 或一步到位\nprintf '%x\\n' <tid>                -- 把 TID 转成十六进制\n```\n\n**3. 抓线程栈**\n```\njstack <pid> > /tmp/jstack.txt\n```\n**4. 在栈里搜索那个十六进制 TID**\n```\ngrep -A 30 'nid=0x<十六进制TID>' /tmp/jstack.txt\n```\n找到的栈顶就指向具体方法：\n- 栈顶是业务方法 → 业务代码死循环/正则回溯/大计算\n- 栈顶是 GC 线程 → 内存问题，不是 CPU 问题\n- 栈顶是 `Object.wait` / `park` → 不是真占 CPU，可能看错了线程\n\n**5. 确认根因**\n- **死循环/正则回溯**：栈固定在某个方法，多次采样都相同\n- **频繁 GC**：`jstat -gcutil 1` 看 FGC 频率与耗时 → 是 GC 吃 CPU，要查内存\n- **锁竞争**：大量线程 BLOCKED（但这类通常是 CPU 不高、吞吐低）\n- **大量短连接/加解密**：栈在 socket/加解密相关方法\n\n**多次采样法（关键技巧）**：\n```\nfor i in 1 2 3 4 5; do jstack <pid> | grep -A 5 'nid=0x<tid>'; sleep 1; done\n```\n如果每次栈顶都在同一个方法 → **确定是它**。若每次都不同 → 是 GC 或系统调用。\n\n**进阶工具**：\n- `arthas`：`thread -n 3`（找最忙的 3 个线程）、`profiler start` 生成火焰图\n- `async-profiler`：采样生成火焰图，能看到方法级耗时分布\n- `perf` + FlameGraph（Linux 层）\n\n**注意**：jstack 会 STW（安全点），大堆时可能停顿；生产上优先用 arthas 或异步采样工具。",
+    "answer": "**五步定位法**（这是运维/面试必会的硬技能）：\n\n**1. 确认是 Java 进程**\n```\ntop\n```\n找到 [[图:cpu-100-locate]]\n\nCPU 高的进程 PID，确认是 java。\n\n**2. 找占用最高的线程**\n```\ntop -Hp <pid>                      -- 看线程级\n# 或用\nps -Lp <pid> -o tid,pcpu,stat,comm --sort=-pcpu | head\n\n# 或一步到位\nprintf '%x\\n' <tid>                -- 把 TID 转成十六进制\n```\n\n**3. 抓线程栈**\n```\njstack <pid> > /tmp/jstack.txt\n```\n**4. 在栈里搜索那个十六进制 TID**\n```\ngrep -A 30 'nid=0x<十六进制TID>' /tmp/jstack.txt\n```\n找到的栈顶就指向具体方法：\n- 栈顶是业务方法 → 业务代码死循环/正则回溯/大计算\n- 栈顶是 GC 线程 → 内存问题，不是 CPU 问题\n- 栈顶是 `Object.wait` / `park` → 不是真占 CPU，可能看错了线程\n\n**5. 确认根因**\n- **死循环/正则回溯**：栈固定在某个方法，多次采样都相同\n- **频繁 GC**：`jstat -gcutil 1` 看 FGC 频率与耗时 → 是 GC 吃 CPU，要查内存\n- **锁竞争**：大量线程 BLOCKED（但这类通常是 CPU 不高、吞吐低）\n- **大量短连接/加解密**：栈在 socket/加解密相关方法\n\n**多次采样法（关键技巧）**：\n```\nfor i in 1 2 3 4 5; do jstack <pid> | grep -A 5 'nid=0x<tid>'; sleep 1; done\n```\n如果每次栈顶都在同一个方法 → **确定是它**。若每次都不同 → 是 GC 或系统调用。\n\n**进阶工具**：\n- `arthas`：`thread -n 3`（找最忙的 3 个线程）、`profiler start` 生成火焰图\n- `async-profiler`：采样生成火焰图，能看到方法级耗时分布\n- `perf` + FlameGraph（Linux 层）\n\n**注意**：jstack 会 STW（安全点），大堆时可能停顿；生产上优先用 arthas 或异步采样工具。",
     "tags": [
       "CPU100%",
       "jstack",
@@ -16893,7 +16893,7 @@
     "category": "MongoDB",
     "difficulty": "简单",
     "question": "MongoDB 集群有哪几种部署形态？各自最小节点数是多少？",
-    "answer": "**三种形态**：\n\n| 形态 | 组成 | 最小节点 | 说明 |\n|---|---|---|---|\n| **单机**（Standalone） | 1 进程 | 1 | 只适合开发测试，**无冗余** |\n| **副本集**（ReplicaSet） | 1 Primary + N Secondary（+ Arbiter） | **3**（PSA 或 PSS） | 生产标准，自动故障切换 |\n| **分片集群**（Sharded Cluster） | mongos + config 副本集 + N 个 shard 副本集 | shard≥1、config≥3、mongos≥1 | 大数据量水平扩展 |\n\n**副本集为什么至少 3 个**：需要多数派选主（quorum = N/2+1）。2 节点时任一挂掉就无法选主，反而**比单机更不可用**。\n\n**我的节点角色**：\n- **Primary**：唯一接受写\n- **Secondary**：复制数据，可配 `readPreference` 分担读\n- **Arbiter**（仲裁者）：只投票不存数据，用于「硬件不够但想凑 3 票」的场景。**不推荐**——它不存数据，主挂了无法接管，还容易引发一致性问题\n- **Hidden**：不对客户端可见，用于备份/分析\n- **Delayed**：延迟 N 秒复制，**防误删的救命节点**\n\n**分片集群的 config 服务器**：从 3.4 起必须是**副本集**（CSRS），不能是 3 个独立进程。",
+    "answer": "[[图:mongo-deploy-modes]]\n\n**三种形态**：\n\n| 形态 | 组成 | 最小节点 | 说明 |\n|---|---|---|---|\n| **单机**（Standalone） | 1 进程 | 1 | 只适合开发测试，**无冗余** |\n| **副本集**（ReplicaSet） | 1 Primary + N Secondary（+ Arbiter） | **3**（PSA 或 PSS） | 生产标准，自动故障切换 |\n| **分片集群**（Sharded Cluster） | mongos + config 副本集 + N 个 shard 副本集 | shard≥1、config≥3、mongos≥1 | 大数据量水平扩展 |\n\n**副本集为什么至少 3 个**：需要多数派选主（quorum = N/2+1）。2 节点时任一挂掉就无法选主，反而**比单机更不可用**。\n\n**我的节点角色**：\n- **Primary**：唯一接受写\n- **Secondary**：复制数据，可配 `readPreference` 分担读\n- **Arbiter**（仲裁者）：只投票不存数据，用于「硬件不够但想凑 3 票」的场景。**不推荐**——它不存数据，主挂了无法接管，还容易引发一致性问题\n- **Hidden**：不对客户端可见，用于备份/分析\n- **Delayed**：延迟 N 秒复制，**防误删的救命节点**\n\n**分片集群的 config 服务器**：从 3.4 起必须是**副本集**（CSRS），不能是 3 个独立进程。",
     "tags": [
       "副本集",
       "分片集群",
@@ -17044,7 +17044,7 @@
     "category": "MongoDB",
     "difficulty": "中等",
     "question": "复合索引的「最左前缀原则」在 MongoDB 里怎么体现？ESR 原则是什么？",
-    "answer": "**最左前缀**：复合索引 `{a:1, b:1, c:1}` 能支持\n- `{a}`、`{a,b}`、`{a,b,c}` 的前缀查询\n- **不能**支持单独 `{b}` 或 `{c}`（除非用 `$exists` 之类的技巧，或走覆盖索引扫描）\n- 也**不能**跳过 a 直接 `{a,c}`（c 用不上索引，只能过滤）\n\n**注意**：`$in` 和等值查询是例外——`{a:1, b:2}` 和 `{a:{$in:[1,2]}, b:2}` 都能走索引。\n\n**ESR 原则（Equality → Sort → Range）**，来自 MongoDB 官方：\n\n| 顺序 | 字段类型 | 原因 |\n|---|---|---|\n| 1 | **E** quality（等值） | 等值查询能直接定位到区间，放最前可最大化缩小范围 |\n| 2 | **S** ort（排序） | 排序字段必须连续，放在范围字段前面才能用索引顺序，避免内存排序 |\n| 3 | **R** ange（范围） | 范围查询（`$gt`、`$lt`）会「截断」后续字段的索引利用 |\n\n**为什么 Sort 要在 Range 前面**：索引内先按 a 排、再按 b 排。如果 b 是范围条件（`b > 5`），那么 c 字段在 b 的多个值里都是有序的，但整体来看 c 的顺序被打乱了，**无法直接满足 `sort(c)`**。\n\n**验证方法**：\n```\ndb.coll.find({a:1, c:{$gt:3}}).sort({b:1}).explain(\"executionStats\")\n```\n看 `stage` 是否为 `IXSCAN`（走索引）、`SORT` 阶段是否出现（出现说明内存排序）、`totalKeysExamined` 与 `totalDocsExamined` 是否接近 `nReturned`。",
+    "answer": "**[[图:mongo-esr-principle]]\n\n最左前缀**：复合索引 `{a:1, b:1, c:1}` 能支持\n- `{a}`、`{a,b}`、`{a,b,c}` 的前缀查询\n- **不能**支持单独 `{b}` 或 `{c}`（除非用 `$exists` 之类的技巧，或走覆盖索引扫描）\n- 也**不能**跳过 a 直接 `{a,c}`（c 用不上索引，只能过滤）\n\n**注意**：`$in` 和等值查询是例外——`{a:1, b:2}` 和 `{a:{$in:[1,2]}, b:2}` 都能走索引。\n\n**ESR 原则（Equality → Sort → Range）**，来自 MongoDB 官方：\n\n| 顺序 | 字段类型 | 原因 |\n|---|---|---|\n| 1 | **E** quality（等值） | 等值查询能直接定位到区间，放最前可最大化缩小范围 |\n| 2 | **S** ort（排序） | 排序字段必须连续，放在范围字段前面才能用索引顺序，避免内存排序 |\n| 3 | **R** ange（范围） | 范围查询（`$gt`、`$lt`）会「截断」后续字段的索引利用 |\n\n**为什么 Sort 要在 Range 前面**：索引内先按 a 排、再按 b 排。如果 b 是范围条件（`b > 5`），那么 c 字段在 b 的多个值里都是有序的，但整体来看 c 的顺序被打乱了，**无法直接满足 `sort(c)`**。\n\n**验证方法**：\n```\ndb.coll.find({a:1, c:{$gt:3}}).sort({b:1}).explain(\"executionStats\")\n```\n看 `stage` 是否为 `IXSCAN`（走索引）、`SORT` 阶段是否出现（出现说明内存排序）、`totalKeysExamined` 与 `totalDocsExamined` 是否接近 `nReturned`。",
     "tags": [
       "复合索引",
       "ESR",
@@ -23064,7 +23064,7 @@
     "category": "存储与备份",
     "difficulty": "中等",
     "question": "rsync 的增量同步原理是什么？`--delete` 和 `--link-dest` 分别有什么用？",
-    "answer": "**rsync 的「增量」是「按文件差异」+「按块差异」两层。**\n\n**两层增量**：\n```\n1. 默认：只传「大小/时间戳不同」的文件（快速判断）\n2. --checksum：按内容校验（更准，但慢）\n3. 块级增量：对单个文件，只传变化的块（用滚动校验算法）\n```\n**「块级」是 rsync 的精髓**——一个 10GB 的文件改了 1MB，只传 1MB。\n\n**`--delete`（镜像同步，要小心）**：\n```\nrsync -av --delete /src/ /dst/\n```\n**让目标与源完全一致，删除目标里「源没有的」文件**。\n\n**风险**：\n```\n✗ rsync -av --delete /data/ /backup/     # 源目录写错了 → 目标被清空\n```\n**保护措施**：`--delete-after`（最后再删）、`--max-delete=N`（限制删除数量）、**先 `--dry-run` 演练**。\n\n**`--link-dest`（空间高效的多版本备份，最实用）**：\n```bash\nrsync -a --delete \\\n  --link-dest=/backup/2024-01-14 \\\n  /data/ /backup/2024-01-15/\n```\n**原理**：未变化的文件用**硬链接**指向上一份备份，变化的才复制。\n```\n结果：\n/backup/2024-01-15/  ← 看起来是完整的一份\n但大部分文件是硬链接 → 只占「变化的那部分」空间\n```\n**这就实现了「每次都是全量快照，但只占增量空间」**——比 tar 增量包好得多（tar 增量恢复要按顺序）。\n\n**完整的备份脚本骨架**：\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\nSRC=/data\nDST=/backup/$(date +%F)\nLATEST=$(ls -d /backup/*/ 2>/dev/null | tail -1)\n\nrsync -a --delete \\\n  ${LATEST:+--link-dest=\"$LATEST\"} \\\n  \"$SRC/\" \"$DST/\"\n```\n\n**其他关键参数**：\n```\n-a       归档模式（保留权限、时间、软链接）\n-v       详细输出\n-z       压缩传输（内网可关掉，省 CPU）\n-P       显示进度 + 断点续传\n--exclude=  排除（注意顺序：先 exclude 再源路径）\n--bwlimit=  限速（避免打满带宽）\n-e ssh   走 SSH（远程同步）\n```\n\n**四个坑**：\n1. **源路径结尾的 `/` 有含义**：`/data` 会创建 `dst/data`，`/data/` 是复制内容\n2. **`--delete` 配错源路径会清空目标**\n3. **时间戳依赖**：rsync 靠 mtime 判断，时间不同步会误判\n4. **软链接**：`-a` 保留软链接，`-L` 跟随（变成实体文件）\n\n**一句话**：**`rsync --link-dest` 是「空间高效的全量快照备份」的最佳方案——每份看起来是完整快照，实际只占增量空间，恢复也简单（直接拷那份）。**",
+    "answer": "**[[图:rsync-incremental]]\n\nrsync 的「增量」是「按文件差异」+「按块差异」两层。**\n\n**两层增量**：\n```\n1. 默认：只传「大小/时间戳不同」的文件（快速判断）\n2. --checksum：按内容校验（更准，但慢）\n3. 块级增量：对单个文件，只传变化的块（用滚动校验算法）\n```\n**「块级」是 rsync 的精髓**——一个 10GB 的文件改了 1MB，只传 1MB。\n\n**`--delete`（镜像同步，要小心）**：\n```\nrsync -av --delete /src/ /dst/\n```\n**让目标与源完全一致，删除目标里「源没有的」文件**。\n\n**风险**：\n```\n✗ rsync -av --delete /data/ /backup/     # 源目录写错了 → 目标被清空\n```\n**保护措施**：`--delete-after`（最后再删）、`--max-delete=N`（限制删除数量）、**先 `--dry-run` 演练**。\n\n**`--link-dest`（空间高效的多版本备份，最实用）**：\n```bash\nrsync -a --delete \\\n  --link-dest=/backup/2024-01-14 \\\n  /data/ /backup/2024-01-15/\n```\n**原理**：未变化的文件用**硬链接**指向上一份备份，变化的才复制。\n```\n结果：\n/backup/2024-01-15/  ← 看起来是完整的一份\n但大部分文件是硬链接 → 只占「变化的那部分」空间\n```\n**这就实现了「每次都是全量快照，但只占增量空间」**——比 tar 增量包好得多（tar 增量恢复要按顺序）。\n\n**完整的备份脚本骨架**：\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\nSRC=/data\nDST=/backup/$(date +%F)\nLATEST=$(ls -d /backup/*/ 2>/dev/null | tail -1)\n\nrsync -a --delete \\\n  ${LATEST:+--link-dest=\"$LATEST\"} \\\n  \"$SRC/\" \"$DST/\"\n```\n\n**其他关键参数**：\n```\n-a       归档模式（保留权限、时间、软链接）\n-v       详细输出\n-z       压缩传输（内网可关掉，省 CPU）\n-P       显示进度 + 断点续传\n--exclude=  排除（注意顺序：先 exclude 再源路径）\n--bwlimit=  限速（避免打满带宽）\n-e ssh   走 SSH（远程同步）\n```\n\n**四个坑**：\n1. **源路径结尾的 `/` 有含义**：`/data` 会创建 `dst/data`，`/data/` 是复制内容\n2. **`--delete` 配错源路径会清空目标**\n3. **时间戳依赖**：rsync 靠 mtime 判断，时间不同步会误判\n4. **软链接**：`-a` 保留软链接，`-L` 跟随（变成实体文件）\n\n**一句话**：**`rsync --link-dest` 是「空间高效的全量快照备份」的最佳方案——每份看起来是完整快照，实际只占增量空间，恢复也简单（直接拷那份）。**",
     "tags": [
       "rsync",
       "link-dest",
@@ -23149,7 +23149,7 @@
     "category": "存储与备份",
     "difficulty": "中等",
     "question": "Ceph 的三个核心组件（MON、OSD、MDS）分别做什么？",
-    "answer": "**Ceph 是统一分布式存储，提供对象/块/文件三种接口。**\n\n| 组件 | 作用 |\n|---|---|\n| **MON（Monitor）** | **集群的大脑**：维护集群状态、CRUSH map、认证；**必须奇数个（3/5）** |\n| **OSD（Object Storage Daemon）** | **存数据**：每个 OSD 对应一块磁盘，负责存储与复制 |\n| **MDS（Metadata Server）** | **只有 CephFS 需要**：存文件系统的元数据（目录树、权限） |\n| 附加：**RGW** | 提供 S3/Swift 兼容的对象存储接口 |\n| 附加：**Manager** | 提供监控指标与 dashboard（非数据路径） |\n\n**数据写入流程（关键）**：\n```\n1. 客户端要写对象 → 先问 MON 要 CRUSH map\n2. 客户端用 CRUSH 算法本地算出「应该写到哪几个 OSD」\n3. 直接连 OSD 写入（**不需要经过 MON**）\n```\n**「客户端直接算，不用查表」是 Ceph 无中心节点瓶颈的关键**——这就是 CRUSH 算法的价值。\n\n**CRUSH 的作用**：\n```\n把「对象 → OSD 集合」的映射做成确定性算法\n→ 不需要元数据服务器记录每个对象在哪\n→ 集群规模可以很大（PB 级）\n→ 加盘/换盘时只迁移必要的数据（不是全量重分布）\n```\n\n**最小生产部署**：\n```\nMON：3 个（奇数，保证 quorum）\nOSD：至少 3 个节点，每节点多块盘\nMGR：2 个（主备）\n```\n\n**三个高频运维点**：\n\n1. **PG（Placement Group）数量**：官方建议「每 OSD 约 100 个 PG」，PG 太少会导致数据不均，太多会消耗内存\n2. **`ceph -s` 是最重要的命令**：看 `HEALTH_OK/WARN/ERR`、`pgs` 状态（`active+clean` 才正常）\n3. **恢复时的性能**：一块盘挂了触发数据重建，会占用大量 IO → 要限速（`osd_recovery_max_active`）\n\n**「Ceph 慢」的常见原因**：\n```\n- PG 分布不均（某个 OSD 承载过多）\n- 网络带宽不足（Ceph 对网络要求高，推荐万兆 + 独立网络）\n- 正在重建数据\n- 用了普通机械盘做 OSD + 大量随机写\n```",
+    "answer": "**[[图:ceph-components]]\n\nCeph 是统一分布式存储，提供对象/块/文件三种接口。**\n\n| 组件 | 作用 |\n|---|---|\n| **MON（Monitor）** | **集群的大脑**：维护集群状态、CRUSH map、认证；**必须奇数个（3/5）** |\n| **OSD（Object Storage Daemon）** | **存数据**：每个 OSD 对应一块磁盘，负责存储与复制 |\n| **MDS（Metadata Server）** | **只有 CephFS 需要**：存文件系统的元数据（目录树、权限） |\n| 附加：**RGW** | 提供 S3/Swift 兼容的对象存储接口 |\n| 附加：**Manager** | 提供监控指标与 dashboard（非数据路径） |\n\n**数据写入流程（关键）**：\n```\n1. 客户端要写对象 → 先问 MON 要 CRUSH map\n2. 客户端用 CRUSH 算法本地算出「应该写到哪几个 OSD」\n3. 直接连 OSD 写入（**不需要经过 MON**）\n```\n**「客户端直接算，不用查表」是 Ceph 无中心节点瓶颈的关键**——这就是 CRUSH 算法的价值。\n\n**CRUSH 的作用**：\n```\n把「对象 → OSD 集合」的映射做成确定性算法\n→ 不需要元数据服务器记录每个对象在哪\n→ 集群规模可以很大（PB 级）\n→ 加盘/换盘时只迁移必要的数据（不是全量重分布）\n```\n\n**最小生产部署**：\n```\nMON：3 个（奇数，保证 quorum）\nOSD：至少 3 个节点，每节点多块盘\nMGR：2 个（主备）\n```\n\n**三个高频运维点**：\n\n1. **PG（Placement Group）数量**：官方建议「每 OSD 约 100 个 PG」，PG 太少会导致数据不均，太多会消耗内存\n2. **`ceph -s` 是最重要的命令**：看 `HEALTH_OK/WARN/ERR`、`pgs` 状态（`active+clean` 才正常）\n3. **恢复时的性能**：一块盘挂了触发数据重建，会占用大量 IO → 要限速（`osd_recovery_max_active`）\n\n**「Ceph 慢」的常见原因**：\n```\n- PG 分布不均（某个 OSD 承载过多）\n- 网络带宽不足（Ceph 对网络要求高，推荐万兆 + 独立网络）\n- 正在重建数据\n- 用了普通机械盘做 OSD + 大量随机写\n```",
     "tags": [
       "Ceph",
       "MON",
@@ -25901,7 +25901,7 @@
     "category": "虚拟化",
     "difficulty": "简单",
     "question": "KVM 的架构是怎样的？和 Xen、VMware 有什么本质区别？",
-    "answer": "**KVM 是「内核模块 + QEMU 进程」，把 Linux 内核变成 Hypervisor。**\n\n**架构**：\n```\n用户态：QEMU（模拟设备、处理 IO）\n           ↕ ioctl\n内核态：KVM 模块（用硬件虚拟化 VT-x/AMD-V 执行客户机代码）\n           ↕\n         Linux 内核（调度、内存管理、驱动）\n```\n**关键：KVM 复用 Linux 内核的能力**（调度、内存、网络、存储驱动），不重复造轮子。\n\n**三者对比**：\n\n| | KVM | Xen | VMware ESXi |\n|---|---|---|---|\n| 类型 | **Type-2 型（内核模块）** | Type-1（早期）| **Type-1 裸金属** |\n| Hypervisor | Linux 内核本身 | 独立的 Xen Hypervisor | 独立内核 |\n| 驱动 | **复用 Linux 驱动**（硬件兼容性最好） | 需要 dom0 提供 | **自有驱动**（兼容性受限） |\n| 性能 | 好（近原生） | 很好（PV 模式下极佳） | **优秀** |\n| 生态 | 开源，OpenStack/云厂商主流 | 半开源，AWS 早期用 | **商业，企业市场** |\n| 成本 | 免费 | 免费 | **昂贵（按 CPU 授权）** |\n\n**「全虚拟化」vs「半虚拟化」**：\n```\n全虚拟化（HVM）：客户机不知道自己被虚拟化，无需改 OS\n  → 但 IO 需要模拟，性能差\n半虚拟化（PV）：客户机内核打了补丁，通过「前端/后端驱动」通信\n  → IO 性能好得多，但需要改内核\n现在主流：HVM + virtio 驱动（硬件虚拟化 + 半虚拟化 IO）\n```\n**「virtio」是关键**——它是「半虚拟化的 IO 驱动」，让虚拟机不需要真正模拟磁盘/网卡，性能大幅提升。\n\n**生产实践的三个认知**：\n1. **KVM 的性能瓶颈通常在 IO**（网络与磁盘），用 virtio + 直通可以接近原生\n2. **KVM 的「超分」要谨慎**（vCPU 数 / 物理核数 > 4 会导致延迟抖动）\n3. **KVM 依赖宿主机内核**——内核 bug 会影响所有虚拟机\n\n**「云厂商大多用 KVM 系改造」**（阿里云、腾讯云的底层），因为它的硬件兼容性与开源生态最好。",
+    "answer": "**[[图:kvm-vs-xen-vmware]]\n\nKVM 是「内核模块 + QEMU 进程」，把 Linux 内核变成 Hypervisor。**\n\n**架构**：\n```\n用户态：QEMU（模拟设备、处理 IO）\n           ↕ ioctl\n内核态：KVM 模块（用硬件虚拟化 VT-x/AMD-V 执行客户机代码）\n           ↕\n         Linux 内核（调度、内存管理、驱动）\n```\n**关键：KVM 复用 Linux 内核的能力**（调度、内存、网络、存储驱动），不重复造轮子。\n\n**三者对比**：\n\n| | KVM | Xen | VMware ESXi |\n|---|---|---|---|\n| 类型 | **Type-2 型（内核模块）** | Type-1（早期）| **Type-1 裸金属** |\n| Hypervisor | Linux 内核本身 | 独立的 Xen Hypervisor | 独立内核 |\n| 驱动 | **复用 Linux 驱动**（硬件兼容性最好） | 需要 dom0 提供 | **自有驱动**（兼容性受限） |\n| 性能 | 好（近原生） | 很好（PV 模式下极佳） | **优秀** |\n| 生态 | 开源，OpenStack/云厂商主流 | 半开源，AWS 早期用 | **商业，企业市场** |\n| 成本 | 免费 | 免费 | **昂贵（按 CPU 授权）** |\n\n**「全虚拟化」vs「半虚拟化」**：\n```\n全虚拟化（HVM）：客户机不知道自己被虚拟化，无需改 OS\n  → 但 IO 需要模拟，性能差\n半虚拟化（PV）：客户机内核打了补丁，通过「前端/后端驱动」通信\n  → IO 性能好得多，但需要改内核\n现在主流：HVM + virtio 驱动（硬件虚拟化 + 半虚拟化 IO）\n```\n**「virtio」是关键**——它是「半虚拟化的 IO 驱动」，让虚拟机不需要真正模拟磁盘/网卡，性能大幅提升。\n\n**生产实践的三个认知**：\n1. **KVM 的性能瓶颈通常在 IO**（网络与磁盘），用 virtio + 直通可以接近原生\n2. **KVM 的「超分」要谨慎**（vCPU 数 / 物理核数 > 4 会导致延迟抖动）\n3. **KVM 依赖宿主机内核**——内核 bug 会影响所有虚拟机\n\n**「云厂商大多用 KVM 系改造」**（阿里云、腾讯云的底层），因为它的硬件兼容性与开源生态最好。",
     "tags": [
       "KVM",
       "架构",
@@ -28860,7 +28860,7 @@
     "category": "Git/GitLab",
     "difficulty": "简单",
     "question": "`git stash` 用来做什么？和 `git commit` 到临时分支有什么区别？",
-    "answer": "**`git stash` 是「临时把未提交的改动收起来」，让工作区干净。**\n\n**典型场景**：\n```\n正在开发 A 功能，突然要切分支修 bug\n→ 改的东西不能提交（不完整），但也不能带走（会冲突）\n→ git stash，切过去修 bug，回来后 git stash pop\n```\n\n**常用命令**：\n```bash\ngit stash                    # 收起来\ngit stash list               # 看有哪些\ngit stash pop                # 恢复最近一个（并从 stash 列表移除）\ngit stash apply              # 恢复但不移除（可重复用）\ngit stash drop               # 丢弃最近一个\ngit stash -u                 # 包含未跟踪文件（**默认不含**）\ngit stash -m 'message'       # 带说明（多个 stash 时有用）\n```\n**`-u` 容易忘**：默认 `git stash` **不包含新建的未跟踪文件**——新加的文件还在工作区。\n\n**和「临时分支提交」的对比**：\n\n| | `git stash` | 临时分支 commit |\n|---|---|---|\n| 用途 | **短期、临时** | **可能长期、可共享** |\n| 可见性 | 只在本机 stash 栈 | 可以推送到远程 |\n| 冲突风险 | 恢复时可能冲突 | 也是 |\n| 安全性 | **栈可能被误删**（无备份） | 有 commit 记录 |\n\n**「什么时候该用分支而不是 stash」**：\n```\n✗ 用 stash 存了三天还没处理 → 容易忘、容易丢\n✓ 改动较大/要保留较久 → 建个临时分支提交（wip 分支）\n```\n**`git stash` 适合「几小时内的临时切换」，不适合长期存放。**\n\n**两个坑**：\n```\n1. stash 栈是本地的，不推送到远程 → 换机器就没了\n2. stash pop 冲突时，stash 不会自动删除（要 git stash drop）\n```\n\n**一句话**：**`git stash` 适合「临时切换」，改动丢弃风险高且只在本机——改动较大或要保留较久，用临时分支 commit 更稳妥。**",
+    "answer": "**`[[图:git-stash]]\n\ngit stash` 是「临时把未提交的改动收起来」，让工作区干净。**\n\n**典型场景**：\n```\n正在开发 A 功能，突然要切分支修 bug\n→ 改的东西不能提交（不完整），但也不能带走（会冲突）\n→ git stash，切过去修 bug，回来后 git stash pop\n```\n\n**常用命令**：\n```bash\ngit stash                    # 收起来\ngit stash list               # 看有哪些\ngit stash pop                # 恢复最近一个（并从 stash 列表移除）\ngit stash apply              # 恢复但不移除（可重复用）\ngit stash drop               # 丢弃最近一个\ngit stash -u                 # 包含未跟踪文件（**默认不含**）\ngit stash -m 'message'       # 带说明（多个 stash 时有用）\n```\n**`-u` 容易忘**：默认 `git stash` **不包含新建的未跟踪文件**——新加的文件还在工作区。\n\n**和「临时分支提交」的对比**：\n\n| | `git stash` | 临时分支 commit |\n|---|---|---|\n| 用途 | **短期、临时** | **可能长期、可共享** |\n| 可见性 | 只在本机 stash 栈 | 可以推送到远程 |\n| 冲突风险 | 恢复时可能冲突 | 也是 |\n| 安全性 | **栈可能被误删**（无备份） | 有 commit 记录 |\n\n**「什么时候该用分支而不是 stash」**：\n```\n✗ 用 stash 存了三天还没处理 → 容易忘、容易丢\n✓ 改动较大/要保留较久 → 建个临时分支提交（wip 分支）\n```\n**`git stash` 适合「几小时内的临时切换」，不适合长期存放。**\n\n**两个坑**：\n```\n1. stash 栈是本地的，不推送到远程 → 换机器就没了\n2. stash pop 冲突时，stash 不会自动删除（要 git stash drop）\n```\n\n**一句话**：**`git stash` 适合「临时切换」，改动丢弃风险高且只在本机——改动较大或要保留较久，用临时分支 commit 更稳妥。**",
     "tags": [
       "stash",
       "临时保存"
@@ -31525,7 +31525,7 @@
     "category": "日志与ELK",
     "difficulty": "中等",
     "question": "ES 的分片（shard）和副本（replica）是什么？分片数怎么定？",
-    "answer": "**分片 = 索引的水平切分；副本 = 分片的拷贝。**\n\n[[图:es-shard-replica]]\n\n```\nIndex（3 主分片 + 1 副本）\n  ├─ P0 → R0（在另一个节点）\n  ├─ P1 → R1\n  └─ P2 → R2\n```\n\n| 概念 | 作用 |\n|---|---|\n| **主分片（Primary）** | 存数据、承担写入；**数量创建后不可改** |\n| **副本（Replica）** | 冗余 + **分担读请求**；数量随时可改 |\n\n**分片数量怎么定（最关键的问题）**：\n```\n经验值：单个分片 10-50GB（日志类偏小，20-30GB 较好）\n分片数 = 预计数据总量 / 单分片目标大小\n```\n\n**但分片不是越多越好**：\n```\n每个分片都是一个 Lucene 索引 → 占文件句柄、堆内存、CPU\n分片过多 → cluster state 变大、查询要合并更多结果、master 压力大\n官方建议：单节点分片总数控制在 20 个/GB 堆内存 以内\n```\n\n**日志场景的标准做法：按天/按大小滚动索引 + 别名**\n```\nlogs-2024.01.15  (5 分片, 1 副本)\nlogs-2024.01.16  (5 分片, 1 副本)\n→ 用别名 logs-* 统一查询\n```\n**好处**：\n- 每天一个新索引，**删除旧数据只删整个索引**（比 delete by query 快得多）\n- 分片数固定不变（不用纠结总量增长）\n- 单索引不会无限膨胀\n\n**副本的作用不只是冗余**：\n```\n✓ 高可用（主分片挂了副本顶上）\n✓ 提升读吞吐（查询可以打到副本）\n✗ 不提升写入能力（写入要走主分片再同步副本，副本反而增加写开销）\n```\n**所以写多读少的场景，副本数不宜过多（1 个通常够）。**\n\n**一句话**：**日志用「按天滚动 + 固定分片数（3-5）+ 副本 1」是最稳的组合，别追求单个大索引。**",
+    "answer": "**分片 = 索引的水平切分；副本 = 分片的拷贝。**\n\n[[图:es-shard-design]]\n\n[[图:es-shard-replica]]\n\n```\nIndex（3 主分片 + 1 副本）\n  ├─ P0 → R0（在另一个节点）\n  ├─ P1 → R1\n  └─ P2 → R2\n```\n\n| 概念 | 作用 |\n|---|---|\n| **主分片（Primary）** | 存数据、承担写入；**数量创建后不可改** |\n| **副本（Replica）** | 冗余 + **分担读请求**；数量随时可改 |\n\n**分片数量怎么定（最关键的问题）**：\n```\n经验值：单个分片 10-50GB（日志类偏小，20-30GB 较好）\n分片数 = 预计数据总量 / 单分片目标大小\n```\n\n**但分片不是越多越好**：\n```\n每个分片都是一个 Lucene 索引 → 占文件句柄、堆内存、CPU\n分片过多 → cluster state 变大、查询要合并更多结果、master 压力大\n官方建议：单节点分片总数控制在 20 个/GB 堆内存 以内\n```\n\n**日志场景的标准做法：按天/按大小滚动索引 + 别名**\n```\nlogs-2024.01.15  (5 分片, 1 副本)\nlogs-2024.01.16  (5 分片, 1 副本)\n→ 用别名 logs-* 统一查询\n```\n**好处**：\n- 每天一个新索引，**删除旧数据只删整个索引**（比 delete by query 快得多）\n- 分片数固定不变（不用纠结总量增长）\n- 单索引不会无限膨胀\n\n**副本的作用不只是冗余**：\n```\n✓ 高可用（主分片挂了副本顶上）\n✓ 提升读吞吐（查询可以打到副本）\n✗ 不提升写入能力（写入要走主分片再同步副本，副本反而增加写开销）\n```\n**所以写多读少的场景，副本数不宜过多（1 个通常够）。**\n\n**一句话**：**日志用「按天滚动 + 固定分片数（3-5）+ 副本 1」是最稳的组合，别追求单个大索引。**",
     "tags": [
       "Filebeat",
       "Kibana",
@@ -34450,7 +34450,7 @@
     "category": "自动化与配置管理",
     "difficulty": "中等",
     "question": "Ansible 的变量优先级是怎样的？为什么「变量被覆盖了找不到原因」很常见？",
-    "answer": "**Ansible 有 20 多层变量优先级——这是它最反直觉的设计。**\n\n**从低到高（简化版，记 6 个关键的即可）**：\n```\n1. command line -e（最低，但会被覆盖）\n2. role defaults/main.yml          ← 给用户改的\n3. inventory group_vars/all\n4. inventory group_vars/<group>\n5. inventory host_vars/<host>\n6. playbook vars\n7. playbook vars_files\n8. block vars\n9. task vars\n10. set_fact / registered vars\n11. role vars/main.yml             ← 常常意外覆盖别人\n12. include_vars\n13. extra vars (-e)                ← 最高，永远赢\n```\n\n**「变量被覆盖找不到原因」的三个高频原因**：\n\n**1. 用了 `vars/main.yml` 而不是 `defaults/main.yml`**\n```\nrole 的 vars/main.yml 优先级很高（接近最高）\n→ inventory 里设的值会被它覆盖 → 用户改了不生效\n→ 给用户可配置的变量必须放 defaults\n```\n**这是 Ansible 最常见的「配置不生效」原因。**\n\n**2. inventory 里同时有 group_vars 和 host_vars**\n```\ngroup_vars/web.yml:  port: 80\nhost_vars/web1.yml:  port: 8080\n→ web1 用 8080（host 优先）\n但如果有多个 group 且都有定义，按「group 名的字母顺序」后者覆盖前者\n```\n\n**3. `set_fact` 会覆盖一切（除 extra vars）**\n```\n- set_fact: port=9090\n→ 后续所有引用 port 的地方都是 9090，即使 inventory 里定义了 80\n```\n\n**调试变量的方法（最实用）**：\n```yaml\n- name: 看变量到底是多少\n  debug:\n    var: my_var\n\n# 看所有变量来源的完整清单\n- debug: var=hostvars[inventory_hostname]\n```\n```bash\n# 命令行查\nansible web1 -m debug -a 'var=port'\n```\n\n**命名规范（预防混乱的关键）**：\n```\n✓ 角色变量加前缀：nginx_port、nginx_user\n✗ 裸名：port、user（必然与别处冲突）\n```\n**「所有变量都加 role 前缀」是最有效的一条规范**。\n\n**一句话**：**变量优先级混乱的根因是「可配置项放进了 vars 而不是 defaults」，以及「变量名没加前缀」——这两条规则能避免 90% 的坑。**",
+    "answer": "**Ansible 有 20 多层[[图:ansible-var-priority]]\n\n变量优先级——这是它最反直觉的设计。**\n\n**从低到高（简化版，记 6 个关键的即可）**：\n```\n1. command line -e（最低，但会被覆盖）\n2. role defaults/main.yml          ← 给用户改的\n3. inventory group_vars/all\n4. inventory group_vars/<group>\n5. inventory host_vars/<host>\n6. playbook vars\n7. playbook vars_files\n8. block vars\n9. task vars\n10. set_fact / registered vars\n11. role vars/main.yml             ← 常常意外覆盖别人\n12. include_vars\n13. extra vars (-e)                ← 最高，永远赢\n```\n\n**「变量被覆盖找不到原因」的三个高频原因**：\n\n**1. 用了 `vars/main.yml` 而不是 `defaults/main.yml`**\n```\nrole 的 vars/main.yml 优先级很高（接近最高）\n→ inventory 里设的值会被它覆盖 → 用户改了不生效\n→ 给用户可配置的变量必须放 defaults\n```\n**这是 Ansible 最常见的「配置不生效」原因。**\n\n**2. inventory 里同时有 group_vars 和 host_vars**\n```\ngroup_vars/web.yml:  port: 80\nhost_vars/web1.yml:  port: 8080\n→ web1 用 8080（host 优先）\n但如果有多个 group 且都有定义，按「group 名的字母顺序」后者覆盖前者\n```\n\n**3. `set_fact` 会覆盖一切（除 extra vars）**\n```\n- set_fact: port=9090\n→ 后续所有引用 port 的地方都是 9090，即使 inventory 里定义了 80\n```\n\n**调试变量的方法（最实用）**：\n```yaml\n- name: 看变量到底是多少\n  debug:\n    var: my_var\n\n# 看所有变量来源的完整清单\n- debug: var=hostvars[inventory_hostname]\n```\n```bash\n# 命令行查\nansible web1 -m debug -a 'var=port'\n```\n\n**命名规范（预防混乱的关键）**：\n```\n✓ 角色变量加前缀：nginx_port、nginx_user\n✗ 裸名：port、user（必然与别处冲突）\n```\n**「所有变量都加 role 前缀」是最有效的一条规范**。\n\n**一句话**：**变量优先级混乱的根因是「可配置项放进了 vars 而不是 defaults」，以及「变量名没加前缀」——这两条规则能避免 90% 的坑。**",
     "tags": [
       "Terraform",
       "IaC",
@@ -37332,7 +37332,7 @@
     "category": "云与高可用",
     "difficulty": "中等",
     "question": "云上的 VPC、子网、安全组、路由表是什么关系？一次请求怎么走？",
-    "answer": "**四层结构：VPC 是「虚拟机房」，子网是「房间」，安全组是「门禁」，路由表是「指路牌」。**\n\n```\nVPC（10.0.0.0/16）\n├── 子网 A（10.0.1.0/24，可用区 1）\n│    ├── ECS-1  ← 安全组 sg-web\n│    └── ECS-2\n├── 子网 B（10.0.2.0/24，可用区 2）\n│    └── RDS   ← 安全组 sg-db\n└── 路由表（决定「出 VPC 的流量去哪」）\n     ├── 10.0.0.0/16 → 本地\n     ├── 0.0.0.0/0   → NAT 网关 / 公网 IP\n     └── 对等连接     → 另一个 VPC\n```\n\n| 组件 | 作用 | 关键点 |\n|---|---|---|\n| **VPC** | 隔离的虚拟网络 | **网段一旦定下不好改**（要迁移实例） |\n| **子网** | VPC 的切分，**绑定可用区** | 子网是「可用区级」的，跨 AZ 部署 = 建多个子网 |\n| **安全组** | **实例级**防火墙（有状态） | 白名单机制，默认拒绝 |\n| **路由表** | 决定流量下一跳 | 子网关联一张路由表 |\n\n**一次外部请求的路径**：\n```\n用户 → 公网 → SLB / EIP → 安全组（入向规则放行）→ 子网 → ECS\n                                                    ↑\n                                         路由表决定「公网流量怎么进来」\n```\n\n**四个高频坑**：\n\n**1. 安全组是「有状态」的**\n```\n放行入向 80 → 出向的响应自动放行（不需要额外配出向规则）\n→ 与 iptables 不同（iptables 要配 ESTABLISHED,RELATED）\n```\n\n**2. 安全组可以「引用」另一个安全组**\n```\n✗ 数据库安全组放行 0.0.0.0/0:3306（灾难）\n✓ 数据库安全组放行「sg-web」的 3306\n→ 只有挂 sg-web 的机器能连，且随实例增减自动生效\n```\n**「安全组引用安全组」是云上最优雅的授权方式。**\n\n**3. 子网绑定可用区（跨 AZ 高可用必须建多个子网）**\n```\n要双可用区高可用：\n→ 在每个 AZ 都建子网，应用在两处各部署一份\n→ 只在 AZ1 建子网，AZ1 故障时无处可逃\n```\n\n**4. 路由表的「0.0.0.0/0」决定出网方式**\n```\n指向 NAT 网关 → 私网实例能出网但不能被外部访问（推荐）\n指向 Internet 网关 + 有 EIP → 公网可达\n没有 0.0.0.0/0 路由 → 完全不能出网（连 yum 都用不了）\n```\n\n**「VPC 网段规划」是最该提前想清楚的**：\n```\n✗ 10.0.0.0/24（太小，很快就用完）\n✓ 10.0.0.0/16（预留空间给未来子网）\n✓ 且要与自建机房/其他云不冲突（对等连接时同网段无法互联）\n```\n\n**一句话**：**「VPC 划分机房、子网绑可用区、安全组做门禁、路由表指出网」——其中「安全组引用安全组」和「跨 AZ 建多子网」是最容易忽略的两点。**",
+    "answer": "[[图:vpc-layers]]\n\n**四层结构：VPC 是「虚拟机房」，子网是「房间」，安全组是「门禁」，路由表是「指路牌」。**\n\n```\nVPC（10.0.0.0/16）\n├── 子网 A（10.0.1.0/24，可用区 1）\n│    ├── ECS-1  ← 安全组 sg-web\n│    └── ECS-2\n├── 子网 B（10.0.2.0/24，可用区 2）\n│    └── RDS   ← 安全组 sg-db\n└── 路由表（决定「出 VPC 的流量去哪」）\n     ├── 10.0.0.0/16 → 本地\n     ├── 0.0.0.0/0   → NAT 网关 / 公网 IP\n     └── 对等连接     → 另一个 VPC\n```\n\n| 组件 | 作用 | 关键点 |\n|---|---|---|\n| **VPC** | 隔离的虚拟网络 | **网段一旦定下不好改**（要迁移实例） |\n| **子网** | VPC 的切分，**绑定可用区** | 子网是「可用区级」的，跨 AZ 部署 = 建多个子网 |\n| **安全组** | **实例级**防火墙（有状态） | 白名单机制，默认拒绝 |\n| **路由表** | 决定流量下一跳 | 子网关联一张路由表 |\n\n**一次外部请求的路径**：\n```\n用户 → 公网 → SLB / EIP → 安全组（入向规则放行）→ 子网 → ECS\n                                                    ↑\n                                         路由表决定「公网流量怎么进来」\n```\n\n**四个高频坑**：\n\n**1. 安全组是「有状态」的**\n```\n放行入向 80 → 出向的响应自动放行（不需要额外配出向规则）\n→ 与 iptables 不同（iptables 要配 ESTABLISHED,RELATED）\n```\n\n**2. 安全组可以「引用」另一个安全组**\n```\n✗ 数据库安全组放行 0.0.0.0/0:3306（灾难）\n✓ 数据库安全组放行「sg-web」的 3306\n→ 只有挂 sg-web 的机器能连，且随实例增减自动生效\n```\n**「安全组引用安全组」是云上最优雅的授权方式。**\n\n**3. 子网绑定可用区（跨 AZ 高可用必须建多个子网）**\n```\n要双可用区高可用：\n→ 在每个 AZ 都建子网，应用在两处各部署一份\n→ 只在 AZ1 建子网，AZ1 故障时无处可逃\n```\n\n**4. 路由表的「0.0.0.0/0」决定出网方式**\n```\n指向 NAT 网关 → 私网实例能出网但不能被外部访问（推荐）\n指向 Internet 网关 + 有 EIP → 公网可达\n没有 0.0.0.0/0 路由 → 完全不能出网（连 yum 都用不了）\n```\n\n**「VPC 网段规划」是最该提前想清楚的**：\n```\n✗ 10.0.0.0/24（太小，很快就用完）\n✓ 10.0.0.0/16（预留空间给未来子网）\n✓ 且要与自建机房/其他云不冲突（对等连接时同网段无法互联）\n```\n\n**一句话**：**「VPC 划分机房、子网绑可用区、安全组做门禁、路由表指出网」——其中「安全组引用安全组」和「跨 AZ 建多子网」是最容易忽略的两点。**",
     "tags": [
       "高可用",
       "容灾",

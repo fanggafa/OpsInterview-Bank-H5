@@ -73,6 +73,37 @@ import K8sServiceTypes from './K8sServiceTypes.vue'
 import CrashLoopTriage from './CrashLoopTriage.vue'
 import PrometheusMetricTypes from './PrometheusMetricTypes.vue'
 import NginxTimingSplit from './NginxTimingSplit.vue'
+import BPlusTreeReason from './BPlusTreeReason.vue'
+import LeftmostPrefix from './LeftmostPrefix.vue'
+import ExplainFields from './ExplainFields.vue'
+import K8sResourcesQos from './K8sResourcesQos.vue'
+import LvsThreeLayers from './LvsThreeLayers.vue'
+import VpcLayers from './VpcLayers.vue'
+import EsShardDesign from './EsShardDesign.vue'
+import DnsFailureLayers from './DnsFailureLayers.vue'
+import DnsNdotsSearch from './DnsNdotsSearch.vue'
+import MultiARecords from './MultiARecords.vue'
+import ConntrackFull from './ConntrackFull.vue'
+import FirewalldVsIptables from './FirewalldVsIptables.vue'
+import TomcatRequestFlow from './TomcatRequestFlow.vue'
+import Cpu100Locate from './Cpu100Locate.vue'
+import AnsibleVarPriority from './AnsibleVarPriority.vue'
+import ShellQuotes from './ShellQuotes.vue'
+import LeastPrivilegeLayers from './LeastPrivilegeLayers.vue'
+import TlsCertLifecycle from './TlsCertLifecycle.vue'
+import RsyncIncremental from './RsyncIncremental.vue'
+import CephComponents from './CephComponents.vue'
+import KvmVsXenVmware from './KvmVsXenVmware.vue'
+import LvsScheduling from './LvsScheduling.vue'
+import GitStash from './GitStash.vue'
+import TcpdumpConnectFail from './TcpdumpConnectFail.vue'
+import RateVsIrate from './RateVsIrate.vue'
+import ObservabilityPillars from './ObservabilityPillars.vue'
+import MongoEsrPrinciple from './MongoEsrPrinciple.vue'
+import MongoDeployModes from './MongoDeployModes.vue'
+import SloErrorBudget from './SloErrorBudget.vue'
+import OncallResponseFlow from './OncallResponseFlow.vue'
+import TcpVsUdp from './TcpVsUdp.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -208,6 +239,37 @@ export const FIGURES = {
   'crash-loop-triage': CrashLoopTriage,
   'prometheus-metric-types': PrometheusMetricTypes,
   'nginx-timing-split': NginxTimingSplit,
+  'b-plus-tree-reason': BPlusTreeReason,
+  'leftmost-prefix': LeftmostPrefix,
+  'explain-fields': ExplainFields,
+  'k8s-resources-qos': K8sResourcesQos,
+  'lvs-three-layers': LvsThreeLayers,
+  'vpc-layers': VpcLayers,
+  'es-shard-design': EsShardDesign,
+  'dns-failure-layers': DnsFailureLayers,
+  'dns-ndots-search': DnsNdotsSearch,
+  'multi-a-records': MultiARecords,
+  'conntrack-full': ConntrackFull,
+  'firewalld-vs-iptables': FirewalldVsIptables,
+  'tomcat-request-flow': TomcatRequestFlow,
+  'cpu-100-locate': Cpu100Locate,
+  'ansible-var-priority': AnsibleVarPriority,
+  'shell-quotes': ShellQuotes,
+  'least-privilege-layers': LeastPrivilegeLayers,
+  'tls-cert-lifecycle': TlsCertLifecycle,
+  'rsync-incremental': RsyncIncremental,
+  'ceph-components': CephComponents,
+  'kvm-vs-xen-vmware': KvmVsXenVmware,
+  'lvs-scheduling': LvsScheduling,
+  'git-stash': GitStash,
+  'tcpdump-connect-fail': TcpdumpConnectFail,
+  'rate-vs-irate': RateVsIrate,
+  'observability-pillars': ObservabilityPillars,
+  'mongo-esr-principle': MongoEsrPrinciple,
+  'mongo-deploy-modes': MongoDeployModes,
+  'slo-error-budget': SloErrorBudget,
+  'oncall-response-flow': OncallResponseFlow,
+  'tcp-vs-udp': TcpVsUdp,
 }
 
 /**
