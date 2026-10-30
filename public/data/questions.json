@@ -1127,7 +1127,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "750 拆成三组：7=rwx（属主）、5=r-x（属组，可读可执行但不可写）、0=---（其他用户无权限）。权限数字位：读4、写2、执行1 相加。",
+    "explanation": "**`chmod 750` 表示「属主 7（rwx）、属组 5（r-x）、其他人 0（无）」。**\n\n数字的含义（三位八进制）：\n| 位 | 权限 | 数值 |\n|---|---|---|\n| 读 r | 4 | |\n| 写 w | 2 | |\n| 执行 x | 1 | |\n\n所以 `7 = 4+2+1`（rwx）、`5 = 4+1`（r-x）、`0`（无权限）。\n\n**关键区分**：\n1. **属组**能读能执行但**不能写**；\n2. **其他用户**完全没有权限（连读都不行）；\n3. 注意 `750` 与 `755`/`640` 的差别（常见混淆）。\n\n**目录的特殊含义**（易混点）：对目录来说，`r` 是「能列目录」，`x` 是「能进入/访问里面的文件」，`w` 是「能增删文件」—— 只有 `r` 没有 `x` 时，`ls` 能看到名字但打不开文件。\n\n**排查链路**：`ls -l file` → `namei -l /path/to/file`（逐级看目录权限，排查「文件权限对但打不开」最有效）→ `getfacl`（若有 ACL，规则可能覆盖 chmod）。\n\n案例：某脚本 `750` 且属组不对，另一个组的服务跑不起来；用 `namei -l` 才看出中间目录缺 `x`。",
     "tags": [
       "chmod",
       "文件权限"
@@ -1408,7 +1408,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "/24 共 256 个地址，减去网络地址（.0）与广播地址（.255），可用主机地址为 254 个。/31 与 /32 在现代设备上有特殊规则，另当别论。",
+    "explanation": "**`192.168.1.0/24` 共 256 个地址，去掉「网络地址（.0）」和「广播地址（.255）」，理论可分配给主机 254 个。**\n\n计算：`2^(32-24) = 2^8 = 256`；可用 = `256 - 2 = 254`。\n\n**易混点（实战最常错）**：\n1. **`/31` 是特例**：RFC 3021 允许点对点链路用两个地址（不算网络/广播），可用 2 个；\n2. **`/32`** 表示单个主机；\n3. 是否「可用」还取决于**网段是否已被占用**（网关、保留地址、DHCP 排除）；\n4. 云厂商可能占用前几个地址（如 AWS VPC 每子网保留 5 个）。\n\n**快速心算**：掩码位数 n → 主机位 = 32-n → 地址数 = 2^(32-n) → 可用 = 地址数 - 2。\n\n**排查链路**：`ipcalc 192.168.1.0/24`（或 `ip addr show`）看网络/广播/可用范围 → `ip neigh` 看已用 → 扫描确认冲突（`arping`）。\n\n案例：某次划 `/26` 子网（64 地址）给 60 台机器，忘了扣掉网关与保留地址，实际只能放 62 台，扩容时才发现不够。",
     "tags": [
       "CIDR",
       "子网",
@@ -1872,7 +1872,7 @@
       "B",
       "C"
     ],
-    "explanation": "禁用 root 直登、强制密钥认证、改端口限制来源都是常见加固；配合 fail2ban 可缓解爆破。D 严重违反最小权限原则，等于人人可提权，是典型高危配置。",
+    "explanation": "**SSH 安全加固的核心是「减少可被爆破的攻击面」：禁密码认证、禁 root 登录、限制来源、并保留审计。**\n\n标准加固项：\n```ini\nPasswordAuthentication no\nPermitRootLogin no\nPubkeyAuthentication yes\nMaxAuthTries 3\nClientAliveInterval 300\nClientAliveCountMax 2\nAllowUsers ops@10.0.0.0/8\n```\n\n配 2FA（`AuthenticationMethods publickey,password` 或 TOTP）；改端口是「降噪」不是安全（见另一题）。\n\n**不建议的做法**：\n- 只关 root 却仍开密码登录（普通账号同样会被爆破）；\n- 只改端口不改认证；\n- 关掉 `PAM`/审计以「图方便」。\n\n**排查链路**：`sshd -T | grep -E 'passwordauthentication|permitrootlogin|maxauthtries'` 看**实际生效值**（配置文件里写了不代表生效，后来者覆盖）→ `journalctl -u sshd | grep Failed` 看爆破量 → `lastb` 看失败来源。\n\n**易混点**：`PasswordAuthentication` 可能在 `sshd_config.d/*.conf` 里被覆盖（CentOS/RHEL 9、Ubuntu 20+），要 `sshd -T` 验证最终值。\n\n案例：某机器 `sshd_config` 里写了 `PasswordAuthentication no`，但 `sshd_config.d/50-cloud-init.conf` 又开了 —— `sshd -T` 显示仍是 yes，弱口令爆破成功。",
     "tags": [
       "SSH",
       "安全加固",
@@ -1886,7 +1886,7 @@
     "category": "Shell脚本",
     "difficulty": "简单",
     "question": "Shell 中 $0、$#、$@、$*、$? 各代表什么？$@ 和 $* 有什么区别？",
-    "answer": "$0=脚本名；$#=参数个数；$@=所有参数列表（每个参数独立）；$*=所有参数合并为一个字符串；$?=上一条命令退出码（0成功）。$@ 和 $* 不加引号时无区别，加引号时：“$@” 保留每个参数边界，“$*” 合并为单个参数，循环处理带空格参数时必须用 “$@”。",
+    "answer": "**这组变量是「脚本元信息」，写健壮脚本几乎天天用；`$@` 与 `$*` 的区别在「是否保留参数边界」。**\n\n| 变量 | 含义 |\n|---|---|\n| `$0` | 脚本名（含路径） |\n| `$1`..`$9` | 第 N 个位置参数（`${10}` 起要加花括号） |\n| `$#` | 位置参数个数 |\n| `$@` | 全部参数，**每个参数是独立字段** |\n| `$*` | 全部参数，**合成一个字符串**（用 `IFS` 连接） |\n| `$?` | **上一条命令的退出码**（0 成功，非 0 失败） |\n| `$$` | 当前 shell 的 PID |\n\n**`$@` vs `$*`（高频考点）**：\n```bash\n# 传两个含空格的参数\ngreet() { for a in \"$@\"; do echo \"[$a]\"; done; }\ngreet \"a b\" \"c d\"     # [a b] / [c d]   ← 保留边界\n\ngreet2() { for a in \"$*\"; do echo \"[$a]\"; done; }\ngreet2 \"a b\" \"c d\"    # [a b c d]        ← 合并成一个\n```\n结论：**遍历参数用 `\"$@\"`**，需要拼接成一个字符串才用 `\"$*\"`。\n\n**`$?` 的坑**：它只反映「上一条命令」，且**管道只取最后一个命令的状态**：\n```bash\ngrep foo file | wc -l    # grep 失败也不影响 $?（wc 成功即 0）\nset -o pipefail          # 让管道任一环节失败即非 0（推荐）\n```\n\n**排查思路**：`set -euo pipefail` 提前暴露问题；出错时 `echo \"exit=$?\"` 配合 `set -x` 看是哪一步失败。",
     "tags": [
       "变量",
       "特殊变量"
@@ -1899,7 +1899,7 @@
     "category": "Shell脚本",
     "difficulty": "简单",
     "question": "Shell 中单引号、双引号、反引号和 $() 有什么区别？",
-    "answer": "单引号：完全字面量，内部变量不展开；双引号：内部 $变量、命令替换会展开，但空格不分割，写路径必须加；反引号：命令替换（已过时，不支持嵌套，可读性差）；$(cmd)：命令替换，支持嵌套，现代脚本应统一用 $()。",
+    "answer": "**四种写法本质是「是否展开变量 / 是否允许命令替换」的组合，选错最容易出的问题是「变量没展开」或「被意外执行」。**\n\n| 写法 | 变量展开 | 命令替换 | 常见用途 |\n|---|---|---|---|\n| `'单引号'` | ❌ 全部原样 | ❌ | 正则、awk 脚本、含 `$` 的原文 |\n| `\"双引号\"` | ✅ | ✅ | 一般字符串、拼接 |\n| `` `反引号` `` | ✅ | ✅ | 旧式命令替换（**不推荐**） |\n| `$(命令)` | ✅ | ✅ | 现代命令替换（**推荐**） |\n\n```bash\nname=world\necho 'hello $name'   # hello $name（不展开）\necho \"hello $name\"   # hello world\necho $(date +%F)     # 2026-10-30\necho `date +%F`      # 同上，但嵌套困难\n```\n\n**为什么推荐 `$()`**：反引号在嵌套时要用反斜杠转义，可读性极差；`$()` 可自然嵌套：`echo $(echo $(date +%Y))`。\n\n**常见坑**：\n1. 用单引号包 awk 脚本（`awk '{print $1}'`）是对的 —— 因为 `$1` 要留给 awk；\n2. 用双引号包 awk 脚本会被 shell 先展开 `$1`，结果变成 `awk '{print }'`；\n3. 变量里含空格时**必须加双引号**：`cp $file /bak/` 在文件名带空格时会拆成多个参数（应写 `cp \"$file\" /bak/`）。\n\n**排查思路**：`bash -x script.sh` 看实际展开后的命令，或用 `set -x` 局部调试。",
     "tags": [
       "引号",
       "命令替换"
@@ -1912,7 +1912,7 @@
     "category": "Shell脚本",
     "difficulty": "简单",
     "question": "crontab 的时间字段格式是什么？写一个每天凌晨2点30分执行、每周一执行的例子。常见坑有哪些？",
-    "answer": "格式：分 时 日 月 周 [命令]，共5个时间字段。每天 02:30：30 2 * * *；每周一：0 0 * * 1。常见坑：1）周字段 0 和 7 都是周日；2）crontab 默认最小粒度是分钟，不能精确到秒；3）cron 环境变量极少（PATH 只有 /bin:/usr/bin），脚本内用绝对路径或先 source /etc/profile；4）% 在 crontab 中是换行符，需转义为 \\%；5）输出不重定向会发邮件，建议统一重定向到日志。",
+    "answer": "**crontab 五个时间字段是「分 时 日 月 周」，按顺序排列；星号表示「任意」。**\n\n```\n* * * * *  command\n│ │ │ │ │\n│ │ │ │ └─ 星期几 (0-7，0 和 7 都是周日)\n│ │ │ └─── 月 (1-12)\n│ │ └───── 日 (1-31)\n│ └─────── 小时 (0-23)\n└───────── 分钟 (0-59)\n```\n\n**按题目要求写**：\n```bash\n# 每天凌晨 2:30\n30 2 * * * /opt/backup.sh\n# 每周一凌晨 2:30  —— 注意这里用「日」与「周」会互相干扰\n30 2 * * 1 /opt/weekly.sh\n```\n\n**关键坑（必须知道）**：\n1. **「日」和「周」同时指定时是「或」关系**（OR），不是 AND。所以 `30 2 15 * 1` 表示「每月 15 号**或**每周一」，不是「15 号且周一」；\n2. 想同时满足要用脚本内判断，或用 `systemd timer`（语义更清晰）；\n3. **crontab 的环境变量很少**（PATH 极简），脚本要写全路径或用 `#!/bin/bash` 并显式设置 PATH；\n4. 分钟字段写 `*/5` 是「每 5 分钟」，不是「第 5 分钟」。\n\n**调试思路**：\n```bash\ngrep CRON /var/log/syslog        # 看是否真的被触发\nsystemctl status cron           # 服务是否在跑\n```\n也可以先在命令行模拟：`env -i /bin/sh -c '/opt/backup.sh'`（用最小环境跑，最容易复现「手动能跑、定时不跑」）。\n\n**案例**：某备份任务手动执行正常、cron 里一直失败，原因是脚本依赖 PATH 里的自定义命令；在 crontab 里显式 `PATH=/usr/local/bin:...` 后解决。",
     "tags": [
       "crontab",
       "定时任务"
@@ -1925,7 +1925,7 @@
     "category": "Shell脚本",
     "difficulty": "中等",
     "question": "grep、sed、awk 的典型使用场景区别是什么？举例说明。",
-    "answer": "grep：按行过滤，grep -rn error /var/log 递归查日志，-v 反向匹配，-A/-B/-C 显示上下文，-c 计数；sed：流编辑，擅长行替换和删除，sed -i s/old/new/g file 原地替换，sed -n 10,20p 打印指定行；awk：按列处理，擅长格式化统计，awk {sum+=$5} END{print sum} 累加某列，awk -F: {print $1,$3} /etc/passwd。口诀：grep 找行、sed 改行、awk 算列。",
+    "answer": "**三者都是文本处理工具，但分工是「查找 / 流式编辑 / 结构化字段计算」。**\n\n| 工具 | 擅长 | 典型场景 |\n|---|---|---|\n| `grep` | **按行筛选** | 找日志关键字、过滤输出、计数 |\n| `sed` | **按行替换/删除/插入**（流编辑） | 批量替换配置、删除注释行、取指定行 |\n| `awk` | **按字段处理 + 计算/汇总** | 统计访问日志、按列求和、格式化输出 |\n\n```bash\n# grep：找 + 计数\ngrep -c \"ERROR\" app.log\ngrep -v \"DEBUG\" app.log | head\n\n# sed：替换（-i 原地改，先备份！）\nsed -i.bak 's/8080/8081/g' nginx.conf\nsed -n '10,20p' file            # 取第 10-20 行\n\n# awk：按列统计（最典型的用法）\nawk '{sum+=$10} END{print sum}' access.log        # 累加第 10 列\nawk '$9==500{print $7}' access.log | sort | uniq -c | sort -rn | head\n```\n\n**选择建议**：\n- 只要「行」→ `grep`；\n- 要「改行内容」→ `sed`；\n- 要「按列算/分组统计」→ `awk`（`sort | uniq -c` 是经典组合）。\n\n**常见坑**：\n1. `sed -i` 不备份容易改坏文件（用 `-i.bak`）；\n2. `awk` 的 `$0` 是整行、`$1` 是第一列，分隔符默认空白（可用 `-F'|'` 指定）；\n3. 处理大文件时 `grep`/`sed` 是流式的（内存友好），但 `awk` 里做排序/数组聚合要注意内存。\n\n**排查思路**：先用 `head`/`wc` 小范围验证正则与列号，再全量执行；改文件前务必备份。\n\n**案例**：某次 `sed -i` 批量替换配置，正则多匹配了一段（把 `listen 80;` 里的 80 也替换了），导致端口冲突；之后规范为「先 `sed` 输出到临时文件 → `diff` 确认 → 再覆盖」。",
     "tags": [
       "三剑客",
       "文本处理"
@@ -1938,7 +1938,7 @@
     "category": "Shell脚本",
     "difficulty": "中等",
     "question": "Shell 函数如何返回值？如何判断上一条命令是否执行成功并做错误处理？",
-    "answer": "Shell 函数用 return 返回 0-255 的退出码（不是数据），要返回字符串用 echo 输出再命令捕获：result=$(myfunc)。判断成功：if ! cmd; then echo fail; fi，或 cmd || { echo fail; exit 1; }。注意管道场景必须配合 pipefail，否则中间的失败检测不到。函数内 return 非0，配合 set -e 会直接退出脚本。",
+    "answer": "**Shell 函数「没有真正的返回值」，只有「退出码 + 通过 stdout/全局变量传值」，理解这点才能写对错误处理。**\n\n三种「返回值」方式：\n1. **退出码**（0~255，最常用）：`return N`，调用后看 `$?`；\n2. **stdout**：函数里 `echo`，调用方 `local v=$(func)` 捕获；\n3. **全局变量**：函数直接赋值给外部变量（不够清晰，大脚本慎用）。\n\n```bash\nget_count() {\n  local n=$(wc -l < \"$1\")   # 注意：大量错误信息会污染 stdout\n  echo \"$n\"\n}\ncount=$(get_count file) || { echo \"获取失败\" >&2; exit 1; }\n```\n\n**错误处理的正确姿势**：\n```bash\nset -euo pipefail                 # 遇错即退 + 未定义变量报错 + 管道失败传递\nif ! grep -q pattern file; then   # 用 if 显式处理「预期内的失败」\n  echo \"未匹配\" >&2\nfi\ntrap 'echo \"failed at line $LINENO\"; exit 1' ERR   # 记录失败位置\ntrap 'rm -f \"$tmp\"' EXIT                            # 清理临时文件\n```\n\n**关键细节**：\n1. `local` 必须在赋值时使用（`local x=$(cmd)` 会掩盖 `cmd` 的失败，建议 `local x; x=$(cmd) || return 1`）；\n2. 错误信息写 `>&2`（stderr），否则会污染被 `$()` 捕获的返回值；\n3. 退出码最大 255，不要用大数字表示具体错误。\n\n**排查思路**：`bash -x` + `trap ERR` 看失败位置；CI 里检查 `echo $?` 是否被正确传播。",
     "tags": [
       "函数",
       "错误处理"
@@ -1951,7 +1951,7 @@
     "category": "网络基础",
     "difficulty": "中等",
     "question": "HTTP 和 HTTPS 的区别？简述 TLS 握手过程。",
-    "answer": "区别：HTTPS = HTTP + TLS 加密，默认端口 443 vs 80；提供机密性、完整性、身份认证（防中间人），代价是多一次握手 RTT 和加解密 CPU 开销。TLS1.2 握手：1）ClientHello：客户端给出支持的加密套件、随机数 C1；2）ServerHello：选定套件、随机数 S1、下发服务器证书；3）客户端验证证书链（CA、有效期、域名），协商出预主密钥；4）双方用 C1+S1+预主密钥生成会话密钥，Finished 消息验证握手完整性，之后对称加密通信。TLS1.3 简化为1-RTT并废弃弱算法。",
+    "answer": "**HTTPS = HTTP + TLS：在传输层之上加密与校验身份，解决「窃听、篡改、冒充」三个问题。**\n\n**核心区别**：\n| | HTTP | HTTPS |\n|---|---|---|\n| 加密 | 明文 | TLS 加密 |\n| 完整性 | 无 | MAC/AEAD 校验 |\n| 身份 | 无 | 证书校验服务端身份 |\n| 端口 | 80 | 443 |\n| 性能 | 略快 | 多一次握手（TLS1.3 已大幅优化） |\n\n**TLS 握手（简化，TLS 1.2）**：\n1. **Client Hello**：客户端给出支持的版本/套件/随机数；\n2. **Server Hello + 证书**：服务端选定套件、发证书（含公钥与链）；\n3. **客户端校验证书**（是否受信 CA 签发、域名匹配、是否过期/吊销）；\n4. **密钥交换**：客户端生成预主密钥并用服务端公钥加密（或 ECDHE 协商）；\n5. **双方派生会话密钥**，之后用对称加密通信（**非对称只用于握手，业务数据用对称**，因为对称快得多）。\n\n**TLS 1.3 的变化**：握手压到 1-RTT（甚至 0-RTT）、去掉 RSA 密钥交换、只保留 AEAD 套件——所以「HTTPS 慢」在现代主要是连接复用与证书链的问题，不是加密本身。\n\n**排查思路（运维最常用）**：\n```bash\ncurl -vI https://example.com           # 看握手与证书\nopenssl s_client -connect host:443 -servername host   # 看证书链与套件\n```\n常见故障：证书过期、链不完整（缺中间证书）、SNI 未配置、TLS 版本不匹配、时间不同步导致校验失败。\n\n**案例**：某次证书续期只换了叶子证书，没更新中间证书链，部分 Android 客户端握手失败；`openssl s_client` 看到 `verify error: unable to get local issuer certificate` 才定位。",
     "tags": [
       "HTTPS",
       "TLS",
@@ -1965,7 +1965,7 @@
     "category": "网络基础",
     "difficulty": "中等",
     "question": "服务器 ping 不通，你的排查思路是什么？",
-    "answer": "分层排查：1）本地：ip addr 看网卡/IP 是否配置，网卡是否 UP；2）本机防火墙：iptables -L / firewall-cmd --list-all，ICMP 是否被禁；3）路由：ip route 看默认网关，ping 网关测试内网连通性；4）安全组/云平台网络 ACL：云服务器最常见，控制台检查安全组入方向是否放通 ICMP；5）对端：对端防火墙禁 ping（网站能访问但 ping 不通属正常）；6）中间链路：traceroute/mtr 定位在哪一跳中断；7）sysctl：net.ipv4.icmp_echo_ignore_all 是否为1。",
+    "answer": "**ping 不通的排查要「分层定位」：先确认是「本机问题、链路问题、还是目标问题」。**\n\n**排查链路（按顺序，最省时间）**：\n1. **本机网络**：`ip addr`（网卡/IP 是否正常）、`ip route`（默认路由在不在）、`ip neigh`（网关 ARP 是否通）；\n2. **同网段**：`ping 网关` → 网关不通说明二层/本机问题（网线、交换机、VLAN）；\n3. **跨网段**：`ping 同网段其他机器` → `ping 目标`，配合 `traceroute`/`mtr` 看断在哪一跳；\n4. **DNS**（若用域名 ping）：先 `dig`/`nslookup` 确认能解析（**ping 域名失败常常是解析问题不是网络问题**）；\n5. **目标侧**：目标是否开机、是否禁 ping（`icmp_echo_ignore_all`）、防火墙是否拦截 ICMP；\n6. **抓包验证**：两端 `tcpdump icmp` —— 一端有 echo request、另一端没收到，说明在链路中被拦。\n\n**关键认知**：**ping 通不代表服务可用**（ICMP 与业务端口是两回事）；**ping 不通也不代表服务不可用**（很多环境禁 ICMP）。所以最终要用**业务端口**验证：`nc -vz host 443`、`curl -v`。\n\n**常见误判**：\n- 只 ping 域名，DNS 坏了误以为网络坏；\n- 目标禁 ICMP，误以为不通；\n- 中间设备限速 ICMP，大包不通小包通（`ping -s 1400` 验证 MTU 问题）。\n\n**案例**：某次「ping 目标不通但应用正常」，最后发现目标主机 `icmp_echo_ignore_all=1`（安全基线要求）；排查规范改为「先 `nc -vz` 测业务端口，再用 ping 辅助」。",
     "tags": [
       "网络排查",
       "ICMP"
@@ -1992,7 +1992,7 @@
     "category": "MySQL",
     "difficulty": "简单",
     "question": "为什么 InnoDB 表建议用自增主键，而不推荐 UUID 作为主键？",
-    "answer": "1）聚簇索引按主键顺序组织数据：自增 ID 插入总是追加到 B+树末尾，页分裂少、写入快；UUID 随机，插入导致频繁的页分裂和页搬迁，写放大严重；2）二级索引叶子节点存主键值，UUID 占 16 字节比 bigint 的 8 字节大一倍，所有二级索引都变大，浪费空间；3）UUID 作为主键使数据物理存储随机，范围查询和顺序扫描性能差。如果必须用 UUID，建议用有序 ID 算法（雪花ID、UUID v7），或作为唯一键而主键仍用自增。",
+    "answer": "**核心原因是「InnoDB 的聚簇索引」：数据按主键有序存放，主键决定插入位置与二级索引的内容，所以主键选错会同时伤害写入与查询。**\n\n**自增主键的好处**：\n1. **顺序插入**：新行总在末尾追加，减少页分裂与随机 IO；\n2. **主键更短**：INT/BIGINT 占 4/8 字节，二级索引的叶子节点都要带上主键值，短主键让**所有二级索引更小**（内存与 IO 都省）；\n3. **缓存友好**：热点集中在少数尾页；\n4. **分页与范围查询快**（按主键天然有序）。\n\n**UUID 的问题**：\n1. **随机插入**：每次写都可能落到任意页，触发**页分裂与碎片**，写入性能随数据量下降；\n2. **体积大**（char(36) 或 binary(16)），二级索引膨胀 2~4 倍；\n3. 索引页缓存命中率下降（热点分散）。\n\n**如果业务必须用 UUID**：\n- 用 `BINARY(16)` 存（`UUID_TO_BIN(uuid, 1)` 把时间高位前置，让顺序更接近自增）；\n- 或用「雪花 ID / 有序 UUID（ULID）」，兼顾唯一与顺序；\n- 把 UUID 做成**业务唯一索引**，主键仍用自增。\n\n**排查思路**：`SHOW ENGINE INNODB STATUS` 看是否有大量页分裂；`SHOW TABLE STATUS` 看 `Data_free`（碎片）；`EXPLAIN` 对比二级索引的大小（`SHOW INDEX` 的 `Cardinality`/索引长度）。\n\n**案例**：某表用 varchar(36) UUID 主键，2000 万行时写入 TPS 只有自增主键方案的 1/3，且 6 个二级索引总共占了 40GB；改为自增主键 + `BINARY(16)` 唯一索引后写入翻倍、索引空间降 60%。",
     "tags": [
       "主键",
       "UUID",
@@ -2020,7 +2020,7 @@
     "category": "CI/CD",
     "difficulty": "简单",
     "question": "什么是 CI/CD？常用工具链有哪些？",
-    "answer": "CI（持续集成）：代码频繁合并到主干，每次合并自动构建+自动化测试，快速发现集成错误；CD 有两个含义——持续交付（代码随时可发布到生产，人工点一下发布）和持续部署（通过全部流水线后自动上线）。价值：快速反馈、降低发布风险、减少人工操作错误。工具：代码管理 GitLab/Gitea；流水线 Jenkins（插件多）、GitLab CI（与仓库一体）、GitHub Actions（YAML声明式）、ArgoCD/Flux（GitOps）；制品仓库 Harbor/Nexus；部署 Ansible、Helm/Kustomize。",
+    "answer": "**CI 是「每次提交自动构建+测试」，CD 是「自动交付/部署」；两者串起来才是「小步快跑、随时可发」的基础。**\n\n| 概念 | 含义 | 产出 |\n|---|---|---|\n| **CI**（持续集成） | 代码合并前自动构建、跑测试 | 快速反馈「这次改动是否破坏功能」 |\n| **CD**（持续交付） | 自动构建出**可部署制品**并部署到预发 | 随时可发布（人工点发布） |\n| **CD**（持续部署） | 通过验证后**自动上生产** | 无需人工干预（要求高） |\n\n**常见工具链**：\n| 环节 | 工具 |\n|---|---|\n| 代码托管 | GitLab / GitHub / Gitea |\n| 流水线 | GitLab CI / Jenkins / GitHub Actions / Argo Workflows |\n| 制品 | Harbor / Nexus / Artifactory |\n| 容器与编排 | Docker / Kubernetes |\n| 部署 | Argo CD / Flux / Helm / Ansible |\n| 质量门禁 | SonarQube / Trivy（镜像扫描） |\n\n**流水线典型阶段**：`lint → 单元测试 → 构建镜像 → 镜像扫描 → 推送制品库 → 部署预发 → 集成/E2E → 审批 → 生产（灰度）`。\n\n**关键设计**：\n1. **快速反馈**：提交后 5~10 分钟内出结果（慢阶段并行化/分片）；\n2. **可追溯**：镜像用 digest、记录 commit SHA；\n3. **可回滚**：制品保留历史版本，回滚是「换 tag」而不是「重新构建」；\n4. **质量门禁**：测试失败、漏洞超阈值、镜像未签名都阻断。\n\n**排查思路**：流水线失败时按阶段定位（编译 → 测试 → 构建 → 部署），看日志与制品；flaky 用例单独治理。\n\n**案例**：某团队从「每周手工发版」改为 GitLab CI + Argo CD，发布从 2 小时缩短到 15 分钟，回滚从 30 分钟变成 1 分钟。",
     "tags": [
       "CI/CD",
       "流水线",
@@ -2048,7 +2048,7 @@
     "category": "CI/CD",
     "difficulty": "简单",
     "question": "测试金字塔是什么？在流水线中如何安排各类测试？",
-    "answer": "测试金字塔（自底向上）：单元测试（多，毫秒级，测函数逻辑，占比70%+）到接口/组件测试（中，秒级，测 API 契约）到 UI/E2E 测试（少，分钟级，模拟用户流程）。原则：越底层越便宜越快越稳定。流水线安排：每次提交触发单元测试+静态检查（lint）+构建（分钟级反馈）；合并到主干后跑接口测试+安全扫描；定时跑全量 E2E 和性能测试；发布前跑核心链路冒烟测试。反模式：依赖大量 UI 自动化导致流水线慢、flaky test 频繁误报。",
+    "answer": "**测试金字塔是「按成本与稳定性分层」的测试策略：底层多、顶层少，越靠上越慢越脆。**\n\n```\n        /\n       /  E2E（少量，跑关键路径）\n      /─────\n     /  集成测试（API/DB/中间件）\n    /────────\n   /   单元测试（大量，快，隔离）\n  /────────────\n```\n\n| 层级 | 占比参考 | 耗时 | 特点 |\n|---|---|---|---|\n| 单元测试 | 70% | 毫秒级 | 快、定位准、依赖 mock |\n| 集成测试 | 20% | 秒级 | 验证接口/DB/消息的真实交互 |\n| E2E（UI/全链路） | 10% | 分钟级 | 最接近用户，但慢且易 flaky |\n\n**流水线里的安排**（关键）：\n1. **提交即跑单元测试**（快速反馈，几分钟内出结果，失败直接阻断）；\n2. **构建后跑集成测试**（需要依赖服务，用 docker-compose/容器启动）；\n3. **部署到预发后跑 E2E/冒烟**（覆盖核心路径，如登录→下单→支付）；\n4. 按变更范围**并行/选择性执行**（只跑受影响模块，缩短时长）。\n\n**反模式**：\n- 倒金字塔（大量 E2E、少量单测）→ 流水线 40 分钟且 flaky 频繁，团队最终开始忽略失败；\n- 只跑单测不跑集成 → 上线后才发现连不上 DB/配置错。\n\n**排查思路**：统计各类测试的「数量、平均耗时、失败率（flaky 率）」，flaky 用例要修或下线，而不是无脑重试。\n\n**案例**：某团队 120 个 E2E 用例，每次流水线 35 分钟且 20% 随机失败；重构为「600 单测 + 40 集成 + 12 冒烟」后流水线 8 分钟，失败率降到 2%。",
     "tags": [
       "测试",
       "自动化",
@@ -2076,7 +2076,7 @@
     "category": "监控告警",
     "difficulty": "简单",
     "question": "Grafana 在监控体系中扮演什么角色？使用上的最佳实践？",
-    "answer": "Grafana 是可视化与数据聚合层：不存储数据，通过数据源插件（Prometheus/Elasticsearch/MySQL/Loki）统一查询展示，一个看板聚合多来源数据。最佳实践：1）Dashboard 即代码：JSON 用 grafonnet 或 provisioning 目录管理，版本化可 code review；2）看板分层：Overview 总览（黄金指标：流量/错误/延迟/饱和度）到服务详情到排障深入；3）变量模板化：$instance、$job 下拉切换，一个看板复用到所有实例；4）权限管理：团队/角色分文件夹隔离，敏感数据源只读。",
+    "answer": "**Grafana 是「可视化与看板层」：它不采集数据，只从 Prometheus/Loki/ES 等数据源查询并展示、告警。**\n\n在监控体系中的位置：\n```\n采集（node_exporter/agent） → 存储（Prometheus/Loki/ES） → 展示与探索（Grafana） → 告警（Alertmanager/Grafana Alerting）\n```\n\n**最佳实践**：\n1. **分层看板**：顶部「健康结论/告警摘要」→ 中部黄金四指标（延迟/流量/错误/饱和度）→ 下部明细可下钻；\n2. **控制面板数量**：一屏 8~12 个，太多没人看；\n3. **统一时间窗与刷新**：避免各图不对齐；刷新频率匹配数据粒度（指标 15~30s，别全设 5s）；\n4. **阈值线与发布标记**：用 annotation 标注发布/变更，便于看「哪次变更后曲线变了」；\n5. **变量（Variables）**：用 `$service`/`$instance` 下拉筛选，一个看板复用；\n6. **不可变与版本化**：看板 JSON 进 Git（provisioning），避免手工改动丢失；\n7. **权限**：只读角色给业务方，编辑权限收敛给少数人。\n\n**常见坑**：\n- 看板直接查原始高基数数据 → 加载慢、数据源被打挂（应查 recording rules 或降采样）；\n- 每人自建一套看板 → 同名十几个、口径不一致；\n- 用 Grafana 告警却不做去重/抑制 → 重复刷屏（复杂治理还是交给 Alertmanager）。\n\n**排查思路**：看板加载慢先查数据源查询耗时（Grafana 的 query inspector）；告警不生效检查 `Alerting` 规则状态与通知渠道。\n\n**案例**：某团队 Grafana 有 200+ 看板，值班不知道看哪个；重构为「3 个核心看板（总览/服务/依赖）+ 下钻链接」后，故障定位时间从 15 分钟降到 5 分钟。",
     "tags": [
       "Grafana",
       "可视化",
@@ -2197,7 +2197,7 @@
       "B",
       "D"
     ],
-    "explanation": "灰度放量能限制故障影响面，回滚方案与上一版本制品是止损前提，配置外置让同一制品能在多环境复用。C 恰好破坏「一次构建多处部署」，会引入环境差异，是常见反模式。",
+    "explanation": "**提高发布可靠性的核心是「可快速回滚 + 可灰度 + 可验证」，而不是「发布前多测几遍」。**\n\n有效做法：\n1. **制品可追溯**：镜像用 digest（`@sha256:...`），记录 commit SHA，能精确回滚到上一版；\n2. **灰度/金丝雀**：先 1%~5% 流量验证（看错误率/延迟/业务指标），再全量；\n3. **健康检查与自动回滚**：就绪探针失败率或错误率超阈值自动回滚；\n4. **配置与代码分离**（配置错导致的故障不少）；\n5. **发布清单与审批**（数据库变更、开关、依赖服务是否就绪）；\n6. **发布后验证**：立刻检查关键业务指标（不只是「容器起来了」）。\n\n**反模式**：直接 `latest` 覆盖全量、无回滚预案、发布后只看进程是否存活。\n\n**排查链路**：发布期间盯「错误率 / P99 / 业务成功率」三条曲线（按版本分组）→ 异常立即回滚 → 事后对比新旧版本指标定位。\n\n**易混点**：滚动发布（rolling）不等于灰度（canary）—— 滚动只是「逐个替换」，仍会很快让全部流量打到新版本。\n\n案例：某次全量发布新版本，5 分钟后订单成功率从 98% 掉到 70%；因无灰度与自动回滚，只能人工回退，影响 40 分钟。之后改为「金丝雀 5% → 观察 10 分钟 → 全量」。",
     "tags": [
       "灰度发布",
       "回滚",
@@ -2248,7 +2248,7 @@
     "category": "DNS",
     "difficulty": "简单",
     "question": "DNS 解析的完整链路是怎样的？从你在浏览器输入域名开始说。",
-    "answer": "按先后顺序共 5 步：\n\n1. 浏览器缓存 / Service Worker 缓存\n2. 本机 /etc/hosts\n3. 本地 DNS（/etc/resolv.conf 上配的递归解析器）\n4. 递归解析器缓存未命中时，依次查：根服务器 → 顶级域(.com) → 权威服务器\n5. 结果按 TTL 缓存，返回给浏览器\n\n[[图:dns-resolve]]\n\n一句话记：缓存越靠前越快；真正发 DNS 请求的是第 3 步那台服务器，你的机器只是「问」它。\n\n排障价值：任何一层都可能出问题——hosts 写死、resolv.conf 指向废弃 DNS、TTL 过长、权威记录没更新。",
+    "answer": "**DNS 解析是「多级缓存 + 递归/迭代」的组合链路，从浏览器到权威服务器通常 5~7 跳。**\n\n**完整链路**：\n\n[[图:dns-resolve]]\n1. **浏览器缓存**（Chrome 有自己的 DNS 缓存，TTL 有限）；\n2. **系统解析器**（`/etc/hosts` → 系统缓存如 `systemd-resolved`）；\n3. **本地递归 DNS**（`/etc/resolv.conf` 里的 `nameserver`，通常是内网 DNS 或运营商 DNS）；\n4. 递归 DNS 若没缓存，则**迭代查询**：根服务器 → 顶级域（`.com`）→ 权威服务器；\n5. **权威服务器**返回记录 → 递归 DNS 缓存并回给客户端。\n\n```\n浏览器 → 系统 → 本地递归 ─┬→ 根 NS（返回 .com 的 NS）\n                          ├→ .com NS（返回 example.com 的权威 NS）\n                          └→ 权威 NS（返回 A 记录）\n```\n\n**排查链路（对应每一跳）**：\n```bash\n# 1. 浏览器/系统层\ncat /etc/hosts; cat /etc/resolv.conf\n# 2. 本地递归\ndig example.com\ndig example.com +trace        # 从根开始逐级，定位断在哪一层\ndig @8.8.8.8 example.com      # 换一个递归对比\ndig @权威NS example.com        # 确认权威侧有记录\n```\n\n**易混点**：\n- **递归（recursive）**：客户端让服务器「帮我查到底」；**迭代（iterative）**：服务器只给「下一跳是谁」；\n- 缓存是**每层独立**，所以「改了记录但没生效」通常是中间缓存未过期（看 TTL）；\n- 容器里 `ndots:5` + `search` 会导致**多次查询**，看起来像「解析慢」。\n\n**案例**：某次域名解析失败，`+trace` 显示根与 .com 都正常，卡在权威服务器超时 —— 是权威 NS 所在机房网络问题，与本地 DNS 无关。",
     "tags": [
       "解析链路",
       "递归查询",
@@ -2290,7 +2290,7 @@
     "category": "DNS",
     "difficulty": "中等",
     "question": "TTL 是什么？TTL 设置过大或过小各有什么问题？",
-    "answer": "TTL（Time To Live）是这条 DNS 记录在各级缓存里能活多久，单位秒。\n\nTTL 过大（如 86400 = 1 天）：\n- 解析快、权威压力小\n- 但换 IP 后要等很久才全局生效，故障切换极慢\n- 适合长期稳定的记录\n\nTTL 过小（如 60 秒）：\n- 变更生效快，故障切换灵活\n- 但缓存命中率低，权威服务器压力大，解析延迟增加\n\n实用策略：\n- 平时用中等 TTL（300–3600）\n- 计划迁移前 1-2 天先把 TTL 调小（如 60），切完再调回\n- 这就是「提前降 TTL」的经典操作，能避免切换时长时间不生效",
+    "answer": "**TTL 是「DNS 记录在缓存中的存活秒数」：越大越省查询但变更生效越慢，越小越灵活但对权威压力更大。**\n\n| TTL | 优 | 劣 |\n|---|---|---|\n| **过大**（如 86400） | 缓存命中高、权威压力小、解析快 | **变更要等很久**（故障切换慢） |\n| **过小**（如 30） | 变更秒级生效、切换灵活 | 权威查询量上升；递归缓存频繁过期，**解析延迟增加**；极端情况下被上游限流 |\n\n**工程实践（很关键）**：\n1. **平时用中值**（300~3600s），兼顾性能与灵活性；\n2. **重要变更前先降 TTL**：提前一个旧 TTL 周期把 TTL 降到 300s，等旧缓存过期再改记录（改完再调回）；\n3. **故障切换场景**才需要短 TTL（或多 IP + 负载均衡层来处理）；\n4. 不同记录类型可不同 TTL（如静态资源域长、API 域短）。\n\n**排查思路**：\n```bash\ndig example.com +ttl          # 看当前记录的 TTL\ndig @权威NS example.com        # 确认权威侧的值\n```\n多地/多次解析对比可判断「是缓存未过期还是权威未更新」。\n\n**易混点**：TTL 是**每一层缓存各自计时**（浏览器、系统、递归），所以「改了记录但用户还是旧值」通常不是权威没生效，而是中间缓存还差时间。\n\n**案例**：某次切 IP 没提前降 TTL，TTL 是 86400，切换后部分用户两天内仍访问旧 IP；规范改为「变更前 1 天降 TTL 至 300s」后切换窗口缩短到 5 分钟。",
     "tags": [
       "TTL",
       "变更加速度",
@@ -2304,7 +2304,7 @@
     "category": "DNS",
     "difficulty": "中等",
     "question": "递归查询和迭代查询有什么区别？",
-    "answer": "一句话：递归是「你替我查到底」，迭代是「你告诉我下一步问谁」。\n\n- 递归查询：客户端让本地 DNS 负责查出最终结果，本地 DNS 要么给答案要么给错误。客户端只问一次。\n- 迭代查询：DNS 服务器返回「我不知道，但你去问 xxx」，需要自己逐跳追问。\n\n实际分工：\n- 你的机器 → 本地 DNS：递归（所以 resolv.conf 那台必须靠得住）\n- 本地 DNS → 根/顶级/权威：迭代（逐跳追问）\n\n[[图:dns-resolve]]\n\n排障含义：如果本地 DNS 配了个不可靠的服务器，整个解析都会受影响，因为它是唯一的递归出口。多人共用内网 DNS 时这点尤其重要。",
+    "answer": "**递归是「你帮我查完给我结果」，迭代是「你告诉我下一步问谁」；客户端通常用递归，递归服务器之间用迭代。**\n\n| | 递归查询（recursive） | 迭代查询（iterative） |\n|---|---|---|\n| 谁在干活 | **被查询的服务器负责查到底** | 查询方自己逐级追问 |\n| 典型场景 | 客户端 → 本地递归 DNS | 递归 DNS → 根/顶级/权威 |\n| 响应内容 | 最终答案（或错误码） | 「去问这个 NS」的引用 |\n\n```\n客户端 --(递归)--> 本地 DNS --(迭代)--> 根 NS\n                        --(迭代)--> .com NS\n                        --(迭代)--> 权威 NS\n```\n\n**为什么这样设计**：让「递归查询」的压力集中在少数递归服务器（可缓存、可运营），根与权威只回答「引用」，避免被海量客户端直接打爆。\n\n**易混点**：\n- 递归服务器**可能拒绝递归**（`dig` 收到 `REFUSED`）——说明这台只服务自己域或未开 `recursion`；\n- `dig +trace` 模拟的是**迭代过程**（自己逐级问），所以它能看到每一跳；普通 `dig` 是「问递归服务器」；\n- 递归与迭代不是「谁快谁慢」，而是**职责划分**。\n\n**排查链路**：\n```bash\ndig example.com            # 走递归（看 Query time 与是否 REFUSED）\ndig +trace example.com      # 走迭代（看每一跳是否正常）\n```\n两边结果不一致，说明「递归缓存有问题」或「权威区不一致」。\n\n**案例**：某内网 DNS 配置错误未开启递归，客户端全部收到 `REFUSED`，表现为「域名解析失败」；`dig` 输出里 `status: REFUSED` 是关键线索。",
     "tags": [
       "递归",
       "迭代",
@@ -2339,7 +2339,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "A 记录用于 域名 → IPv4。AAAA 是 IPv6；CNAME 是别名指向另一个域名；MX 邮件；TXT 文本验证。",
+    "explanation": "**A 记录做「域名 → IPv4」映射，这是最基础也最常用的记录类型。**\n\n各类型对照：\n| 类型 | 作用 |\n|---|---|\n| **A** | 域名 → IPv4 |\n| AAAA | 域名 → IPv6 |\n| CNAME | 别名指向另一个域名（不能与其他记录共存） |\n| MX | 邮件服务器（带优先级） |\n| TXT | 文本（SPF/DKIM/域名验证） |\n| NS | 委派给哪个权威服务器 |\n\n**易混点**：\n1. CNAME 是「指向域名」不是「指向 IP」，且**同一名字不能既有 CNAME 又有 A**（会冲突）；\n2. A 记录可以有多条（轮询/多活），但客户端只用一个，不是负载均衡的可靠手段；\n3. 泛解析 `*.example.com` 也是 A 记录。\n\n**排查链路**：`dig example.com A` 看 ANSWER 段 → `dig +trace` 找哪一级丢了 → 权威侧检查 zone 文件与 TTL。\n\n案例：某团队把根域名配成 CNAME，与已有的 MX/TXT 冲突导致邮件与验证都失效；改成 A 记录后恢复。",
     "tags": [
       "记录类型",
       "A记录"
@@ -2373,7 +2373,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "+trace 会从根服务器开始逐级追问并打印每一跳的返回，能直接看出断在哪一层。+short 只输出精简结果，适合脚本取值。",
+    "explanation": "**`+trace` 让 dig 从根服务器开始逐级迭代查询，并打印每一跳的应答，能直接看出「断在哪一层」。**\n\n`+short` 只改变输出格式（精简结果），服务器仍用 `resolv.conf` 里那台；其它常用选项：\n- `+noall +answer` 只看应答段；\n- `+dnssec` 检查 DNSSEC 签名；\n- `@server` 指定查询哪台。\n\n`dig +trace` 的输出结构：根 NS → 顶级域 NS → 权威 NS → 最终 ANSWER。若某级返回 `SERVFAIL` 或为空，问题就在那一级（常见是父区缺 glue、委派写错 NS）。\n\n**排查链路**：`dig +trace` 定位层级 → 针对该级 `dig @<该级NS> 目标` 验证 → 权威侧检查 zone 配置与 SOA 序列号是否更新。\n\n**易混点**：`+trace` 走的是「自己迭代」，**不受本地 DNS 缓存影响**；而普通 `dig` 查的是递归 DNS，可能拿到缓存结果。",
     "tags": [
       "dig",
       "trace",
@@ -2473,7 +2473,7 @@
     "answer": [
       "A"
     ],
-    "explanation": "DNS 常规查询走 UDP 53；响应超过 512 字节（或启用 DNSSEC）时会自动切到 TCP 53。防火墙要同时放通 TCP 和 UDP 的 53。",
+    "explanation": "**DNS 默认用 **53 端口**，同时支持 UDP（常规查询，快）与 TCP（大响应、区域传送、以及被截断后重试）。**\n\n要点：\n1. **UDP 53**：普通查询首选，限制响应 512 字节（EDNS0 可放大）；\n2. **TCP 53**：响应超长（如 DNSSEC、大 TXT）、或 UDP 被截断（TC 标志）时自动回退；区域传送（AXFR）也用 TCP；\n3. 现代还有 **DoT（853）**、**DoH（443）** 用于加密传输。\n\n**常见故障表现**：只放行 UDP 53 不放行 TCP 53 → 偶发解析失败（大响应时被截断且无法回退）。\n\n**排查链路**：\n```bash\nss -lntup | grep :53                        # 看监听的是 UDP 还是 TCP\n dig +tcp example.com                      # 强制走 TCP 验证是否放行\ntcpdump -i any port 53                      # 看是否有 TC 标志与 TCP 重试\n```\n\n**易混点**：`dig` 默认走 UDP，`+tcp` 才是 TCP；防火墙只写 `--dport 53 -p tcp` 会漏掉 UDP，反之亦然。\n\n案例：某内网 DNS 只放行 UDP，遇到带 DNSSEC 的响应超 512 字节，客户端拿不到完整答案，表现为「某些域名解析失败」。",
     "tags": [
       "端口",
       "UDP",
@@ -2524,7 +2524,7 @@
       "B",
       "C"
     ],
-    "explanation": "提前降 TTL 是最关键的一步（否则旧缓存要等很久才过期）；主动刷新和引导用户清缓存能覆盖剩下的残留。D 反而会让变更生效更慢。",
+    "explanation": "**加快 DNS 变更生效的核心是「缩短缓存时间」，而不是「发出去就完事」。**\n\n有效做法：\n1. **变更前先把 TTL 降下来**（如从 3600 降到 300），等旧缓存过期后再改记录；\n2. **主动刷新**递归/本地缓存（部分服务商提供刷新接口）；\n3. **引导客户端清缓存**（浏览器/系统 DNS 缓存）；\n4. 变更后再把 TTL 调回合理值。\n\nD 错在「改解析后不动 TTL」——旧 TTL 决定了缓存还要留多久，改记录不能改变已缓存的内容。\n\n**排查链路**：`dig +ttl` 看当前 TTL → 对比多地/多递归的解析结果（判断是缓存差异还是权威未更新）→ `dig @权威NS` 确认权威已生效 → 最后才怀疑缓存。\n\n**易混点**：域名解析有**多层缓存**（浏览器 → 系统 → 本地递归 → 各级递归），TTL 是「每一层各自计时」，所以降 TTL 必须**提前一个旧 TTL 周期**做才有效。\n\n案例：某次切 IP 没先降 TTL，部分用户两小时后仍访问旧 IP；后来规范为「改前 1 天降 TTL 到 300s」。",
     "tags": [
       "TTL",
       "变更",
@@ -2624,7 +2624,7 @@
       "B",
       "C"
     ],
-    "explanation": "多 DNS 是串行尝试而非并行，第一个不通会白等；ndots 大导致多余查询；权威慢则每次冷查询都慢。TTL 300 属正常范围，不是变慢原因。",
+    "explanation": "**DNS 变慢通常不是「DNS 服务器慢」单因素，而是「链路上多了一跳或多次重试」。**\n\n常见原因：\n1. **`search` 域 + `ndots` 导致多次查询**（容器里尤其明显，`ndots:5` 会先试多组后缀）；\n2. **上游 DNS 超时不响应**（`resolv.conf` 配了不可达的服务器，客户端要等超时才换下一个）；\n3. **递归解析慢**（权威服务器响应慢、或需要多级迭代）；\n4. **缓存未命中率高**（TTL 太短/记录分散）；\n5. **网络问题**（DNS 走 UDP 53 被限速/丢包，或防火墙丢包导致重试）。\n\n**排查链路（很实用）**：\n```bash\ncat /etc/resolv.conf            # 看 nameserver 数量、search、ndots、timeout\n dig example.com                # 看 Query time\n dig +trace example.com          # 看是哪一级慢\nss -uap | grep :53               # 是否有大量 UDP 53 连接\ntcpdump -i any udp port 53       # 看是否重试/丢包\n```\n\n**易混点**：`Query time` 是「本地到该 DNS」的耗时，不代表全网；要分段测（本地解析器 → 递归 → 权威）。",
     "tags": [
       "解析慢",
       "ndots",
@@ -2674,7 +2674,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "末尾加点表示 FQDN（完全限定域名），解析器会直接查询，不再拼接 search 后缀，能显著减少查询次数与延迟。",
+    "explanation": "**末尾加点表示 FQDN（完全限定域名），解析器直接查询，不再拼接 `search` 域与 `ndots` 后缀，能显著减少查询次数。**\n\n容器里的坑在 `/etc/resolv.conf` 的 `search` 与 `ndots:5`：不带点的短域名会先尝试 `svc.search-domain`、`svc.ns1` 等一串组合，每个失败都要等超时。\n\n```bash\n# 慢：可能触发 5 次以上查询 + 超时\ncurl http://api\n# 快：直接查\ncurl http://api.example.com.\n```\n\n验证手段：`dig api.example.com.` 与 `dig api` 对比 Server 返回与 `QUERY` 次数；`strace -f -e trace=connect curl ...` 看实际发了多少 DNS 请求。\n\n案例：某 K8s 集群内 Java 服务调用外部 API 平均多花 200ms，最后定位到 `ndots:5` 导致每次都先查几个不存在的 search 域；统一改成带点 FQDN 后延迟下降。",
     "tags": [
       "FQDN",
       "search域",
@@ -2725,7 +2725,7 @@
       "C",
       "D"
     ],
-    "explanation": "B 是常见误解：多 A 记录不做健康检查，客户端可能继续连已挂的 IP，真正的故障转移要靠 LVS/Nginx/SLB 或带探测的 GSLB。",
+    "explanation": "**DNS 高可用要解决的是「单点」与「解析链路长度」，而不是靠一台机器开很多进程。**\n\n真正有效的做法：\n1. **多实例**：至少两台独立 DNS（不同主机），客户端配多个 `nameserver`（`resolv.conf` 会按顺序重试）；\n2. **Anycast**：同一 IP 在多节点宣告，天然就近与容灾（大型公网 DNS 常用）；\n3. **主从同步**：`zone transfer`（AXFR/IXFR）保证数据一致，主挂了从还能答；\n4. **健康检查与监控**：`dig @<server>` 定时探测，失败即告警；\n5. **缓存层**：本地缓存（如 `systemd-resolved`/`nscd`）减少对上游依赖。\n\n**易错认知**：\n- 「一台机器配 4 个 `named` 进程」不算高可用（同机故障全挂）；\n- 只做「TTL 长一点」不是高可用（那是降低变更频率）；\n- 客户端只配一个 `nameserver`，那台挂了就全断（即使有从库）。\n\n**排查链路**：逐台 `dig @server` 验证 → `rndc status` 看服务状态 → 检查 `resolv.conf` 的 `options timeout attempts`（决定重试速度）。\n\n案例：某集群 `resolv.conf` 只配了一个内网 DNS，DNS 维护 10 分钟内全站域名解析失败；改成「两台 + 短超时」后影响降到秒级。",
     "tags": [
       "高可用",
       "nameserver",
@@ -2774,7 +2774,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "MX 的优先级（preference）数字越小越优先，发信方会先尝试最小的那台，失败了才用更大的。这与「权重分流」不同，不是按比例分配。",
+    "explanation": "**MX 记录的优先级（preference）数字越小、优先级越高**，邮件会先投递到数字最小的服务器，失败再依次尝试后面的。\n\n```\nexample.com.  MX  10 mail1.example.com.\nexample.com.  MX  20 mail2.example.com.   # 备用，主服务器失败才用\n```\n\n所以「数字越大越优先」是错的（这正是常见误解）。\n\n**排查链路**：\n1. `dig example.com MX` 看记录与优先级；\n2. `dig +short mail1.example.com` 确认 MX 指向的主机名能解析到 IP（**MX 不能指向 CNAME**）；\n3. 邮件不通时按「25 端口连通性 → 反向解析 PTR → SPF/DKIM → 黑名单」逐层排查。\n\n**易混点**：\n- MX 指向的是**主机名**不是 IP；且**不能指向 CNAME**（违反 RFC，会被部分服务器拒绝）；\n- 优先级只在**同一域名的多条 MX**之间生效，不是「全局权重」。\n\n案例：某公司把备用邮件网关的优先级写成 10、主网关写成 20，结果邮件全走备用、主网关被闲置。",
     "tags": [
       "MX",
       "优先级",
@@ -2973,7 +2973,7 @@
       "B",
       "C"
     ],
-    "explanation": "D 是 nslookup 的特点（Windows 自带），不是 dig 的优势。dig 需要单独安装，但功能更专业。",
+    "explanation": "**dig 的优势集中在「可控性与可诊断性」：指定服务器、逐级追踪、看完整应答段、脚本友好（`+short`/`+json`）。**\n\n具体对比：\n| 能力 | dig | nslookup |\n|---|---|---|\n| 指定 DNS 服务器 | `dig @8.8.8.8` | 支持但语法别扭 |\n| 逐跳追踪 | `+trace` | 不支持 |\n| 看 TTL/权威段/flags | 完整 ANSWER/AUTHORITY 段 | 输出简化 |\n| 脚本取值 | `+short`、`+json` | 需自己解析 |\n\nD 是 nslookup 的特点（Windows 自带、无需安装），不是 dig 的优势；dig 通常需要单独安装（`bind-utils`/`dnsutils`）。\n\n**排查链路**：`dig +trace example.com` 看断在哪一级 → `dig @权威NS example.com` 确认权威区是否有记录 → `dig @递归DNS example.com` 判断是缓存还是权威问题。\n\n案例：某次域名解析失败，`nslookup` 只报 `can't find`，用 `dig +trace` 发现是中间某一级 NS 缺少 glue 记录。",
     "tags": [
       "dig",
       "nslookup",
@@ -3073,7 +3073,7 @@
       "B",
       "C"
     ],
-    "explanation": "不可达的 nameserver 会串行超时；search 域多导致尝试组合爆炸；ndots 大导致先拼后缀。D 的 300 秒 TTL 属正常范围，不影响。",
+    "explanation": "**让内网 DNS 变慢或失败的配置改动，集中在「服务器指向、search/ndots、超时参数、以及缓存」四处。**\n\n典型问题改动：\n1. **`nameserver` 指向不可达/慢速服务器**：客户端要先等 `timeout`（默认 5s）再换下一个，单次查询就可能拖到 10s+；\n2. **`search` 域太多 / `ndots` 太大**：短域名会先拼多组后缀逐个试，每次失败都等超时；\n3. **`options timeout`/`attempts` 调大**：失败重试更久；\n4. **去掉本地缓存**（如关掉 `systemd-resolved`/`nscd`）：每次请求都打到上游；\n5. **DNS 转发链变长**（多级转发、跨机房转发）→ 延迟叠加。\n\n**排查链路（非常实用）**：\n```bash\ncat /etc/resolv.conf                     # nameserver / search / ndots / timeout\ndig example.com | grep Query-time      # 单次耗时\ndig +tcp example.com                      # 排除 UDP 问题\nsystemd-resolve --statistics              # 缓存命中与失败统计\n```\n\n**易混点**：`ndots:5` 意味着「域名里点数 < 5 就先试 search 域」，所以 `api.example.com`（2 个点）也会先拼 search —— 这是容器里最常见的解析延迟来源。",
     "tags": [
       "resolv.conf",
       "search",
@@ -4677,7 +4677,7 @@
     "answer": [
       "A"
     ],
-    "explanation": "DNS 服务默认监听 **53**：查询走 UDP 53，区域传送（AXFR）走 TCP 53。22 是 SSH，80 是 HTTP，443 是 HTTPS。",
+    "explanation": "**DNS 默认用 **53 端口**（UDP 常规查询 + TCP 大响应/区域传送）。**\n\n（同 1011 考点，这里换一个角度记忆）\n\n端口清单：\n| 用途 | 端口 | 协议 |\n|---|---|---|\n| 常规查询 | 53 | UDP（首选） |\n| 大响应/截断重试/AXFR | 53 | TCP |\n| DNS over TLS | 853 | TCP |\n| DNS over HTTPS | 443 | TCP |\n| 递归到权威 | 53 | UDP/TCP |\n\n**防火墙要同时放行 UDP 与 TCP 53**，只放一个会出现「大部分正常、偶发失败」（响应超 512 字节被截断时需 TCP 回退）。\n\n**排查链路**：`ss -lntup | grep :53` 看监听协议 → `dig +tcp` 验证 TCP 可达 → `tcpdump port 53` 看是否有 TC 标志后的 TCP 重试。\n\n**易混点**：nslookup/dig 默认走 UDP，很多「DNS 不通」其实是 TCP 53 被拦导致的偶发失败；容器环境下 `dockerd`/`kubelet` 也可能占用 53（与 dnsmasq 冲突）。\n\n案例：某机房防火墙只放行 UDP 53，DNSSEC 验证时响应超长被截断，客户端无法回退到 TCP，导致 HTTPS 站点间歇性解析失败。",
     "tags": [
       "DNS",
       "端口",
@@ -5273,7 +5273,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "-A 追加到末尾（最后匹配），-I 插入到最前（最先匹配），-D 删除规则，-F 清空整条链。规则按顺序匹配，所以想优先生效必须用 -I。",
+    "explanation": "**`-I`（insert）把规则插到链的最前面，优先匹配；`-A`（append）是追加到末尾，排在前面的规则先命中。**\n\n常用组合：\n```bash\niptables -I INPUT 1 -s 1.2.3.4 -j ACCEPT   # 插到第 1 条，立刻生效\niptables -A INPUT -j DROP                  # 追加到末尾\niptables -D INPUT 1                        # 按序号删除\niptables -R INPUT 1 ...                    # 替换第 1 条\n```\n\n为什么这个差别很关键：iptables 是**按顺序匹配、命中即停**。已有 `DROP` 在前面时，`-A` 加的 `ACCEPT` 永远不会被执行 —— 这是「加了规则却不生效」的最常见原因。\n\n**排查链路**：`iptables -L -nv --line-numbers` 看序号与 `pkts` 计数（计数为 0 说明根本没被匹配到）→ 用 `-I` 调整顺序 → `iptables-save` 保存。\n\n**易混点**：`-i`/`-o` 是进出网卡，`-p` 是协议，`-j` 是动作；别把 `-I`（大写 i，插入）与 `-i`（网卡）搞混。\n\n案例：某运维用 `-A` 在 DROP 之后加放行规则，测了半天以为规则写错，实际是顺序问题。",
     "tags": [
       "-I",
       "-A",
@@ -5310,7 +5310,7 @@
       "B",
       "C"
     ],
-    "explanation": "A 是正确顺序；B 是经典的「定时回滚保险」；C 是云上保底手段。D 会让你在清空后、新规则生效前处于无防护且可能断连的状态，是高危操作。",
+    "explanation": "**避免把自己锁在门外的核心是「先留后手，再动规则」：定时兜底还原、先加允许再删拒绝、以及带外访问通道。**\n\n具体做法：\n1. **备份**：`iptables-save > /root/rules.bak`；\n2. **定时兜底**：`crontab` 加 `*/5 * * * * iptables-restore < /root/rules.bak`，确认连接正常后删除；\n3. **顺序**：先 `-I` 加「允许自己 IP」，再追加 DROP；\n4. **不要一次性清空**（`iptables -F` 会清掉所有规则，包括放行）；\n5. **保留带外管理**（VNC/console/IPMI）以便断连后恢复。\n\n**排查链路**：改完立即 `ss -tn | grep :22` 确认会话仍在 → 新开一个终端验证能连 → 观察 5 分钟无异常再撤销兜底任务。\n\n**易混点**：`iptables -F` 只清规则不清策略；若 `policy DROP` 已设，`-F` 后会全部拒绝（更危险）。\n\n案例：某运维 `-P INPUT DROP` 后忘了先放行 SSH，远程立刻断连，只能去机房；此后团队强制要求「改规则前先挂定时还原」。",
     "tags": [
       "防锁死",
       "安全操作",
@@ -5324,7 +5324,7 @@
     "category": "iptables/firewalld",
     "difficulty": "中等",
     "question": "iptables 里 DROP 和 REJECT 有什么区别？该用哪个？",
-    "answer": "区别在于「要不要告诉对方你拒绝了」：\n\n- DROP：直接丢弃，不回任何响应。对方只能干等超时。\n- REJECT：回一个拒绝响应（默认 icmp-port-unreachable），对方立刻知道失败。\n\n选择建议：\n- 对公网、不可信来源：用 DROP。让对方猜不出端口是否开放，减少扫描信息泄露。\n- 对内网、可控来源：用 REJECT。对方能快速失败、立即重试别的路径，排障更友好。\n\n注意：DROP 会让客户端表现为「连接超时」，而 REJECT 表现为「连接被拒绝」，排障时要会区分——很多人误把 DROP 引起的超时当成网络故障。",
+    "answer": "**`DROP` 是「静默丢弃」，`REJECT` 是「丢弃并回一个错误」，两者在排查体验与安全语义上都不同。**\n\n| 动作 | 表现 | 适合 |\n|---|---|---|\n| **DROP** | 包被丢弃，**无任何响应**，客户端表现为超时 | 对外防护（不暴露信息）、抗扫描 |\n| **REJECT** | 回 `ICMP port unreachable` 或 `tcp reset`，客户端**立刻失败** | 内网、调试、让问题快速暴露 |\n\n```bash\niptables -A INPUT -p tcp --dport 3306 -j DROP     # 外部探测看不到结果\niptables -A INPUT -p tcp --dport 3306 -j REJECT --reject-with tcp-reset\n```\n\n**该用哪个**：\n1. **对外暴露的服务（公网）**：`DROP`（不告诉扫描器「这里有个端口」）；\n2. **内网/可控环境**：`REJECT` 更好排查（客户端立刻报错而不是等超时，日志也更清晰）；\n3. **策略默认拒绝**常用 `DROP`，个别规则用 `REJECT`。\n\n**排查影响**：\n- `DROP` 导致「连接一直等到超时」（默认 TCP 三次握手重试约 2 分钟），排障时要意识到「不是服务慢，是被静默丢弃」；\n- 用 `ping`/`nc -vz` 的报错方式能区分：`timeout` 更像 DROP，`Connection refused` 更像 REJECT 或端口未监听。\n\n**排查链路**：`iptables -L -nv --line-numbers` 看命中计数 → `tcpdump` 看包是否被丢（DROP 时「出站有包、入站没回」）→ 结合 `conntrack -L` 判断。\n\n**案例**：某次把内网数据库的拒绝方式从 REJECT 改成 DROP，应用侧表现为「连接超时 2 分钟」，排查一开始误判为网络丢包；改成 REJECT 后立刻看到 `Connection refused`，5 分钟定位到是安全组而非应用。",
     "tags": [
       "DROP",
       "REJECT",
@@ -5473,7 +5473,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "-n 表示不解析 IP 和服务名，直接显示数字端口，速度快且准确。规则多时建议加 -n --line-numbers，方便按序号删除规则。",
+    "explanation": "**`-n` 关闭反向 DNS 解析、`--line-numbers` 显示规则序号，是排查时的标准组合；显示端口号需要 `-p` 协议匹配或 `-n` + 数值端口。**\n\n推荐写法：\n```bash\niptables -L -n -v --line-numbers\n# 想看具体端口规则\niptables -L INPUT -n -v --line-numbers -p tcp\n```\n\n为什么必须 `-n`：默认会尝试把 IP 反解成域名，规则多时每条都可能等 DNS 超时（生产排查能卡几分钟）。`--line-numbers` 让你可以直接 `-D INPUT <序号>` 删规则，不用重写整条。\n\n**排查链路**：`iptables -L -nv --line-numbers`（看命中计数）→ `iptables -S`（可执行格式，便于复制对比）→ `iptables-save`（整表导出/备份）。\n\n**易混点**：`-L` 列出（格式化）、`-S` 列出（规则语法）、`-nv` 带计数；`-t` 指定表（默认 filter）。",
     "tags": [
       "查看规则",
       "-n",
@@ -5538,7 +5538,7 @@
       "B",
       "D"
     ],
-    "explanation": "C 是错的：两者底层都操作 netfilter，同时使用会互相覆盖规则，官方也不建议共存。A/B/D 都描述了各自的真实特点。",
+    "explanation": "**两者都是 netfilter 的前端工具，底层规则集相同，同时启用会互相覆盖、行为难以预期，官方也不建议共存。**\n\n对照：\n| | iptables | firewalld |\n|---|---|---|\n| 模型 | 直接操作表/链 | zone + service 抽象 |\n| 变更 | 立即生效（一次性） | `--reload` 重载，支持 `--permanent` |\n| 易用性 | 需手写规则 | 按服务/端口声明 |\n| 动态性 | 弱 | 支持运行时调整 |\n\nC 是错的（它们不是「互补可同时用」）；A/B/D 描述的都是各自真实特点。\n\n**实践建议**：\n- 同一台机器只选一套（CentOS 7+ 默认 firewalld，若要 iptables 就先 `systemctl disable --now firewalld`）；\n- 容器/编排侧（K8s）另有 `kube-proxy` 的规则，排查时要一起考虑；\n- 变更前 `iptables-save` / `firewall-cmd --runtime-to-permanent` 备份。\n\n**排查链路**：`systemctl status firewalld` → `iptables -L -nv --line-numbers` → 若两者都在跑，先统一工具再排查规则顺序。\n\n案例：某机器同时开着 firewalld 与 iptables 脚本，运维用 iptables 加了放行但 firewalld `--reload` 后规则被覆盖，问题反复出现。",
     "tags": [
       "iptables vs firewalld",
       "对比"
@@ -5586,7 +5586,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "-t nat 指定查看 nat 表，缺省的 -L 只看 filter 表。这是很多人「看不到转发规则」的原因——没指定 -t。",
+    "explanation": "**`-t nat` 指定表，`-L` 列出规则；不加 `-t` 时默认只看 filter 表 —— 这正是很多人「看不到 DNAT/SNAT 规则」的原因。**\n\n完整写法与常用参数：\n```bash\niptables -t nat -L -n -v --line-numbers   # -n 不解析域名，-v 显示计数，便于看命中\n```\n\n为什么要 `-n`：不做反向 DNS 解析，输出快且不会因 DNS 卡住（生产排查时很关键）。`-v` 的 `pkts/bytes` 能看出规则是否真的命中。\n\n**排查链路**：\n1. `iptables -t nat -L -nv` 确认 NAT 规则在正确的链（DNAT 在 `PREROUTING`/`OUTPUT`，SNAT 在 `POSTROUTING`）；\n2. `conntrack -L` 看连接跟踪是否生效；\n3. `tcpdump` 抓包验证地址是否被改写。\n\n**易混点**：`-L` 是列出，`-S` 是输出「可执行格式」（更适合复制与对比），`iptables-save` 是整表导出。\n\n案例：某运维排查 DNAT 不生效，`iptables -L` 看到 filter 表干干净净以为没规则，加上 `-t nat` 才发现规则写在了错误的链上。",
     "tags": [
       "nat表",
       "-t",
@@ -5765,7 +5765,7 @@
       "B",
       "C"
     ],
-    "explanation": "A/B/C 都是防锁死与可回滚的标准做法。D 恰恰相反：变更应避开高峰，并在有回滚手段的前提下进行。",
+    "explanation": "**变更前先备份规则、先加「兜底放行」再动真格、并准备好回滚手段（定时任务自动还原），这是 iptables 的三条铁律。**\n\n- `iptables-save > /tmp/rules.bak` 备份，出问题 `iptables-restore` 回滚；\n- 远程操作时先 `crontab` 加一条「5 分钟后 `iptables-restore` 还原」的兜底任务，确认没断连再删掉；\n- 用 `-I`（插入）而不是 `-A`（追加）临时加允许规则，优先于已有 DROP。\n\nD 错在「变更挑高峰做」——高峰变更出了问题影响面最大，且回滚期间业务受损更重。\n\n**排查链路**：改完立刻 `ss -tn` 看自己的会话是否还在 → `iptables -L -nv --line-numbers` 确认规则顺序 → 断连时用带外管理（VNC/console）登录 `iptables-restore`。\n\n案例：某运维远程改 DROP 规则忘了加允许自己 IP，SSH 立刻断开，只能走机房 console 恢复 —— 之后团队把「备份 + 定时兜底还原」写进了 SOP。",
     "tags": [
       "安全操作",
       "备份",
@@ -5814,7 +5814,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "DNAT 改的是目标地址，必须在路由决策之前完成，所以放在 nat 表的 PREROUTING 链。SNAT 改源地址，放在 POSTROUTING。",
+    "explanation": "**DNAT（目标地址转换，常用于端口映射/反向代理）要加在 `nat` 表的 `PREROUTING` 链**，因为要在「路由决策之前」改变目标地址。\n\n链条对应关系（高频考点）：\n| 场景 | 链 |\n|---|---|\n| 外部访问本机映射到内网 | `nat PREROUTING`（DNAT） |\n| 本机自己访问映射地址 | `nat OUTPUT`（DNAT） |\n| 内网访问外网改源地址 | `nat POSTROUTING`（SNAT/MASQUERADE） |\n\n```bash\niptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 10.0.0.5:80\niptables -A FORWARD -p tcp -d 10.0.0.5 --dport 80 -j ACCEPT   # 别忘了放行转发\n```\n\n**易混点**：加完 DNAT 常忘了 `FORWARD` 放行或 `ip_forward=1`，表现为「规则有但访问不通」。\n\n**排查链路**：`iptables -t nat -L -nv` 看规则与命中计数 → `cat /proc/sys/net/ipv4/ip_forward` → `conntrack -L` 看跟踪 → `tcpdump` 验证地址改写。\n\n案例：某运维把 DNAT 写到 `POSTROUTING`，规则看着对但完全不生效 —— 因为那时路由已决策完，改目标地址没意义。",
     "tags": [
       "DNAT",
       "PREROUTING",
@@ -8056,7 +8056,7 @@
     "category": "Nginx",
     "difficulty": "中等",
     "question": "Nginx 的 location 匹配优先级是怎样的？请按从高到低排列。",
-    "answer": "从高到低共 5 档，命中即停：\n\n1. = 精确匹配（完全相同才命中）\n2. ^~ 前缀匹配（命中后不再尝试正则）\n3. ~ 或 ~* 正则匹配（按书写顺序，第一个命中即停；~* 不区分大小写）\n4. 普通前缀匹配（取最长匹配）\n5. / 兜底\n\n[[图:nginx-location-match]]\n\n一句话记：= → ^~ → 正则 → 普通前缀 → /。\n\n两个易错点：\n- ^~ 的意义是「命中前缀后就跳过正则」，用于静态资源，避免被正则规则抢走\n- 正则按配置里出现的顺序匹配，写在前面的优先，这个顺序很容易和直觉相反",
+    "answer": "**Nginx location 匹配顺序：`=` 精确 → `^~` 前缀且跳过正则 → 正则 `~`/`~*`（按顺序）→ 普通前缀（最长匹配）。**\n\n```\n1. = /exact/path          精确匹配，最高优先级，命中即停\n2. ^~ /prefix/            前缀匹配，命中后不再尝试正则\n3. ~  / ~*  正则           按配置书写顺序，第一个命中即用\n4. （无修饰）前缀匹配        取最长匹配的那个\n\n[[图:nginx-location-match]]\n```\n\n**几个必须知道的细节**：\n1. **`^~` 只在「最长前缀匹配成功」时生效**：如果有一个更长的普通前缀匹配，会先选它；\n2. **正则按顺序**：写在前面优先，所以「具体规则写前面、通用规则写后面」；\n3. **`=` 完全精确**：连查询串前的路径都要一致（`/api` 不匹配 `/api/`）；\n4. 前缀匹配是「最长优先」，不是「越靠前越优先」。\n\n```nginx\nlocation = /health { return 200; }        # 最高\nlocation ^~ /static/ { }                  # 静态资源不被正则抢\nlocation ~* \\.(jpg|png)$ { }              # 正则\nlocation / { }                            # 兜底\n```\n\n**排查思路**：\n1. `nginx -T` 看最终合并后的配置（可能有 include 覆盖）；\n2. `curl -I` 看响应头/状态判断走了哪个块；\n3. `error_log ... debug` 能看到匹配过程；\n4. 临时加 `add_header X-Loc matched;` 验证。\n\n**易混点**：`^~` 与 `=` 的区别（前者是前缀、后者精确）；`~` 区分大小写、`~*` 不区分。\n\n**案例**：某站 `/static/` 被一个 `~* .png$` 的正则 location 拦去做了鉴权，导致大量 403；加 `^~ /static/` 提升优先级后恢复。",
     "tags": [
       "location",
       "匹配优先级",
@@ -8147,7 +8147,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "^~ 表示前缀匹配且命中后跳过后续正则检查，常用于静态资源，避免被正则规则抢走。= 是精确匹配，~ 和 ~* 都是正则。",
+    "explanation": "**`^~` 是「前缀匹配且命中后跳过正则」，专门用来保护静态目录不被正则规则抢走。**\n\nNginx 的 location 优先级（高频考点）：\n1. `=` 精确匹配（最高）；\n2. `^~` 前缀匹配且**命中后不再评估正则**；\n3. 正则 `~`（区分大小写）/ `~*`（不区分），按**配置顺序**第一个命中即用；\n4. 普通前缀匹配（最长前缀胜出）。\n\n所以：`=` 是精确相等；`~`/`~*` 是正则（会被 `^~` 挡住）；`^~` 才是本题答案。\n\n```nginx\nlocation ^~ /static/ { }        # 命中后不再看正则\nlocation ~* \\.(jpg|png)$ { }    # 正则，优先级低于 ^~\n```\n\n**排查链路**：`nginx -T` 看最终配置 → 用 `curl -I` 观察实际响应的 `Server`/`Content-Type` 判断走了哪个块 → 加 `error_log ... debug` 能看到匹配过程。\n\n案例：某站图片请求被一个 `~* \\.(png)$` 的正则 location 拦去做了鉴权，导致大量 403；加 `^~ /static/` 后恢复正常。",
     "tags": [
       "location",
       "^~",
@@ -8184,7 +8184,7 @@
       "B",
       "C"
     ],
-    "explanation": "502 是 Nginx 与上游之间的问题：连不上、收到非法/空响应、地址配错。客户端带宽不足会表现为慢或超时，不会产生 502。",
+    "explanation": "**502 是「Nginx 与上游之间出了问题」：连不上、收到非法/空响应、上游地址配错、上游提前关闭连接。**\n\n常见成因（按频率）：\n1. **上游进程不在**（端口没起、崩溃）；\n2. **上游地址/端口配错**（`proxy_pass` 写错 IP）；\n3. **上游超时或提前关闭**（应用处理中崩溃，对应日志 `upstream prematurely closed connection`）；\n4. **上游返回非法响应**（协议不匹配，如把 AJP 端口当 HTTP 用）；\n5. **上游全被摘除**（健康检查失败）。\n\nD 错在「客户端带宽不足」表现为**慢或超时（504/客户端超时）**，不会产生 502；502 一定是「网关与后端」那条链接的问题。\n\n**排查链路**：`nginx error.log` 里的 upstream 关键字（`connect() failed`、`prematurely closed`、`upstream timed out`）→ `curl -v http://<上游>:<端口>` 直连验证 → `ss -lntp` 看端口是否在听 → 上游应用日志同一时段。\n\n**易混点**：502 vs 504 —— 502 是「连接失败或响应无效」，504 是「连上了但等超时」。",
     "tags": [
       "502",
       "排障",
@@ -8247,7 +8247,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "带斜杠时，location 的前缀（/api/）会被替换成 /，所以 /api/user 变成 /user。不带斜杠则原样透传为 /api/user。",
+    "explanation": "**`proxy_pass http://backend/` 结尾带斜杠时，Nginx 会把 `location` 匹配到的部分替换成 `/`，即「剥离前缀」；不带斜杠则原样拼接。**\n\n对照（最容易出错的地方）：\n```nginx\nlocation /api/ {\n  proxy_pass http://backend/;    # /api/user -> /user（剥离 /api）\n}\nlocation /api/ {\n  proxy_pass http://backend;     # /api/user -> /api/user（原样拼接）\n}\n```\n\n另一常见写法：`proxy_pass http://backend/new/;` 会把 `/api/` 换成 `/new/`。\n\n**为什么容易出错**：后端服务往往按「有无 `/api` 前缀」路由，配错就全 404；而且两种写法语法上只差一个字符。\n\n**排查链路**：`nginx -T` 确认最终配置 → 后端访问日志看实际收到的 path（最直接）→ `curl -I` 对比；也可开 `error_log debug` 看 upstream 请求行。\n\n**易混点**：正则 location（`~`）里**不能使用 URI 部分**（`proxy_pass` 后带路径会报错），必须用变量或改用前缀 location。\n\n案例：某次网关从 `/api` 迁到根路径，只改了一个字符（加斜杠），后端收到的路径从 `/api/user` 变成 `/user`，因为后端未适配导致大面积 404。",
     "tags": [
       "proxy_pass",
       "斜杠",
@@ -10977,7 +10977,7 @@
     "answer": [
       "A"
     ],
-    "explanation": "LVS 是四层负载均衡，基于 IP + 端口转发，不解析应用层内容。因此性能极高但不支持按 URL/域名分流。需要七层能力时用 Nginx/HAProxy。",
+    "explanation": "**LVS 是四层（传输层）负载均衡：它只看 IP + 端口 + 协议，不解析 HTTP 内容。**\n\n对应 OSI：\n| 层 | 典型负载均衡 |\n|---|---|\n| 四层（TCP/UDP） | **LVS**、HAProxy（tcp 模式）、F5 |\n| 七层（HTTP） | Nginx、HAProxy（http 模式） |\n\n四层 vs 七层的关键差别：\n1. **性能**：四层只改包/转发，吞吐高、延迟低；七层要解析 HTTP，CPU 开销大；\n2. **能力**：七层能做「按域名/路径/Header 分流、改写、缓存、灰度」；四层只能按 IP/端口；\n3. **典型架构**：LVS 在最前面做四层分发（抗量），Nginx 在后做七层路由。\n\n**易混点**：HAProxy 既支持四层也支持七层（由 `mode tcp|http` 决定），所以「HAProxy 是几层」要看配置。\n\n**排查链路**：确认 VIP 监听（`ipvsadm -Ln`）→ 抓包看是否只做 TCP 转发（`tcpdump -i any port 80`）→ 需要按 URL 分流时改用七层方案。\n\n案例：某团队想在 LVS 上「按域名分流」，这是做不到的 —— 它是四层，看不见 Host 头；最终在 LVS 后面加 Nginx 做七层分流。",
     "tags": [
       "LVS",
       "四层",
@@ -11607,7 +11607,7 @@
     "answer": [
       "A"
     ],
-    "explanation": "-c 显示当前所有连接（源→VIP→RS 的映射），用于排查连接卡住、确认请求是否真的转发到了后端。看统计用 --stats，看规则用 -L -n。",
+    "explanation": "**`ipvsadm -L -n -c` 的 `-c` 是「查看连接表（connection table）」，能看到当前每条连接的源/目标与状态。**\n\n参数对照（很容易混）：\n| 参数 | 作用 |\n|---|---|\n| `-L` / `-l` | 列出虚拟服务与真实服务器 |\n| `-n` | 不做 DNS 解析（数字显示） |\n| `-c` | **连接表**（当前活跃连接） |\n| `--stats` | 流量统计（bytes/conns） |\n| `-s` | 调度算法 |\n\n典型用途：\n1. 判断「请求是否真的到了 RS」（连接表的 daddr）；\n2. 排查「某用户总被分到同一台」（`sh` 算法 + 源 IP 哈希）；\n3. 确认会话是否被发到已下线的 RS。\n\n**排查链路**：`ipvsadm -Ln` 看 RS 状态与权重 → `ipvsadm -Ln --stats` 看流量分布 → `ipvsadm -Lnc` 看具体连接落点 → 必要时 `ipvsadm -Ln -c` 配合抓包验证。\n\n**易混点**：`-c` 是「连接表」，不是「清空」（清空是 `-C`）；这两个参数只差大小写，最容易看错。",
     "tags": [
       "ipvsadm",
       "连接表",
@@ -11658,7 +11658,7 @@
       "B",
       "C"
     ],
-    "explanation": "D 属于数据库层监控，不是负载均衡层的职责。A/B/C 是 LB 层三个必监控项，尤其 C（VIP 唯一性）是防止脑裂的关键，很多人会漏掉。",
+    "explanation": "**LVS/HAProxy 的监控要覆盖「入口可用性、后端健康、负载分布、连接与延迟」四类指标。**\n\nLVS 侧（`ipvsadm -Ln --stats`）：\n- 各 RS 的 `Conns`/`InBytes`/`OutBytes`（看流量是否均衡、是否有坏点仍在转发）；\n- ActiveConn/InActConn（连接堆积）；\n- 调度器自身的连接数与包速率。\n\nHAProxy 侧（`stats` 页/JMX）：\n- `qtime`（排队时间）、`ctime`/`rtime`（连接与响应时间）；\n- `status`（UP/DOWN/MAINT）、`check` 失败次数；\n- `ereq`/`econ`/`eresp`（请求/连接/响应错误）；\n- 会话数与队列长度。\n\n**关键点**：只看「存活」不够 —— 要能发现「活着但很慢」「活着但不均衡」；所以要监控**分位延迟与分布**，不只是平均值。\n\n**排查链路**：RS 流量分布 → 健康检查状态 → `qtime` 是否上升（说明后端慢）→ 结合后端应用指标定位。\n\n案例：某次一台 RS 网卡降速，LVS 仍在平均分配，整体 P99 翻倍；加上「按 RS 的 `qtime` 与错误率」监控后能定位到单台异常。",
     "tags": [
       "监控",
       "指标",
@@ -14376,7 +14376,7 @@
       "B",
       "C"
     ],
-    "explanation": "D 是错的：G1 的停顿是「可控」而非「消除」，仍有 STW（初始标记、最终标记、筛选回收）。要亚毫秒级停顿需要用 ZGC/Shenandoah。",
+    "explanation": "**G1 的设计目标是「可预测停顿」，把堆分成等大 Region，按「垃圾最多」优先回收（Garbage First 得名）。**\n\n关键特征：\n1. **Region 化**：堆切分成固定大小 Region（默认 1~32MB），逻辑上分 Eden/Survivor/Old；\n2. **可预测停顿**：`-XX:MaxGCPauseMillis`（默认 200ms）是软目标，G1 通过「选多少 Region 回收」达成；\n3. **Mixed GC**：年轻代 + 部分老年代一起回收（不是整堆）；\n4. **Humongous 对象**：单对象超过 Region 一半会占用连续 Region，分配失败可能触发 Full GC；\n5. **JDK 9+ 默认收集器**（JDK 8 需显式开启）。\n\n**易混点（高频）**：\n- G1 不是「无停顿」（只是停顿更可控）；\n- `MaxGCPauseMillis` 是**期望**不是保证，设太小反而回收更频繁；\n- **不要设 `-Xmn`**（G1 会忽略/干扰其自适应）；\n- `NewRatio` 等 Parallel 时代的参数在 G1 下多数失效。\n\n**排查链路**：`-Xlog:gc*` 看 `Pause Young/Mixed/Full` 的停顿与频率 → `jstat -gcutil` 看 Old 增长趋势 → 出现 `to-space exhausted` 说明晋升过快或大对象多。\n\n案例：某服务把 `-Xmn` 与 `MaxGCPauseMillis=10` 一起设，G1 频繁 Mixed GC 反而更慢；去掉 `-Xmn`、把目标调到 100ms 后稳定。",
     "tags": [
       "G1",
       "Region",
@@ -40301,7 +40301,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "redo log 是 InnoDB 引擎层的物理日志，用于崩溃后恢复未刷盘的数据页。主从一致性靠 binlog；隔离性靠锁和 MVCC。",
+    "explanation": "**redo log 保证「崩溃恢复时的持久性（durability）」：已提交的事务即使在内存中还没刷盘，崩溃后也能通过重放 redo 恢复。**\n\n机制要点：\n1. **WAL（先写日志）**：事务提交时先写 redo（顺序写、快），数据页可以延后刷（随机写、慢）；\n2. **两阶段**：`redo` 落盘即算「已持久」，`innodb_flush_log_at_trx_commit=1` 时每次提交都 fsync；\n3. **循环写**：redo 文件固定大小（`innodb_log_file_size`），写满会触发 checkpoint 推进；\n4. 与 **undo log** 分工：redo 保证「已提交不丢」，undo 保证「未提交可回滚 + MVCC 读旧版本」。\n\n**易混点**：\n- `redo` 是 InnoDB 层（物理页修改），`binlog` 是 Server 层（逻辑语句），两者共同保证「主从一致 + 可恢复」。\n- `innodb_flush_log_at_trx_commit` 设 0/2 会牺牲持久性换性能（崩溃可能丢最近事务）。\n\n**排查链路**：`SHOW ENGINE INNODB STATUS` 看 `Log sequence number` 与 checkpoint 位置；崩溃后重启日志里 `InnoDB: ... crash recovery` 会显示重放进度。\n\n案例：某实例突然断电，重启后 InnoDB 重放 redo 恢复到最后一次提交，业务只丢了「未提交」的在途事务。",
     "tags": [
       "redo log",
       "崩溃恢复"
@@ -40337,7 +40337,7 @@
       "B",
       "C"
     ],
-    "explanation": "InnoDB 行锁是加在索引上的，索引失效就会扫描全表并锁住扫过的所有记录。D 是主键等值查询，只锁单行（最高效的情况）。",
+    "explanation": "**InnoDB 的行锁是「加在索引上」的，索引失效就会扫描全表并锁住扫过的所有记录（效果接近表锁）。**\n\n会放大锁范围的情况：\n1. **条件列无索引**（`WHERE status=1` 而 status 无索引）；\n2. **索引失效**：隐式类型转换（`varchar` 列用数字比较）、函数包裹（`WHERE DATE(created_at)=...`）、`LIKE '%xx'` 前缀模糊；\n3. **索引区分度低**：优化器认为全表扫更便宜；\n4. **RR 隔离级别下的间隙锁**（`WHERE id > 10` 会锁区间，即使只有两行）。\n\nD 错在主键等值查询是**最优情况**（只锁单行），不会扩大范围。\n\n**排查链路**：\n```sql\nSHOW ENGINE INNODB STATUS\\G          -- 看 LATEST DETECTED DEADLOCK / 锁等待\nSELECT * FROM performance_schema.data_locks;        -- 8.0 看当前持锁\nSELECT * FROM performance_schema.data_lock_waits;   -- 谁在等谁\n```\n`EXPLAIN` 看 `type` 是否 `ALL`（全表扫描）与 `key` 是否为 `NULL`。\n\n案例：某系统 `WHERE order_no=123` 的 `order_no` 是 varchar 却传数字，隐式转换让索引失效，一次更新锁住了整张 200 万行的表，导致全站下单超时。",
     "tags": [
       "行锁",
       "索引失效",
@@ -40514,7 +40514,7 @@
     "answer": [
       "A"
     ],
-    "explanation": "InnoDB 是聚簇索引组织表：数据行直接存在主键索引（聚簇索引）的叶子节点上。所以主键查询最快；二级索引叶子存的是主键值，需要回表。",
+    "explanation": "**InnoDB 是「索引组织表（clustered index）」：数据行本身就存储在聚簇索引（主键索引）的叶子节点上，所以必须问「数据在哪个索引上」的答案是「主键索引」。**\n\n结构要点：\n1. **聚簇索引**：叶子节点存整行数据，按主键有序；\n2. **二级索引**：叶子节点存「索引列 + 主键值」，查非索引列要**回表**；\n3. **无主键时**：用唯一非空索引，若也没有则内部生成 6 字节的 `ROW_ID`；\n4. 这就是「主键要短、要自增」的原因（二级索引都带主键、随机主键会频繁页分裂）。\n\n**排查链路**：`SHOW INDEX FROM t;` 看 `Clustered`（PK）与二级索引 → `EXPLAIN` 看是否 `Using index`（覆盖索引，无需回表）→ `EXPLAIN FORMAT=JSON` 看 `rows`/`used_columns`。\n\n**易混点**：MyISAM 是非聚簇（索引与数据分离，靠地址定位），InnoDB 是聚簇 —— 「数据在索引上」只对 InnoDB 成立。\n\n案例：某表用 UUID 做主键，插入性能随数据量下降明显（随机写导致页分裂与回表成本上升）；改成自增主键 + 业务唯一索引后写入稳定。",
     "tags": [
       "聚簇索引",
       "主键",
@@ -40565,7 +40565,7 @@
       "B",
       "C"
     ],
-    "explanation": "D 会导致复制直接失败（报 server-id 冲突），而不是延迟。A/B/C 都是典型的延迟原因；另外还有单线程回放瓶颈（可开并行复制解决）。",
+    "explanation": "**主从延迟的本质是「从库重放速度 < 主库写入速度」，原因要分「从库侧、主库侧、链路侧」三类。**\n\n常见原因：\n1. **从库侧**：从库配置更低（磁盘/CPU 弱）、还有大量读请求（读写争抢）、`sync_binlog`/`innodb_flush_log_at_trx_commit` 更严格；\n2. **主库侧**：**大事务**（一次改百万行 → binlog 巨大，从库要跑很久）、高频小事务（binlog 写入快但事件多）；\n3. **链路**：跨机房带宽/延迟；\n4. **架构**：单线程重放（旧版本 `slave_parallel_workers=0`），或并行复制按库分片导致热点。\n\n**排查链路**：\n```sql\nSHOW SLAVE STATUS\\G        -- Seconds_Behind_Master、Read_Master_Log_Pos vs Exec_Master_Log_Pos\nSHOW PROCESSLIST;          -- 从库上 SQL 线程状态\n```\n若 `Read_Master_Log_Pos` 领先但 `Exec_Master_Log_Pos` 落后 → 是**重放慢**（从库资源或大事务）；两者都落后 → 是**链路/主库写入**问题。\n\n**治理**：拆大事务、开并行复制（`slave_parallel_type=LOGICAL_CLOCK`，MySQL 5.7+ 按组提交并行）、提升从库配置、把重查询导到只读库/离线库。\n\n案例：某次批量订正跑了一个 40 分钟的大事务，从库延迟涨到 35 分钟；改为分批（每批 5000 行）后延迟维持在秒级。",
     "tags": [
       "主从延迟",
       "大事务",
@@ -40679,7 +40679,7 @@
       "B",
       "C"
     ],
-    "explanation": "D 是错的：MySQL 主从默认是**异步复制**，主库提交后不等待从库确认，所以主库崩溃可能丢数据。半同步可缓解，但仍有降级为异步的情况。",
+    "explanation": "**MySQL 高可用方案的核心是「故障检测速度、切换是否自动、数据一致性、以及是否有脑裂风险」，没有银弹。**\n\n主流方案对比：\n| 方案 | 特点 | 风险 |\n|---|---|---|\n| 主从 + MHA | 自动选主，成熟 | 切换有延迟，需额外脚本 |\n| MGR（组复制） | 多主/单主，一致性靠共识 | 网络要求高，性能有损耗 |\n| 云 RDS 高可用 | 托管、自动切换 | 依赖厂商，切换时间受限 |\n| Keepalived + VIP | 入口漂移 | 只解决入口，不解决数据 |\n\n**关键认知**：\n1. 主从是**异步复制**时，切换必然有 RPO 缺口；要压到 0 需半同步/强同步（牺牲延迟）；\n2. **脑裂**防护必须有（仲裁、fencing、`read_only` 配合），否则两个「主」同时写会毁数据。\n\n**排查链路**：`SHOW SLAVE STATUS` 的 `Seconds_Behind_Master`/`Master_Log_File` → 心跳与切换脚本日志 → 切换后校验数据一致性（`pt-table-checksum`）。\n\n案例：某方案只有 VIP 漂移没有数据校验，切换后从库落后 2 小时，业务读到旧数据；补上「切换前校验复制位置」才可用。",
     "tags": [
       "高可用",
       "MHA",
@@ -40856,7 +40856,7 @@
     "answer": [
       "A"
     ],
-    "explanation": "索引不是免费的：每次写操作都要维护 B+ 树（写放大），占额外空间，过多的索引还会让优化器选择困难、甚至选错索引。所以索引要按查询需要来建，不是越多越好。",
+    "explanation": "**加索引的代价在「写入与空间」：每次 INSERT/UPDATE/DELETE 都要维护索引结构，索引也占磁盘与内存（buffer pool）。**\n\n具体负面影响：\n1. **写放大**：一个写操作要更新所有相关索引（10 个索引 = 10 次 B 树维护）；\n2. **空间**：索引可能比数据还大（尤其大字段/多列索引）；\n3. **优化器误选**：索引太多时优化器可能选错，反而更慢；\n4. **DDL 成本**：建索引耗时长（大表可能数小时，5.6+ 支持 Online DDL 但仍占 IO）；\n5. **内存挤占**：索引页占用 buffer pool，减少数据缓存命中。\n\n**如何判断该不该留**：\n```sql\nSELECT * FROM sys.schema_unused_indexes;    -- 从未被使用的索引（需统计周期足够长）\nSELECT * FROM sys.schema_redundant_indexes; -- 冗余索引（前缀重复）\n```\n\n**排查链路**：`performance_schema.table_io_waits_summary_by_index_usage` 看各索引读取次数 → 结合 `EXPLAIN` 确认关键查询仍能命中 → 用 `ALTER TABLE ... ALGORITHM=INPLACE` 或 `pt-online-schema-change` 安全删除。\n\n案例：某表累积了 11 个索引，写入 TPS 上不去；用 `sys.schema_unused_indexes` 找出 5 个从未使用的，删除后写入提升约 30%。",
     "tags": [
       "索引代价",
       "写放大"
@@ -41004,7 +41004,7 @@
       "B",
       "C"
     ],
-    "explanation": "D 会让所有读都加锁，死锁与阻塞只会更多。A/B/C 是公认有效的三个方向，另外还可以降级到 RC（减少间隙锁）、小批量更新、应用层重试。",
+    "explanation": "**减少死锁的核心是「统一加锁顺序 + 缩短持锁时间 + 走索引避免锁范围扩大」。**\n\n有效做法：\n1. **固定访问顺序**：多表/多行更新时按同一顺序（如按主键升序）加锁；\n2. **缩短事务**：事务里不做远程调用/耗时计算，尽快提交；\n3. **走索引**：避免全表扫描导致锁住大量行（见「行锁升级表锁」）；\n4. **拆小批量**：大批量更新分片执行（每批几百行），减少锁冲突窗口；\n5. **必要时降隔离级别**（RR→RC 可减少间隙锁，但要评估一致性）。\n\n**排查链路**：\n```sql\nSHOW ENGINE INNODB STATUS\\G        -- LATEST DETECTED DEADLOCK 有完整两方语句\nSELECT * FROM performance_schema.data_lock_waits;\n```\n死锁日志会给出「事务 1 持有什么、等什么」与「事务 2」——直接定位代码里的加锁顺序问题。\n\n**易混点**：死锁不等于「锁等待超时」；MySQL 会自动回滚代价小的一方（`innodb_deadlock_detect`），业务要能捕获 `1213` 并重试。\n\n案例：某系统两个接口分别「先更新 A 再更新 B」和「先 B 再 A」，高并发下频繁死锁；统一顺序后消失。",
     "tags": [
       "死锁",
       "预防",
@@ -43230,7 +43230,7 @@
     "answer": [
       "B"
     ],
-    "explanation": "跳表保证按 score 有序、范围查询高效；哈希表保证 member→score 查询 O(1)。用跳表而非红黑树，是因为范围查询更简单、实现更易调试。",
+    "explanation": "**ZSet（有序集合）底层是「跳表（skiplist）+ 哈希表（dict）」的组合：哈希表存 member→score 做 O(1) 查分，跳表按 score 有序做范围查询。**\n\n为什么不用平衡树：跳表实现简单、并发与范围遍历更友好、内存可控；`ZRANGEBYSCORE`/`ZRANGE` 走跳表是 O(logN + M)。\n\n**编码切换（易混点）**：数据量小时用 **listpack**（紧凑存储省内存），超过阈值（`zset-max-listpack-entries`/`-value`）才转成 skiplist+dict —— 所以「ZSet 是不是跳表实现」要分场景答。\n\n**排查链路**：`OBJECT ENCODING key` 看实际编码（`listpack`/`skiplist`）→ `MEMORY USAGE key` 看内存 → `ZRANGE key 0 -1 WITHSCORES` 验证顺序。\n\n**相关性能点**：\n- `ZADD`/`ZINCRBY` 是 O(logN)；\n- `ZRANGEBYSCORE` 大范围返回 M 个元素，M 大时会阻塞（要分页 `LIMIT`）；\n- 大 ZSet（百万成员）做范围查询仍要控制返回量。\n\n案例：某排行榜 ZSet 有 300 万成员，运营直接 `ZRANGE 0 -1` 导出，单次阻塞 2 秒；改为分页 `LIMIT` 后正常。",
     "tags": [
       "ZSet",
       "跳表"
@@ -43507,7 +43507,7 @@
       "B",
       "D"
     ],
-    "explanation": "C 是错的：SCAN 是弱一致遍历，遍历期间如果有增删，某些 key 可能被遗漏或重复返回。这对「统计总数」不安全，但对「批量处理」是可接受的。",
+    "explanation": "**SCAN 是「游标式渐进遍历」，用 `COUNT` 提示每次扫描量、`MATCH` 做模式过滤，不阻塞主线程；但它不保证完整性。**\n\n正确用法：\n```bash\nSCAN 0 MATCH user:* COUNT 100\n# 返回 [下一个游标, 元素列表]，游标为 0 表示结束\n```\n\n要点：\n1. **`COUNT` 是「建议扫描的元素数」，不是返回条数**（实际可能更少）；\n2. **可能重复返回**（扩容/缩容期间）→ 业务要能去重；\n3. **可能漏 key**（遍历期间有新写入/删除）；\n4. **不要用 `KEYS`**：O(N) 单线程阻塞，百万 key 会卡死整个实例。\n\n**相关命令**：`HSCAN`/`SSCAN`/`ZSCAN` 用于 hash/set/zset；`--bigkeys`/`--scan` 是 CLI 封装。\n\n**排查链路**：`SLOWLOG GET` 看是否有 `KEYS` 造成的慢查询 → `INFO commandstats` 看 `cmdstat_keys` 调用量 → 用 `SCAN` 替换并加限速。\n\n**易混点**：`SCAN` 不阻塞但**不保证快照一致**；需要「精确全量」时应离线分析 RDB 而不是线上扫。",
     "tags": [
       "SCAN",
       "遍历",
@@ -43607,7 +43607,7 @@
       "B",
       "C"
     ],
-    "explanation": "D 不合适：Redis 是内存数据库，存大量归档日志成本极高，且不适合大对象持久存储。归档应用对象存储或文件系统。",
+    "explanation": "**Redis 的强项是「内存中、低延迟、简单数据结构」，所以典型场景都围绕缓存、计数、排行榜、会话、分布式锁与消息队列展开；不适合「大容量持久归档」。**\n\n- 缓存（旁路缓存，命中率高时收益最大）；\n- 计数器/限流（`INCR`、`EXPIRE` 原子组合）；\n- 排行榜（`ZSet` 按分数排序，`ZREVRANGE` 取前 N）；\n- 会话/验证码（短 TTL）；\n- 分布式锁（`SET NX PX` + Lua 释放）。\n\nD 错在把「归档日志存储」交给 Redis：内存成本极高（对比对象存储贵 2~3 个数量级），且大对象会阻塞单线程、拖慢所有请求。归档应用对象存储/文件系统。\n\n**易混点**：Redis 能持久化（RDB/AOF），但那是「恢复用」不是「长期归档用」；容量与成本决定它不该承担冷数据。",
     "tags": [
       "应用场景",
       "选型"
@@ -43834,7 +43834,7 @@
       "B",
       "C"
     ],
-    "explanation": "D 是错的：异地容灾不能替代本地高可用。跨地域切换耗时较长（分钟级），本地机房内的主从切换才是分钟内的第一道防线。两者是分层关系。",
+    "explanation": "**异地容灾要同时考虑「数据同步方式、RPO/RTO、容量与切换可行性」，不能只靠主从复制。**\n\n必要项：\n1. **同步策略**：跨机房强同步（延迟高）vs 异步复制（有 RPO 缺口），要按业务定；\n2. **持久化与恢复能力**：AOF `everysec`、RDB 备份、以及**定期恢复演练**；\n3. **容量规划**：异地节点要能承接全量读写（内存足够）；\n4. **切换路径**：DNS/VIP 切换、客户端重连、切主后数据校验；\n5. **网络与凭据**：跨机房带宽、加密传输、独立监控。\n\n**关键认知**：Redis 的「跨机房主从」是**异步复制**，主库机房故障时必然丢最后一段写入（RPO 不为 0）；要压低 RPO 就得用更强同步或双写（代价是延迟）。\n\n**排查链路**：`INFO replication` 看 `master_link_status`/`master_last_io_seconds_ago` → `redis-cli --latency` 测跨机房 RTT → 压测异地节点承载力。\n\n案例：某公司异地从库内存只配了一半，切主后立刻 OOM；容灾演练暴露后扩容并加入「容量 ≥ 主库 1.2 倍」的准入检查。",
     "tags": [
       "异地容灾",
       "RTO",
