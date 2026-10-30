@@ -49,6 +49,15 @@ for (const q of Q) {
 
       if (prev !== -1 && next !== -1 && isTableRow(lines[prev]) && isTableRow(lines[next])) {
         problems.push(`${q.id}：图标记插在第 ${i} 行，夹断了表格（前一行、后一行都是表格行）`)
+        continue
+      }
+
+      // 情况二：图标记与表格行「混在同一行」里 —— 例如锚点落在表格单元格内部，
+      // 变成 `| `'[[图:x]]` 单引号'` 这种，会把一行拆成三段。
+      const lineHasTableStart = lines[i].trim().startsWith('|')
+      const lineHasFigure = /\[\[图:[a-z0-9-]+\]\]/.test(lines[i])
+      if (lineHasTableStart && lineHasFigure) {
+        problems.push(`${q.id}：图标记与表格行混在第 ${i + 1} 行（应从表格行中移出）`)
       }
     }
   }

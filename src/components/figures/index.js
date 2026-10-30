@@ -96,6 +96,14 @@ import CephComponents from './CephComponents.vue'
 import KvmVsXenVmware from './KvmVsXenVmware.vue'
 import LvsScheduling from './LvsScheduling.vue'
 import GitStash from './GitStash.vue'
+import TcpdumpConnectFail from './TcpdumpConnectFail.vue'
+import RateVsIrate from './RateVsIrate.vue'
+import ObservabilityPillars from './ObservabilityPillars.vue'
+import MongoEsrPrinciple from './MongoEsrPrinciple.vue'
+import MongoDeployModes from './MongoDeployModes.vue'
+import SloErrorBudget from './SloErrorBudget.vue'
+import OncallResponseFlow from './OncallResponseFlow.vue'
+import TcpVsUdp from './TcpVsUdp.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -254,6 +262,14 @@ export const FIGURES = {
   'kvm-vs-xen-vmware': KvmVsXenVmware,
   'lvs-scheduling': LvsScheduling,
   'git-stash': GitStash,
+  'tcpdump-connect-fail': TcpdumpConnectFail,
+  'rate-vs-irate': RateVsIrate,
+  'observability-pillars': ObservabilityPillars,
+  'mongo-esr-principle': MongoEsrPrinciple,
+  'mongo-deploy-modes': MongoDeployModes,
+  'slo-error-budget': SloErrorBudget,
+  'oncall-response-flow': OncallResponseFlow,
+  'tcp-vs-udp': TcpVsUdp,
 }
 
 /**

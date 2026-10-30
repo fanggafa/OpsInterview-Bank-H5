@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **121 张内联 SVG 图解**（121 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **129 张内联 SVG 图解**（129 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（121 张，23 个分类全覆盖）
+### 已注册的插图（129 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1203,6 +1203,14 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `kvm-vs-xen-vmware` | KVM 与 Xen / VMware 架构差异 | 题 2600 |
 | `lvs-scheduling` | LVS 调度算法与选择 | 题 1604 |
 | `git-stash` | git stash 与临时分支的区别 | 题 2811 |
+| `tcpdump-connect-fail` | tcpdump 判断连接失败在哪一步 | 题 19 |
+| `tcp-vs-udp` | TCP 与 UDP 的取舍与选型 | 题 22 |
+| `rate-vs-irate` | rate 与 irate、P99 正确写法 | 题 56 |
+| `observability-pillars` | metrics / tracing / logging 分工 | 题 58 |
+| `slo-error-budget` | SLI / SLO / SLA 与错误预算 | 题 59 |
+| `oncall-response-flow` | 值班故障响应六步 | 题 60 |
+| `mongo-deploy-modes` | MongoDB 三种部署形态与节点数 | 题 2002 |
+| `mongo-esr-principle` | MongoDB 复合索引 ESR 原则 | 题 2008 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
