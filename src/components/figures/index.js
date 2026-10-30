@@ -133,6 +133,14 @@ import MqBacklogTriage from './MqBacklogTriage.vue'
 import MqOrderingGuarantee from './MqOrderingGuarantee.vue'
 import MqBroadcastVsCluster from './MqBroadcastVsCluster.vue'
 import KafkaPartitionPlanning from './KafkaPartitionPlanning.vue'
+import CloudServiceModels from './CloudServiceModels.vue'
+import SlbVsAlb from './SlbVsAlb.vue'
+import CrossVpcConnect from './CrossVpcConnect.vue'
+import CloudLatencyTriage from './CloudLatencyTriage.vue'
+import MetricCardinality from './MetricCardinality.vue'
+import P99SpikeTriage from './P99SpikeTriage.vue'
+import K8sMetricsSources from './K8sMetricsSources.vue'
+import PrometheusStorage from './PrometheusStorage.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -328,6 +336,14 @@ export const FIGURES = {
   'mq-ordering-guarantee': MqOrderingGuarantee,
   'mq-broadcast-vs-cluster': MqBroadcastVsCluster,
   'kafka-partition-planning': KafkaPartitionPlanning,
+  'cloud-service-models': CloudServiceModels,
+  'slb-vs-alb': SlbVsAlb,
+  'cross-vpc-connect': CrossVpcConnect,
+  'cloud-latency-triage': CloudLatencyTriage,
+  'metric-cardinality': MetricCardinality,
+  'p99-spike-triage': P99SpikeTriage,
+  'k8s-metrics-sources': K8sMetricsSources,
+  'prometheus-storage': PrometheusStorage,
 }
 
 /**
