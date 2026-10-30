@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **98 张内联 SVG 图解**（99 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **105 张内联 SVG 图解**（105 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（98 张，23 个分类全覆盖）
+### 已注册的插图（105 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1180,6 +1180,13 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `crash-loop-triage` | CrashLoopBackOff 排查与退出码 | 题 46 |
 | `prometheus-metric-types` | 四种指标类型与 rate | 题 55 |
 | `nginx-timing-split` | request_time vs upstream_response_time | 题 1414 |
+| `b-plus-tree-reason` | B+ 树为何胜过 B 树/红黑树/哈希 | 题 24 |
+| `leftmost-prefix` | 最左前缀与索引失效场景 | 题 25 |
+| `explain-fields` | EXPLAIN 四个关键字段读法 | 题 26 |
+| `k8s-resources-qos` | requests/limits 与三种 QoS | 题 44 |
+| `lvs-three-layers` | LVS + Keepalived + Nginx 三层职责 | 题 1621 |
+| `vpc-layers` | VPC / 子网 / 安全组 / 路由表 | 题 3401 |
+| `es-shard-design` | ES 分片与副本的设计权衡 | 题 3003 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。

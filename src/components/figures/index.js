@@ -73,6 +73,13 @@ import K8sServiceTypes from './K8sServiceTypes.vue'
 import CrashLoopTriage from './CrashLoopTriage.vue'
 import PrometheusMetricTypes from './PrometheusMetricTypes.vue'
 import NginxTimingSplit from './NginxTimingSplit.vue'
+import BPlusTreeReason from './BPlusTreeReason.vue'
+import LeftmostPrefix from './LeftmostPrefix.vue'
+import ExplainFields from './ExplainFields.vue'
+import K8sResourcesQos from './K8sResourcesQos.vue'
+import LvsThreeLayers from './LvsThreeLayers.vue'
+import VpcLayers from './VpcLayers.vue'
+import EsShardDesign from './EsShardDesign.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -208,6 +215,13 @@ export const FIGURES = {
   'crash-loop-triage': CrashLoopTriage,
   'prometheus-metric-types': PrometheusMetricTypes,
   'nginx-timing-split': NginxTimingSplit,
+  'b-plus-tree-reason': BPlusTreeReason,
+  'leftmost-prefix': LeftmostPrefix,
+  'explain-fields': ExplainFields,
+  'k8s-resources-qos': K8sResourcesQos,
+  'lvs-three-layers': LvsThreeLayers,
+  'vpc-layers': VpcLayers,
+  'es-shard-design': EsShardDesign,
 }
 
 /**

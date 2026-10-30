@@ -325,7 +325,7 @@
     "category": "MySQL",
     "difficulty": "中等",
     "question": "MySQL 的索引为什么使用 B+ 树而不是 B 树、红黑树或哈希表？",
-    "answer": "核心原因是「磁盘 IO 次数」与「范围查询」。\n\n对比：\n- 哈希表：等值查询 O(1)，但不支持范围查询、排序，且有哈希冲突；仅 Memory 引擎支持。\n- 红黑树/二叉搜索树：树高过大，每层一次磁盘随机 IO，几百万行数据树高 ~20 层，不可接受。\n- B 树：非叶子节点也存数据，单页能放的索引 key 更少，树更高；且范围查询需要中序遍历，跨层跳转多。\n- B+ 树：非叶子只存 key，扇出大（一页可放几百个 key），树高通常 3-4 层；数据全部在叶子节点且用双向链表串联，范围查询与排序只需顺序扫描叶子。\n\n补充：\n- InnoDB 聚簇索引叶子存整行数据，二级索引叶子存主键值（需回表）；\n- 页大小默认 16KB，三层 B+ 树可支撑约 2000 万行；\n- 覆盖索引可避免回表。",
+    "answer": "[[图:b-plus-tree-reason]]\n\n核心原因是「磁盘 IO 次数」与「范围查询」。\n\n对比：\n- 哈希表：等值查询 O(1)，但不支持范围查询、排序，且有哈希冲突；仅 Memory 引擎支持。\n- 红黑树/二叉搜索树：树高过大，每层一次磁盘随机 IO，几百万行数据树高 ~20 层，不可接受。\n- B 树：非叶子节点也存数据，单页能放的索引 key 更少，树更高；且范围查询需要中序遍历，跨层跳转多。\n- B+ 树：非叶子只存 key，扇出大（一页可放几百个 key），树高通常 3-4 层；数据全部在叶子节点且用双向链表串联，范围查询与排序只需顺序扫描叶子。\n\n补充：\n- InnoDB 聚簇索引叶子存整行数据，二级索引叶子存主键值（需回表）；\n- 页大小默认 16KB，三层 B+ 树可支撑约 2000 万行；\n- 覆盖索引可避免回表。",
     "tags": [
       "索引",
       "B+树",
@@ -339,7 +339,7 @@
     "category": "MySQL",
     "difficulty": "中等",
     "question": "什么是联合索引的最左前缀原则？哪些写法会导致索引失效？",
-    "answer": "最左前缀：联合索引 (a, b, c) 相当于建立了 (a)、(a,b)、(a,b,c) 三个索引。查询必须从最左列开始且连续匹配才能用上索引。\n\n能用索引：where a=? / a=? and b=? / a=? and b=? and c=? / a=? and c=?（c 用不上，但 a 可用）。\n不能用：where b=? / c=? / b=? and c=?。\n\n常见索引失效场景：\n1. 对索引列做函数或运算：where date(create_time)=... 、where id+1=10；\n2. 隐式类型转换：字符串列用数字比较 where phone=13800000000；\n3. 前导模糊：like '%abc'；\n4. 使用 != 、not in、is not null 大量过滤（视数据分布而定，优化器可能放弃索引）；\n5. or 连接非索引列；\n6. 范围查询后的列无法再用于排序/过滤（a>10 and b=1，b 用不上）；\n7. 优化器认为全表扫描更快（区分度低、表很小）。\n\n验证手段：EXPLAIN 看 type/key/rows/Extra（Using index 表示覆盖索引）。",
+    "answer": "[[图:leftmost-prefix]]\n\n最左前缀：联合索引 (a, b, c) 相当于建立了 (a)、(a,b)、(a,b,c) 三个索引。查询必须从最左列开始且连续匹配才能用上索引。\n\n能用索引：where a=? / a=? and b=? / a=? and b=? and c=? / a=? and c=?（c 用不上，但 a 可用）。\n不能用：where b=? / c=? / b=? and c=?。\n\n常见索引失效场景：\n1. 对索引列做函数或运算：where date(create_time)=... 、where id+1=10；\n2. 隐式类型转换：字符串列用数字比较 where phone=13800000000；\n3. 前导模糊：like '%abc'；\n4. 使用 != 、not in、is not null 大量过滤（视数据分布而定，优化器可能放弃索引）；\n5. or 连接非索引列；\n6. 范围查询后的列无法再用于排序/过滤（a>10 and b=1，b 用不上）；\n7. 优化器认为全表扫描更快（区分度低、表很小）。\n\n验证手段：EXPLAIN 看 type/key/rows/Extra（Using index 表示覆盖索引）。",
     "tags": [
       "索引",
       "最左前缀",
@@ -353,7 +353,7 @@
     "category": "MySQL",
     "difficulty": "中等",
     "question": "EXPLAIN 输出中 type、key、rows、Extra 各代表什么？你重点关注哪些值？",
-    "answer": "type（访问类型，性能由好到差）：\nsystem > const > eq_ref > ref > range > index > ALL。出现 ALL 或 index 需警惕。\n\nkey：实际使用的索引；key 为 NULL 说明没走索引。possible_keys 是候选。\n\nrows：预估扫描行数，越小越好；结合 filtered 估算实际返回比例。\n\nExtra 关键值：\n- Using index：覆盖索引，无需回表，最优；\n- Using where：回表后再过滤，可优化；\n- Using index condition：索引下推（ICP），较好；\n- Using filesort：文件排序，需优化（加合适索引或调整 ORDER BY）；\n- Using temporary：使用临时表，常见于 GROUP BY/DISTINCT，需优化；\n- Using join buffer：JOIN 无索引。\n\n进阶：EXPLAIN ANALYZE（8.0.18+）给出真实执行耗时，比估算更可靠；optimizer_trace 看优化器决策。",
+    "answer": "type（访问类型，性能由好到差）：\nsystem > const > eq_ref > ref > range > index > ALL。出现 ALL 或 index 需警惕。\n\nkey：实际使用的索引；key 为 NULL 说明没走索引。possible_keys 是候选。\n\nrows：预估扫描行数，越小越好；结合 filtered 估算实际返回比例。\n\nExtra 关键值：\n- Using index：覆盖索引，无需回表，最优；\n- Using where：回表后再过滤，可优化；\n- Using index condition：索引下推（ICP），较好；\n- Using filesort：文件排序，需优化（加合适索引或调整 ORDER BY）；\n- Using temporary：使用临时表，常见于 GROUP BY/DISTINCT，需优化；\n- Using join buffer：JOIN 无索引。\n\n进阶：[[图:explain-fields]]\n\nEXPLAIN ANALYZE（8.0.18+）给出真实执行耗时，比估算更可靠；optimizer_trace 看优化器决策。",
     "tags": [
       "EXPLAIN",
       "执行计划",
@@ -610,7 +610,7 @@
     "category": "容器与K8s",
     "difficulty": "困难",
     "question": "Pod 被 OOMKilled 的原因是什么？requests 和 limits 如何影响调度与运行时行为？",
-    "answer": "OOMKilled 表示容器内存使用超过 limits.memory，被 cgroup OOM killer 杀掉（kubectl describe 显示 Last State: Terminated, Reason: OOMKilled, Exit Code: 137）。\n\nrequests 与 limits：\n- requests：调度依据，kube-scheduler 按 requests 找有足够资源的节点；也是 QoS 的依据。\n- limits：运行时上限，CPU 超限被节流（throttle，不会杀），内存超限直接 OOMKill。\n\nQoS 等级：\n- Guaranteed：requests == limits（所有容器）；节点资源紧张时最后被驱逐。\n- Burstable：requests < limits；中间优先级。\n- BestEffort：都没设置；最先被驱逐。\n\n排查：\n1. kubectl describe pod 看 OOMKilled 与 limits；\n2. kubectl top pod 看实际使用；\n3. 应用是否有内存泄漏（堆 dump、GC 日志）；\n4. 是否因 JVM 未设 -Xmx 或未感知 cgroup 限制（老版本 JDK 坑，需 -XX:+UseContainerSupport）。\n\n调优：设合理 requests（略低于峰值）与 limits（留 20-30% 余量）；不要为了「省资源」把 limits 设得刚好等于常态用量。",
+    "answer": "OOMKilled 表示容器内存使用超过 limits.memory，被 cgroup OOM killer 杀掉（kubectl describe 显示 Last State: Terminated, Reason: OOMKilled, Exit Code: 137）。\n\n[[图:k8s-resources-qos]]\n\nrequests 与 limits：\n- requests：调度依据，kube-scheduler 按 requests 找有足够资源的节点；也是 QoS 的依据。\n- limits：运行时上限，CPU 超限被节流（throttle，不会杀），内存超限直接 OOMKill。\n\nQoS 等级：\n- Guaranteed：requests == limits（所有容器）；节点资源紧张时最后被驱逐。\n- Burstable：requests < limits；中间优先级。\n- BestEffort：都没设置；最先被驱逐。\n\n排查：\n1. kubectl describe pod 看 OOMKilled 与 limits；\n2. kubectl top pod 看实际使用；\n3. 应用是否有内存泄漏（堆 dump、GC 日志）；\n4. 是否因 JVM 未设 -Xmx 或未感知 cgroup 限制（老版本 JDK 坑，需 -XX:+UseContainerSupport）。\n\n调优：设合理 requests（略低于峰值）与 limits（留 20-30% 余量）；不要为了「省资源」把 limits 设得刚好等于常态用量。",
     "tags": [
       "OOM",
       "resources",
@@ -11381,7 +11381,7 @@
     "category": "LVS/HAProxy",
     "difficulty": "困难",
     "question": "LVS + Keepalived + Nginx 三层架构各承担什么职责？为什么需要三层？",
-    "answer": "典型的高可用入口架构，由下到上（或由外到内）三层：\n\n```\n客户端\n  ↓\n[LVS + Keepalived]     四层：VIP、高可用、高吞吐\n  ↓\n[Nginx 集群]            七层：按域名/URL 分流、SSL 卸载、缓存\n  ↓\n[应用服务器]            业务逻辑\n```\n\n**各层职责**：\n\n| 层 | 职责 | 为什么不省 |\n|---|---|---|\n| **LVS** | 四层转发、承载大并发 | Nginx 单机连接数/CPU 有上限，LVS 在内核态转发性能高一个量级 |\n| **Keepalived** | VIP 漂移、LVS 主备 | 否则 LVS 本身是单点 |\n| **Nginx** | 七层路由、SSL、缓存、限流 | LVS 是四层，看不到 URL，无法按路径分发 |\n\n**为什么需要三层（而不是两层）**：\n\n1. **性能分层**：LVS 扛住流量峰值（四层几乎无解析开销），Nginx 只处理经过筛选的七层逻辑\n2. **功能分层**：SSL 卸载、URL 路由、Header 改写都在 Nginx 做，LVS 不参与\n3. **故障隔离**：Nginx 挂了 LVS 能摘除；LVS 挂了 Keepalived 能切换\n4. **扩展性**：Nginx 层可水平扩容（加机器到 LVS 后端池），不影响入口\n\n**简化场景**：\n- 流量不大（QPS < 数千）→ **LVS + Keepalived 可省略**，直接 Nginx 双机 + Keepalived 就够\n- 云环境 → 直接用云 SLB（已包含四层能力），不需要自建 LVS\n- 需要更灵活的路由（灰度、A/B）→ Nginx/Ingress 层做，LVS 只做入口\n\n**一句话判断**：只有当 **Nginx 成为瓶颈、且流量确实很大** 时，才值得引入 LVS。否则两层（Nginx + Keepalived）更简单、故障面更小。",
+    "answer": "[[图:lvs-three-layers]]\n\n典型的高可用入口架构，由下到上（或由外到内）三层：\n\n```\n客户端\n  ↓\n[LVS + Keepalived]     四层：VIP、高可用、高吞吐\n  ↓\n[Nginx 集群]            七层：按域名/URL 分流、SSL 卸载、缓存\n  ↓\n[应用服务器]            业务逻辑\n```\n\n**各层职责**：\n\n| 层 | 职责 | 为什么不省 |\n|---|---|---|\n| **LVS** | 四层转发、承载大并发 | Nginx 单机连接数/CPU 有上限，LVS 在内核态转发性能高一个量级 |\n| **Keepalived** | VIP 漂移、LVS 主备 | 否则 LVS 本身是单点 |\n| **Nginx** | 七层路由、SSL、缓存、限流 | LVS 是四层，看不到 URL，无法按路径分发 |\n\n**为什么需要三层（而不是两层）**：\n\n1. **性能分层**：LVS 扛住流量峰值（四层几乎无解析开销），Nginx 只处理经过筛选的七层逻辑\n2. **功能分层**：SSL 卸载、URL 路由、Header 改写都在 Nginx 做，LVS 不参与\n3. **故障隔离**：Nginx 挂了 LVS 能摘除；LVS 挂了 Keepalived 能切换\n4. **扩展性**：Nginx 层可水平扩容（加机器到 LVS 后端池），不影响入口\n\n**简化场景**：\n- 流量不大（QPS < 数千）→ **LVS + Keepalived 可省略**，直接 Nginx 双机 + Keepalived 就够\n- 云环境 → 直接用云 SLB（已包含四层能力），不需要自建 LVS\n- 需要更灵活的路由（灰度、A/B）→ Nginx/Ingress 层做，LVS 只做入口\n\n**一句话判断**：只有当 **Nginx 成为瓶颈、且流量确实很大** 时，才值得引入 LVS。否则两层（Nginx + Keepalived）更简单、故障面更小。",
     "tags": [
       "架构",
       "三层",
@@ -31525,7 +31525,7 @@
     "category": "日志与ELK",
     "difficulty": "中等",
     "question": "ES 的分片（shard）和副本（replica）是什么？分片数怎么定？",
-    "answer": "**分片 = 索引的水平切分；副本 = 分片的拷贝。**\n\n[[图:es-shard-replica]]\n\n```\nIndex（3 主分片 + 1 副本）\n  ├─ P0 → R0（在另一个节点）\n  ├─ P1 → R1\n  └─ P2 → R2\n```\n\n| 概念 | 作用 |\n|---|---|\n| **主分片（Primary）** | 存数据、承担写入；**数量创建后不可改** |\n| **副本（Replica）** | 冗余 + **分担读请求**；数量随时可改 |\n\n**分片数量怎么定（最关键的问题）**：\n```\n经验值：单个分片 10-50GB（日志类偏小，20-30GB 较好）\n分片数 = 预计数据总量 / 单分片目标大小\n```\n\n**但分片不是越多越好**：\n```\n每个分片都是一个 Lucene 索引 → 占文件句柄、堆内存、CPU\n分片过多 → cluster state 变大、查询要合并更多结果、master 压力大\n官方建议：单节点分片总数控制在 20 个/GB 堆内存 以内\n```\n\n**日志场景的标准做法：按天/按大小滚动索引 + 别名**\n```\nlogs-2024.01.15  (5 分片, 1 副本)\nlogs-2024.01.16  (5 分片, 1 副本)\n→ 用别名 logs-* 统一查询\n```\n**好处**：\n- 每天一个新索引，**删除旧数据只删整个索引**（比 delete by query 快得多）\n- 分片数固定不变（不用纠结总量增长）\n- 单索引不会无限膨胀\n\n**副本的作用不只是冗余**：\n```\n✓ 高可用（主分片挂了副本顶上）\n✓ 提升读吞吐（查询可以打到副本）\n✗ 不提升写入能力（写入要走主分片再同步副本，副本反而增加写开销）\n```\n**所以写多读少的场景，副本数不宜过多（1 个通常够）。**\n\n**一句话**：**日志用「按天滚动 + 固定分片数（3-5）+ 副本 1」是最稳的组合，别追求单个大索引。**",
+    "answer": "**分片 = 索引的水平切分；副本 = 分片的拷贝。**\n\n[[图:es-shard-design]]\n\n[[图:es-shard-replica]]\n\n```\nIndex（3 主分片 + 1 副本）\n  ├─ P0 → R0（在另一个节点）\n  ├─ P1 → R1\n  └─ P2 → R2\n```\n\n| 概念 | 作用 |\n|---|---|\n| **主分片（Primary）** | 存数据、承担写入；**数量创建后不可改** |\n| **副本（Replica）** | 冗余 + **分担读请求**；数量随时可改 |\n\n**分片数量怎么定（最关键的问题）**：\n```\n经验值：单个分片 10-50GB（日志类偏小，20-30GB 较好）\n分片数 = 预计数据总量 / 单分片目标大小\n```\n\n**但分片不是越多越好**：\n```\n每个分片都是一个 Lucene 索引 → 占文件句柄、堆内存、CPU\n分片过多 → cluster state 变大、查询要合并更多结果、master 压力大\n官方建议：单节点分片总数控制在 20 个/GB 堆内存 以内\n```\n\n**日志场景的标准做法：按天/按大小滚动索引 + 别名**\n```\nlogs-2024.01.15  (5 分片, 1 副本)\nlogs-2024.01.16  (5 分片, 1 副本)\n→ 用别名 logs-* 统一查询\n```\n**好处**：\n- 每天一个新索引，**删除旧数据只删整个索引**（比 delete by query 快得多）\n- 分片数固定不变（不用纠结总量增长）\n- 单索引不会无限膨胀\n\n**副本的作用不只是冗余**：\n```\n✓ 高可用（主分片挂了副本顶上）\n✓ 提升读吞吐（查询可以打到副本）\n✗ 不提升写入能力（写入要走主分片再同步副本，副本反而增加写开销）\n```\n**所以写多读少的场景，副本数不宜过多（1 个通常够）。**\n\n**一句话**：**日志用「按天滚动 + 固定分片数（3-5）+ 副本 1」是最稳的组合，别追求单个大索引。**",
     "tags": [
       "Filebeat",
       "Kibana",
@@ -37332,7 +37332,7 @@
     "category": "云与高可用",
     "difficulty": "中等",
     "question": "云上的 VPC、子网、安全组、路由表是什么关系？一次请求怎么走？",
-    "answer": "**四层结构：VPC 是「虚拟机房」，子网是「房间」，安全组是「门禁」，路由表是「指路牌」。**\n\n```\nVPC（10.0.0.0/16）\n├── 子网 A（10.0.1.0/24，可用区 1）\n│    ├── ECS-1  ← 安全组 sg-web\n│    └── ECS-2\n├── 子网 B（10.0.2.0/24，可用区 2）\n│    └── RDS   ← 安全组 sg-db\n└── 路由表（决定「出 VPC 的流量去哪」）\n     ├── 10.0.0.0/16 → 本地\n     ├── 0.0.0.0/0   → NAT 网关 / 公网 IP\n     └── 对等连接     → 另一个 VPC\n```\n\n| 组件 | 作用 | 关键点 |\n|---|---|---|\n| **VPC** | 隔离的虚拟网络 | **网段一旦定下不好改**（要迁移实例） |\n| **子网** | VPC 的切分，**绑定可用区** | 子网是「可用区级」的，跨 AZ 部署 = 建多个子网 |\n| **安全组** | **实例级**防火墙（有状态） | 白名单机制，默认拒绝 |\n| **路由表** | 决定流量下一跳 | 子网关联一张路由表 |\n\n**一次外部请求的路径**：\n```\n用户 → 公网 → SLB / EIP → 安全组（入向规则放行）→ 子网 → ECS\n                                                    ↑\n                                         路由表决定「公网流量怎么进来」\n```\n\n**四个高频坑**：\n\n**1. 安全组是「有状态」的**\n```\n放行入向 80 → 出向的响应自动放行（不需要额外配出向规则）\n→ 与 iptables 不同（iptables 要配 ESTABLISHED,RELATED）\n```\n\n**2. 安全组可以「引用」另一个安全组**\n```\n✗ 数据库安全组放行 0.0.0.0/0:3306（灾难）\n✓ 数据库安全组放行「sg-web」的 3306\n→ 只有挂 sg-web 的机器能连，且随实例增减自动生效\n```\n**「安全组引用安全组」是云上最优雅的授权方式。**\n\n**3. 子网绑定可用区（跨 AZ 高可用必须建多个子网）**\n```\n要双可用区高可用：\n→ 在每个 AZ 都建子网，应用在两处各部署一份\n→ 只在 AZ1 建子网，AZ1 故障时无处可逃\n```\n\n**4. 路由表的「0.0.0.0/0」决定出网方式**\n```\n指向 NAT 网关 → 私网实例能出网但不能被外部访问（推荐）\n指向 Internet 网关 + 有 EIP → 公网可达\n没有 0.0.0.0/0 路由 → 完全不能出网（连 yum 都用不了）\n```\n\n**「VPC 网段规划」是最该提前想清楚的**：\n```\n✗ 10.0.0.0/24（太小，很快就用完）\n✓ 10.0.0.0/16（预留空间给未来子网）\n✓ 且要与自建机房/其他云不冲突（对等连接时同网段无法互联）\n```\n\n**一句话**：**「VPC 划分机房、子网绑可用区、安全组做门禁、路由表指出网」——其中「安全组引用安全组」和「跨 AZ 建多子网」是最容易忽略的两点。**",
+    "answer": "[[图:vpc-layers]]\n\n**四层结构：VPC 是「虚拟机房」，子网是「房间」，安全组是「门禁」，路由表是「指路牌」。**\n\n```\nVPC（10.0.0.0/16）\n├── 子网 A（10.0.1.0/24，可用区 1）\n│    ├── ECS-1  ← 安全组 sg-web\n│    └── ECS-2\n├── 子网 B（10.0.2.0/24，可用区 2）\n│    └── RDS   ← 安全组 sg-db\n└── 路由表（决定「出 VPC 的流量去哪」）\n     ├── 10.0.0.0/16 → 本地\n     ├── 0.0.0.0/0   → NAT 网关 / 公网 IP\n     └── 对等连接     → 另一个 VPC\n```\n\n| 组件 | 作用 | 关键点 |\n|---|---|---|\n| **VPC** | 隔离的虚拟网络 | **网段一旦定下不好改**（要迁移实例） |\n| **子网** | VPC 的切分，**绑定可用区** | 子网是「可用区级」的，跨 AZ 部署 = 建多个子网 |\n| **安全组** | **实例级**防火墙（有状态） | 白名单机制，默认拒绝 |\n| **路由表** | 决定流量下一跳 | 子网关联一张路由表 |\n\n**一次外部请求的路径**：\n```\n用户 → 公网 → SLB / EIP → 安全组（入向规则放行）→ 子网 → ECS\n                                                    ↑\n                                         路由表决定「公网流量怎么进来」\n```\n\n**四个高频坑**：\n\n**1. 安全组是「有状态」的**\n```\n放行入向 80 → 出向的响应自动放行（不需要额外配出向规则）\n→ 与 iptables 不同（iptables 要配 ESTABLISHED,RELATED）\n```\n\n**2. 安全组可以「引用」另一个安全组**\n```\n✗ 数据库安全组放行 0.0.0.0/0:3306（灾难）\n✓ 数据库安全组放行「sg-web」的 3306\n→ 只有挂 sg-web 的机器能连，且随实例增减自动生效\n```\n**「安全组引用安全组」是云上最优雅的授权方式。**\n\n**3. 子网绑定可用区（跨 AZ 高可用必须建多个子网）**\n```\n要双可用区高可用：\n→ 在每个 AZ 都建子网，应用在两处各部署一份\n→ 只在 AZ1 建子网，AZ1 故障时无处可逃\n```\n\n**4. 路由表的「0.0.0.0/0」决定出网方式**\n```\n指向 NAT 网关 → 私网实例能出网但不能被外部访问（推荐）\n指向 Internet 网关 + 有 EIP → 公网可达\n没有 0.0.0.0/0 路由 → 完全不能出网（连 yum 都用不了）\n```\n\n**「VPC 网段规划」是最该提前想清楚的**：\n```\n✗ 10.0.0.0/24（太小，很快就用完）\n✓ 10.0.0.0/16（预留空间给未来子网）\n✓ 且要与自建机房/其他云不冲突（对等连接时同网段无法互联）\n```\n\n**一句话**：**「VPC 划分机房、子网绑可用区、安全组做门禁、路由表指出网」——其中「安全组引用安全组」和「跨 AZ 建多子网」是最容易忽略的两点。**",
     "tags": [
       "高可用",
       "容灾",
