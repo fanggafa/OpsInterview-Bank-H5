@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **154 张内联 SVG 图解**（154 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **158 张内联 SVG 图解**（158 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（154 张，23 个分类全覆盖）
+### 已注册的插图（158 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1236,6 +1236,10 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `node-maintenance-flow` | cordon/drain/delete 与维护流程 | 题 4621 |
 | `pod-evicted-triage` | Pod 大量 Evicted 的排查 | 题 4645 |
 | `configmap-vs-secret` | ConfigMap 与 Secret（base64 非加密） | 题 4604 |
+| `mq-backlog-triage` | 消息积压：能力不足 vs 被卡住 | 题 2208 |
+| `mq-ordering-guarantee` | 顺序消费：Kafka 与 RocketMQ | 题 2221 |
+| `mq-broadcast-vs-cluster` | 广播消费与集群消费 | 题 2229 |
+| `kafka-partition-planning` | Kafka 分区数规划倒推 | 题 2231 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。

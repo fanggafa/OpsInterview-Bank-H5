@@ -129,6 +129,10 @@ import KubeProxyModes from './KubeProxyModes.vue'
 import NodeMaintenanceFlow from './NodeMaintenanceFlow.vue'
 import PodEvictedTriage from './PodEvictedTriage.vue'
 import ConfigMapVsSecret from './ConfigMapVsSecret.vue'
+import MqBacklogTriage from './MqBacklogTriage.vue'
+import MqOrderingGuarantee from './MqOrderingGuarantee.vue'
+import MqBroadcastVsCluster from './MqBroadcastVsCluster.vue'
+import KafkaPartitionPlanning from './KafkaPartitionPlanning.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -320,6 +324,10 @@ export const FIGURES = {
   'node-maintenance-flow': NodeMaintenanceFlow,
   'pod-evicted-triage': PodEvictedTriage,
   'configmap-vs-secret': ConfigMapVsSecret,
+  'mq-backlog-triage': MqBacklogTriage,
+  'mq-ordering-guarantee': MqOrderingGuarantee,
+  'mq-broadcast-vs-cluster': MqBroadcastVsCluster,
+  'kafka-partition-planning': KafkaPartitionPlanning,
 }
 
 /**
