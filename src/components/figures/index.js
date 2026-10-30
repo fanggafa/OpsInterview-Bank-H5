@@ -124,6 +124,7 @@ import ShellOperators from './ShellOperators.vue'
 import BackgroundRunModes from './BackgroundRunModes.vue'
 import ShellTestSytax from './ShellTestSytax.vue'
 import FindExecVsXargs from './FindExecVsXargs.vue'
+import ZeroTrustVsPerimeter from './ZeroTrustVsPerimeter.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -310,6 +311,7 @@ export const FIGURES = {
   'background-run-modes': BackgroundRunModes,
   'shell-test-syntax': ShellTestSytax,
   'find-exec-vs-xargs': FindExecVsXargs,
+  'zero-trust-vs-perimeter': ZeroTrustVsPerimeter,
 }
 
 /**
