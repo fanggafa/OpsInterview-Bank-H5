@@ -50,6 +50,21 @@ import CiPipelineStages from './CiPipelineStages.vue'
 import TestPyramid from './TestPyramid.vue'
 import GitBranchStrategies from './GitBranchStrategies.vue'
 import RolloutStrategies from './RolloutStrategies.vue'
+import PipelineExitCode from './PipelineExitCode.vue'
+import XargsSafeUsage from './XargsSafeUsage.vue'
+import HardeningChecklist from './HardeningChecklist.vue'
+import IncidentResponseOrder from './IncidentResponseOrder.vue'
+import IptablesPolicyVsRule from './IptablesPolicyVsRule.vue'
+import LvsForwardModes from './LvsForwardModes.vue'
+import TerraformVsAnsible from './TerraformVsAnsible.vue'
+import MysqlIsolationLevels from './MysqlIsolationLevels.vue'
+import RdsHaComparison from './RdsHaComparison.vue'
+import JvmOomTypes from './JvmOomTypes.vue'
+import MergeVsRebase from './MergeVsRebase.vue'
+import GitlabComponents from './GitlabComponents.vue'
+import EsQueryVsFilter from './EsQueryVsFilter.vue'
+import VmDiskFormats from './VmDiskFormats.vue'
+import NginxVsApacheModel from './NginxVsApacheModel.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -162,6 +177,21 @@ export const FIGURES = {
   'test-pyramid': TestPyramid,
   'git-branch-strategies': GitBranchStrategies,
   'rollout-strategies': RolloutStrategies,
+  'pipeline-exit-code': PipelineExitCode,
+  'xargs-safe-usage': XargsSafeUsage,
+  'hardening-checklist': HardeningChecklist,
+  'incident-response-order': IncidentResponseOrder,
+  'iptables-policy-vs-rule': IptablesPolicyVsRule,
+  'lvs-forward-modes': LvsForwardModes,
+  'terraform-vs-ansible': TerraformVsAnsible,
+  'mysql-isolation-levels': MysqlIsolationLevels,
+  'rds-ha-comparison': RdsHaComparison,
+  'jvm-oom-types': JvmOomTypes,
+  'merge-vs-rebase': MergeVsRebase,
+  'gitlab-components': GitlabComponents,
+  'es-query-vs-filter': EsQueryVsFilter,
+  'vm-disk-formats': VmDiskFormats,
+  'nginx-vs-apache-model': NginxVsApacheModel,
 }
 
 /**
