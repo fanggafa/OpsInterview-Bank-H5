@@ -125,6 +125,10 @@ import BackgroundRunModes from './BackgroundRunModes.vue'
 import ShellTestSytax from './ShellTestSytax.vue'
 import FindExecVsXargs from './FindExecVsXargs.vue'
 import ZeroTrustVsPerimeter from './ZeroTrustVsPerimeter.vue'
+import KubeProxyModes from './KubeProxyModes.vue'
+import NodeMaintenanceFlow from './NodeMaintenanceFlow.vue'
+import PodEvictedTriage from './PodEvictedTriage.vue'
+import ConfigMapVsSecret from './ConfigMapVsSecret.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -312,6 +316,10 @@ export const FIGURES = {
   'shell-test-syntax': ShellTestSytax,
   'find-exec-vs-xargs': FindExecVsXargs,
   'zero-trust-vs-perimeter': ZeroTrustVsPerimeter,
+  'kube-proxy-modes': KubeProxyModes,
+  'node-maintenance-flow': NodeMaintenanceFlow,
+  'pod-evicted-triage': PodEvictedTriage,
+  'configmap-vs-secret': ConfigMapVsSecret,
 }
 
 /**
