@@ -120,6 +120,10 @@ import EsIlmStages from './EsIlmStages.vue'
 import LokiVsElk from './LokiVsElk.vue'
 import EsOomTriage from './EsOomTriage.vue'
 import LogTraceCorrelation from './LogTraceCorrelation.vue'
+import ShellOperators from './ShellOperators.vue'
+import BackgroundRunModes from './BackgroundRunModes.vue'
+import ShellTestSytax from './ShellTestSytax.vue'
+import FindExecVsXargs from './FindExecVsXargs.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -302,6 +306,10 @@ export const FIGURES = {
   'loki-vs-elk': LokiVsElk,
   'es-oom-triage': EsOomTriage,
   'log-trace-correlation': LogTraceCorrelation,
+  'shell-operators': ShellOperators,
+  'background-run-modes': BackgroundRunModes,
+  'shell-test-syntax': ShellTestSytax,
+  'find-exec-vs-xargs': FindExecVsXargs,
 }
 
 /**

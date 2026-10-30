@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **145 张内联 SVG 图解**（145 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **149 张内联 SVG 图解**（149 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（145 张，23 个分类全覆盖）
+### 已注册的插图（149 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1227,6 +1227,10 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `loki-vs-elk` | Loki 与 ELK 的定位与选型 | 题 3019 |
 | `es-oom-triage` | ES 节点 OOM 的原因与排查 | 题 3027 |
 | `log-trace-correlation` | 日志与追踪如何用 trace_id 串联 | 题 3038 |
+| `shell-operators` | Shell 的 ; &amp;&amp; || 与 {} () 分组 | 题 4203 |
+| `background-run-modes` | &amp;/nohup/disown/setsid/systemd 五种后台 | 题 4233 |
+| `shell-test-syntax` | [ ] / [[ ]] / (( )) 的区别 | 题 4230 |
+| `find-exec-vs-xargs` | find -exec 与 xargs 的三种写法 | 题 4214 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
