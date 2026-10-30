@@ -40,6 +40,39 @@ import MqComparison from './MqComparison.vue'
 import KafkaIsrMechanism from './KafkaIsrMechanism.vue'
 import EsThreadPoolTriage from './EsThreadPoolTriage.vue'
 import PrometheusScaling from './PrometheusScaling.vue'
+import MongoOplogFlow from './MongoOplogFlow.vue'
+import WiredTigerMechanisms from './WiredTigerMechanisms.vue'
+import RedisMemoryMetrics from './RedisMemoryMetrics.vue'
+import RedisFailoverTriage from './RedisFailoverTriage.vue'
+import K8sWorkloadTypes from './K8sWorkloadTypes.vue'
+import K8sNotReadyLayers from './K8sNotReadyLayers.vue'
+import CiPipelineStages from './CiPipelineStages.vue'
+import TestPyramid from './TestPyramid.vue'
+import GitBranchStrategies from './GitBranchStrategies.vue'
+import RolloutStrategies from './RolloutStrategies.vue'
+import PipelineExitCode from './PipelineExitCode.vue'
+import XargsSafeUsage from './XargsSafeUsage.vue'
+import HardeningChecklist from './HardeningChecklist.vue'
+import IncidentResponseOrder from './IncidentResponseOrder.vue'
+import IptablesPolicyVsRule from './IptablesPolicyVsRule.vue'
+import LvsForwardModes from './LvsForwardModes.vue'
+import TerraformVsAnsible from './TerraformVsAnsible.vue'
+import MysqlIsolationLevels from './MysqlIsolationLevels.vue'
+import RdsHaComparison from './RdsHaComparison.vue'
+import JvmOomTypes from './JvmOomTypes.vue'
+import MergeVsRebase from './MergeVsRebase.vue'
+import GitlabComponents from './GitlabComponents.vue'
+import EsQueryVsFilter from './EsQueryVsFilter.vue'
+import VmDiskFormats from './VmDiskFormats.vue'
+import NginxVsApacheModel from './NginxVsApacheModel.vue'
+import TimeWaitReason from './TimeWaitReason.vue'
+import UrlToRender from './UrlToRender.vue'
+import RedisArchEvolution from './RedisArchEvolution.vue'
+import K8sProbes from './K8sProbes.vue'
+import K8sServiceTypes from './K8sServiceTypes.vue'
+import CrashLoopTriage from './CrashLoopTriage.vue'
+import PrometheusMetricTypes from './PrometheusMetricTypes.vue'
+import NginxTimingSplit from './NginxTimingSplit.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -142,6 +175,39 @@ export const FIGURES = {
   'kafka-isr-mechanism': KafkaIsrMechanism,
   'es-thread-pool-triage': EsThreadPoolTriage,
   'prometheus-scaling': PrometheusScaling,
+  'mongo-oplog-flow': MongoOplogFlow,
+  'wired-tiger-mechanisms': WiredTigerMechanisms,
+  'redis-memory-metrics': RedisMemoryMetrics,
+  'redis-failover-triage': RedisFailoverTriage,
+  'k8s-workload-types': K8sWorkloadTypes,
+  'k8s-not-ready-layers': K8sNotReadyLayers,
+  'ci-pipeline-stages': CiPipelineStages,
+  'test-pyramid': TestPyramid,
+  'git-branch-strategies': GitBranchStrategies,
+  'rollout-strategies': RolloutStrategies,
+  'pipeline-exit-code': PipelineExitCode,
+  'xargs-safe-usage': XargsSafeUsage,
+  'hardening-checklist': HardeningChecklist,
+  'incident-response-order': IncidentResponseOrder,
+  'iptables-policy-vs-rule': IptablesPolicyVsRule,
+  'lvs-forward-modes': LvsForwardModes,
+  'terraform-vs-ansible': TerraformVsAnsible,
+  'mysql-isolation-levels': MysqlIsolationLevels,
+  'rds-ha-comparison': RdsHaComparison,
+  'jvm-oom-types': JvmOomTypes,
+  'merge-vs-rebase': MergeVsRebase,
+  'gitlab-components': GitlabComponents,
+  'es-query-vs-filter': EsQueryVsFilter,
+  'vm-disk-formats': VmDiskFormats,
+  'nginx-vs-apache-model': NginxVsApacheModel,
+  'time-wait-reason': TimeWaitReason,
+  'url-to-render': UrlToRender,
+  'redis-arch-evolution': RedisArchEvolution,
+  'k8s-probes': K8sProbes,
+  'k8s-service-types': K8sServiceTypes,
+  'crash-loop-triage': CrashLoopTriage,
+  'prometheus-metric-types': PrometheusMetricTypes,
+  'nginx-timing-split': NginxTimingSplit,
 }
 
 /**

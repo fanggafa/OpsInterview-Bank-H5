@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **65 张内联 SVG 图解**（67 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），23 个分类；含 **98 张内联 SVG 图解**（99 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1078,7 +1078,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（65 张，23 个分类全覆盖）
+### 已注册的插图（98 张，23 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1147,6 +1147,39 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `kafka-isr-mechanism` | Kafka ISR 机制与 min.insync.replicas | 题 2204 |
 | `es-thread-pool-triage` | ES 拒绝按线程池分流 | 题 3005 |
 | `prometheus-scaling` | Prometheus 四条扩展路线 | 题 5010 |
+| `mongo-oplog-flow` | oplog 数据流与「固定大小窗口」 | 题 2006 |
+| `wired-tiger-mechanisms` | WiredTiger 四个核心机制 | 题 2010 |
+| `redis-memory-metrics` | used_memory vs rss 与碎片判断 | 题 3807 |
+| `redis-failover-triage` | 主从切换后的报错与丢数据两条线 | 题 3816 |
+| `k8s-workload-types` | Deployment / StatefulSet / DaemonSet | 题 4600 |
+| `k8s-not-ready-layers` | NotReady 的四层排查 | 题 4607 |
+| `ci-pipeline-stages` | 流水线阶段与每道质量门禁 | 题 48 |
+| `test-pyramid` | 测试金字塔与流水线分层 | 题 109 |
+| `git-branch-strategies` | 三种 Git 分支策略对比 | 题 53 |
+| `rollout-strategies` | 滚动 / 蓝绿 / 金丝雀对比 | 题 4800 |
+| `pipeline-exit-code` | $? 与 PIPESTATUS 的管道退出码 | 题 10 |
+| `xargs-safe-usage` | 含空格文件名的三种安全写法 | 题 12 |
+| `hardening-checklist` | 公网 Linux 加固四层清单 | 题 61 |
+| `incident-response-order` | 入侵应急：隔离→取证→清除 | 题 62 |
+| `iptables-policy-vs-rule` | policy 与规则 ACCEPT 的区别 | 题 1204 |
+| `lvs-forward-modes` | LVS 的 NAT / DR / TUN 三种模式 | 题 1610 |
+| `terraform-vs-ansible` | Terraform 与 Ansible 的定位差异 | 题 3207 |
+| `mysql-isolation-levels` | 四种隔离级别与 MVCC/间隙锁 | 题 27 |
+| `rds-ha-comparison` | RDS 多可用区 vs 自建主从 | 题 3410 |
+| `jvm-oom-types` | 四种 OOM 后缀与对应区域 | 题 1801 |
+| `merge-vs-rebase` | merge 与 rebase 的历史形状 | 题 2801 |
+| `gitlab-components` | 自建 GitLab 的组件分层排查 | 题 2810 |
+| `es-query-vs-filter` | query 与 filter 的算分与缓存 | 题 3006 |
+| `vm-disk-formats` | raw / qcow2 / vmdk 磁盘格式 | 题 2608 |
+| `nginx-vs-apache-model` | Nginx 事件驱动 vs Apache 每连接一线程 | 题 1404 |
+| `time-wait-reason` | TIME_WAIT 为什么等 2MSL | 题 17 |
+| `url-to-render` | 从输入 URL 到页面渲染的七段 | 题 18 |
+| `redis-arch-evolution` | 主从 / 哨兵 / 集群演进 | 题 37 |
+| `k8s-probes` | startup / readiness / liveness | 题 43 |
+| `k8s-service-types` | 四种 Service 与流量入口 | 题 45 |
+| `crash-loop-triage` | CrashLoopBackOff 排查与退出码 | 题 46 |
+| `prometheus-metric-types` | 四种指标类型与 rate | 题 55 |
+| `nginx-timing-split` | request_time vs upstream_response_time | 题 1414 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
