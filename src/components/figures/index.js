@@ -65,6 +65,14 @@ import GitlabComponents from './GitlabComponents.vue'
 import EsQueryVsFilter from './EsQueryVsFilter.vue'
 import VmDiskFormats from './VmDiskFormats.vue'
 import NginxVsApacheModel from './NginxVsApacheModel.vue'
+import TimeWaitReason from './TimeWaitReason.vue'
+import UrlToRender from './UrlToRender.vue'
+import RedisArchEvolution from './RedisArchEvolution.vue'
+import K8sProbes from './K8sProbes.vue'
+import K8sServiceTypes from './K8sServiceTypes.vue'
+import CrashLoopTriage from './CrashLoopTriage.vue'
+import PrometheusMetricTypes from './PrometheusMetricTypes.vue'
+import NginxTimingSplit from './NginxTimingSplit.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -192,6 +200,14 @@ export const FIGURES = {
   'es-query-vs-filter': EsQueryVsFilter,
   'vm-disk-formats': VmDiskFormats,
   'nginx-vs-apache-model': NginxVsApacheModel,
+  'time-wait-reason': TimeWaitReason,
+  'url-to-render': UrlToRender,
+  'redis-arch-evolution': RedisArchEvolution,
+  'k8s-probes': K8sProbes,
+  'k8s-service-types': K8sServiceTypes,
+  'crash-loop-triage': CrashLoopTriage,
+  'prometheus-metric-types': PrometheusMetricTypes,
+  'nginx-timing-split': NginxTimingSplit,
 }
 
 /**

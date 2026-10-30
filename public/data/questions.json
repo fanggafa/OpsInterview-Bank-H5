@@ -225,7 +225,7 @@
     "category": "网络基础",
     "difficulty": "中等",
     "question": "TCP 四次挥手时，主动关闭方为什么要进入 TIME_WAIT 状态并等待 2MSL？",
-    "answer": "TIME_WAIT 存在的两个原因：\n\n1. 保证最后的 ACK 能可靠到达：若 ACK 丢失，被动关闭方会重发 FIN，处于 TIME_WAIT 的一方能重发 ACK。等待 2MSL（报文最大生存时间的两倍）覆盖「FIN 重传 + ACK 往返」的最坏情况。\n\n2. 让本连接的旧报文在网络中消亡：防止同一四元组的新连接收到上条连接的延迟报文，造成数据错乱。\n\n时间为什么是 2MSL：一来一回，即主动方发 ACK 到对端的最长生存时间，加上对端重传 FIN 到达的最长生存时间。\n\n工程影响：\n- 大量短连接导致 TIME_WAIT 堆积，占端口/内存；\n- 缓解：连接复用（长连接/连接池）、调 net.ipv4.tcp_tw_reuse（仅对客户端出向连接有效且需时间戳）、扩大本地端口范围；\n- tcp_tw_recycle 在新内核已移除，切勿使用。",
+    "answer": "[[图:time-wait-reason]]\n\nTIME_WAIT 存在的两个原因：\n\n1. 保证最后的 ACK 能可靠到达：若 ACK 丢失，被动关闭方会重发 FIN，处于 TIME_WAIT 的一方能重发 ACK。等待 2MSL（报文最大生存时间的两倍）覆盖「FIN 重传 + ACK 往返」的最坏情况。\n\n2. 让本连接的旧报文在网络中消亡：防止同一四元组的新连接收到上条连接的延迟报文，造成数据错乱。\n\n时间为什么是 2MSL：一来一回，即主动方发 ACK 到对端的最长生存时间，加上对端重传 FIN 到达的最长生存时间。\n\n工程影响：\n- 大量短连接导致 TIME_WAIT 堆积，占端口/内存；\n- 缓解：连接复用（长连接/连接池）、调 net.ipv4.tcp_tw_reuse（仅对客户端出向连接有效且需时间戳）、扩大本地端口范围；\n- tcp_tw_recycle 在新内核已移除，切勿使用。",
     "tags": [
       "TCP",
       "TIME_WAIT",
@@ -239,7 +239,7 @@
     "category": "网络基础",
     "difficulty": "困难",
     "question": "在浏览器输入 URL 到页面完全展示，中间经历了哪些环节？请按顺序说明。",
-    "answer": "1. URL 解析：拆协议/域名/端口/路径；命中 HSTS 强制 HTTPS。\n2. DNS 解析：浏览器缓存 → 系统 hosts → 本地 DNS → 递归查询根/顶级/权威服务器，拿到 A/AAAA 记录（CDN 场景返回就近节点 IP）。\n3. 建立连接：TCP 三次握手；HTTPS 再走 TLS 握手（证书校验、密钥协商，TLS1.3 为 1-RTT）。\n4. 发送 HTTP 请求：请求行 + 头（Cookie/Host/UA/缓存校验头）。\n5. 服务端处理：负载均衡 → 应用服务 → 缓存/数据库。\n6. 响应返回：状态码 + 头（Cache-Control/ETag/Content-Encoding）+ 正文。\n7. 浏览器解析渲染：HTML 解析 → DOM → CSSOM → 渲染树 → 布局 → 绘制；遇到 JS 阻塞解析，遇 CSS 阻塞渲染；图片等资源并行加载。\n8. 连接处理：HTTP/1.1 keep-alive 复用，HTTP/2 多路复用，HTTP/3 走 QUIC/UDP。\n\n排障价值：任意环节都可成为瓶颈，用 curl -w、dig、traceroute、浏览器 DevTools 分段定位。",
+    "answer": "1. URL 解析：拆协议/域名/端口/路径；命中 HSTS 强制 HTTPS。\n2. [[图:url-to-render]]\n\nDNS 解析：浏览器缓存 → 系统 hosts → 本地 DNS → 递归查询根/顶级/权威服务器，拿到 A/AAAA 记录（CDN 场景返回就近节点 IP）。\n3. 建立连接：TCP 三次握手；HTTPS 再走 TLS 握手（证书校验、密钥协商，TLS1.3 为 1-RTT）。\n4. 发送 HTTP 请求：请求行 + 头（Cookie/Host/UA/缓存校验头）。\n5. 服务端处理：负载均衡 → 应用服务 → 缓存/数据库。\n6. 响应返回：状态码 + 头（Cache-Control/ETag/Content-Encoding）+ 正文。\n7. 浏览器解析渲染：HTML 解析 → DOM → CSSOM → 渲染树 → 布局 → 绘制；遇到 JS 阻塞解析，遇 CSS 阻塞渲染；图片等资源并行加载。\n8. 连接处理：HTTP/1.1 keep-alive 复用，HTTP/2 多路复用，HTTP/3 走 QUIC/UDP。\n\n排障价值：任意环节都可成为瓶颈，用 curl -w、dig、traceroute、浏览器 DevTools 分段定位。",
     "tags": [
       "HTTP",
       "DNS",
@@ -509,7 +509,7 @@
     "category": "Redis",
     "difficulty": "困难",
     "question": "Redis 主从、哨兵、集群三种架构有什么区别？各自解决什么问题、有什么局限？",
-    "answer": "主从复制：\n- 一主多从，从库异步复制；解决读扩展与数据冗余。\n- 局限：故障需人工切换；异步复制可能丢数据；单主写入有上限。\n\n哨兵（Sentinel）：\n- 在主从基础上增加哨兵集群，监控主库、自动故障转移、通知客户端。\n- 机制：主观下线（单哨兵判定）→ 客观下线（达到 quorum）→ 选举 Leader 哨兵 → 选新主（优先级/偏移量最大）→ 其他从库重新指向新主。\n- 局限：仍是单主写入，无法水平扩展容量；切换瞬间有不可用窗口。\n\n集群（Cluster）：\n- 数据分片：16384 个 hash slot 分布到多个主节点；每个主节点带从节点做高可用。\n- 解决容量与写入水平扩展；支持自动 failover。\n- 局限：多 key 操作需在同一 slot（用 hash tag {}）；不支持跨 slot 事务；客户端需支持 MOVED/ASK 重定向；运维复杂度高。\n\n选型：数据量小、要求高可用 ⇒ 哨兵；数据量大或写入压力大 ⇒ 集群。",
+    "answer": "[[图:redis-arch-evolution]]\n\n主从复制：\n- 一主多从，从库异步复制；解决读扩展与数据冗余。\n- 局限：故障需人工切换；异步复制可能丢数据；单主写入有上限。\n\n哨兵（Sentinel）：\n- 在主从基础上增加哨兵集群，监控主库、自动故障转移、通知客户端。\n- 机制：主观下线（单哨兵判定）→ 客观下线（达到 quorum）→ 选举 Leader 哨兵 → 选新主（优先级/偏移量最大）→ 其他从库重新指向新主。\n- 局限：仍是单主写入，无法水平扩展容量；切换瞬间有不可用窗口。\n\n集群（Cluster）：\n- 数据分片：16384 个 hash slot 分布到多个主节点；每个主节点带从节点做高可用。\n- 解决容量与写入水平扩展；支持自动 failover。\n- 局限：多 key 操作需在同一 slot（用 hash tag {}）；不支持跨 slot 事务；客户端需支持 MOVED/ASK 重定向；运维复杂度高。\n\n选型：数据量小、要求高可用 ⇒ 哨兵；数据量大或写入压力大 ⇒ 集群。",
     "tags": [
       "主从",
       "哨兵",
@@ -596,7 +596,7 @@
     "category": "容器与K8s",
     "difficulty": "中等",
     "question": "Kubernetes 的 Pod 生命周期有哪些阶段？liveness、readiness、startup 三种探针有什么区别？",
-    "answer": "Pod phase：Pending（已调度但容器未全部就绪）→ Running → Succeeded / Failed；另有 Unknown。容器状态：Waiting / Running / Terminated。\n\n三种探针：\n- startupProbe：判断应用是否启动完成。成功前其他探针不生效，用于给慢启动应用更长宽限，避免被 liveness 误杀。\n- livenessProbe：判断容器是否「活着」。失败达到阈值后 kubelet 重启容器。\n- readinessProbe：判断容器是否「可以接收流量」。失败则从 Service Endpoints 中摘除，但不重启。\n\n区别要点：\n- 启动慢 → 用 startupProbe，而不是把 liveness 的 initialDelaySeconds 调很大；\n- 依赖未就绪（如 DB 未连上）→ 用 readinessProbe 摘流量；\n- 死锁/僵死 → 用 livenessProbe 重启。\n\n常见错误：liveness 探测依赖外部服务，外部一抖动就把全量 Pod 重启，造成雪崩。探针应只检查自身健康。",
+    "answer": "Pod phase：Pending（已调度但容器未全部就绪）→ Running → Succeeded / Failed；另有 Unknown。容器状态：Waiting / Running / Terminated。\n\n[[图:k8s-probes]]\n\n三种探针：\n- startupProbe：判断应用是否启动完成。成功前其他探针不生效，用于给慢启动应用更长宽限，避免被 liveness 误杀。\n- livenessProbe：判断容器是否「活着」。失败达到阈值后 kubelet 重启容器。\n- readinessProbe：判断容器是否「可以接收流量」。失败则从 Service Endpoints 中摘除，但不重启。\n\n区别要点：\n- 启动慢 → 用 startupProbe，而不是把 liveness 的 initialDelaySeconds 调很大；\n- 依赖未就绪（如 DB 未连上）→ 用 readinessProbe 摘流量；\n- 死锁/僵死 → 用 livenessProbe 重启。\n\n常见错误：liveness 探测依赖外部服务，外部一抖动就把全量 Pod 重启，造成雪崩。探针应只检查自身健康。",
     "tags": [
       "Pod",
       "探针",
@@ -625,7 +625,7 @@
     "category": "容器与K8s",
     "difficulty": "中等",
     "question": "Kubernetes 中 ClusterIP、NodePort、LoadBalancer、Ingress 分别是什么？流量是怎么进来的？",
-    "answer": "Service 类型（四层）：\n- ClusterIP：集群内部虚拟 IP，靠 kube-proxy 的 iptables/IPVS 规则转发到 Pod，仅集群内可达。\n- NodePort：在每个节点上开一个端口（30000-32767），外部通过 节点IP:端口 访问，再由 kube-proxy 转到 Pod。\n- LoadBalancer：在 NodePort 基础上向云厂商申请外部负载均衡器，分配公网 IP。\n- ExternalName：CNAME 映射到外部域名，不做代理。\n\nIngress（七层）：不是 Service 类型，而是 HTTP/HTTPS 路由规则（按 host/path 转发），由 Ingress Controller（nginx-ingress、traefik 等）实现，最终仍转发到后端 Service。\n\n典型流量路径（云上）：\n用户 → 云 LB（LoadBalancer Service）→ Ingress Controller Pod → 按规则转发到业务 Service（ClusterIP）→ Endpoints → Pod。\n\n补充：\n- Endpoints 由 kube-controller-manager 根据 selector 与 readiness 维护；\n- 无 Service 时可用 Headless Service（clusterIP: None）直接拿到 Pod IP 列表，供 StatefulSet 使用。",
+    "answer": "[[图:k8s-service-types]]\n\nService 类型（四层）：\n- ClusterIP：集群内部虚拟 IP，靠 kube-proxy 的 iptables/IPVS 规则转发到 Pod，仅集群内可达。\n- NodePort：在每个节点上开一个端口（30000-32767），外部通过 节点IP:端口 访问，再由 kube-proxy 转到 Pod。\n- LoadBalancer：在 NodePort 基础上向云厂商申请外部负载均衡器，分配公网 IP。\n- ExternalName：CNAME 映射到外部域名，不做代理。\n\nIngress（七层）：不是 Service 类型，而是 HTTP/HTTPS 路由规则（按 host/path 转发），由 Ingress Controller（nginx-ingress、traefik 等）实现，最终仍转发到后端 Service。\n\n典型流量路径（云上）：\n用户 → 云 LB（LoadBalancer Service）→ Ingress Controller Pod → 按规则转发到业务 Service（ClusterIP）→ Endpoints → Pod。\n\n补充：\n- Endpoints 由 kube-controller-manager 根据 selector 与 readiness 维护；\n- 无 Service 时可用 Headless Service（clusterIP: None）直接拿到 Pod IP 列表，供 StatefulSet 使用。",
     "tags": [
       "Service",
       "Ingress",
@@ -639,7 +639,7 @@
     "category": "容器与K8s",
     "difficulty": "中等",
     "question": "Pod 一直处于 CrashLoopBackOff 状态，请给出完整的排查步骤。",
-    "answer": "CrashLoopBackOff 表示容器启动后反复退出，kubelet 按指数退避重启。\n\n排查顺序：\n1. kubectl describe pod <pod>：看 Last State 的 Reason / Exit Code（137=OOMKilled，1=应用异常，143=SIGTERM）；看 Events 里是否有拉镜像失败、探针失败。\n2. kubectl logs <pod> --previous：看上次崩溃的日志（关键，当前容器可能还没输出）。\n3. kubectl logs <pod> -c <container>：多容器场景指定容器。\n4. 检查配置：ConfigMap/Secret 是否挂载成功、环境变量是否正确、启动命令与参数是否匹配镜像。\n5. 检查探针：liveness 超时过早导致反复重启（especially 慢启动应用）。\n6. 资源：limits 过小导致 OOM。\n7. 权限：securityContext、只读根文件系统、SELinux。\n8. 交互进入复现：kubectl run 临时 pod 用同镜像同命令排查，或用 kubectl debug。\n\n常见根因：启动脚本退出、配置缺失、依赖服务不可达、OOM、探针配置不当、镜像架构不匹配（arm vs amd）。",
+    "answer": "CrashLoopBackOff 表示容器启动后反复退出，kubelet 按指数退避重启。\n\n[[图:crash-loop-triage]]\n\n排查顺序：\n1. kubectl describe pod <pod>：看 Last State 的 Reason / Exit Code（137=OOMKilled，1=应用异常，143=SIGTERM）；看 Events 里是否有拉镜像失败、探针失败。\n2. kubectl logs <pod> --previous：看上次崩溃的日志（关键，当前容器可能还没输出）。\n3. kubectl logs <pod> -c <container>：多容器场景指定容器。\n4. 检查配置：ConfigMap/Secret 是否挂载成功、环境变量是否正确、启动命令与参数是否匹配镜像。\n5. 检查探针：liveness 超时过早导致反复重启（especially 慢启动应用）。\n6. 资源：limits 过小导致 OOM。\n7. 权限：securityContext、只读根文件系统、SELinux。\n8. 交互进入复现：kubectl run 临时 pod 用同镜像同命令排查，或用 kubectl debug。\n\n常见根因：启动脚本退出、配置缺失、依赖服务不可达、OOM、探针配置不当、镜像架构不匹配（arm vs amd）。",
     "tags": [
       "CrashLoopBackOff",
       "Pod排查",
@@ -765,7 +765,7 @@
     "category": "监控告警",
     "difficulty": "中等",
     "question": "Prometheus 的四种指标类型分别是什么？counter 为什么要配合 rate 使用？",
-    "answer": "四种类型：\n1. Counter：只增不减的累计值（请求总数、错误数）。重启会归零。\n2. Gauge：可增可减的瞬时值（内存使用、并发数、温度）。\n3. Histogram：按桶（bucket）统计分布，可计算分位数（_bucket/_sum/_count）。\n4. Summary：客户端直接计算分位数（_sum/_count 与 φ 分位），无法跨实例聚合。\n\nCounter 配 rate 的原因：\n- Counter 是累计值，直接看数值无意义（一直增大），且服务重启会归零；\n- rate() 计算区间内每秒平均增长率，且能自动处理重启归零（不会算出负值或巨大跳变）；\n- 常用 rate(metric[5m]) 表示最近 5 分钟的平均 QPS。\n\n注意：\n- rate 的窗口至少包含 4 个采样点（scrape_interval 15s 时窗口 ≥ 1m），否则结果不稳定；\n- increase(metric[5m]) 是区间增量总量；\n- irate 只取最后两个点，适合快速变化的曲线，但对毛刺敏感、不适合告警；\n- Histogram 用 histogram_quantile(0.99, rate(...bucket[5m])) 算 P99，聚合时务必先 rate 再分位。",
+    "answer": "[[图:prometheus-metric-types]]\n\n四种类型：\n1. Counter：只增不减的累计值（请求总数、错误数）。重启会归零。\n2. Gauge：可增可减的瞬时值（内存使用、并发数、温度）。\n3. Histogram：按桶（bucket）统计分布，可计算分位数（_bucket/_sum/_count）。\n4. Summary：客户端直接计算分位数（_sum/_count 与 φ 分位），无法跨实例聚合。\n\nCounter 配 rate 的原因：\n- Counter 是累计值，直接看数值无意义（一直增大），且服务重启会归零；\n- rate() 计算区间内每秒平均增长率，且能自动处理重启归零（不会算出负值或巨大跳变）；\n- 常用 rate(metric[5m]) 表示最近 5 分钟的平均 QPS。\n\n注意：\n- rate 的窗口至少包含 4 个采样点（scrape_interval 15s 时窗口 ≥ 1m），否则结果不稳定；\n- increase(metric[5m]) 是区间增量总量；\n- irate 只取最后两个点，适合快速变化的曲线，但对毛刺敏感、不适合告警；\n- Histogram 用 histogram_quantile(0.99, rate(...bucket[5m])) 算 P99，聚合时务必先 rate 再分位。",
     "tags": [
       "Prometheus",
       "指标类型",
@@ -8325,7 +8325,7 @@
     "category": "Nginx",
     "difficulty": "中等",
     "question": "Nginx 日志里 request_time 和 upstream_response_time 有什么区别？排障怎么用？",
-    "answer": "两个时间口径不同，是定位「慢在谁」的关键：\n\n- request_time：从读第一个字节到发送完最后一个字节的总耗时（整个请求）\n- upstream_response_time：从与上游建连到读完上游响应的耗时（只算后端）\n\n配置（放在 log_format 里）：\nlog_format main '$remote_addr - $request_time $upstream_response_time $upstream_status $request \"$request_uri\"';\n\n判读方法：\n1. 两者接近 → 耗时主要在上游（后端慢）\n2. request_time 远大于 upstream_response_time → 耗时在 Nginx 侧或网络传输（如大文件下载、客户端慢）\n3. upstream_response_time 出现多个值用逗号分隔 → 发生了重试（proxy_next_upstream），说明有后端失败\n4. upstream_response_time 为 \"-\" → 没有走上游（静态文件或上游未连接成功）\n\n典型排障：\n- 客户投诉慢，日志 request_time=5s、upstream=0.1s → 慢在传输/客户端，不是后端\n- request_time=0.2s、upstream=4.8s → 后端慢，找后端",
+    "answer": "[[图:nginx-timing-split]]\n\n两个时间口径不同，是定位「慢在谁」的关键：\n\n- request_time：从读第一个字节到发送完最后一个字节的总耗时（整个请求）\n- upstream_response_time：从与上游建连到读完上游响应的耗时（只算后端）\n\n配置（放在 log_format 里）：\nlog_format main '$remote_addr - $request_time $upstream_response_time $upstream_status $request \"$request_uri\"';\n\n判读方法：\n1. 两者接近 → 耗时主要在上游（后端慢）\n2. request_time 远大于 upstream_response_time → 耗时在 Nginx 侧或网络传输（如大文件下载、客户端慢）\n3. upstream_response_time 出现多个值用逗号分隔 → 发生了重试（proxy_next_upstream），说明有后端失败\n4. upstream_response_time 为 \"-\" → 没有走上游（静态文件或上游未连接成功）\n\n典型排障：\n- 客户投诉慢，日志 request_time=5s、upstream=0.1s → 慢在传输/客户端，不是后端\n- request_time=0.2s、upstream=4.8s → 后端慢，找后端",
     "tags": [
       "日志",
       "request_time",
