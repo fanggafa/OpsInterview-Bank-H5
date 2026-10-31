@@ -223,6 +223,29 @@ import DrTiers from './DrTiers.vue'
 import TracingConcepts from './TracingConcepts.vue'
 import CapacityPlanning from './CapacityPlanning.vue'
 import MonitorTriagePath from './MonitorTriagePath.vue'
+import DnsRecursiveIterative from './DnsRecursiveIterative.vue'
+import DnsServerFaults from './DnsServerFaults.vue'
+import NginxChangeFlow from './NginxChangeFlow.vue'
+import NginxAccessLog from './NginxAccessLog.vue'
+import MongoVsMysql from './MongoVsMysql.vue'
+import PythonDeps from './PythonDeps.vue'
+import PythonContainers from './PythonContainers.vue'
+import CrossDcSync from './CrossDcSync.vue'
+import AnsibleUnreachable from './AnsibleUnreachable.vue'
+import CronjobVsJob from './CronjobVsJob.vue'
+import SingleDomainSlow from './SingleDomainSlow.vue'
+import VirtualizationPlan from './VirtualizationPlan.vue'
+import MongoReplSetSetup from './MongoReplSetSetup.vue'
+import DataLifecycle from './DataLifecycle.vue'
+import VirtualizationCapacity from './VirtualizationCapacity.vue'
+import KibanaErrorSpike from './KibanaErrorSpike.vue'
+import OpsDevVsOps from './OpsDevVsOps.vue'
+import DnsResolutionChain from './DnsResolutionChain.vue'
+import CopyVsAdd from './CopyVsAdd.vue'
+import CpuSpikeIncident from './CpuSpikeIncident.vue'
+import CloudMigrationPlan from './CloudMigrationPlan.vue'
+import ArchEvolutionPlan from './ArchEvolutionPlan.vue'
+import PromotionLoadTest from './PromotionLoadTest.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -508,6 +531,29 @@ export const FIGURES = {
   'tracing-concepts': TracingConcepts,
   'capacity-planning': CapacityPlanning,
   'monitor-triage-path': MonitorTriagePath,
+  'dns-recursive-vs-iterative': DnsRecursiveIterative,
+  'dns-server-faults': DnsServerFaults,
+  'nginx-change-flow': NginxChangeFlow,
+  'nginx-access-log': NginxAccessLog,
+  'mongo-vs-mysql': MongoVsMysql,
+  'python-deps': PythonDeps,
+  'python-containers': PythonContainers,
+  'cross-dc-sync': CrossDcSync,
+  'ansible-unreachable': AnsibleUnreachable,
+  'cronjob-vs-job': CronjobVsJob,
+  'single-domain-slow': SingleDomainSlow,
+  'virtualization-plan': VirtualizationPlan,
+  'mongo-replset-setup': MongoReplSetSetup,
+  'data-lifecycle': DataLifecycle,
+  'virtualization-capacity': VirtualizationCapacity,
+  'kibana-error-spike': KibanaErrorSpike,
+  'opsdev-vs-ops': OpsDevVsOps,
+  'dns-resolution-chain': DnsResolutionChain,
+  'copy-vs-add': CopyVsAdd,
+  'cpu-spike-incident': CpuSpikeIncident,
+  'cloud-migration-plan': CloudMigrationPlan,
+  'arch-evolution-plan': ArchEvolutionPlan,
+  'promotion-load-test': PromotionLoadTest,
 }
 
 /**
