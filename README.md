@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2529 题**（835 简答 + 1527 单选 + 167 多选），25 个分类；含 **316 张内联 SVG 图解**（316 题带图）
+- 题库：**2547 题**（835 简答 + 1540 单选 + 172 多选），25 个分类；含 **316 张内联 SVG 图解**（316 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -168,7 +168,7 @@ ops-interview-h5/
 
 ## 维护题库
 
-题库共 **2529 题**：835 道简答题 + 1527 道单选题 + 167 道多选题，分布在 25 个分类中。
+题库共 **2547 题**：835 道简答题 + 1540 道单选题 + 172 道多选题，分布在 25 个分类中。
 
 ### 当前进度
 
