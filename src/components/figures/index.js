@@ -266,6 +266,16 @@ import DeploymentYaml from './DeploymentYaml.vue'
 import PodNetworkTriage from './PodNetworkTriage.vue'
 import PodTriageSteps from './PodTriageSteps.vue'
 import NodeFailureTriage from './NodeFailureTriage.vue'
+import ServiceTypes from './ServiceTypes.vue'
+import KubeProxyMechanism from './KubeProxyMechanism.vue'
+import StatefulsetDeploy from './StatefulsetDeploy.vue'
+import AffinityTypes from './AffinityTypes.vue'
+import AutoRecoveryLayers from './AutoRecoveryLayers.vue'
+import NetworkPolicyMechanism from './NetworkPolicyMechanism.vue'
+import CanaryMethods from './CanaryMethods.vue'
+import EtcdCommands from './EtcdCommands.vue'
+import DockerImageOptimize from './DockerImageOptimize.vue'
+import DockerSecrets from './DockerSecrets.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -594,6 +604,16 @@ export const FIGURES = {
   'pod-network-triage': PodNetworkTriage,
   'pod-triage-steps': PodTriageSteps,
   'node-failure-triage': NodeFailureTriage,
+  'service-types': ServiceTypes,
+  'kube-proxy-mechanism': KubeProxyMechanism,
+  'statefulset-deploy': StatefulsetDeploy,
+  'affinity-types': AffinityTypes,
+  'auto-recovery-layers': AutoRecoveryLayers,
+  'network-policy-mechanism': NetworkPolicyMechanism,
+  'canary-methods': CanaryMethods,
+  'etcd-commands': EtcdCommands,
+  'docker-image-optimize': DockerImageOptimize,
+  'docker-secrets': DockerSecrets,
 }
 
 /**
