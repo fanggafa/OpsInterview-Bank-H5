@@ -189,6 +189,14 @@ import LogHistoryMissing from './LogHistoryMissing.vue'
 import EsIndexPlanning from './EsIndexPlanning.vue'
 import LogAlertOptions from './LogAlertOptions.vue'
 import LogPlatformDesign from './LogPlatformDesign.vue'
+import CmsVsG1 from './CmsVsG1.vue'
+import JvmMemoryLeakTriage from './JvmMemoryLeakTriage.vue'
+import JvmToolsMap from './JvmToolsMap.vue'
+import TomcatSlowStart from './TomcatSlowStart.vue'
+import GitopsVsCicd from './GitopsVsCicd.vue'
+import TestLayersPipeline from './TestLayersPipeline.vue'
+import ArtifactRegistryPlan from './ArtifactRegistryPlan.vue'
+import ZeroDowntimeUpgrade from './ZeroDowntimeUpgrade.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -440,6 +448,14 @@ export const FIGURES = {
   'es-index-planning': EsIndexPlanning,
   'log-alert-options': LogAlertOptions,
   'log-platform-design': LogPlatformDesign,
+  'cms-vs-g1': CmsVsG1,
+  'jvm-memory-leak-triage': JvmMemoryLeakTriage,
+  'jvm-tools-map': JvmToolsMap,
+  'tomcat-slow-start': TomcatSlowStart,
+  'gitops-vs-cicd': GitopsVsCicd,
+  'test-layers-pipeline': TestLayersPipeline,
+  'artifact-registry-plan': ArtifactRegistryPlan,
+  'zero-downtime-upgrade': ZeroDowntimeUpgrade,
 }
 
 /**
