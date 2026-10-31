@@ -8,6 +8,7 @@ import { migrateEarlyIds } from './utils/idMigration'
 import { useSettingsStore } from './stores/settingsStore'
 import { useStudyStore } from './stores/studyStore'
 import { useBankStore } from './stores/bankStore'
+import { usePwaUpdate } from './composables/usePwaUpdate'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -37,3 +38,9 @@ migrateEarlyIds()
 useStudyStore()
 
 app.mount('#app')
+
+// PWA Service Worker 注册：放到首屏渲染之后，不和首屏抢带宽/主线程。
+// 开发环境由 vite-plugin-pwa 跳过（devOptions.enabled=false），没有副作用。
+usePwaUpdate()
+  .register()
+  .catch(() => {})
