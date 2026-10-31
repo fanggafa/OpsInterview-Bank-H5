@@ -7,6 +7,14 @@ import AnswerText from '@/components/AnswerText.vue'
 const DATA = JSON.parse(readFileSync(resolve(__dirname, '../public/data/questions.json'), 'utf8'))
 const byId = (id) => DATA.find((q) => q.id === id)
 
+/**
+ * 按题干片段找题。
+ *
+ * 题库编号会随「区间扩容」重排（如 200 区间 → 500 区间），
+ * 所以测试不要硬编码 id，用题干特征更稳。
+ */
+const byQuestion = (fragment) => DATA.find((q) => String(q.question).includes(fragment))
+
 function mountAnswer(answer) {
   return mount(AnswerText, { props: { answer } })
 }
@@ -30,7 +38,8 @@ describe('AnswerText · 表格渲染', () => {
   })
 
   it('真实题库的 WiredTiger 题目渲染出表格（回归：文字串行/竖线外露）', () => {
-    const q = byId(2010)
+    // 用题干特征定位，避免题库重排 id 后测试失效
+    const q = byQuestion('WiredTiger')
     expect(q).toBeTruthy()
     const wrapper = mountAnswer(q.answer)
     expect(wrapper.find('table.ans-table').exists()).toBe(true)
