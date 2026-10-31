@@ -1,0 +1,66 @@
+K8S基本工作流程
+k8s的各个组件及其作用
+K8S的组件是如何实现高可用的
+Pod的几种探针?
+Pod的创建过程?
+Pod的删除过程?
+Pod的重启策略?
+镜像的更新策略?
+Pod的生命周期中有哪些状态?
+什么是静态Pod、自主式Pod、动态Pod?
+简述一下K8S的安装过程?
+二进制安装和Kubeadm安装有什么区别?
+apiserver的高可用是如何实现的?
+deployment的yaml文件如何编写呢?
+deployment的创建过程呢?
+Deployment的升级过程?
+Deployment和Statefulset有什么区别?
+Service的类型有哪些?
+k8s怎么实现数据持久
+什么是PV和PVC?
+PV和PVC之间的关系?
+PV的生命周期状态有哪些?
+简述daemonSet类型的资源特性?
+什么是有状态应用和无状态应用?
+说下flannel的几种模式?
+flannel可以固定节点IP和Pod的IP地址吗?
+说下你对Pod亲和性的理解?
+说下你对Pod污点和容忍的理解?
+如果因为网络原因导致Pod异常，如何排查?
+如何排查与解决Pod出现OOM的问题?
+如何排查与解决Pod频繁重启的问题?
+如果一个Pod发生异常怎么定位问题?
+Pod突然挂掉，K8S有什么机制或功能自动清除Pod?
+你使用的是哪个CNI插件，为什么使用他呢?
+说一下flannel和calico的区别?
+k8s集群节点宕机，可能由哪些原因造成的?
+我想把Pod调度到某个节点，有哪些方法?
+假如有些Pod比较吃cpu，有些pod比较吃内存，你有什么方案进行调度吗?
+如果我访问一个站点5xx了，那么如何快速定位问题?
+如果让你主持k8s迁移工作，你会如何做
+你们公司应用HPA实现了吗?如何实现的?
+说一下你们公司的发布流程以及CICD实现思路?
+如何优化Kubernetes集群的资源利用率？
+Kubernetes网络策略的实现机制是什么？
+在Kubernetes中如何实现跨集群的服务发现？
+如何在Kubernetes中实现灰度发布？
+Kubernetes的安全最佳实践有哪些？
+如何在Docker容器中管理秘密和敏感信息？
+Docker镜像的构建优化有哪些技巧？
+Docker容器的性能监控与优化有哪些方法？
+如何在Python中管理并发和并行编程？
+Python中内存泄漏的诊断和解决方法是什么？
+Linux上恢复误删文件的原理？
+如何理解Linux内核运行机制？
+etcd怎么使用命令查看集群状态？
+df 和 lsblk 的区别
+k8s service的作用以及Service有哪些类型？
+kube-proxy是基于什么实现的？
+k8s怎么部署一个有状态服务？
+kafka分区Partition和消费者Consumer的关系？为什么多对一，一对多有什么风险，少于一个呢？
+redis 简单描述下集群模式和哨兵模式？他们有什么区别？
+redis常见的数据结构？
+redis 集群模式中的 slot是什么？
+redis怎么停止一个节点？
+有没有搭建过 harbor 仓库，怎么做主从高可用？
+rabbitmq消费丢失怎么处理

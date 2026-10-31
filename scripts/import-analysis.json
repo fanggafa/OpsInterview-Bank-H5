@@ -1,0 +1,596 @@
+[
+  {
+    "raw": "K8S基本工作流程",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Git/GitLab"
+  },
+  {
+    "raw": "k8s的各个组件及其作用",
+    "exists": false,
+    "score": 0.22,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "K8S的组件是如何实现高可用的",
+    "exists": false,
+    "score": 0.42,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "LVS/HAProxy"
+  },
+  {
+    "raw": "Pod的几种探针?",
+    "exists": false,
+    "score": 0.6,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "Pod的创建过程?",
+    "exists": false,
+    "score": 0.4,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "Pod的删除过程?",
+    "exists": false,
+    "score": 0.4,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "MongoDB"
+  },
+  {
+    "raw": "Pod的重启策略?",
+    "exists": false,
+    "score": 0.4,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "综合场景题"
+  },
+  {
+    "raw": "镜像的更新策略?",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "Pod的生命周期中有哪些状态?",
+    "exists": false,
+    "score": 0.55,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "什么是静态Pod、自主式Pod、动态Pod?",
+    "exists": false,
+    "score": 0.38,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "简述一下K8S的安装过程?",
+    "exists": false,
+    "score": 0.25,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "网络基础"
+  },
+  {
+    "raw": "二进制安装和Kubeadm安装有什么区别?",
+    "exists": false,
+    "score": 0.36,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "DNS"
+  },
+  {
+    "raw": "apiserver的高可用是如何实现的?",
+    "exists": false,
+    "score": 0.4,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "LVS/HAProxy"
+  },
+  {
+    "raw": "deployment的yaml文件如何编写呢?",
+    "exists": false,
+    "score": 0.25,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Nginx"
+  },
+  {
+    "raw": "deployment的创建过程呢?",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "Deployment的升级过程?",
+    "exists": false,
+    "score": 0.4,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "Deployment和Statefulset有什么区别?",
+    "exists": false,
+    "score": 0.67,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "DNS"
+  },
+  {
+    "raw": "Service的类型有哪些?",
+    "exists": false,
+    "score": 0.5,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "MongoDB"
+  },
+  {
+    "raw": "k8s怎么实现数据持久",
+    "exists": false,
+    "score": 0.5,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "云与高可用"
+  },
+  {
+    "raw": "什么是PV和PVC?",
+    "exists": false,
+    "score": 0.5,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "DNS"
+  },
+  {
+    "raw": "PV和PVC之间的关系?",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "MongoDB"
+  },
+  {
+    "raw": "PV的生命周期状态有哪些?",
+    "exists": false,
+    "score": 0.5,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "简述daemonSet类型的资源特性?",
+    "exists": false,
+    "score": 0.25,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "MongoDB"
+  },
+  {
+    "raw": "什么是有状态应用和无状态应用?",
+    "exists": false,
+    "score": 0.2,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "DNS"
+  },
+  {
+    "raw": "说下flannel的几种模式?",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Linux基础"
+  },
+  {
+    "raw": "flannel可以固定节点IP和Pod的IP地址吗?",
+    "exists": false,
+    "score": 0.2,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "DNS"
+  },
+  {
+    "raw": "说下你对Pod亲和性的理解?",
+    "exists": false,
+    "score": 0.22,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "云与高可用"
+  },
+  {
+    "raw": "说下你对Pod污点和容忍的理解?",
+    "exists": false,
+    "score": 0.27,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "如果因为网络原因导致Pod异常，如何排查?",
+    "exists": false,
+    "score": 0.27,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "LVS/HAProxy"
+  },
+  {
+    "raw": "如何排查与解决Pod出现OOM的问题?",
+    "exists": false,
+    "score": 0.36,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "LVS/HAProxy"
+  },
+  {
+    "raw": "如何排查与解决Pod频繁重启的问题?",
+    "exists": false,
+    "score": 0.31,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "网络基础"
+  },
+  {
+    "raw": "如果一个Pod发生异常怎么定位问题?",
+    "exists": false,
+    "score": 0.38,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "综合场景题"
+  },
+  {
+    "raw": "Pod突然挂掉，K8S有什么机制或功能自动清除Pod?",
+    "exists": false,
+    "score": 0.19,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "云与高可用"
+  },
+  {
+    "raw": "你使用的是哪个CNI插件，为什么使用他呢?",
+    "exists": false,
+    "score": 0.29,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "MySQL"
+  },
+  {
+    "raw": "说一下flannel和calico的区别?",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "DNS"
+  },
+  {
+    "raw": "k8s集群节点宕机，可能由哪些原因造成的?",
+    "exists": false,
+    "score": 0.19,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "DNS"
+  },
+  {
+    "raw": "我想把Pod调度到某个节点，有哪些方法?",
+    "exists": false,
+    "score": 0.29,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "假如有些Pod比较吃cpu，有些pod比较吃内存，你有什么方案进行调度吗?",
+    "exists": false,
+    "score": 0.2,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Tomcat/JVM"
+  },
+  {
+    "raw": "如果我访问一个站点5xx了，那么如何快速定位问题?",
+    "exists": false,
+    "score": 0.32,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "监控告警"
+  },
+  {
+    "raw": "如果让你主持k8s迁移工作，你会如何做",
+    "exists": false,
+    "score": 0.29,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "综合场景题"
+  },
+  {
+    "raw": "你们公司应用HPA实现了吗?如何实现的?",
+    "exists": false,
+    "score": 0.23,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Nginx"
+  },
+  {
+    "raw": "说一下你们公司的发布流程以及CICD实现思路?",
+    "exists": false,
+    "score": 0.24,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "综合场景题"
+  },
+  {
+    "raw": "如何优化Kubernetes集群的资源利用率？",
+    "exists": false,
+    "score": 0.27,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "Kubernetes网络策略的实现机制是什么？",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Tomcat/JVM"
+  },
+  {
+    "raw": "在Kubernetes中如何实现跨集群的服务发现？",
+    "exists": false,
+    "score": 0.23,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Nginx"
+  },
+  {
+    "raw": "如何在Kubernetes中实现灰度发布？",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "CI/CD"
+  },
+  {
+    "raw": "Kubernetes的安全最佳实践有哪些？",
+    "exists": false,
+    "score": 0.5,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Redis"
+  },
+  {
+    "raw": "如何在Docker容器中管理秘密和敏感信息？",
+    "exists": false,
+    "score": 0.29,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "安全与跳板机"
+  },
+  {
+    "raw": "Docker镜像的构建优化有哪些技巧？",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  },
+  {
+    "raw": "Docker容器的性能监控与优化有哪些方法？",
+    "exists": false,
+    "score": 0.27,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Redis"
+  },
+  {
+    "raw": "如何在Python中管理并发和并行编程？",
+    "exists": false,
+    "score": 0.25,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Shell脚本"
+  },
+  {
+    "raw": "Python中内存泄漏的诊断和解决方法是什么？",
+    "exists": false,
+    "score": 0.31,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Tomcat/JVM"
+  },
+  {
+    "raw": "Linux上恢复误删文件的原理？",
+    "exists": false,
+    "score": 0.3,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Shell脚本"
+  },
+  {
+    "raw": "如何理解Linux内核运行机制？",
+    "exists": false,
+    "score": 0.33,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "iptables/firewalld"
+  },
+  {
+    "raw": "etcd怎么使用命令查看集群状态？",
+    "exists": false,
+    "score": 0.25,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Tomcat/JVM"
+  },
+  {
+    "raw": "df 和 lsblk 的区别",
+    "exists": false,
+    "score": 0.5,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "DNS"
+  },
+  {
+    "raw": "k8s service的作用以及Service有哪些类型？",
+    "exists": false,
+    "score": 0.4,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "MySQL"
+  },
+  {
+    "raw": "kube-proxy是基于什么实现的？",
+    "exists": false,
+    "score": 0.5,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "消息队列"
+  },
+  {
+    "raw": "k8s怎么部署一个有状态服务？",
+    "exists": false,
+    "score": 0.36,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "自动化与配置管理"
+  },
+  {
+    "raw": "kafka分区Partition和消费者Consumer的关系？为什么多对一，一对多有什么风险，少于一个呢？",
+    "exists": false,
+    "score": 0.19,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "消息队列"
+  },
+  {
+    "raw": "redis 简单描述下集群模式和哨兵模式？他们有什么区别？",
+    "exists": false,
+    "score": 0.35,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Redis"
+  },
+  {
+    "raw": "redis常见的数据结构？",
+    "exists": false,
+    "score": 0.57,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Redis"
+  },
+  {
+    "raw": "redis 集群模式中的 slot是什么？",
+    "exists": false,
+    "score": 0.56,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Redis"
+  },
+  {
+    "raw": "redis怎么停止一个节点？",
+    "exists": false,
+    "score": 0.25,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "Tomcat/JVM"
+  },
+  {
+    "raw": "有没有搭建过 harbor 仓库，怎么做主从高可用？",
+    "exists": false,
+    "score": 0.27,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "云与高可用"
+  },
+  {
+    "raw": "rabbitmq消费丢失怎么处理",
+    "exists": false,
+    "score": 0.5,
+    "kind": "关键词",
+    "matchedId": null,
+    "matchedQuestion": null,
+    "category": "容器与K8s"
+  }
+]

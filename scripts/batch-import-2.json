@@ -1,0 +1,82 @@
+[
+  {
+    "id": 4734,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "简述一下 K8s 的安装过程？",
+    "answer": "**分三步：准备节点 → 装运行时与组件 → kubeadm init/join。**\n\n## 前置准备（所有节点）\n\n1. **系统配置**：关 swap（K8s 硬要求）、关 SELinux（或配策略）、确认时间同步；\n2. **内核参数**：加载 `overlay`/`br_netfilter` 模块，开启 `net.ipv4.ip_forward` 与桥接流量转发（否则 Pod 网络不通）；\n3. **网络规划**：确定 Pod CIDR 与 Service CIDR（**不能与宿主机网段重叠**）。\n\n## 安装运行时与组件\n\n4. 装 **容器运行时**（containerd）并配置 systemd cgroup 驱动；\n5. 装 **kubeadm / kubelet / kubectl** 三个包，版本要一致；\n6. kubelet 设为开机自启（此时还起不来，正常）。\n\n## 初始化集群\n\n7. 在第一个 master 执行 `kubeadm init`（指定 `--pod-network-cidr`、`--apiserver-advertise-address`）；\n8. 按输出配置 kubectl（拷 `admin.conf` 到 `~/.kube/config`）；\n9. **装 CNI 插件**（flannel/calico），否则 Pod 无法跨节点通信；\n10. 其他 master `kubeadm join --control-plane`，worker `kubeadm join`。\n\n## 验证\n\n`kubectl get nodes` 全部 Ready、`kubectl get pods -A` 无异常、跑一个跨节点 Pod 验证网络。\n\n## 三个最常踩的坑\n\n| 坑 | 后果 |\n|---|---|\n| 忘关 swap | kubelet 启动失败并报错 |\n| 忘开 `ip_forward` / `br_netfilter` | Pod 能跑但网络不通 |\n| 忘装 CNI | Node 一直 NotReady |\n\n**记住这条**：`kubectl get nodes` 显示 NotReady，第一反应查 **CNI 装没装**。",
+    "tags": ["安装", "kubeadm", "初始化"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4735,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "二进制安装和 kubeadm 安装有什么区别？",
+    "answer": "**kubeadm 是「官方引导工具」，二进制是「手工拼装」——差别在自动化程度与可控性。**\n\n| 维度 | kubeadm | 二进制 |\n|---|---|---|\n| 组件运行方式 | 控制面是**静态 Pod**（跑在容器里） | 控制面是**systemd 服务**（宿主机进程） |\n| 安装速度 | 快（几条命令） | 慢（每台机器手工配） |\n| 可控性 | 受限，升级/改配置按它约定 | 完全可控，参数随意调 |\n| 故障排查 | 要懂「容器里的控制面」 | 直接看 systemd 日志 |\n| 升级 | `kubeadm upgrade` 半自动 | 手工替换二进制、重启服务 |\n| 证书管理 | 自动生成、`kubeadm certs` 管理 | 手工签发，要自己管 |\n| 适用 | 绝大多数场景、教学、生产都可用 | 深度定制、特殊环境、离线/信创 |\n\n## 关键区别：控制面跑在哪\n\n- **kubeadm**：apiserver 等是静态 Pod，通过 `crictl ps` 看，日志用 `crictl logs`；\n- **二进制**：它们是宿主机上的 systemd 服务，日志用 `journalctl -u kube-apiserver`。\n\n**这个差别直接影响排查方式**，面试常问「kubeadm 集群 apiserver 起不来你怎么查」——要用 `crictl` 而不是 `journalctl -u`。\n\n## 选型建议\n\n1. **优先 kubeadm**：省事、社区标准、升级有路径；\n2. 需要深度定制（特殊内核参数、非标准网络、离线环境）时用二进制；\n3. 很多企业最终走「kubeadm 起步 + 逐步替换组件」。\n\n## 常见误区\n\n「二进制更稳定」—— 不成立。稳定性取决于配置是否正确，kubeadm 反而是**经过大量验证的默认配置**。",
+    "tags": ["二进制安装", "kubeadm", "静态Pod"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4736,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "apiserver 的高可用是如何实现的？",
+    "answer": "**apiserver 本身无状态，所以高可用 = 多副本 + 统一入口 + 共享后端。**\n\n## 三要素\n\n1. **多副本**：3 个以上实例，每个都连同一套 etcd；\n2. **统一入口**：客户端（kubectl/kubelet/控制器）不知道有多个 apiserver，需要一个 VIP 或负载均衡；\n3. **共享 etcd**：所有实例读写同一个 etcd 集群，因此状态天然一致。\n\n## 入口的两种常见做法\n\n| 做法 | 说明 |\n|---|---|\n| **VIP + keepalived** | 多个 apiserver 前挂一个虚拟 IP，主备切换；kubeadm HA 常用 |\n| **外部负载均衡**（LVS/Nginx/云 LB） | 更灵活，可跨机房 |\n\n## 客户端如何配置\n\n- `kubeconfig` 里 `server` 指向 **VIP 或 LB 地址**，而不是某个具体 apiserver；\n- kubelet 的 `--kubeconfig` 同样指向 VIP；\n- **如果写成具体某台的 IP，那台挂了就全体失联** —— 这是最常见的配置错误。\n\n## 为什么 apiserver 能「多副本并行」\n\n因为它**不在内存里维护关键状态**：每次请求都是「读 etcd → 处理 → 写 etcd」。所以多副本之间不需要同步内存，也不会冲突。\n\n对比：controller-manager 和 scheduler **会做决策**，多副本并行会重复创建/调度，所以它们靠**选主**只让一个干活。\n\n## 验证方法\n\n随机停掉一台 apiserver，`kubectl get nodes` 应该照常工作 —— 如果报连接错误，说明 kubeconfig 绑死了具体节点。",
+    "tags": ["apiserver", "高可用", "VIP"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4737,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Deployment 的 YAML 文件怎么编写？各个字段分别是什么意思？",
+    "answer": "**最小可用模板 + 逐字段解释。**\n\n```yaml\napiVersion: apps/v1          # 必须与控制器类型对应\nkind: Deployment\nmetadata:\n  name: web\n  namespace: prod\n  labels:\n    app: web                 # 供其他资源（Service）选择\nspec:\n  replicas: 3                # 期望副本数\n  selector:\n    matchLabels:\n      app: web               # 选哪些 Pod 归我管（必须与 template.labels 一致）\n  strategy:\n    type: RollingUpdate      # 升级方式（另可 Recreate）\n    rollingUpdate:\n      maxSurge: 1            # 最多超出期望副本几个\n      maxUnavailable: 0      # 升级时最多几个不可用（0 = 先起新的再停旧的）\n  template:                  # Pod 模板\n    metadata:\n      labels:\n        app: web             # 必须能被上面的 selector 选中\n    spec:\n      containers:\n        - name: web\n          image: registry.example.com/web:1.2.3   # 用不可变 tag\n          imagePullPolicy: IfNotPresent\n          ports:\n            - containerPort: 8080\n          resources:\n            requests: { cpu: 100m, memory: 128Mi }  # 调度依据\n            limits:   { cpu: 500m, memory: 512Mi }  # 硬上限\n          readinessProbe:        # 见探针题\n            httpGet: { path: /healthz, port: 8080 }\n            initialDelaySeconds: 5\n          env:\n            - name: TZ\n              value: Asia/Shanghai\n```\n\n## 四个最容易写错的点\n\n1. **`selector` 与 `template.labels` 必须匹配**：不匹配直接报错；\n2. **`selector` 创建后不可改**：改它要重建 Deployment；\n3. **`requests` 不写**：调度器无法预留资源，Pod 容易被挤掉（QoS 变差）；\n4. **用 `:latest`**：配合默认的 Always 会每次重拉，且无法回滚到确定版本。\n\n## 常用命令\n\n`kubectl create deployment web --image=... --dry-run=client -o yaml` 可以生成骨架再改，比手写快。",
+    "tags": ["Deployment", "YAML", "字段"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4738,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Deployment 的创建过程是怎样的？",
+    "answer": "**三级对象链路：Deployment → ReplicaSet → Pod。**\n\n## 步骤\n\n1. `kubectl apply -f deployment.yaml` → apiserver 校验后写入 etcd；\n2. **Deployment 控制器**发现新对象 → 按 `spec.template` 生成一个 **ReplicaSet**（名字带 Pod 模板的 hash 后缀）；\n3. **ReplicaSet 控制器**按 `replicas` 创建对应数量的 **Pod**；\n4. scheduler 为这些 Pod 选节点；kubelet 在节点上起容器。\n\n## 为什么要多一层 ReplicaSet\n\n因为**滚动升级需要「新旧两批 Pod 同时存在」**：\n\n- 每个 Pod 模板对应一个 ReplicaSet（hash 不同）；\n- 升级时 Deployment 创建新 RS、逐步扩新缩旧；\n- 保留旧 RS（`revisionHistoryLimit`，默认 10）→ **这就是回滚的依据**。\n\n## 查看链路\n\n```bash\nkubectl get deploy web            # 顶层\nkubectl get rs                    # 中间层（能看到新旧两个 RS）\nkubectl get pods -l app=web       # 最底层\n```\n\n升级时会看到两个 RS 的副本数此消彼长，这是判断「滚动进行到哪」的直接依据。\n\n## 常见现象对应\n\n| 现象 | 说明 |\n|---|---|\n| Deployment 显示 READY 0/3 | RS 创建了 Pod 但没起来（往下查 Pod） |\n| 多出几个 RS | 历史版本记录（正常），受 revisionHistoryLimit 限制 |\n\n**记住**：Deployment 本身不直接管 Pod，出问题要顺着 RS → Pod 往下看。",
+    "tags": ["Deployment", "ReplicaSet", "创建过程"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4739,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Deployment 的升级过程是怎样的？滚动更新怎么工作？",
+    "answer": "**升级 = 创建新 ReplicaSet + 按 maxSurge/maxUnavailable 逐步替换 Pod。**\n\n## 滚动更新流程\n\n1. 改了 `spec.template`（如换镜像）→ Deployment 检测到模板 hash 变化；\n2. 创建**新 ReplicaSet**（副本数从 0 开始）；\n3. 按策略逐步扩新、缩旧：\n   - `maxSurge=1`：先多起 1 个新 Pod\n   - `maxUnavailable=0`：等新 Pod **Ready** 才停旧的\n4. 所有 Pod 都换成新的 → 旧 RS 缩到 0 但**保留对象**（供回滚）。\n\n## 两个参数怎么配\n\n| 配置 | 效果 | 适合 |\n|---|---|---|\n| `maxSurge:1` + `maxUnavailable:0` | 全程不掉可用副本，但要双倍容量 | 核心服务（推荐） |\n| `maxSurge:0` + `maxUnavailable:1` | 不额外占资源，但升级期间少一个副本 | 资源紧张 |\n| `strategy: Recreate` | 先全停再全起 | 不能新旧并存的场景（如独占端口） |\n\n## 关键：升级卡住怎么查\n\n```bash\nkubectl rollout status deploy/web     # 实时看进度\nkubectl rollout history deploy/web    # 看历史版本\nkubectl describe rs <新RS>            # 看新 Pod 为什么起不来\n```\n\n**最常见卡住原因**：新 Pod 的 readinessProbe 一直不通过 → 新 RS 扩不起来、旧的不敢缩。\n\n## 回滚\n\n```bash\nkubectl rollout undo deploy/web              # 回上一个版本\nkubectl rollout undo deploy/web --to-revision=2\n```\n\n回滚本质是**把旧 RS 重新扩容**，所以旧 RS 被清理掉（超过 historyLimit）就无法回滚了。\n\n## 面试常追问\n\n「能保证升级过程中零不可用吗？」→ 配 `maxUnavailable:0` 可以，但前提是**新 Pod 能 Ready 且集群有资源**；否则会卡住而不是「自动兜底」。",
+    "tags": ["滚动更新", "maxSurge", "回滚"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4740,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Service 的类型有哪些？分别用在什么场景？",
+    "answer": "**四种：ClusterIP / NodePort / LoadBalancer / ExternalName。**\n\n| 类型 | 作用 | 典型场景 |\n|---|---|---|\n| **ClusterIP**（默认） | 分配一个集群内部虚拟 IP，仅在集群内可访问 | 服务间调用 |\n| **NodePort** | 在每个节点上开一个端口（30000-32767）映射到 Service | 无云 LB 时对外暴露、临时测试 |\n| **LoadBalancer** | 在 NodePort 之上再对接云厂商负载均衡，分配外部 IP | 生产对外服务（有云环境） |\n| **ExternalName** | 不做转发，只是 DNS CNAME 到外部域名 | 把外部依赖（如数据库）包装成 Service |\n\n## 还有一个特殊形态\n\n**Headless Service**（`clusterIP: None`）：不分配虚拟 IP，DNS 直接返回各 Pod 的地址 —— StatefulSet 靠它获得**稳定的网络标识**。\n\n## 选择顺序（实用）\n\n1. 集群内部访问 → **ClusterIP**；\n2. 需要稳定网络标识（有状态服务）→ **Headless**；\n3. 对外暴露且有云 → **LoadBalancer**；\n4. 对外暴露但无云 → **NodePort**（通常前面再挂自己的 Nginx/HAProxy）；\n5. 包装外部地址 → **ExternalName**。\n\n## 常见误区\n\n- **「NodePort 就是生产方案」** —— 端口段有限、难做多集群，生产多是 LoadBalancer 或自建四层代理；\n- **「ExternalName 能转发流量」** —— 它只是 DNS 别名，不做端口映射。\n\n## 排查提示\n\nService 不通时先确认 type 与 selector：`kubectl get svc -o wide` + `kubectl get endpoints`（**Endpoints 为空说明 selector 没选中任何 Pod**，这是最高频原因）。",
+    "tags": ["Service", "ClusterIP", "NodePort", "LoadBalancer"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4741,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "什么是 PV 和 PVC？",
+    "answer": "**PV 是「存储本身」，PVC 是「对存储的申请」。**\n\n## 定义\n\n| 概念 | 范围 | 是什么 | 类比 |\n|---|---|---|---|\n| **PV**（PersistentVolume） | 集群级 | 一块具体的存储（NFS、云盘、Ceph、本地盘） | 仓库里已备好的货 |\n| **PVC**（PersistentVolumeClaim） | 命名空间级 | 声明「我要多少容量、什么访问模式」 | 用户的采购申请单 |\n\n## 为什么要有这层抽象\n\n- **应用不该关心底层是 NFS 还是云盘**：Pod 只挂 PVC，换存储实现时应用不用改；\n- **集群管理员与开发者职责分离**：管理员提供 PV，开发者写 PVC；\n- **支持动态供给**：结合 StorageClass，PVC 一提交就自动创建对应 PV。\n\n## 使用方式\n\n```yaml\nkind: PersistentVolumeClaim\nspec:\n  accessModes: [\"ReadWriteOnce\"]   # RWO/ROX/RWX\n  storageClassName: standard\n  resources:\n    requests:\n      storage: 10Gi\n```\n\nPod 里通过 `volumes: [{ persistentVolumeClaim: { claimName: my-pvc } }]` 挂载。\n\n## 三种访问模式\n\n| 模式 | 含义 |\n|---|---|\n| **RWO** | 单节点读写（最常见） |\n| **ROX** | 多节点只读 |\n| **RWX** | 多节点读写（需要 NFS/CephFS 这类共享存储） |\n\n**注意**：RWO 是「单节点」不是「单 Pod」—— 同节点的多个 Pod 可以共用。",
+    "tags": ["PV", "PVC", "存储"],
+    "frequency": "高频"
+  }
+]

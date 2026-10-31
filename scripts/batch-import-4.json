@@ -1,0 +1,82 @@
+[
+  {
+    "id": 4750,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如果一个 Pod 发生异常，怎么定位问题？",
+    "answer": "**按「状态码 → Events → 日志 → 资源」四步走，先看 Pod 处于什么状态。**\n\n## 第一步：看状态（决定往哪查）\n\n| 状态 | 含义 | 往哪查 |\n|---|---|---|\n| **Pending** | 未调度 | scheduler：资源/亲和/污点 |\n| **ContainerCreating** | 已调度，落地中 | kubelet：拉镜像、挂卷、建网络 |\n| **Running 但不 Ready** | 容器起了但探针不过 | 探针配置、应用启动 |\n| **CrashLoopBackOff** | 反复退出 | 容器日志、退出码 |\n| **Terminating 卡住** | 删除卡住 | 优雅终止、卷卸载 |\n| **Evicted** | 被驱逐 | 节点资源压力 |\n\n## 第二步：看 Events（信息密度最高）\n\n```bash\nkubectl describe pod <pod>     # 末尾的 Events 段\nkubectl get events --sort-by=.lastTimestamp\n```\n\nEvents 通常直接写出原因：`FailedScheduling`（调度失败）、`Failed to pull image`（拉镜像失败）、`OOMKilled`。\n\n## 第三步：看日志\n\n```bash\nkubectl logs <pod>                    # 当前容器\nkubectl logs <pod> --previous         # 上一次崩溃的日志（CrashLoop 必看）\n```\n\n`--previous` 是**最容易被忘、又最关键**的参数：容器已经重启，当前实例的日志里没有崩溃现场。\n\n## 第四步：看资源与配置\n\n- `kubectl describe pod` 看 limits/requests、探针、挂载\n- `kubectl get pod -o yaml` 核对实际生效的配置\n- 需要进容器：`kubectl exec -it <pod> -- sh`（容器起不来时用 `--previous` 拿不到 shell，可改用临时 debug 容器）\n\n## 一个提效技巧\n\n**先看 Exit Code**：\n\n| 码 | 含义 |\n|---|---|\n| 0 | 正常退出（可能被误判为异常） |\n| 1 | 应用自身报错 |\n| **137** | OOMKilled（128+9） |\n| **143** | SIGTERM（128+15，优雅终止） |\n\n137 和 143 是最常见的两个「看起来像崩溃其实是正常机制」的码。",
+    "tags": ["排查", "Events", "退出码"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4751,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 突然挂掉，K8s 有什么机制或功能自动清除或恢复 Pod？",
+    "answer": "**靠「控制器调谐 + 垃圾回收 + 驱逐」三层机制。**\n\n## 一、控制器自动补副本（最主要）\n\nDeployment/ReplicaSet 持续对比「期望副本数 vs 实际 Ready 数」，少一个就创建新的。所以 Pod 被删或节点挂掉时会**自动补回来**。\n\n## 二、垃圾回收（GC）\n\nkubelet 与 controller-manager 会周期性清理：\n\n| 对象 | 清理规则 |\n|---|---|\n| 已退出容器 | kubelet 按 `--maximum-dead-containers` 清理 |\n| 已完成的 Pod | 由控制器按 `ttlSecondsAfterFinished` 或历史上限清理 |\n| 孤儿 Pod | 节点失联后由 controller-manager 标记并回收 |\n| 已终止的 Pod 对象 | GC 控制器清理（终态保留一段时间供查看） |\n\n## 三、驱逐（Eviction）\n\n节点资源紧张时 kubelet 会驱逐 Pod：\n\n- **内存/磁盘/PID 压力**触发；\n- 按 **QoS 等级**排序：BestEffort 先被驱逐，Guaranteed 最后；\n- 被驱逐的 Pod 状态为 **Evicted**，控制器会尝试在其他节点重建。\n\n## 四、节点失联时的处理\n\n节点心跳超时（默认 40s 左右）→ Node 标记 NotReady → 若长时间不恢复，Pod 会被标记删除并由控制器在其他节点重建（**取决于 `pod-eviction-timeout` 等配置**）。\n\n## 重要澄清（面试常考）\n\n**「自动清除」不等于「自动重启应用」**：\n\n| 场景 | 谁处理 |\n|---|---|\n| 容器进程崩了 | kubelet 按 restartPolicy 重启**容器** |\n| Pod 被删/节点挂 | 控制器创建**新 Pod** |\n| 应用假死（进程还在但不响应） | **只有探针能发现** → kubelet 重启容器 |\n\n所以「应用卡住但进程没退」这类问题，**没有探针就不会被自动处理**。",
+    "tags": ["自动恢复", "控制器", "驱逐", "GC"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4752,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "你使用哪个 CNI 插件？为什么选它？",
+    "answer": "**（这题答案是「选型思路」，不是固定答案 —— 关键是能说出取舍依据。）**\n\n## 常见选择与理由\n\n| CNI | 特点 | 什么时候选 |\n|---|---|---|\n| **flannel** | 简单、轻量，VXLAN/host-gw | 小集群、只需要「Pod 能通」，不需要网络策略 |\n| **calico** | BGP + 三层路由，性能好，**支持 NetworkPolicy** | 需要策略隔离、规模较大、性能敏感 |\n| **Cilium** | 基于 eBPF，性能高，可观测性强 | 追求性能与可观测性、K8s 版本较新 |\n\n## 选型要看的四个维度\n\n1. **是否需要 NetworkPolicy** —— flannel **不支持**，需要隔离就必须 calico/cilium；\n2. **性能要求** —— host-gw/BGP 优于 VXLAN 封装；Cilium eBPF 更优；\n3. **运维复杂度** —— flannel 最简单；calico 要懂 BGP；\n4. **规模与跨网段** —— 大集群、跨机房要慎选（VXLAN 可跨三层，BGP 需要网络配合）。\n\n## 一个可用的「标准回答」\n\n> 我们的集群用了 calico：\n> - 需要按命名空间/标签做网络隔离，flannel 不支持 NetworkPolicy；\n> - 节点在同一网段，用 BGP 三层转发，比 VXLAN 封装少了开销；\n> - 代价是运维要理解 BGP 与 IP 池规划，出问题时排查链路更长。\n\n## 面试加分点\n\n主动说出**代价**（而不是只夸优点），并说明**什么情况下会换**（例如规模变化、需要 eBPF 可观测性）。这比背优缺点更能体现判断力。",
+    "tags": ["CNI", "calico", "flannel", "选型"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4753,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "说一下 flannel 和 calico 的区别？",
+    "answer": "**核心差异：flannel 是「封装式覆盖网络」，calico 是「三层路由 + 策略引擎」。**\n\n| 维度 | flannel | calico |\n|---|---|---|\n| 核心原理 | VXLAN/host-gw 封装或路由 | BGP 三层路由（或 IPIP） |\n| 网络策略 | ❌ **不支持** NetworkPolicy | ✅ 支持，且能力强 |\n| 性能 | VXLAN 有封装开销；host-gw 好 | 三层转发，无封装，性能较好 |\n| 依赖 | 简单，几乎无外部依赖 | 需要节点网段规划，BGP 场景要网络配合 |\n| 运维复杂度 | 低 | 中高（BGP、IP 池） |\n| 跨三层网络 | VXLAN 可以 | 需要 IPIP 或谨慎设计 |\n| 可观测性 | 弱 | 较好（有 calicoctl 查端点/策略） |\n\n## 一句话总结\n\n- **flannel**：够用就好，把 Pod 网络连通；\n- **calico**：连通 + **隔离**，还能托管 IP 池与策略。\n\n## 关键分水岭：NetworkPolicy\n\n这是选型时**最有决定性的一条**：\n\n> 如果业务需要「A 命名空间不能访问 B 命名空间」「只有某些 Pod 能连数据库」，那就必须用 calico（或 cilium），flannel 做不到。\n\n## 常见误区\n\n「calico 一定比 flannel 快」—— 不一定。calico 的 IPIP 模式同样有封装开销；**BGP 模式**才是它性能优势的来源。要看具体模式。\n\n## 迁移视角\n\n从 flannel 换 calico 不是「换个插件」那么简单：涉及 IP 池规划、现网 Pod 重建、策略设计。要在变更窗口内做，并准备好回退路径。",
+    "tags": ["flannel", "calico", "对比", "NetworkPolicy"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4754,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "K8s 集群节点宕机，可能由哪些原因造成？如何排查？",
+    "answer": "**分「硬件/系统层」与「K8s 层」两大类，先看节点自身是否真的宕了。**\n\n## 一、节点真的宕机（OS 不可用）\n\n| 原因 | 排查 |\n|---|---|\n| 硬件故障（内存条/磁盘/电源） | IPMI/ILO 日志、`dmesg` 里的硬件报错 |\n| **OOM 导致内核 panic** | `dmesg`/`journalctl -k` 看 OOM killer 与 kernel panic |\n| 磁盘满 | `df -h`、`df -i`（inode 耗尽也会「像宕机」） |\n| 网络中断 | 带外管理能否登录、网络设备告警 |\n| 系统 hang（内核 deadlock） | 串口/console 日志、watchdog 重启记录 |\n\n## 二、节点还在，但 K8s 认为它 NotReady\n\n| 原因 | 排查 |\n|---|---|\n| **kubelet 挂了** | `systemctl status kubelet`、`journalctl -u kubelet` |\n| 容器运行时异常 | `systemctl status containerd`、`crictl ps` |\n| **节点资源 Pressure** | `kubectl describe node` 看 MemoryPressure/DiskPressure |\n| 与 apiserver 网络不通 | kubelet 日志里的连接错误 |\n| 证书过期 | kubelet 日志中的 `x509` 报错 |\n\n## 三、排查顺序（从节点自身往外）\n\n1. **能上机器吗**（SSH/带外）→ 不能则查硬件与网络；\n2. **系统层**：`dmesg -T | tail`、`df -h`、`free -h`、`journalctl -k`；\n3. **服务层**：kubelet、containerd 状态与日志；\n4. **K8s 视角**：`kubectl describe node` 的 Conditions 与 Events；\n5. **影响面**：该节点上的 Pod 是否已被其他节点重建。\n\n## 恢复后要确认的事\n\n节点恢复 Ready 后要检查：\n- 原来的 Pod 是否已重建（可能都跑到其他节点了）；\n- 是否需要驱逐回均衡（`kubectl drain`/重新调度）；\n- DaemonSet 是否已重新覆盖该节点。\n\n**一个高频真相**：多数「节点宕机」其实是**磁盘满或 kubelet 崩溃**，而不是硬件问题 —— 先查这两个能快速定论。",
+    "tags": ["节点故障", "kubelet", "排查"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4755,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "我想把 Pod 调度到某个节点，有哪些方法？",
+    "answer": "**从「最简单」到「最灵活」共五种办法。**\n\n| 方法 | 写法 | 特点 |\n|---|---|---|\n| **nodeName**（最直接） | `spec.nodeName: node-1` | 硬指定，**绕过调度器**；节点不存在则 Pending |\n| **nodeSelector** | `nodeSelector: { disktype: ssd }` | 按标签精确匹配（硬约束） |\n| **节点亲和性** | nodeAffinity（required/preferred） | 支持表达式与软约束 |\n| **污点容忍** | Pod 加 toleration | 用于「节点只接受特定 Pod」 |\n| **Pod 反亲和** | podAntiAffinity | 让副本避开某节点 |\n\n## 关键区别：nodeName 与 nodeSelector\n\n- `nodeName` 直接写死节点名 → **调度器不参与**，也不做资源检查；节点不存在就一直 Pending；\n- `nodeSelector` 走正常调度流程 → 会检查资源与污点。\n\n**生产建议用 nodeSelector/亲和性**，不要写 nodeName（节点换名或下线就废了）。\n\n## 常见「调不过去」的原因\n\n| 原因 | 排查 |\n|---|---|\n| 节点有污点，Pod 没容忍 | `kubectl describe node` 看 Taints |\n| 节点资源不足（requests 超了） | 看 Allocated resources |\n| 标签写错/没打 | `kubectl get nodes --show-labels` |\n| 节点 NotReady | Pod 不会调度到 NotReady 节点 |\n\n## 一个实用技巧\n\n临时把一个 Pod 拉到指定节点调试：\n\n```bash\nkubectl run debug --image=busybox -it --rm \\\n  --overrides='{\"spec\":{\"nodeName\":\"node-2\"}}' -- sh\n```\n\n这种一次性场景用 nodeName 没问题，长期运行的服务不要这么写。",
+    "tags": ["调度", "nodeSelector", "nodeName", "亲和性"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4756,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "有些 Pod 比较吃 CPU、有些比较吃内存，有什么调度方案？",
+    "answer": "**核心思路：让「资源画像」与「节点能力」匹配，避免 CPU 型与内存型 Pod 争抢同一维度。**\n\n## 一、用 requests 表达资源画像（基础）\n\n调度器默认按 **requests** 做资源预留：\n\n```yaml\n# CPU 型\nresources:\n  requests: { cpu: 2,   memory: 1Gi }\n# 内存型\nresources:\n  requests: { cpu: 500m, memory: 8Gi }\n```\n\n这样调度器天然会把 CPU 型放到 CPU 富余的节点、内存型放到内存富余的节点。**这是最基础也最有效的一步**，很多人却只写 limits。\n\n## 二、按节点类型打标签（更可控）\n\n```bash\nkubectl label node node-a workload=cpu\nkubectl label node node-b workload=mem\n```\n\nPod 用 nodeAffinity 或 nodeSelector 指定类型。\n\n## 三、用亲和/反亲和做「互补搭配」\n\n把 CPU 型与内存型 Pod **反亲和**到不同节点，避免两种压力叠加在同一台。\n\n## 四、异构节点混部\n\n| 节点类型 | 适合 |\n|---|---|\n| 高主频少核 | 单线程重计算 |\n| 多核大内存 | 并发服务、JVM 应用 |\n| 大内存少核 | 缓存、内存数据库 |\n\n## 五、进阶：拓扑与 NUMA\n\n- `topologySpreadConstraints` 让副本在节点/机架间均匀分布；\n- CPU 密集型应用关注 **NUMA 亲和** 与 CPU 绑核（通过 CPU Manager 静态策略）。\n\n## 一个容易被追问的点\n\n「只设 limits 不设 requests 会怎样？」→ 调度器认为该 Pod 需求为 0，会**超量调度到节点上**，资源争抢时不均衡，且 QoS 降为 Burstable。\n\n**结论**：requests 是调度依据，limits 是运行上限 —— 两者都要认真设。",
+    "tags": ["调度", "requests", "资源画像", "亲和"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4757,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "访问一个站点返回 5xx，如何快速定位问题？",
+    "answer": "**先看是哪个 5xx、哪一层返回的，再按链路往下钻。**\n\n## 第一步：分清 5xx 的来源\n\n| 码 | 常见含义 | 典型来源 |\n|---|---|---|\n| **502** | 网关收到无效响应 / 连不上后端 | Nginx/网关 |\n| **504** | 后端超时 | Nginx/网关 |\n| **503** | 服务不可用（无可用后端/限流） | 网关或应用 |\n| **500** | 应用内部错误 | 应用本身 |\n\n**关键判断**：502/504 通常是**网关层**写的，500 通常是**应用层**抛的。看响应头/错误页能区分。\n\n## 第二步：按链路定位\n\n```\n用户 → CDN → LB → 网关(Nginx) → 应用(InPod) → 依赖(DB/缓存)\n```\n\n| 层 | 查什么 |\n|---|---|\n| CDN/LB | 回源状态码、健康检查是否把后端摘了 |\n| 网关 | access.log 的 status、upstream_response_time |\n| 应用 | 应用日志、Pod 是否重启、`kubectl logs --previous` |\n| 依赖 | DB 连接数、慢查询、缓存命中 |\n\n## 第三步：最快的三个手段\n\n1. **看网关 access.log**：status + upstream 耗时 → 直接知道是后端慢还是后端挂；\n2. **curl 直连后端**（绕过网关）：能通说明网关→后端链路有问题，不通说明后端本身有问题；\n3. **看 Pod 状态**：`kubectl get pods` 有没有 CrashLoop/Evicted/OOM。\n\n## 常见「5xx 但不是应用 bug」的情况\n\n| 现象 | 真实原因 |\n|---|---|\n| 全部 502 | 后端全挂 / 健康检查导致全被摘 |\n| 部分 502 | 只有部分后端异常（滚动发布中新 Pod 未 Ready 就被打流量） |\n| 504 集中出现 | 后端处理慢（慢查询、下游超时） |\n| 503 | 达到限流阈值 / 连接池耗尽 |\n\n**排查口诀**：502 查「连不连得上」，504 查「后端慢不慢」，500 查「应用为什么抛错」。",
+    "tags": ["5xx", "502", "504", "排查"],
+    "frequency": "高频"
+  }
+]

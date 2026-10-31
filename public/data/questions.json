@@ -20746,6 +20746,36 @@
     "frequency": "高频"
   },
   {
+    "id": 2315,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 分区（Partition）和消费者（Consumer）的关系是怎样的？",
+    "answer": "**核心规则：一个分区同一时刻只能被「同一个消费组内的一个消费者」消费。**\n\n## 三条基本规则\n\n| 规则 | 说明 |\n|---|---|\n| 消费者 < 分区 | **多对一**：一个消费者负责多个分区（正常） |\n| 消费者 = 分区 | 一对一（理想均衡） |\n| 消费者 > 分区 | **一对多（多余消费者空转）**：超出分区数的消费者分不到分区 |\n\n## 为什么「多对一」是正常的（不会出事）\n\n因为**分区是并行度的上限**：\n- 每个分区由**一个消费者线程**处理 → 顺序有保证；\n- 多分区分给同一消费者，它按序处理各个分区，**互不干扰**。\n\n代价是：该消费者负载更高，**吞吐受单消费者能力限制**。\n\n## 为什么「一对多（消费者多于分区）」有风险\n\n| 风险 | 说明 |\n|---|---|\n| **资源浪费** | 多出来的消费者永远分不到分区，空转吃内存 |\n| 误判 | 看起来「扩了消费者」，实际吞吐没变 |\n| 调优误区 | 以为加消费者就能提速，但瓶颈是分区数 |\n\n**正确做法**：先扩**分区数**，再扩消费者（顺序不能反）。\n\n## 「少于一个」是什么意思\n\n严格说不存在「少于一个消费者」的情况 —— 只要有消费者组，至少有一个消费者。这个说法通常指：\n\n- **没有消费者** → 消息堆积（LAG 持续增长）；\n- **消费者进程挂了** → 由组内其他成员接管分区（rebalance）。\n\n## 消费者组的关键机制\n\n```\n同组：分区被组内成员瓜分（一条消息只被消费一次）\n不同组：每个组都收到全量（做广播）\n```\n\n## 顺序消费的前提\n\n**同一 key 必须落同一分区**（按 key 哈希选分区），且该分区单线程消费 —— 所以「顺序」和「并行」在 Kafka 里是互斥的，要按业务键权衡。",
+    "tags": [
+      "Kafka",
+      "Partition",
+      "Consumer",
+      "消费组"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2316,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 消费丢失怎么处理？如何防止消息丢失？",
+    "answer": "**消息丢失有三个环节：生产端 → Broker → 消费端，要逐段防。**\n\n## 一、三段丢失点与对策\n\n| 环节 | 丢失原因 | 对策 |\n|---|---|---|\n| **生产端** | 消息没送到 Broker（网络/确认丢失） | 开启 **publisher confirm**（异步确认）、事务（性能差，少用） |\n| **Broker** | Broker 崩溃前未落盘 | 声明 **durable 队列 + persistent 消息**（持久化到磁盘） |\n| **消费端** | 消费后未 ack 就崩溃 / 自动 ack | 关闭 **autoAck**，处理完再手动 ack |\n\n## 二、最关键的一条：手动 ack\n\n```python\n# 错误：自动 ack（进程一崩，消息已算消费成功，直接丢）\nchannel.basic_consume(queue, on_message_callback, auto_ack=True)\n\n# 正确：处理完再 ack\nchannel.basic_consume(queue, on_message_callback, auto_ack=False)\ndef callback(ch, method, body):\n    try:\n        handle(body)\n        ch.basic_ack(method.delivery_tag)\n    except Exception:\n        ch.basic_nack(method.delivery_tag, requeue=True)   # 或进死信\n```\n\n## 三、持久化要「两个都设」\n\n只有队列 durable **不够**，消息本身也要 persistent：\n\n```python\nchannel.queue_declare(queue='q', durable=True)                    # 队列持久化\nchannel.basic_publish(..., properties=pika.BasicProperties(\n    delivery_mode=2))                                              # 消息持久化\n```\n\n**只设一个等于没设** —— 这是最常见的错误。\n\n## 四、已经丢了怎么办\n\n| 步骤 | 做法 |\n|---|---|\n| 1. 评估范围 | 查消费日志与 ack 记录，确定丢了哪段 |\n| 2. 找源头 | 从生产端的发送记录（日志/DB）重放 |\n| 3. 幂等重放 | 消费逻辑必须幂等，否则重放会重复处理 |\n| 4. 补监控 | 加「未 ack 消息数」「死信队列长度」告警 |\n\n## 五、防止「重复」而非「丢失」的取舍\n\n开 confirm + 手动 ack 后，可能出现**重复投递**（至少一次语义）。所以：\n\n**消费端必须幂等**（唯一键去重、状态机校验）—— 这比防丢失更难也更重要。\n\n## 一句话总结\n\n可靠性是「生产 confirm + 队列/消息持久化 + 手动 ack + 消费幂等」四件套，缺一个都有洞。",
+    "tags": [
+      "RabbitMQ",
+      "消息丢失",
+      "ack",
+      "持久化"
+    ],
+    "frequency": "高频"
+  },
+  {
     "id": 2400,
     "type": "short",
     "category": "存储与备份",
@@ -44375,6 +44405,65 @@
     "frequency": "高频"
   },
   {
+    "id": 3927,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 常见的数据结构有哪些？各自适合什么场景？",
+    "answer": "**五种基础类型 + 四种进阶结构，关键是把「类型 ↔ 场景」对上。**\n\n## 基础类型\n\n| 类型 | 结构 | 典型场景 |\n|---|---|---|\n| **String** | 简单键值（最大 512MB） | 缓存对象、计数器、分布式锁、Session |\n| **Hash** | 字段-值映射 | 存对象的部分字段、购物车 |\n| **List** | 双向链表（支持两端操作） | 消息队列（简单）、最新列表、栈 |\n| **Set** | 无序去重集合 | 标签、共同好友（交集）、去重统计 |\n| **ZSet** | 带分数的有序集合（跳表+哈希） | **排行榜**、延时队列、滑动窗口限流 |\n\n## 进阶结构\n\n| 类型 | 用途 |\n|---|---|\n| **Bitmap** | 位图，签到、活跃用户统计（省内存） |\n| **HyperLogLog** | 基数估算（UV 统计），误差约 0.81%，极省内存 |\n| **GEO** | 地理位置（附近的人） |\n| **Stream** | 消息流（带消费者组，比 List 更适合做 MQ） |\n\n## 选型要点\n\n1. **要排序又要按成员查 → ZSet**（排行榜首选）；\n2. **要存对象的一部分 → Hash**（比 String 序列化更省、可局部更新）；\n3. **要两端进出 → List**；要可靠消息 → **Stream**；\n4. **只做去重/交集 → Set**；\n5. **海量 UV 统计 → HyperLogLog**（不要用 Set，内存会爆）。\n\n## 一个常见误区\n\n**别用 List 做正经消息队列**：它没有 ack 机制，消费失败消息就丢了。要可靠消费用 **Stream**（有消费者组与 ack），或者用 Kafka/RabbitMQ。\n\n## 底层编码（面试常追问）\n\n小数据量时用紧凑编码（listpack/ziplist/quicklist），超阈值才转成跳表/哈希表 —— 这正是「小集合更省内存」的原因。",
+    "tags": [
+      "数据结构",
+      "ZSet",
+      "Stream",
+      "选型"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3928,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的集群模式和哨兵模式有什么区别？",
+    "answer": "**一句话：哨兵解决「高可用」，集群解决「高可用 + 水平扩展」。**\n\n| 维度 | 哨兵（Sentinel） | 集群（Cluster） |\n|---|---|---|\n| 数据分片 | ❌ 不分片，每个节点存全量 | ✅ 分 16384 个 slot，数据分散 |\n| 容量上限 | 受单机内存限制 | 可水平扩展（加节点扩容量） |\n| 高可用 | ✅ 哨兵监控 + 自动主从切换 | ✅ 内置故障转移 |\n| 客户端复杂度 | 低（连哨兵拿主地址） | 中（客户端要支持 cluster、处理 MOVED/ASK） |\n| 多 key 操作 | ✅ 支持（同实例） | ⚠️ 跨 slot 的 mget/事务受限，要用 hash tag |\n| 适用规模 | 单机内存够用 | 数据量大 / 写入压力高 |\n\n## 哨兵模式要点\n\n- 至少 **3 个哨兵**（奇数，避免脑裂判断失效）；\n- 哨兵监控主从，主挂了**投票选出新主**并通知客户端；\n- 数据仍然是「一主多从」，**写能力受单主限制**。\n\n## 集群模式要点\n\n- **最少 6 节点**（3 主 3 从，主从保证高可用）；\n- 数据按 **slot** 分布，客户端按 key 计算 slot 找节点；\n- 扩容要**迁移 slot**（会占带宽，需错峰）。\n\n## 选型的实际判断\n\n| 情况 | 建议 |\n|---|---|\n| 数据 < 单机内存，只要高可用 | **哨兵**（简单） |\n| 数据超单机内存 / 写压力大 | **集群** |\n| 强依赖多 key 事务 | 哨兵（集群下受限） |\n\n## 一个常见误区\n\n「集群一定比哨兵好」—— 不对。集群带来**跨 slot 操作限制、客户端复杂度、运维复杂度**，只是容量够用时哨兵更划算。",
+    "tags": [
+      "集群",
+      "哨兵",
+      "Sentinel",
+      "Cluster"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3929,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 集群模式中的 slot 是什么？",
+    "answer": "**slot（哈希槽）是 Redis Cluster 的数据分片单位，共 16384 个。**\n\n## 工作原理\n\n```\nkey → CRC16(key) mod 16384 → slot 编号 → 该 slot 归属的节点\n```\n\n每个主节点负责一段 slot 区间，例如：\n- 节点 A：0 ~ 5460\n- 节点 B：5461 ~ 10922\n- 节点 C：10923 ~ 16383\n\n## 为什么是 16384 个\n\n- 16384 = 2^14，槽位图用 bitmap 表示只需 2KB，节点间同步成本低；\n- 足够分散，又不至于让集群元数据过大。\n\n## 三个关键行为\n\n| 行为 | 说明 |\n|---|---|\n| **MOVED 重定向** | 客户端请求的 key 不在该节点 → 返回 MOVED + 正确节点，客户端重连 |\n| **ASK 重定向** | slot 正在迁移中 → 临时重定向到目标节点 |\n| **hash tag** | 用 `{...}` 强制同 slot，如 `{user:1}:name` 与 `{user:1}:age` 同 slot |\n\n## 为什么要 hash tag（最实用的一点）\n\n**跨 slot 的多 key 操作会失败**：\n\n```\nMGET user:1:name user:2:name   # 若两 key 不同 slot → 报 CROSSSLOT 错误\n```\n\n用 hash tag 让相关 key 落同一 slot：\n```\n{user:1}:name  {user:1}:age   # 都落 user:1 计算的 slot\n```\n代价：**所有相关 key 集中到一个节点**，热点风险上升。\n\n## 扩容与 slot 迁移\n\n- 加节点后要**手工迁移 slot**（`redis-cli --cluster reshard`）；\n- 迁移期间该 slot 的请求会走 ASK 重定向，**有短暂额外延迟**；\n- 迁移量大时注意网络与 CPU 占用。\n\n## 常见问题\n\n| 现象 | 原因 |\n|---|---|\n| CROSSSLOT 错误 | 多 key 操作跨 slot → 用 hash tag |\n| 数据分布倾斜 | 大量 key 用了同一个 hash tag |\n| 集群某节点内存高 | slot 分配不均或热点 key |",
+    "tags": [
+      "slot",
+      "Cluster",
+      "hash tag",
+      "MOVED"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3930,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 怎么正确地停止一个节点？",
+    "answer": "**关键：分集群/哨兵/单机，且要避免「误停主节点导致故障转移」。**\n\n## 一、集群模式下的正常下线\n\n**不能直接 kill**，要走 cluster 命令让 slot 先迁走：\n\n```bash\n# 1. 看节点 ID\nredis-cli -c -h <host> -p <port> cluster nodes\n\n# 2. 把 slot 迁到其他节点（优雅下线）\nredis-cli --cluster reshard <任意存活节点> \\\n  --cluster-from <要下线的ID> --cluster-to <目标ID> \\\n  --cluster-slots <数量> --cluster-yes\n\n# 3. 从集群移除该节点\nredis-cli --cluster del-node <存活节点> <节点ID>\n```\n\n## 二、主从/单机：避免「意外故障转移」\n\n| 命令 | 效果 |\n|---|---|\n| `SHUTDOWN` | 保存后退出（会触发故障转移，因为主没了） |\n| `SHUTDOWN NOSAVE` | 不保存直接退出（可能丢数据） |\n| `DEBUG SLEEP` | 模拟阻塞（调试用） |\n\n**正确姿势**（计划内维护）：\n1. 先 **手动触发故障转移**（集群用 `cluster failover`，哨兵环境先让从升主），让流量先切走；\n2. 再停原主节点；\n3. 避免「主节点突然消失」造成的客户端短暂报错。\n\n## 三、停节点的注意事项\n\n| 项 | 说明 |\n|---|---|\n| **持久化** | 确认 RDB/AOF 是否保存完成（别让进程被 kill -9） |\n| **优雅退出** | 用 `SHUTDOWN` 而不是 kill -9（后者可能数据不一致） |\n| **slot 归属** | 集群节点下线前必须迁走 slot，否则集群报 fail |\n| **从节点** | 从节点可较随意停（不影响可用性），但会降低读能力/冗余 |\n\n## 四、验证\n\n```bash\nredis-cli -p <port> ping        # 确认已停\nredis-cli -p <port> info replication   # 看主从关系是否已切换\n```\n\n**核心原则**：计划内维护要「先切流量再停进程」，而不是「先停再说」。",
+    "tags": [
+      "停止节点",
+      "Cluster",
+      "故障转移"
+    ],
+    "frequency": "中频"
+  },
+  {
     "id": 4000,
     "type": "short",
     "category": "Linux基础",
@@ -47747,6 +47836,51 @@
     "tags": [
       "僵尸进程",
       "进程状态"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4127,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 上恢复误删文件的原理是什么？有哪些前提和限制？",
+    "answer": "**核心原理：删除只是「把 inode 标记为空闲 + 断开目录项」，数据块本身还在，直到被覆盖。**\n\n## 删除时发生了什么\n\n```\nrm file\n  → 删除目录项（dentry）\n  → inode 的链接计数减 1，归 0 则标记为「空闲」\n  → 数据块标记为「可复用」\n```\n\n**关键**：数据块**没有被立刻清零** —— 这就是能恢复的基础。\n\n## 恢复的前提\n\n| 前提 | 说明 |\n|---|---|\n| ① **数据块未被覆盖** | 任何写入都可能覆盖它 → **立即停止写入** |\n| ② 文件系统类型支持 | ext3/ext4 可用 extundelete；XFS 较难（无成熟工具）；**SSD 存在 TRIM** 会让恢复失效 |\n| ③ 有 inode 信息 | 需要找到被删的 inode 记录 |\n\n## 恢复步骤（ext4 为例）\n\n1. **立刻挂载为只读**（或把磁盘摘下来做镜像）：\n   ```bash\n   mount -o remount,ro /data\n   ```\n2. **先做磁盘镜像**，在镜像上操作（避免二次破坏）：\n   ```bash\n   dd if=/dev/sdb of=/backup/img.dd bs=1M\n   ```\n3. 用工具扫描恢复：\n   ```bash\n   extundelete /dev/sdb --restore-file /path/to/file\n   # 或\n   ext4magic /dev/sdb -r -f /path/to/file\n   ```\n4. 恢复出来校验内容完整性。\n\n## 三个关键限制（面试常问）\n\n1. **覆盖即失败**：只要数据块被写过，就恢复不了（所以要立刻停写）；\n2. **SSD + TRIM**：TRIM 会真正抹掉数据块，恢复基本不可能；\n3. **XFS/新文件系统**：元数据组织方式不同，工具支持差。\n\n## 比恢复更重要的\n\n**预防**：定期备份、用 `trash-cli` 替代 `rm`、重要目录做快照。\n\n**最诚实的一句**：**文件恢复成功率很低**，能救回来的多是「删后立刻停机」的场景。生产上依赖它不如依赖备份。",
+    "tags": [
+      "误删恢复",
+      "inode",
+      "ext4",
+      "TRIM"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4128,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "如何理解 Linux 内核的运行机制？",
+    "answer": "**一句话：内核是「硬件与用户程序之间的管理者」，靠「系统调用 + 中断 + 调度」运转。**\n\n## 一、内核的四个核心职责\n\n| 职责 | 说明 |\n|---|---|\n| **进程管理** | 创建/调度/销毁进程，分配时间片 |\n| **内存管理** | 虚拟内存、页表、缺页处理、回收 |\n| **文件系统** | 统一 VFS 抽象，屏蔽底层存储差异 |\n| **设备与网络** | 驱动、网络协议栈 |\n\n## 二、用户态与内核态的切换\n\n```\n用户程序 ──系统调用/中断/异常──→ 内核态执行 ──返回──→ 用户态\n```\n\n**三种进入内核的方式**：\n- **系统调用**（主动，如 read/write）\n- **中断**（硬件异步，如网卡收包）\n- **异常**（错误，如缺页、除零）\n\n**为什么要有两种态**：内核可以操作全部硬件，用户程序不行 → 隔离与安全。\n\n## 三、UNIX 的核心设计思想\n\n| 思想 | 体现 |\n|---|---|\n| **一切皆文件** | 设备、管道、socket 都能用 read/write 操作 |\n| **分层抽象** | VFS 屏蔽 ext4/NFS/overlay 差异 |\n| **内核模块化** | 可动态加载驱动（`.ko`），不用重启 |\n\n## 四、几个常见的「机制名词」\n\n| 概念 | 说明 |\n|---|---|\n| **上下文切换** | 进程切换要保存/恢复寄存器与栈，开销大 |\n| **中断上下文** | 中断处理不能睡眠（不能阻塞） |\n| **内核可抢占** | 部分内核路径可被打断，影响实时性 |\n| **cgroup/namespace** | 资源限制与隔离 —— **容器的基础** |\n\n## 五、面试常追问：容器与内核\n\n**容器不是轻量级虚拟机**，它只是「用 namespace 隔离视图、用 cgroup 限制资源」的一组**普通进程**，共享同一个内核。\n\n这解释了两件事：\n- 容器内看到的「内核版本」是宿主机的；\n- 容器逃逸的风险本质是**内核漏洞**（因为共享内核）。",
+    "tags": [
+      "内核",
+      "系统调用",
+      "上下文切换",
+      "容器"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4129,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "df 和 lsblk 有什么区别？",
+    "answer": "**df 看「文件系统层的使用量」，lsblk 看「块设备层的结构」。**\n\n| 命令 | 视角 | 回答什么问题 |\n|---|---|---|\n| **df** | 文件系统（已挂载） | 「磁盘还剩多少空间」「哪个分区满了」 |\n| **lsblk** | 块设备（硬件/逻辑） | 「有哪些盘、分区、LVM、RAID 的层级关系」 |\n| **du** | 目录树 | 「哪个目录占了多少」 |\n\n## 各自的典型输出\n\n**df -h**\n```\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   45G  2.5G  95% /\n```\n关键：**看的是「已挂载文件系统」**，未挂载的分区不出现。\n\n**lsblk**\n```\nNAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT\nsda      8:0    0  100G  0 disk\n├─sda1   8:1    0   50G  0 part /\n└─sda2   8:2    0   50G  0 part /data\n```\n关键：**看的是「设备层级」**（disk → part → lvm → mountpoint）。\n\n## 三个实际用途差异\n\n| 场景 | 用哪个 |\n|---|---|\n| 「磁盘满了」 | **df -h**（先找哪个挂载点满） |\n| 「新增的盘没挂上」 | **lsblk**（看设备存在但 MOUNTPOINT 为空） |\n| 「LVM/RAID 结构」 | **lsblk**（能看到层级树） |\n| 「哪个目录占空间」 | **du** |\n\n## 两个高频细节\n\n1. **df 显示已用 100% 但 du 加起来不满** → 有**已删除但被进程占用的文件**（`lsof +L1` 查），常见于日志被删但进程未重启；\n2. **df -i 看 inode**：磁盘空间还有但 inode 耗尽，同样会「写不进去」（大量小文件场景）。\n\n## 一句话记\n\n**df 管「还剩多少」，lsblk 管「长什么样」，du 管「谁占的」。**",
+    "tags": [
+      "df",
+      "lsblk",
+      "磁盘",
+      "inode"
     ],
     "frequency": "中频"
   },
@@ -57997,6 +58131,692 @@
       "events"
     ],
     "frequency": "高频"
+  },
+  {
+    "id": 4726,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "K8s 的基本工作流程是怎样的？",
+    "answer": "**一句话：声明期望状态，控制器不断把实际状态拉向期望状态（调谐循环）。**\n\n## 完整链路\n\n```\n用户/CI 提交 YAML → apiserver 校验并写入 etcd\n                          ↓\n            控制器（Deployment/ReplicaSet 等）监听变更\n                          ↓\n              创建/更新 Pod 对象（此时只是「期望」）\n                          ↓\n            scheduler 选节点（写入 pod.spec.nodeName）\n                          ↓\n          kubelet 监听到「该我节点上的 Pod」→ 调 CRI 起容器\n                          ↓\n        容器运行 → kubelet 持续上报状态 → 控制器继续对齐副本数\n```\n\n## 三个要点\n\n1. **声明式而非命令式**：你写「要 3 个副本」，而不是「启动第 2 个副本」；差多少由控制器自己补。\n2. **每个组件只做一件事**：apiserver 管读写、scheduler 管选点、kubelet 管本机落地、controller-manager 管对齐。\n3. **异步与最终一致**：提交 YAML 成功 ≠ Pod 已跑起来；中间任何一步都可能卡住（Pending/ContainerCreating 就是在这一步等）。\n\n## 排查时如何用这个流程\n\n顺着链路问「卡在哪一环」：\n- Pod 一直 Pending → 卡在 scheduler（资源/亲和/污点不满足）\n- Pod ContainerCreating → 卡在 kubelet（拉镜像/挂卷）\n- Pod Running 但访问不通 → 卡在 Service/网络或探针\n\n这条链路是后面所有排查题的骨架。",
+    "tags": [
+      "工作流程",
+      "调谐循环",
+      "声明式"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4727,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "K8s 有哪些核心组件？各自的作用是什么？",
+    "answer": "**分两组：控制面（管决策）与工作节点（管执行）。**\n\n## 控制面\n\n| 组件 | 作用 | 关键点 |\n|---|---|---|\n| **apiserver** | 所有操作的唯一入口，校验后读写 etcd | 无状态，可多副本；kubectl 只跟它说话 |\n| **etcd** | 存集群全部状态（唯一真相源） | 有状态、必须备份；丢 etcd = 丢集群 |\n| **scheduler** | 为未调度的 Pod 选节点 | 看资源、亲和、污点、拓扑 |\n| **controller-manager** | 各控制器的集合（Deployment/ReplicaSet/Node 等） | 靠「调谐循环」补齐期望状态 |\n| **cloud-controller-manager** | 对接云厂商（负载均衡、节点生命周期） | 自建集群没有它 |\n\n## 工作节点\n\n| 组件 | 作用 | 关键点 |\n|---|---|---|\n| **kubelet** | 在本机管理 Pod 的实际运行（调 CRI/CNI/CSI） | 只认「分配给自己的 Pod」 |\n| **kube-proxy** | 实现 Service 的转发规则（iptables/IPVS） | 不是进程转发，是写内核规则 |\n| **容器运行时** | 真正跑容器（containerd/CRI-O） | 通过 CRI 接口与 kubelet 交互 |\n\n## 常被忽略的\n\n- **CoreDNS**：集群内域名解析，Pod 的 `/etc/resolv.conf` 指向它\n- **CNI 插件**：给 Pod 分配网络（flannel/calico），不属于 K8s 本体\n- **CSI 插件**：提供存储\n\n## 面试常追问\n\n「哪些组件是单点」→ **etcd 与 apiserver 的多副本设计**是重点（见高可用题）。",
+    "tags": [
+      "组件",
+      "控制面",
+      "工作节点"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4728,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "K8s 的各个组件是如何实现高可用的？",
+    "answer": "**分两类：无状态组件靠「多副本 + 负载」，有状态组件靠「副本 + 选主」。**\n\n## 无状态组件：apiserver / scheduler / controller-manager\n\n- 本身不存状态，多个实例**同时工作**，前面挂负载均衡；\n- 任何一台挂了，请求打到其他实例即可。\n\n## 有状态组件：etcd\n\n- **3 或 5 个节点**组成集群（奇数，利于选主与容错）；\n- 用 **Raft** 选主 + 多数派写入；\n- 允许挂掉少数（3 节点挂 1、5 节点挂 2）；\n- 关键：**必须真备份** —— etcd 丢了整个集群的定义就没了。\n\n## 特殊：kubelet 不是高可用对象\n\nkubelet 是「每台机器一个的本地代理」，它挂了该节点的 Pod 就失去管理（容器可能还在跑但无法上报）。\n\n## 实际生产部署形态\n\n| 组件 | 常见做法 |\n|---|---|\n| apiserver | 3 副本 + 前置 LB（或用 VIP/keepalived） |\n| etcd | 3~5 节点独立部署（不与 apiserver 混部） |\n| controller-manager | 3 副本，靠**领导者选举**（同一时刻只有 leader 生效） |\n| scheduler | 3 副本，同样靠选举 |\n\n**注意这处容易说错**：controller-manager 与 scheduler 是「多副本但先选主、只让 leader 工作」，而不是像 apiserver 那样所有副本都对外服务 —— 因为它们的操作（创建 Pod、调度）不能重复执行。\n\n## 一个常被追问的细节\n\ncontroller-manager 选主时其他副本在**待命**，leader 挂了才切换 —— 这不是负载均衡，是**避免重复决策**。",
+    "tags": [
+      "高可用",
+      "多副本",
+      "etcd",
+      "选主"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4729,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 的创建过程是怎样的？",
+    "answer": "**创建是「对象流水线」：控制器生成 Pod → scheduler 选点 → kubelet 落地。**\n\n## 完整步骤\n\n1. **kubectl apply** → apiserver 校验后写入 etcd（此时还没有 Pod，只有 Deployment）\n2. **Deployment 控制器**根据模板生成 ReplicaSet（记录期望副本数）\n3. **ReplicaSet 控制器**创建 Pod 对象，写入 etcd（此时 Pod 已存在，但 `nodeName` 为空）\n4. **scheduler** 发现「未调度 Pod」→ 选节点 → 把 nodeName 写回 etcd\n5. **kubelet** 在自己节点上监听到「有 Pod 分给我」→ 依次：\n   - 调 CNI 建网络（sandbox）\n   - 拉镜像（按 imagePullPolicy）\n   - 挂卷（CSI）\n   - 用 CRI 启动容器\n6. 探针通过后 → Pod 变为 Ready；kubelet 持续上报状态\n\n## 这个顺序解释了两个常见现象\n\n| 现象 | 说明 |\n|---|---|\n| Pod 一直 **Pending** | 卡在第 4 步：调度器选不出节点（资源不足/亲和/污点） |\n| Pod 一直 **ContainerCreating** | 卡在第 5 步：拉镜像慢、网络建不出来、卷挂不上 |\n\n## 面试常问「为什么 Pending 和 ContainerCreating 要分开看」\n\n因为它们属于不同组件：Pending 是**调度**问题（看 describe 的 Events 会写 `FailedScheduling`），ContainerCreating 是**本机落地**问题（看 kubelet 日志与 Events）。",
+    "tags": [
+      "创建过程",
+      "调度",
+      "Pending"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4730,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 的删除过程是怎样的？",
+    "answer": "**删除是「先温柔后强硬」，且要等优雅终止走完。**\n\n## 步骤\n\n1. `kubectl delete pod` → apiserver 在 etcd 里给 Pod 打上 **deletionTimestamp**（不立刻消失）\n2. **kubelet** 收到「该 Pod 要删」→ 向容器发 **SIGTERM**\n3. 等待 **terminationGracePeriodSeconds**（默认 30 秒），给容器时间收尾\n4. 若超时未退出 → 发 **SIGKILL** 强杀\n5. 清理网络（CNI 删 sandbox）、卸载卷、上报完成\n6. 最终从 etcd 移除对象\n\n## 三个关键理解\n\n1. **不是立刻删除**：因为有优雅终止窗口，`kubectl delete` 后还会看到 Pod 短暂存在（状态 Terminating）。\n2. **preStop hook 在 SIGTERM 之前**执行（如果配了），用来「关连接、摘注册中心」。\n3. **副本会被补回来**：如果是 Deployment 管理的 Pod，删除后 ReplicaSet 立刻创建新的 —— 要真正减副本得改 replicas 或删控制器。\n\n## 常见坑\n\n| 现象 | 原因 |\n|---|---|\n| Pod 卡在 **Terminating** 很久 | 应用处理 SIGTERM 太慢，或卷卸载卡住（如 NFS 挂死） |\n| 删了 Pod 又出现 | Deployment 补副本，属正常行为 |\n| 强删（--grace-period=0 --force）后资源残留 | 跳过优雅流程，卷/网络可能没清理干净 |\n\n**排查卡住**：`kubectl get pod -o yaml` 看 `deletionTimestamp`，再对照 kubelet 日志看卡在哪一步清理。",
+    "tags": [
+      "删除过程",
+      "优雅终止",
+      "Terminating"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4731,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Pod 的重启策略（restartPolicy）有哪几种？",
+    "answer": "**三种：Always / OnFailure / Never，只作用于「容器退出」时是否重启。**\n\n| 策略 | 行为 | 适用 |\n|---|---|---|\n| **Always**（默认） | 容器退出就重启，不论退出码 | 长期运行的服务 |\n| **OnFailure** | 仅非 0 退出码才重启 | 批处理、可能失败的任务 |\n| **Never** | 从不重启 | 一次性任务、调试 |\n\n## 关键区别：它管的是「容器」，不是「Pod」\n\n- 重启策略是 **Pod 内容器的行为**，由 kubelet 执行；\n- 它**不是**控制器的行为 —— Deployment 补副本是另一套机制。\n\n两者容易混淆，用一张表厘清：\n\n| 场景 | 谁负责 |\n|---|---|\n| 容器进程崩了 | kubelet 按 restartPolicy 重启容器 |\n| Pod 整个被删/节点挂了 | 控制器（ReplicaSet）补新 Pod |\n\n## 与 Job 的关系\n\n- **Job** 通常用 `OnFailure` 或 `Never`（跑完就结束）；\n- **CronJob** 创建的 Job 同理；\n- 普通服务用 `Always`。\n\n## 和探针的区别（常被追问）\n\n- restartPolicy 处理「**退出**」；\n- livenessProbe 处理「**没退出但卡住**」（探针失败 → kubelet 重启容器）。\n\n两者一个管「死没死」，一个管「活得好不好」。",
+    "tags": [
+      "重启策略",
+      "restartPolicy",
+      "探针"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4732,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "镜像的更新策略（imagePullPolicy）有哪几种？分别什么时候用？",
+    "answer": "**三种：Always / IfNotPresent / Never，决定 kubelet 何时去拉镜像。**\n\n| 策略 | 行为 | 适用 |\n|---|---|---|\n| **Always** | 每次启动都去 registry 拉 | ：latest 标签、需要「重新拉即更新」的场景 |\n| **IfNotPresent**（默认） | 本地有就不拉 | 固定版本 tag（推荐） |\n| **Never** | 只用本地镜像，从不拉 | 离线环境、预热镜像 |\n\n## 默认值不是固定的（易错点）\n\n- 镜像 tag 是 **`:latest`** → 默认 **Always**\n- tag 是**具体版本**（如 `:1.2.3`）→ 默认 **IfNotPresent**\n- 不写 tag → 等于 `:latest` → 默认 Always\n\n## 生产实践\n\n1. **永远不要用 `:latest`**，用不可变 tag（镜像 digest 或 语义化版本 + git sha）；\n2. 固定 tag 时用 `IfNotPresent`（默认即可），节省拉取时间；\n3. 发布新版本 = 换 tag，而不是靠 `Always` 重拉同名 tag。\n\n## 常见坑\n\n| 现象 | 原因 |\n|---|---|\n| 改了镜像但 Pod 还是旧的 | 用了固定 tag + IfNotPresent，节点上有旧缓存；同名 tag 被覆盖 |\n| 每次重启都慢 | 用了 Always，每次都去 registry |\n| 离线环境启动失败 | 镜像没预热，且策略是 Always |\n\n**排查**：`kubectl describe pod` 看 `Image ID`，对照 registry 里该 tag 当前指向的 digest 是否一致。",
+    "tags": [
+      "imagePullPolicy",
+      "镜像",
+      "latest"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4733,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "什么是静态 Pod、自主式 Pod、动态 Pod？",
+    "answer": "**按「谁创建、谁管理」划分，最容易被追问的是静态 Pod。**\n\n## 静态 Pod（Static Pod）\n\n- **由 kubelet 直接从本机目录读取 manifest 创建的 Pod**（默认 `/etc/kubernetes/manifests/`）；\n- **不经过 apiserver**、不受控制器管理；\n- apiserver 里能看到一个**镜像 Pod（mirror pod）**，只用于展示，删不掉；\n- 典型用途：**kubeadm 部署的控制面组件**（apiserver、controller-manager、scheduler、etcd 都是静态 Pod）；\n- 修改方式：改本机文件 → kubelet 自动重建，不能 `kubectl delete`。\n\n## 自主式 Pod（Bare Pod / 独立 Pod）\n\n- 直接用 `kubectl run` 或手写 Pod YAML 创建的 Pod；\n- **没有控制器管理**：删了就没了，节点挂了也不会被重建；\n- 只适合临时调试，**生产不要这么干**。\n\n## 动态 Pod（Managed Pod）\n\n- 由控制器（Deployment/StatefulSet/DaemonSet 等）创建的 Pod；\n- 有期望副本数，**删了会自动补**、节点挂了会重新调度；\n- 生产里的绝大多数 Pod 属于这类。\n\n## 一张表看清\n\n| 类型 | 谁创建 | 删了会重建吗 | 用途 |\n|---|---|---|---|\n| 静态 Pod | kubelet（本机文件） | 会（kubelet 重建） | 控制面组件 |\n| 自主式 Pod | 用户直接创建 | 不会 | 临时调试 |\n| 动态 Pod | 控制器 | 会（控制器补） | 生产负载 |\n\n## 面试常追问\n\n「静态 Pod 能不能用 kubectl 改？」→ **不能**，改了会被 kubelet 用文件内容覆盖回去；mirror pod 是只读镜像。",
+    "tags": [
+      "静态Pod",
+      "自主式Pod",
+      "动态Pod"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4734,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "简述一下 K8s 的安装过程？",
+    "answer": "**分三步：准备节点 → 装运行时与组件 → kubeadm init/join。**\n\n## 前置准备（所有节点）\n\n1. **系统配置**：关 swap（K8s 硬要求）、关 SELinux（或配策略）、确认时间同步；\n2. **内核参数**：加载 `overlay`/`br_netfilter` 模块，开启 `net.ipv4.ip_forward` 与桥接流量转发（否则 Pod 网络不通）；\n3. **网络规划**：确定 Pod CIDR 与 Service CIDR（**不能与宿主机网段重叠**）。\n\n## 安装运行时与组件\n\n4. 装 **容器运行时**（containerd）并配置 systemd cgroup 驱动；\n5. 装 **kubeadm / kubelet / kubectl** 三个包，版本要一致；\n6. kubelet 设为开机自启（此时还起不来，正常）。\n\n## 初始化集群\n\n7. 在第一个 master 执行 `kubeadm init`（指定 `--pod-network-cidr`、`--apiserver-advertise-address`）；\n8. 按输出配置 kubectl（拷 `admin.conf` 到 `~/.kube/config`）；\n9. **装 CNI 插件**（flannel/calico），否则 Pod 无法跨节点通信；\n10. 其他 master `kubeadm join --control-plane`，worker `kubeadm join`。\n\n## 验证\n\n`kubectl get nodes` 全部 Ready、`kubectl get pods -A` 无异常、跑一个跨节点 Pod 验证网络。\n\n## 三个最常踩的坑\n\n| 坑 | 后果 |\n|---|---|\n| 忘关 swap | kubelet 启动失败并报错 |\n| 忘开 `ip_forward` / `br_netfilter` | Pod 能跑但网络不通 |\n| 忘装 CNI | Node 一直 NotReady |\n\n**记住这条**：`kubectl get nodes` 显示 NotReady，第一反应查 **CNI 装没装**。",
+    "tags": [
+      "安装",
+      "kubeadm",
+      "初始化"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4735,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "二进制安装和 kubeadm 安装有什么区别？",
+    "answer": "**kubeadm 是「官方引导工具」，二进制是「手工拼装」——差别在自动化程度与可控性。**\n\n| 维度 | kubeadm | 二进制 |\n|---|---|---|\n| 组件运行方式 | 控制面是**静态 Pod**（跑在容器里） | 控制面是**systemd 服务**（宿主机进程） |\n| 安装速度 | 快（几条命令） | 慢（每台机器手工配） |\n| 可控性 | 受限，升级/改配置按它约定 | 完全可控，参数随意调 |\n| 故障排查 | 要懂「容器里的控制面」 | 直接看 systemd 日志 |\n| 升级 | `kubeadm upgrade` 半自动 | 手工替换二进制、重启服务 |\n| 证书管理 | 自动生成、`kubeadm certs` 管理 | 手工签发，要自己管 |\n| 适用 | 绝大多数场景、教学、生产都可用 | 深度定制、特殊环境、离线/信创 |\n\n## 关键区别：控制面跑在哪\n\n- **kubeadm**：apiserver 等是静态 Pod，通过 `crictl ps` 看，日志用 `crictl logs`；\n- **二进制**：它们是宿主机上的 systemd 服务，日志用 `journalctl -u kube-apiserver`。\n\n**这个差别直接影响排查方式**，面试常问「kubeadm 集群 apiserver 起不来你怎么查」——要用 `crictl` 而不是 `journalctl -u`。\n\n## 选型建议\n\n1. **优先 kubeadm**：省事、社区标准、升级有路径；\n2. 需要深度定制（特殊内核参数、非标准网络、离线环境）时用二进制；\n3. 很多企业最终走「kubeadm 起步 + 逐步替换组件」。\n\n## 常见误区\n\n「二进制更稳定」—— 不成立。稳定性取决于配置是否正确，kubeadm 反而是**经过大量验证的默认配置**。",
+    "tags": [
+      "二进制安装",
+      "kubeadm",
+      "静态Pod"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4736,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "apiserver 的高可用是如何实现的？",
+    "answer": "**apiserver 本身无状态，所以高可用 = 多副本 + 统一入口 + 共享后端。**\n\n## 三要素\n\n1. **多副本**：3 个以上实例，每个都连同一套 etcd；\n2. **统一入口**：客户端（kubectl/kubelet/控制器）不知道有多个 apiserver，需要一个 VIP 或负载均衡；\n3. **共享 etcd**：所有实例读写同一个 etcd 集群，因此状态天然一致。\n\n## 入口的两种常见做法\n\n| 做法 | 说明 |\n|---|---|\n| **VIP + keepalived** | 多个 apiserver 前挂一个虚拟 IP，主备切换；kubeadm HA 常用 |\n| **外部负载均衡**（LVS/Nginx/云 LB） | 更灵活，可跨机房 |\n\n## 客户端如何配置\n\n- `kubeconfig` 里 `server` 指向 **VIP 或 LB 地址**，而不是某个具体 apiserver；\n- kubelet 的 `--kubeconfig` 同样指向 VIP；\n- **如果写成具体某台的 IP，那台挂了就全体失联** —— 这是最常见的配置错误。\n\n## 为什么 apiserver 能「多副本并行」\n\n因为它**不在内存里维护关键状态**：每次请求都是「读 etcd → 处理 → 写 etcd」。所以多副本之间不需要同步内存，也不会冲突。\n\n对比：controller-manager 和 scheduler **会做决策**，多副本并行会重复创建/调度，所以它们靠**选主**只让一个干活。\n\n## 验证方法\n\n随机停掉一台 apiserver，`kubectl get nodes` 应该照常工作 —— 如果报连接错误，说明 kubeconfig 绑死了具体节点。",
+    "tags": [
+      "apiserver",
+      "高可用",
+      "VIP"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4737,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Deployment 的 YAML 文件怎么编写？各个字段分别是什么意思？",
+    "answer": "**最小可用模板 + 逐字段解释。**\n\n```yaml\napiVersion: apps/v1          # 必须与控制器类型对应\nkind: Deployment\nmetadata:\n  name: web\n  namespace: prod\n  labels:\n    app: web                 # 供其他资源（Service）选择\nspec:\n  replicas: 3                # 期望副本数\n  selector:\n    matchLabels:\n      app: web               # 选哪些 Pod 归我管（必须与 template.labels 一致）\n  strategy:\n    type: RollingUpdate      # 升级方式（另可 Recreate）\n    rollingUpdate:\n      maxSurge: 1            # 最多超出期望副本几个\n      maxUnavailable: 0      # 升级时最多几个不可用（0 = 先起新的再停旧的）\n  template:                  # Pod 模板\n    metadata:\n      labels:\n        app: web             # 必须能被上面的 selector 选中\n    spec:\n      containers:\n        - name: web\n          image: registry.example.com/web:1.2.3   # 用不可变 tag\n          imagePullPolicy: IfNotPresent\n          ports:\n            - containerPort: 8080\n          resources:\n            requests: { cpu: 100m, memory: 128Mi }  # 调度依据\n            limits:   { cpu: 500m, memory: 512Mi }  # 硬上限\n          readinessProbe:        # 见探针题\n            httpGet: { path: /healthz, port: 8080 }\n            initialDelaySeconds: 5\n          env:\n            - name: TZ\n              value: Asia/Shanghai\n```\n\n## 四个最容易写错的点\n\n1. **`selector` 与 `template.labels` 必须匹配**：不匹配直接报错；\n2. **`selector` 创建后不可改**：改它要重建 Deployment；\n3. **`requests` 不写**：调度器无法预留资源，Pod 容易被挤掉（QoS 变差）；\n4. **用 `:latest`**：配合默认的 Always 会每次重拉，且无法回滚到确定版本。\n\n## 常用命令\n\n`kubectl create deployment web --image=... --dry-run=client -o yaml` 可以生成骨架再改，比手写快。",
+    "tags": [
+      "Deployment",
+      "YAML",
+      "字段"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4738,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Deployment 的创建过程是怎样的？",
+    "answer": "**三级对象链路：Deployment → ReplicaSet → Pod。**\n\n## 步骤\n\n1. `kubectl apply -f deployment.yaml` → apiserver 校验后写入 etcd；\n2. **Deployment 控制器**发现新对象 → 按 `spec.template` 生成一个 **ReplicaSet**（名字带 Pod 模板的 hash 后缀）；\n3. **ReplicaSet 控制器**按 `replicas` 创建对应数量的 **Pod**；\n4. scheduler 为这些 Pod 选节点；kubelet 在节点上起容器。\n\n## 为什么要多一层 ReplicaSet\n\n因为**滚动升级需要「新旧两批 Pod 同时存在」**：\n\n- 每个 Pod 模板对应一个 ReplicaSet（hash 不同）；\n- 升级时 Deployment 创建新 RS、逐步扩新缩旧；\n- 保留旧 RS（`revisionHistoryLimit`，默认 10）→ **这就是回滚的依据**。\n\n## 查看链路\n\n```bash\nkubectl get deploy web            # 顶层\nkubectl get rs                    # 中间层（能看到新旧两个 RS）\nkubectl get pods -l app=web       # 最底层\n```\n\n升级时会看到两个 RS 的副本数此消彼长，这是判断「滚动进行到哪」的直接依据。\n\n## 常见现象对应\n\n| 现象 | 说明 |\n|---|---|\n| Deployment 显示 READY 0/3 | RS 创建了 Pod 但没起来（往下查 Pod） |\n| 多出几个 RS | 历史版本记录（正常），受 revisionHistoryLimit 限制 |\n\n**记住**：Deployment 本身不直接管 Pod，出问题要顺着 RS → Pod 往下看。",
+    "tags": [
+      "Deployment",
+      "ReplicaSet",
+      "创建过程"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4739,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Deployment 的升级过程是怎样的？滚动更新怎么工作？",
+    "answer": "**升级 = 创建新 ReplicaSet + 按 maxSurge/maxUnavailable 逐步替换 Pod。**\n\n## 滚动更新流程\n\n1. 改了 `spec.template`（如换镜像）→ Deployment 检测到模板 hash 变化；\n2. 创建**新 ReplicaSet**（副本数从 0 开始）；\n3. 按策略逐步扩新、缩旧：\n   - `maxSurge=1`：先多起 1 个新 Pod\n   - `maxUnavailable=0`：等新 Pod **Ready** 才停旧的\n4. 所有 Pod 都换成新的 → 旧 RS 缩到 0 但**保留对象**（供回滚）。\n\n## 两个参数怎么配\n\n| 配置 | 效果 | 适合 |\n|---|---|---|\n| `maxSurge:1` + `maxUnavailable:0` | 全程不掉可用副本，但要双倍容量 | 核心服务（推荐） |\n| `maxSurge:0` + `maxUnavailable:1` | 不额外占资源，但升级期间少一个副本 | 资源紧张 |\n| `strategy: Recreate` | 先全停再全起 | 不能新旧并存的场景（如独占端口） |\n\n## 关键：升级卡住怎么查\n\n```bash\nkubectl rollout status deploy/web     # 实时看进度\nkubectl rollout history deploy/web    # 看历史版本\nkubectl describe rs <新RS>            # 看新 Pod 为什么起不来\n```\n\n**最常见卡住原因**：新 Pod 的 readinessProbe 一直不通过 → 新 RS 扩不起来、旧的不敢缩。\n\n## 回滚\n\n```bash\nkubectl rollout undo deploy/web              # 回上一个版本\nkubectl rollout undo deploy/web --to-revision=2\n```\n\n回滚本质是**把旧 RS 重新扩容**，所以旧 RS 被清理掉（超过 historyLimit）就无法回滚了。\n\n## 面试常追问\n\n「能保证升级过程中零不可用吗？」→ 配 `maxUnavailable:0` 可以，但前提是**新 Pod 能 Ready 且集群有资源**；否则会卡住而不是「自动兜底」。",
+    "tags": [
+      "滚动更新",
+      "maxSurge",
+      "回滚"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4740,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Service 的类型有哪些？分别用在什么场景？",
+    "answer": "**四种：ClusterIP / NodePort / LoadBalancer / ExternalName。**\n\n| 类型 | 作用 | 典型场景 |\n|---|---|---|\n| **ClusterIP**（默认） | 分配一个集群内部虚拟 IP，仅在集群内可访问 | 服务间调用 |\n| **NodePort** | 在每个节点上开一个端口（30000-32767）映射到 Service | 无云 LB 时对外暴露、临时测试 |\n| **LoadBalancer** | 在 NodePort 之上再对接云厂商负载均衡，分配外部 IP | 生产对外服务（有云环境） |\n| **ExternalName** | 不做转发，只是 DNS CNAME 到外部域名 | 把外部依赖（如数据库）包装成 Service |\n\n## 还有一个特殊形态\n\n**Headless Service**（`clusterIP: None`）：不分配虚拟 IP，DNS 直接返回各 Pod 的地址 —— StatefulSet 靠它获得**稳定的网络标识**。\n\n## 选择顺序（实用）\n\n1. 集群内部访问 → **ClusterIP**；\n2. 需要稳定网络标识（有状态服务）→ **Headless**；\n3. 对外暴露且有云 → **LoadBalancer**；\n4. 对外暴露但无云 → **NodePort**（通常前面再挂自己的 Nginx/HAProxy）；\n5. 包装外部地址 → **ExternalName**。\n\n## 常见误区\n\n- **「NodePort 就是生产方案」** —— 端口段有限、难做多集群，生产多是 LoadBalancer 或自建四层代理；\n- **「ExternalName 能转发流量」** —— 它只是 DNS 别名，不做端口映射。\n\n## 排查提示\n\nService 不通时先确认 type 与 selector：`kubectl get svc -o wide` + `kubectl get endpoints`（**Endpoints 为空说明 selector 没选中任何 Pod**，这是最高频原因）。",
+    "tags": [
+      "Service",
+      "ClusterIP",
+      "NodePort",
+      "LoadBalancer"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4741,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "什么是 PV 和 PVC？",
+    "answer": "**PV 是「存储本身」，PVC 是「对存储的申请」。**\n\n## 定义\n\n| 概念 | 范围 | 是什么 | 类比 |\n|---|---|---|---|\n| **PV**（PersistentVolume） | 集群级 | 一块具体的存储（NFS、云盘、Ceph、本地盘） | 仓库里已备好的货 |\n| **PVC**（PersistentVolumeClaim） | 命名空间级 | 声明「我要多少容量、什么访问模式」 | 用户的采购申请单 |\n\n## 为什么要有这层抽象\n\n- **应用不该关心底层是 NFS 还是云盘**：Pod 只挂 PVC，换存储实现时应用不用改；\n- **集群管理员与开发者职责分离**：管理员提供 PV，开发者写 PVC；\n- **支持动态供给**：结合 StorageClass，PVC 一提交就自动创建对应 PV。\n\n## 使用方式\n\n```yaml\nkind: PersistentVolumeClaim\nspec:\n  accessModes: [\"ReadWriteOnce\"]   # RWO/ROX/RWX\n  storageClassName: standard\n  resources:\n    requests:\n      storage: 10Gi\n```\n\nPod 里通过 `volumes: [{ persistentVolumeClaim: { claimName: my-pvc } }]` 挂载。\n\n## 三种访问模式\n\n| 模式 | 含义 |\n|---|---|\n| **RWO** | 单节点读写（最常见） |\n| **ROX** | 多节点只读 |\n| **RWX** | 多节点读写（需要 NFS/CephFS 这类共享存储） |\n\n**注意**：RWO 是「单节点」不是「单 Pod」—— 同节点的多个 Pod 可以共用。",
+    "tags": [
+      "PV",
+      "PVC",
+      "存储"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4742,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "PV 的生命周期状态有哪些？",
+    "answer": "**五个阶段：Available → Bound → Released → Failed（及其回收）。**\n\n| 状态 | 含义 | 触发 |\n|---|---|---|\n| **Available**（可用） | PV 已就绪，等待被 PVC 绑定 | 创建后 / 释放后 |\n| **Bound**（已绑定） | 已被某个 PVC 独占绑定 | PVC 匹配成功 |\n| **Released**（已释放） | PVC 删除后，PV 尚未被回收处理 | 删除 PVC |\n| **Failed**（失败） | 自动回收失败，需要人工介入 | 回收策略失败 |\n\n## 回收策略决定「释放后去哪」\n\nPV 的 `persistentVolumeReclaimPolicy` 有三种：\n\n| 策略 | 行为 | 适用 |\n|---|---|---|\n| **Retain**（保留） | 保留数据，PV 回到 Available，需人工清理 | 重要数据 |\n| **Delete**（删除） | 删除 PV 及底层存储数据 | 动态供给的临时卷（默认） |\n| **Recycle**（回收） | 清空文件后回到 Available（已逐步废弃） | 旧场景 |\n\n## 生命周期图解\n\n```\n创建 → Available ──绑定──→ Bound\n                    ↑          │\n                    │      删除 PVC\n              回收成功          ↓\n                    └──── Released\n                               │\n                        回收失败↓\n                            Failed\n```\n\n## 排查常用\n\n```bash\nkubectl get pv                       # STATUS 列直接看到阶段\nkubectl describe pv <name>           # 看 Claim 与回收策略\nkubectl get pvc                      # 看 PVC 的 Bound/ Lost 状态\n```\n\n**常被追问**：PVC 显示 `Lost` 表示它原本绑定的 PV 已不存在 —— 通常是 PV 被误删，需要重新绑定或恢复数据。",
+    "tags": [
+      "PV",
+      "生命周期",
+      "回收策略"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4743,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "简述 DaemonSet 类型的资源特性？",
+    "answer": "**核心特性：保证「每个（或指定的）节点上恰好运行一个 Pod」。**\n\n## 三个特性\n\n1. **每节点一个**：新节点加入集群时自动调度上去，节点移除时对应 Pod 也被回收；\n2. **不受 replicas 控制**：副本数由节点数量决定，不是手动指定；\n3. **支持节点选择**：可用 `nodeSelector` / 亲和性 / 污点容忍限定只跑在部分节点。\n\n## 典型用途\n\n| 场景 | 说明 |\n|---|---|\n| 日志采集 | fluentd/filebeat 每节点一个，采集本机日志 |\n| 监控 agent | node-exporter 采集节点指标 |\n| 网络插件 | CNI 组件（如 calico-node） |\n| 节点级代理 | 需要访问宿主机资源的场景 |\n\n## 与 Deployment 的关键区别\n\n| | Deployment | DaemonSet |\n|---|---|---|\n| 副本数 | 手动指定 replicas | 由节点数决定 |\n| Pod 分布 | 任意节点，可能集中在几台 | **每个节点都有** |\n| 用途 | 业务服务 | 节点级守护进程 |\n\n## 常见限制与坑\n\n- **不保证「最先启动」**：节点 NotReady 时不会调度；\n- 需要访问宿主机文件/网络时，要配 `hostPath` 与 `hostNetwork`（并接受其安全代价）；\n- 更新 DaemonSet 的模板会**滚动替换各节点上的 Pod**，与 Deployment 类似。\n\n**面试追问点**：「DaemonSet 的 Pod 会不会因为节点 NotReady 而不跑？」→ 会，要等节点 Ready 后才调度。",
+    "tags": [
+      "DaemonSet",
+      "节点级",
+      "日志采集"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4744,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "什么是有状态应用和无状态应用？K8s 里怎么分别对待？",
+    "answer": "**区别在于「实例之间能否互换」：无状态可互换，有状态每个实例有独特身份。**\n\n| | 无状态 | 有状态 |\n|---|---|---|\n| 数据 | 不存本地（或存了也不重要） | 每个实例持有独特数据 |\n| 实例 | 可互换，任意增删 | 身份固定，不能随意替换 |\n| 扩展 | 加副本即可 | 要处理数据分片/复制 |\n| 例子 | Web API、网关、无状态服务 | 数据库、消息队列、Redis 集群 |\n\n## K8s 里怎么分别对待\n\n| 类型 | 控制器 | 原因 |\n|---|---|---|\n| 无状态 | **Deployment** | 副本可互换，滚动升级简单 |\n| 有状态 | **StatefulSet** | 提供**稳定网络标识**（`mysql-0`）、**独立存储**（每副本一个 PVC）、**有序启停** |\n\n## 无状态的关键前提\n\n「无状态」不等于「没有数据」，而是**数据不留在实例本地**：\n- 会话放 Redis；\n- 上传文件放对象存储；\n- 本地只留可丢弃的缓存。\n\n这也是为什么「把 session 存本地磁盘」的服务**扩副本会出问题** —— 它实际上变成了有状态。\n\n## 面试常追问\n\n「有状态服务能不能用 Deployment？」→ 技术上能跑，但会丢失「固定身份」：Pod 名随机、重启后可能换节点、多副本共享不了独立存储。数据库这类必须用 StatefulSet。",
+    "tags": [
+      "有状态",
+      "无状态",
+      "StatefulSet"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4745,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "flannel 有哪几种工作模式？各有什么区别？",
+    "answer": "**三种主流模式：VXLAN / host-gw / UDP（已淘汰），另有较新的 WireGuard。**\n\n| 模式 | 原理 | 性能 | 跨子网 |\n|---|---|---|---|\n| **VXLAN**（默认） | 把 Pod 包封进 UDP 包传输，解封装后投递 | 中（有封装开销） | ✅ 可跨三层网络 |\n| **host-gw** | 直接写宿主机路由表，Pod 包直接发出 | **高**（无封装） | ❌ 要求节点在同一二层网络 |\n| **UDP**（旧） | 早期模式，用户态封装 | 低 | ✅ 但已被 VXLAN 取代 |\n| **WireGuard** | 用内核 WireGuard 加密隧道 | 较高且有加密 | ✅ |\n\n## 选型关键\n\n- **节点都在同一个二层网络（同机房、同网段可达）** → 用 **host-gw**，性能最好；\n- **节点跨机房/跨子网** → 必须 **VXLAN**；\n- 优先 VXLAN（默认，兼容性好），性能敏感且网络条件满足时切 host-gw。\n\n## 一个重要限制\n\nflannel 工作在**三层**，它**不做网络策略**（NetworkPolicy）—— 需要策略隔离时要换 calico 或叠加 Cilium。\n\n## 排查要点\n\n| 现象 | 常见原因 |\n|---|---|\n| 同节点 Pod 通、跨节点不通 | 模式选错（跨子网用了 host-gw）、VXLAN 端口（8472/UDP）被防火墙拦 |\n| 全部不通 | flanneld 未启动、CNI 配置未生效 |\n| 通但慢 | 用了 UDP 旧模式，或 VXLAN 封装损耗 |\n\n**验证**：`kubectl exec` 进 Pod ping 另一节点的 Pod；宿主 `iptables -L`/`ss -uapn | grep 8472` 确认 VXLAN 端口。",
+    "tags": [
+      "flannel",
+      "VXLAN",
+      "host-gw",
+      "CNI"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4746,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "flannel 可以固定节点 IP 和 Pod 的 IP 地址吗？",
+    "answer": "**节点 IP 可以（本来就固定）；Pod IP 默认不能固定，但有条件可实现。**\n\n## 节点 IP\n\nflannel 使用节点已有 IP 通信，**这个 IP 由宿主机决定**（网卡地址），flannel 不改它。所以「节点 IP 固定」= 你在装机时固定网卡地址即可。\n\n## Pod IP：默认是动态分配的\n\n- flannel 给每个节点分配一个 **Pod 网段**（`--pod-network-cidr` 切分）；\n- 节点内的 Pod IP 由 **host-local IPAM** 从该网段分配；\n- Pod 重建后 **IP 会变**（分配是按序复用，不保证同一 Pod 拿回原 IP）。\n\n## 能固定的三种做法\n\n| 做法 | 说明 | 局限 |\n|---|---|---|\n| **静态 IP + host-local 指定** | 手工配 CNI 配置里的 ranges/静态段 | 要自己维护分配表，冲突风险 |\n| **用固定网段 + 预留** | 把某段留给需要固定的 Pod | 仍需人工分配 |\n| **改用支持固定 IP 的 CNI** | 如 calico 的 IP 池可指定，或 Multus 多网卡 | 复杂度上升 |\n\n## 更常用的替代思路\n\n**不要依赖 Pod IP**：\n- 有状态服务用 **Headless Service** → 得到稳定 DNS 名（`mysql-0.mysql`）；\n- 应用间用 **Service 名**访问，而不是 Pod IP。\n\n## 面试追问点\n\n「为什么 K8s 不鼓励固定 Pod IP？」→ 因为 Pod 是**可丢弃、可重建**的（这正是 K8s 的设计前提），固定 IP 会让调度与重建变得僵化。需要稳定标识时应该用 **Service/StatefulSet 的 DNS 标识**，而不是 IP。",
+    "tags": [
+      "flannel",
+      "Pod IP",
+      "IPAM"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4747,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "说下你对 Pod 亲和性（Affinity）的理解？",
+    "answer": "**亲和性 = 用「规则」而不是「精确名称」表达 Pod 与节点/其他 Pod 的放置关系。**\n\n## 两大类\n\n| 类型 | 作用对象 | 用途 |\n|---|---|---|\n| **节点亲和**（nodeAffinity） | Pod ↔ 节点 | 要求 Pod 落在特定标签的节点上 |\n| **Pod 亲和/反亲和**（podAffinity / podAntiAffinity） | Pod ↔ 其他 Pod | 与某些 Pod 聚在一起 / 分开 |\n\n## 硬与软\n\n- **requiredDuringSchedulingIgnoredDuringExecution**：**硬约束**，不满足就不调度（Pod 会 Pending）\n- **preferredDuringSchedulingIgnoredDuringExecution**：**软约束**，尽量满足，不满足也调度\n\n名字里的 `IgnoredDuringExecution` 很关键：**只影响调度时，运行后节点标签变了不会驱逐已有 Pod**。\n\n## 典型用法\n\n| 需求 | 做法 |\n|---|---|\n| 只跑在 SSD 节点 | nodeAffinity required + label `disk=ssd` |\n| 尽量同机房 | nodeAffinity preferred + 机房标签 |\n| 同服务的 Pod 聚在一起（减少跨节点流量） | podAffinity 按 `app=web` |\n| 副本必须分散（避免同节点全挂） | **podAntiAffinity** 按 `app=web` + topologyKey=hostname |\n\n## 与 nodeSelector 的关系\n\n- `nodeSelector` 是**最简单**的硬约束（精确匹配标签）；\n- 亲和性支持**表达式**（`In`/`NotIn`/`Exists`）与**软约束**，表达能力更强。\n\n## 常见坑\n\n1. **硬亲和写了但集群没有匹配节点** → Pod 永远 Pending（describe 会写 `didn't match node selector/affinity`）；\n2. **podAntiAffinity 要求「副本分散」但节点数少于副本数** → 后面的副本 Pending；\n3. 亲和性强依赖**节点标签维护**，标签未打或打错会静默失效。\n\n**排查命令**：`kubectl describe pod` 的 Events 段会明确说明亲和性不满足的原因。",
+    "tags": [
+      "亲和性",
+      "nodeAffinity",
+      "podAntiAffinity"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4748,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如果因为网络原因导致 Pod 异常，如何排查？",
+    "answer": "**分四层查：Pod 内 → Pod 间（同节点）→ Pod 间（跨节点）→ 出集群。**\n\n## 分层排查表\n\n| 层级 | 检查 | 命令 |\n|---|---|---|\n| Pod 内 | 有没有 IP、DNS 能不能解析 | `ip addr`、`cat /etc/resolv.conf`、`nslookup` |\n| 同节点 Pod | 能不能互 ping | `kubectl exec` ping |\n| 跨节点 Pod | 隧道是否通 | ping + 查 flannel/calico |\n| 出集群 | Service 能否访问、出网是否正常 | `curl` Service 名 / 外网 |\n| 被策略拦 | NetworkPolicy 是否生效 | 对照策略规则 |\n\n## 具体排查顺序\n\n1. **Pod 有没有分到 IP**：`kubectl exec -it <pod> -- ip addr`（没 IP 说明 CNI 没给网卡配地址）\n2. **同节点通不通**：排除 Pod 自身配置（DNS、端口）问题\n3. **跨节点通不通**：不通大概率是 **CNI 隧道问题**\n   - flannel：`ss -uapn | grep 8472`，宿主 `iptables` 是否拦了 VXLAN\n   - calico：`calico-node` 健康检查、BGP 对等状态\n4. **Service 通不通**：`kubectl get endpoints` 是否为空（selector 没选中 Pod）\n5. **抓包定位**：宿主 tcpdump 抓 VXLAN（`port 8472`）或 Pod 网卡\n\n## 高频原因清单\n\n| 原因 | 表现 |\n|---|---|\n| CNI 未装 / 未就绪 | Node NotReady 或 Pod 无 IP |\n| 防火墙拦 VXLAN/IPIP | 同节点通、跨节点不通 |\n| Pod CIDR 与宿主机网段重叠 | 解析/路由异常，难以察觉 |\n| NetworkPolicy 过严 | 只有部分 Pod 间不通 |\n| CoreDNS 异常 | 能 ping IP 但域名解析失败 |\n\n## 一个关键判断\n\n**同节点通、跨节点不通 → 一定优先怀疑 CNI 隧道**，而不是应用配置。这是最快的分流依据。",
+    "tags": [
+      "网络排查",
+      "CNI",
+      "VXLAN"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4749,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如何排查与解决 Pod 出现 OOM 的问题？",
+    "answer": "**先分清是「容器内 OOM」还是「节点驱逐」，两者的证据位置不同。**\n\n## 两种 OOM\n\n| 类型 | 谁杀的 | 证据 |\n|---|---|---|\n| **容器 OOMKilled** | 内核 OOM killer（超 limits） | `kubectl describe pod` 的 `Last State: OOMKilled`、Exit Code **137** |\n| **节点内存压力驱逐** | kubelet 驱逐 | Pod 状态 `Evicted`，Node 有 `MemoryPressure` |\n\n## 排查步骤\n\n1. `kubectl describe pod` 看 **Last State / Reason / Exit Code**\n   - **137** = 128 + 9（SIGKILL）→ 被 OOM killer 杀\n   - **被驱逐**则看 Events 里的 `eviction` 记录\n2. 对照 `resources.limits.memory` 与**实际使用峰值**\n3. 看应用层：是否堆设得不对（Java `-Xmx` 超过 limits 一定死）、是否内存泄漏\n4. 节点侧：`kubectl describe node` 看 Allocated 与 Pressure\n\n## 最常见的三个根因\n\n| 根因 | 说明 |\n|---|---|\n| **limits < 实际需求** | 应用启动就要 2Gi，limit 设 1Gi |\n| **JVM 堆 + 非堆超出 limit** | `-Xmx2g` 但 limit 2Gi → 元空间/线程栈/直接内存一加就超 |\n| **内存泄漏** | 缓慢增长，最终被 killed |\n\n**JVM 的正确算法**：limit 要 ≥ 堆 + 元空间 + 线程栈 + 直接内存 + 系统开销，通常堆设为 limit 的 **50~75%**，或直接用 `-XX:MaxRAMPercentage`。\n\n## 解决方向\n\n1. 短期：调大 `limits.memory`（但要确认节点有资源）；\n2. 中期：修内存泄漏 / 调堆参数；\n3. 长期：按 `requests` 做好调度规划，关键服务给更高 QoS（Guaranteed）。\n\n## 一个容易忽略的点\n\n`requests.memory` 约等于 limit 时 QoS 会变 **Guaranteed**，节点内存紧张时**最后被驱逐**；requests 远小于 limit 则是 Burstable，更容易被牺牲。",
+    "tags": [
+      "OOM",
+      "OOMKilled",
+      "137",
+      "limits"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4750,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如果一个 Pod 发生异常，怎么定位问题？",
+    "answer": "**按「状态码 → Events → 日志 → 资源」四步走，先看 Pod 处于什么状态。**\n\n## 第一步：看状态（决定往哪查）\n\n| 状态 | 含义 | 往哪查 |\n|---|---|---|\n| **Pending** | 未调度 | scheduler：资源/亲和/污点 |\n| **ContainerCreating** | 已调度，落地中 | kubelet：拉镜像、挂卷、建网络 |\n| **Running 但不 Ready** | 容器起了但探针不过 | 探针配置、应用启动 |\n| **CrashLoopBackOff** | 反复退出 | 容器日志、退出码 |\n| **Terminating 卡住** | 删除卡住 | 优雅终止、卷卸载 |\n| **Evicted** | 被驱逐 | 节点资源压力 |\n\n## 第二步：看 Events（信息密度最高）\n\n```bash\nkubectl describe pod <pod>     # 末尾的 Events 段\nkubectl get events --sort-by=.lastTimestamp\n```\n\nEvents 通常直接写出原因：`FailedScheduling`（调度失败）、`Failed to pull image`（拉镜像失败）、`OOMKilled`。\n\n## 第三步：看日志\n\n```bash\nkubectl logs <pod>                    # 当前容器\nkubectl logs <pod> --previous         # 上一次崩溃的日志（CrashLoop 必看）\n```\n\n`--previous` 是**最容易被忘、又最关键**的参数：容器已经重启，当前实例的日志里没有崩溃现场。\n\n## 第四步：看资源与配置\n\n- `kubectl describe pod` 看 limits/requests、探针、挂载\n- `kubectl get pod -o yaml` 核对实际生效的配置\n- 需要进容器：`kubectl exec -it <pod> -- sh`（容器起不来时用 `--previous` 拿不到 shell，可改用临时 debug 容器）\n\n## 一个提效技巧\n\n**先看 Exit Code**：\n\n| 码 | 含义 |\n|---|---|\n| 0 | 正常退出（可能被误判为异常） |\n| 1 | 应用自身报错 |\n| **137** | OOMKilled（128+9） |\n| **143** | SIGTERM（128+15，优雅终止） |\n\n137 和 143 是最常见的两个「看起来像崩溃其实是正常机制」的码。",
+    "tags": [
+      "排查",
+      "Events",
+      "退出码"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4751,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 突然挂掉，K8s 有什么机制或功能自动清除或恢复 Pod？",
+    "answer": "**靠「控制器调谐 + 垃圾回收 + 驱逐」三层机制。**\n\n## 一、控制器自动补副本（最主要）\n\nDeployment/ReplicaSet 持续对比「期望副本数 vs 实际 Ready 数」，少一个就创建新的。所以 Pod 被删或节点挂掉时会**自动补回来**。\n\n## 二、垃圾回收（GC）\n\nkubelet 与 controller-manager 会周期性清理：\n\n| 对象 | 清理规则 |\n|---|---|\n| 已退出容器 | kubelet 按 `--maximum-dead-containers` 清理 |\n| 已完成的 Pod | 由控制器按 `ttlSecondsAfterFinished` 或历史上限清理 |\n| 孤儿 Pod | 节点失联后由 controller-manager 标记并回收 |\n| 已终止的 Pod 对象 | GC 控制器清理（终态保留一段时间供查看） |\n\n## 三、驱逐（Eviction）\n\n节点资源紧张时 kubelet 会驱逐 Pod：\n\n- **内存/磁盘/PID 压力**触发；\n- 按 **QoS 等级**排序：BestEffort 先被驱逐，Guaranteed 最后；\n- 被驱逐的 Pod 状态为 **Evicted**，控制器会尝试在其他节点重建。\n\n## 四、节点失联时的处理\n\n节点心跳超时（默认 40s 左右）→ Node 标记 NotReady → 若长时间不恢复，Pod 会被标记删除并由控制器在其他节点重建（**取决于 `pod-eviction-timeout` 等配置**）。\n\n## 重要澄清（面试常考）\n\n**「自动清除」不等于「自动重启应用」**：\n\n| 场景 | 谁处理 |\n|---|---|\n| 容器进程崩了 | kubelet 按 restartPolicy 重启**容器** |\n| Pod 被删/节点挂 | 控制器创建**新 Pod** |\n| 应用假死（进程还在但不响应） | **只有探针能发现** → kubelet 重启容器 |\n\n所以「应用卡住但进程没退」这类问题，**没有探针就不会被自动处理**。",
+    "tags": [
+      "自动恢复",
+      "控制器",
+      "驱逐",
+      "GC"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4752,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "你使用哪个 CNI 插件？为什么选它？",
+    "answer": "**（这题答案是「选型思路」，不是固定答案 —— 关键是能说出取舍依据。）**\n\n## 常见选择与理由\n\n| CNI | 特点 | 什么时候选 |\n|---|---|---|\n| **flannel** | 简单、轻量，VXLAN/host-gw | 小集群、只需要「Pod 能通」，不需要网络策略 |\n| **calico** | BGP + 三层路由，性能好，**支持 NetworkPolicy** | 需要策略隔离、规模较大、性能敏感 |\n| **Cilium** | 基于 eBPF，性能高，可观测性强 | 追求性能与可观测性、K8s 版本较新 |\n\n## 选型要看的四个维度\n\n1. **是否需要 NetworkPolicy** —— flannel **不支持**，需要隔离就必须 calico/cilium；\n2. **性能要求** —— host-gw/BGP 优于 VXLAN 封装；Cilium eBPF 更优；\n3. **运维复杂度** —— flannel 最简单；calico 要懂 BGP；\n4. **规模与跨网段** —— 大集群、跨机房要慎选（VXLAN 可跨三层，BGP 需要网络配合）。\n\n## 一个可用的「标准回答」\n\n> 我们的集群用了 calico：\n> - 需要按命名空间/标签做网络隔离，flannel 不支持 NetworkPolicy；\n> - 节点在同一网段，用 BGP 三层转发，比 VXLAN 封装少了开销；\n> - 代价是运维要理解 BGP 与 IP 池规划，出问题时排查链路更长。\n\n## 面试加分点\n\n主动说出**代价**（而不是只夸优点），并说明**什么情况下会换**（例如规模变化、需要 eBPF 可观测性）。这比背优缺点更能体现判断力。",
+    "tags": [
+      "CNI",
+      "calico",
+      "flannel",
+      "选型"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4753,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "说一下 flannel 和 calico 的区别？",
+    "answer": "**核心差异：flannel 是「封装式覆盖网络」，calico 是「三层路由 + 策略引擎」。**\n\n| 维度 | flannel | calico |\n|---|---|---|\n| 核心原理 | VXLAN/host-gw 封装或路由 | BGP 三层路由（或 IPIP） |\n| 网络策略 | ❌ **不支持** NetworkPolicy | ✅ 支持，且能力强 |\n| 性能 | VXLAN 有封装开销；host-gw 好 | 三层转发，无封装，性能较好 |\n| 依赖 | 简单，几乎无外部依赖 | 需要节点网段规划，BGP 场景要网络配合 |\n| 运维复杂度 | 低 | 中高（BGP、IP 池） |\n| 跨三层网络 | VXLAN 可以 | 需要 IPIP 或谨慎设计 |\n| 可观测性 | 弱 | 较好（有 calicoctl 查端点/策略） |\n\n## 一句话总结\n\n- **flannel**：够用就好，把 Pod 网络连通；\n- **calico**：连通 + **隔离**，还能托管 IP 池与策略。\n\n## 关键分水岭：NetworkPolicy\n\n这是选型时**最有决定性的一条**：\n\n> 如果业务需要「A 命名空间不能访问 B 命名空间」「只有某些 Pod 能连数据库」，那就必须用 calico（或 cilium），flannel 做不到。\n\n## 常见误区\n\n「calico 一定比 flannel 快」—— 不一定。calico 的 IPIP 模式同样有封装开销；**BGP 模式**才是它性能优势的来源。要看具体模式。\n\n## 迁移视角\n\n从 flannel 换 calico 不是「换个插件」那么简单：涉及 IP 池规划、现网 Pod 重建、策略设计。要在变更窗口内做，并准备好回退路径。",
+    "tags": [
+      "flannel",
+      "calico",
+      "对比",
+      "NetworkPolicy"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4754,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "K8s 集群节点宕机，可能由哪些原因造成？如何排查？",
+    "answer": "**分「硬件/系统层」与「K8s 层」两大类，先看节点自身是否真的宕了。**\n\n## 一、节点真的宕机（OS 不可用）\n\n| 原因 | 排查 |\n|---|---|\n| 硬件故障（内存条/磁盘/电源） | IPMI/ILO 日志、`dmesg` 里的硬件报错 |\n| **OOM 导致内核 panic** | `dmesg`/`journalctl -k` 看 OOM killer 与 kernel panic |\n| 磁盘满 | `df -h`、`df -i`（inode 耗尽也会「像宕机」） |\n| 网络中断 | 带外管理能否登录、网络设备告警 |\n| 系统 hang（内核 deadlock） | 串口/console 日志、watchdog 重启记录 |\n\n## 二、节点还在，但 K8s 认为它 NotReady\n\n| 原因 | 排查 |\n|---|---|\n| **kubelet 挂了** | `systemctl status kubelet`、`journalctl -u kubelet` |\n| 容器运行时异常 | `systemctl status containerd`、`crictl ps` |\n| **节点资源 Pressure** | `kubectl describe node` 看 MemoryPressure/DiskPressure |\n| 与 apiserver 网络不通 | kubelet 日志里的连接错误 |\n| 证书过期 | kubelet 日志中的 `x509` 报错 |\n\n## 三、排查顺序（从节点自身往外）\n\n1. **能上机器吗**（SSH/带外）→ 不能则查硬件与网络；\n2. **系统层**：`dmesg -T | tail`、`df -h`、`free -h`、`journalctl -k`；\n3. **服务层**：kubelet、containerd 状态与日志；\n4. **K8s 视角**：`kubectl describe node` 的 Conditions 与 Events；\n5. **影响面**：该节点上的 Pod 是否已被其他节点重建。\n\n## 恢复后要确认的事\n\n节点恢复 Ready 后要检查：\n- 原来的 Pod 是否已重建（可能都跑到其他节点了）；\n- 是否需要驱逐回均衡（`kubectl drain`/重新调度）；\n- DaemonSet 是否已重新覆盖该节点。\n\n**一个高频真相**：多数「节点宕机」其实是**磁盘满或 kubelet 崩溃**，而不是硬件问题 —— 先查这两个能快速定论。",
+    "tags": [
+      "节点故障",
+      "kubelet",
+      "排查"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4755,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "我想把 Pod 调度到某个节点，有哪些方法？",
+    "answer": "**从「最简单」到「最灵活」共五种办法。**\n\n| 方法 | 写法 | 特点 |\n|---|---|---|\n| **nodeName**（最直接） | `spec.nodeName: node-1` | 硬指定，**绕过调度器**；节点不存在则 Pending |\n| **nodeSelector** | `nodeSelector: { disktype: ssd }` | 按标签精确匹配（硬约束） |\n| **节点亲和性** | nodeAffinity（required/preferred） | 支持表达式与软约束 |\n| **污点容忍** | Pod 加 toleration | 用于「节点只接受特定 Pod」 |\n| **Pod 反亲和** | podAntiAffinity | 让副本避开某节点 |\n\n## 关键区别：nodeName 与 nodeSelector\n\n- `nodeName` 直接写死节点名 → **调度器不参与**，也不做资源检查；节点不存在就一直 Pending；\n- `nodeSelector` 走正常调度流程 → 会检查资源与污点。\n\n**生产建议用 nodeSelector/亲和性**，不要写 nodeName（节点换名或下线就废了）。\n\n## 常见「调不过去」的原因\n\n| 原因 | 排查 |\n|---|---|\n| 节点有污点，Pod 没容忍 | `kubectl describe node` 看 Taints |\n| 节点资源不足（requests 超了） | 看 Allocated resources |\n| 标签写错/没打 | `kubectl get nodes --show-labels` |\n| 节点 NotReady | Pod 不会调度到 NotReady 节点 |\n\n## 一个实用技巧\n\n临时把一个 Pod 拉到指定节点调试：\n\n```bash\nkubectl run debug --image=busybox -it --rm \\\n  --overrides='{\"spec\":{\"nodeName\":\"node-2\"}}' -- sh\n```\n\n这种一次性场景用 nodeName 没问题，长期运行的服务不要这么写。",
+    "tags": [
+      "调度",
+      "nodeSelector",
+      "nodeName",
+      "亲和性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4756,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "有些 Pod 比较吃 CPU、有些比较吃内存，有什么调度方案？",
+    "answer": "**核心思路：让「资源画像」与「节点能力」匹配，避免 CPU 型与内存型 Pod 争抢同一维度。**\n\n## 一、用 requests 表达资源画像（基础）\n\n调度器默认按 **requests** 做资源预留：\n\n```yaml\n# CPU 型\nresources:\n  requests: { cpu: 2,   memory: 1Gi }\n# 内存型\nresources:\n  requests: { cpu: 500m, memory: 8Gi }\n```\n\n这样调度器天然会把 CPU 型放到 CPU 富余的节点、内存型放到内存富余的节点。**这是最基础也最有效的一步**，很多人却只写 limits。\n\n## 二、按节点类型打标签（更可控）\n\n```bash\nkubectl label node node-a workload=cpu\nkubectl label node node-b workload=mem\n```\n\nPod 用 nodeAffinity 或 nodeSelector 指定类型。\n\n## 三、用亲和/反亲和做「互补搭配」\n\n把 CPU 型与内存型 Pod **反亲和**到不同节点，避免两种压力叠加在同一台。\n\n## 四、异构节点混部\n\n| 节点类型 | 适合 |\n|---|---|\n| 高主频少核 | 单线程重计算 |\n| 多核大内存 | 并发服务、JVM 应用 |\n| 大内存少核 | 缓存、内存数据库 |\n\n## 五、进阶：拓扑与 NUMA\n\n- `topologySpreadConstraints` 让副本在节点/机架间均匀分布；\n- CPU 密集型应用关注 **NUMA 亲和** 与 CPU 绑核（通过 CPU Manager 静态策略）。\n\n## 一个容易被追问的点\n\n「只设 limits 不设 requests 会怎样？」→ 调度器认为该 Pod 需求为 0，会**超量调度到节点上**，资源争抢时不均衡，且 QoS 降为 Burstable。\n\n**结论**：requests 是调度依据，limits 是运行上限 —— 两者都要认真设。",
+    "tags": [
+      "调度",
+      "requests",
+      "资源画像",
+      "亲和"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4757,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "访问一个站点返回 5xx，如何快速定位问题？",
+    "answer": "**先看是哪个 5xx、哪一层返回的，再按链路往下钻。**\n\n## 第一步：分清 5xx 的来源\n\n| 码 | 常见含义 | 典型来源 |\n|---|---|---|\n| **502** | 网关收到无效响应 / 连不上后端 | Nginx/网关 |\n| **504** | 后端超时 | Nginx/网关 |\n| **503** | 服务不可用（无可用后端/限流） | 网关或应用 |\n| **500** | 应用内部错误 | 应用本身 |\n\n**关键判断**：502/504 通常是**网关层**写的，500 通常是**应用层**抛的。看响应头/错误页能区分。\n\n## 第二步：按链路定位\n\n```\n用户 → CDN → LB → 网关(Nginx) → 应用(InPod) → 依赖(DB/缓存)\n```\n\n| 层 | 查什么 |\n|---|---|\n| CDN/LB | 回源状态码、健康检查是否把后端摘了 |\n| 网关 | access.log 的 status、upstream_response_time |\n| 应用 | 应用日志、Pod 是否重启、`kubectl logs --previous` |\n| 依赖 | DB 连接数、慢查询、缓存命中 |\n\n## 第三步：最快的三个手段\n\n1. **看网关 access.log**：status + upstream 耗时 → 直接知道是后端慢还是后端挂；\n2. **curl 直连后端**（绕过网关）：能通说明网关→后端链路有问题，不通说明后端本身有问题；\n3. **看 Pod 状态**：`kubectl get pods` 有没有 CrashLoop/Evicted/OOM。\n\n## 常见「5xx 但不是应用 bug」的情况\n\n| 现象 | 真实原因 |\n|---|---|\n| 全部 502 | 后端全挂 / 健康检查导致全被摘 |\n| 部分 502 | 只有部分后端异常（滚动发布中新 Pod 未 Ready 就被打流量） |\n| 504 集中出现 | 后端处理慢（慢查询、下游超时） |\n| 503 | 达到限流阈值 / 连接池耗尽 |\n\n**排查口诀**：502 查「连不连得上」，504 查「后端慢不慢」，500 查「应用为什么抛错」。",
+    "tags": [
+      "5xx",
+      "502",
+      "504",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4758,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如果让你主持 K8s 迁移工作，你会怎么做？",
+    "answer": "**分四阶段：摸清现状 → 试点 → 分批迁移 → 收尾优化。核心是「每一步都能回退」。**\n\n## 一、现状盘点（最关键，容易被跳过）\n\n- 有多少服务、什么类型（无状态/有状态）？\n- 依赖什么（本地文件、特殊网络、硬件绑定）？\n- 现有发布与监控体系是什么？\n- **哪些是硬骨头**（数据库、老系统、GUI 应用）。\n\n## 二、平台准备（与业务迁移并行）\n\n| 项 | 要点 |\n|---|---|\n| 集群规划 | 节点规格、CNI 选型、存储方案（CSI） |\n| 基础能力 | 镜像仓库、日志采集、监控告警、CI/CD 接入 |\n| 规范 | 资源 requests/limits、探针、标签规范、命名空间划分 |\n\n**没有监控就迁等于裸奔** —— 平台能力要先于业务就绪。\n\n## 三、分批迁移（按风险递增）\n\n1. **试点**：选 1 个边缘无状态服务，跑通全流程（构建→部署→监控→回滚）；\n2. **无状态批量**：同类服务按模板迁移，建立标准化清单；\n3. **有状态**：StatefulSet + 存储方案，单独评估；\n4. **老系统**：评估是否容器化，有些「不迁」是更理性的选择。\n\n## 四、每批必须做的一件事\n\n**准备回退路径**：旧环境先不拆，保留双跑窗口；流量切换用灰度（百分比 → 全量）。\n\n## 五、最容易被忽略的风险\n\n| 风险 | 应对 |\n|---|---|\n| 网络（Pod CIDR 与宿主网段冲突） | 提前规划网段，与网络团队确认 |\n| 存储性能 | 有状态服务提前压测 IO |\n| 团队能力 | 培训和 runbook，不能只靠一个人 |\n| 成本 | 云上网络与存储常超预算 |\n\n## 面试加分点\n\n主动说「不迁什么」—— 例如 Windows GUI 应用、强依赖特定内核模块的服务，硬迁成本高于收益。",
+    "tags": [
+      "迁移",
+      "规划",
+      "灰度"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4759,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "HPA 是怎么实现的？实际使用中会遇到哪些问题？",
+    "answer": "**HPA = 周期性采集指标 → 按目标值计算所需副本 → 调整 Deployment/StatefulSet 的 replicas。**\n\n## 工作流程\n\n1. **指标来源**：\n   - 内置：`resources`（CPU/内存，需 metrics-server）\n   - 自定义：Prometheus Adapter 暴露的指标（QPS、队列长度等）\n2. **计算**：`期望副本 = 当前副本 × (当前指标 / 目标指标)`，再按容忍度判断是否真的调整；\n3. **执行**：更新目标对象的 `replicas`；\n4. **冷却**：有扩容/缩容的冷却窗口，避免抖动。\n\n## 实际最常见的五个问题\n\n| 问题 | 原因 |\n|---|---|\n| **完全不扩缩容** | 没装 metrics-server、或 requests 未设置（无基准无法算比率） |\n| **反复抖动** | 目标值设得过紧、冷却时间太短 |\n| **扩容了但没用** | 瓶颈不在 CPU/内存（是 DB、连接池、下游） |\n| **扩不上去** | 节点资源不足 → 新 Pod Pending |\n| **只看 CPU 不准** | 业务特征是 QPS/延迟，CPU 曲线与负载不线性 |\n\n## 关键前提（容易漏）\n\n**HPA 的 CPU 百分比是相对 `requests` 计算的** —— 没设 requests 就完全无法工作。这是「配了 HPA 却不生效」的第一大原因。\n\n## 更好的实践\n\n1. **用自定义指标**（QPS、并发数、队列积压）而不是只看 CPU；\n2. 配合 **VPA**（纵向扩资源）与 **Cluster Autoscaler**（扩节点），否则 HPA 扩出来的 Pod 无处可去；\n3. 目标值留缓冲（如 CPU 目标 60% 而不是 90%）；\n4. **扩容有延迟**（Pod 启动 + 预热），要配合排队/限流避免雪崩。\n\n## 一句话总结\n\nHPA 只解决「副本数」这一个维度，解决不了「节点不够」和「瓶颈在别处」——这两件事要靠 Autoscaler 和架构优化。",
+    "tags": [
+      "HPA",
+      "自动扩缩容",
+      "metrics-server"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4760,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "说一下你们公司的发布流程以及 CI/CD 实现思路？",
+    "answer": "**（这题考「体系化表达」，重点是说清链路与卡点，而不是罗列工具名。）**\n\n## 典型链路\n\n```\n提交代码 → CI（lint/单测/构建镜像）→ 推送镜像仓库\n       → 更新部署清单（改镜像 tag / GitOps 提交）\n       → CD（灰度 → 验证 → 全量）→ 观察与回滚\n```\n\n## 一、CI 阶段的关键设计\n\n| 环节 | 要点 |\n|---|---|\n| 代码检查 | lint + 单元测试，**PR 阶段几分钟内必须出结果** |\n| 镜像构建 | 多阶段构建、不可变 tag（git sha） |\n| 安全扫描 | 镜像漏洞扫描、依赖检查 |\n| 制品 | 推送 Harbor/私有仓库，禁止 latest 上生产 |\n\n## 二、CD 阶段的形态\n\n| 形态 | 说明 |\n|---|---|\n| **推送式**（传统） | CI 持集群凭据，直接 `kubectl apply` |\n| **拉取式**（GitOps） | 集群内控制器（Argo CD/Flux）拉 Git 并调和 |\n\nGitOps 的优势：凭据不进 CI、漂移自动纠正、回滚=回退 commit。\n\n## 三、灰度与验证\n\n1. 先发 1 个副本或小流量 → 看错误率/延迟；\n2. 逐步扩到 50%、100%；\n3. 每步都设**自动回滚条件**（错误率超阈值就撤）。\n\n## 四、必须有的两样东西\n\n- **可回滚**：镜像 tag 可追溯 + 一次回滚命令能生效；\n- **可观测**：发布期间的错误率、延迟指标要能当场看到。\n\n**没有这两样，「自动化发布」只是「自动出事故」。**\n\n## 面试加分点\n\n说清「发布失败的判定标准」和「谁来决定回滚」，比说用了什么工具更加分。",
+    "tags": [
+      "CI/CD",
+      "发布流程",
+      "GitOps"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4761,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如何优化 Kubernetes 集群的资源利用率？",
+    "answer": "**核心矛盾：留余量会浪费，压太紧会雪崩。要分「看得见的浪费」与「结构性问题」。**\n\n## 一、先做度量（不然都是猜）\n\n- 对比 **requests 总量 vs 实际使用量**：`requests` 虚高是最常见的浪费源；\n- 看节点 Allocated vs 实际用量；\n- 找出长期低负载的命名空间/服务。\n\n## 二、五个具体手段\n\n| 手段 | 作用 | 注意 |\n|---|---|---|\n| **校准 requests** | 按 P95 实际用量设定，别拍脑袋翻倍 | 调小后要观察是否被 OOM/驱逐 |\n| **VPA**（纵向自动调） | 自动调整 requests/limits | 建议「只推荐不自动」，自动模式会重启 Pod |\n| **HPA**（横向） | 按负载伸缩副本数 | 要留冷启动与扩容延迟 |\n| **提高节点密度** | 同规格节点、合理装箱 | 别把故障域集中在一台 |\n| **驱逐低价值负载** | 清理僵尸 Deployment | 需先确认无人使用 |\n\n## 三、结构性优化\n\n- **混合部署**：在线业务（延迟敏感）与离线任务（CPU 密集）错峰共用，用优先级与抢占；\n- **拓扑均衡**：`topologySpreadConstraints` 避免资源碎片；\n- **大页/NUMA/绑核**：对高性能场景减少浪费；\n- **Serverless 化**：低流量服务用 KEDA 缩到 0。\n\n## 四、容易被忽略的浪费\n\n1. **DaemonSet 的资源占用**：每节点都要一份，规模大时不小；\n2. **镜像体积与拉取带宽**；\n3. **over-provisioning**：很多团队按峰值 × 2 预留，利用率常年 30%；\n4. **命名空间配额**（ResourceQuota）不足导致「不敢用」。\n\n## 一个诚实的结论\n\n利用率不是越高越好：**留 20~30% 余量**是为了应对故障转移与突发流量。追求 95% 利用率等于放弃弹性。",
+    "tags": [
+      "资源利用率",
+      "requests",
+      "VPA",
+      "混部"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4762,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Kubernetes 网络策略（NetworkPolicy）的实现机制是什么？",
+    "answer": "**NetworkPolicy 只是「声明」，真正拦截流量的是 CNI 插件写下的规则。**\n\n## 一、K8s 本体只负责「存储策略」\n\n- NetworkPolicy 对象存在 etcd 里；\n- K8s **不实现**流量控制 —— 它把策略交给 CNI 插件。\n\n## 二、谁来执行\n\n| CNI | 能否实现 NetworkPolicy |\n|---|---|\n| **flannel** | ❌ 不支持（策略对象存在但不生效） |\n| **calico** | ✅ 用 iptables/eBPF 下发规则 |\n| **Cilium** | ✅ 用 eBPF |\n\n## 三、策略怎么表达\n\n```yaml\nkind: NetworkPolicy\nspec:\n  podSelector: { matchLabels: { app: db } }   # 保护哪些 Pod\n  policyTypes: [Ingress, Egress]\n  ingress:\n    - from:\n        - podSelector: { matchLabels: { app: api } }   # 只允许 api 访问\n      ports:\n        - port: 3306\n```\n\n## 四、三个关键语义（常被误解）\n\n1. **默认全通**：没有策略时，所有 Pod 可互相访问；\n2. **一旦有策略选中该 Pod，就变成「白名单」**：只允许策略里写明的流量，其余全部拒绝；\n3. **Ingress 与 Egress 独立**：只写 ingress 不影响出方向。\n\n**最容易踩的坑**：给某个 Pod 加了一条 ingress 策略后，它原本能访问的其他东西全部断了 —— 这不是 bug，是白名单语义。\n\n## 五、排查\n\n| 现象 | 检查 |\n|---|---|\n| 策略不生效（还是全通） | CNI 是否支持 NetworkPolicy |\n| 加了策略后全断 | 策略是白名单，补全必要规则 |\n| 部分流量有问题 | 策略的 podSelector 与 ports 是否匹配实际 |\n\n工具：calico 用 `calicoctl get networkpolicy -o yaml`，Cilium 用 `cilium policy trace`。",
+    "tags": [
+      "NetworkPolicy",
+      "CNI",
+      "calico"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4763,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "在 Kubernetes 中如何实现跨集群的服务发现？",
+    "answer": "**跨集群没有原生方案，要按「网络可达性」和「DNS 同步」两条腿解决。**\n\n## 三种主流方案\n\n| 方案 | 原理 | 适用 |\n|---|---|---|\n| **Submariner** | 建立集群间加密隧道 + 同步 Service 端点 | 通用，开源常用 |\n| **多集群 DNS（ExternalDNS + CoreDNS）** | 把远端 Service 导入本地 DNS | 只需「按域名访问」 |\n| **服务网格（Istio 多集群）** | 控制面统一，流量跨集群路由 | 已有 Istio 的环境 |\n| **云厂商方案** | 同一 VPC/对等连接 + 全局 LB | 同云同账号 |\n\n## 关键难点（不只是 DNS）\n\n1. **网络可达**：两个集群的 Pod CIDR 必须互通（专线/VPN/对等连接），且网段不能冲突；\n2. **DNS 同步**：本地 CoreDNS 要能解析远端 Service 名；\n3. **身份与策略**：跨集群的 NetworkPolicy/鉴权如何统一；\n4. **故障域**：跨集群调用会引入额外延迟与故障点。\n\n## 一个更朴素的做法\n\n如果只是「A 集群要调 B 集群的某个服务」：\n\n- 用 **ExternalName Service** 指向 B 的入口域名；\n- 或者直接把 B 暴露成一个固定入口（LB），A 里当外部依赖访问。\n\n**这比上多集群方案简单得多**，多数场景够用。\n\n## 面试加分点\n\n先说清「为什么需要跨集群」（容灾、多活、业务隔离），再选方案 —— 不要为了跨集群而跨集群，它会显著增加运维复杂度。",
+    "tags": [
+      "跨集群",
+      "服务发现",
+      "Submariner"
+    ],
+    "frequency": "低频"
+  },
+  {
+    "id": 4764,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如何在 Kubernetes 中实现灰度发布？",
+    "answer": "**四种手段，按精细度递增：副本比例 → 流量切分 → 按 Header → 按用户分桶。**\n\n| 手段 | 做法 | 粒度 |\n|---|---|---|\n| **多 Deployment + 副本比例** | 新旧两个 Deployment，靠副本数比例分流 | 粗（如 10%） |\n| **Service 双版本 + Ingress 权重** | Nginx Ingress 的 `canary-weight` | 中 |\n| **按 Header/Cookie 切流** | `canary-by-header` | 细（可指定测试用户） |\n| **服务网格（Istio）** | VirtualService 权重/匹配规则 | 最细 |\n| **Feature Flag** | 应用层开关（与 K8s 无关） | 业务维度 |\n\n## 最常用的两种具体做法\n\n**A. 副本比例法（最简单）**\n```\n旧 Deployment replicas: 9\n新 Deployment replicas: 1\nService selector 同时选中两者（共用 app 标签）\n```\n缺点：分流比例由副本数决定，不够精确；且两版共用标签，难以精细控制。\n\n**B. Ingress 权重法（推荐）**\n```yaml\nannotations:\n  nginx.ingress.kubernetes.io/canary: \"true\"\n  nginx.ingress.kubernetes.io/canary-weight: \"10\"\n```\n新版本单独一个 Ingress，按权重导流。\n\n## 灰度必须配套的两件事\n\n1. **指标对比**：灰度组与基线组的错误率/延迟要能分别看；\n2. **快速回滚**：把权重调回 0 即可，不要依赖「重新发布」。\n\n**没有指标对比的灰度只是「分批上线」**，出问题无法判断是灰度导致的。\n\n## 常见坑\n\n- 灰度版本与旧版本**共享同一个数据库 schema** → 回滚可能不兼容；\n- 会话粘性（session 存本地）→ 用户在两版之间跳导致状态丢失。",
+    "tags": [
+      "灰度发布",
+      "canary",
+      "Ingress"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4765,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Kubernetes 的安全最佳实践有哪些？",
+    "answer": "**按「隔离 → 权限 → 镜像 → 网络 → 审计」五层收敛。**\n\n## 一、隔离与运行时\n\n| 措施 | 说明 |\n|---|---|\n| **非 root 运行** | `securityContext.runAsNonRoot: true`、`runAsUser: 1000` |\n| **禁止特权** | `allowPrivilegeEscalation: false`、不挂 `privileged` |\n| **只读根文件系统** | `readOnlyRootFilesystem: true` |\n| **drop 全部 capabilities** | 只按需 add |\n| 不挂 `docker.sock` / 宿主敏感路径 | 挂了等于给容器宿主权限 |\n\n## 二、权限（RBAC）\n\n- 遵循**最小权限**：ServiceAccount 只给必需 verb/resource；\n- **禁止默认用 default SA 访问 apiserver**（`automountServiceAccountToken: false`）；\n- 定期审计 `cluster-admin` 绑定；\n- 用命名空间隔离 + ResourceQuota。\n\n## 三、镜像与供应链\n\n- 只用可信仓库（私有 Harbor），**禁用 latest**；\n- **镜像漏洞扫描**（Trivy 等）接入 CI；\n- 镜像签名/校验（cosign）；\n- 基础镜像最小化（distroless/alpine）。\n\n## 四、网络\n\n- 默认拒绝 + 白名单（NetworkPolicy）；\n- 控制面组件不要暴露公网；\n- 敏感服务放在独立命名空间并加策略。\n\n## 五、密钥与配置\n\n- 不要把 Secret 明文进 Git（用 SealedSecrets/SOPS/外部密钥管理）；\n- 开启 etcd 静态加密（EncryptionConfiguration）；\n- 限制谁能读 Secret（RBAC）。\n\n## 六、审计与检测\n\n- 开启 **audit log**（谁在何时做了什么）；\n- 监控异常行为（特权容器、异常 exec、异常 ServiceAccount 使用）；\n- 定期跑 CIS Benchmark（kube-bench）。\n\n## 面试加分点\n\n说清「**容器内 root ≠ 宿主 root**，但配置不当（privileged、挂宿主目录）就会变成宿主 root」——这是很多人理解偏差的地方。",
+    "tags": [
+      "安全",
+      "RBAC",
+      "securityContext",
+      "镜像"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4766,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "如何在 Docker 容器中管理秘密和敏感信息？",
+    "answer": "**核心原则：**不要**烤进镜像、不要写在 Dockerfile、不要明文进 Git。**\n\n## 四种做法（按安全性递增）\n\n| 做法 | 风险 |\n|---|---|\n| ❌ 写进 Dockerfile `ENV` | 镜像层永久留存，`docker history` 可见 |\n| ⚠️ `docker run -e` 传环境变量 | 会出现在 `docker inspect`、进程环境、崩溃转储里 |\n| ✅ **挂载文件**（`/run/secrets/`） | 只读挂载，不进镜像层 |\n| ✅ **BuildKit secrets**（构建期） | 构建时可用，**不留在最终镜像** |\n| ✅✅ **外部密钥管理**（Vault/云 Secret Manager） | 运行时拉取，可轮换、可审计 |\n\n## 构建期的正确做法\n\n```dockerfile\n# syntax=docker/dockerfile:1\nRUN --mount=type=secret,id=npmrc \\\n    cp /run/secrets/npmrc .npmrc && npm ci && rm -f .npmrc\n```\n\n```bash\ndocker build --secret id=npmrc,src=$HOME/.npmrc .\n```\n\n**关键**：secret 只在那一层可见，**不会留在镜像历史里**。\n\n## 运行期的正确做法\n\n- Docker Compose / Swarm：`secrets:` 挂载到 `/run/secrets/`\n- **K8s**：用 Secret 对象（但要注意**默认只是 base64**，需开 etcd 加密 + RBAC）\n- 生产首选：**Vault Sidecar / CSI Secret Store**，让应用从挂载文件读取短期凭据\n\n## 一个必须知道的坑\n\n**多阶段构建也不能解决「写进 Dockerfile」的问题**：只要 secret 出现在某个 `ENV` 或 `RUN` 的明文里，就可能留在中间层（除非用 `--mount=type=secret`）。\n\n## 验证是否泄漏\n\n```bash\ndocker history --no-trunc <image> | grep -i secret\ndocker run --rm <image> env | grep -i pass\n```\n\n这两条能快速确认镜像里有没有残留明文。",
+    "tags": [
+      "Secret",
+      "Docker",
+      "构建期密钥"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4767,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Docker 镜像的构建优化有哪些技巧？",
+    "answer": "**三个目标：镜像更小、构建更快、复用缓存。**\n\n## 一、让镜像更小\n\n| 技巧 | 效果 |\n|---|---|\n| **多阶段构建** | 编译工具链不进最终镜像（Go/Java 最明显） |\n| 用 **alpine/distroless** 基础镜像 | 从 ~800MB 降到 ~50MB |\n| **合并 RUN 并清理缓存** | `apt-get install && rm -rf /var/lib/apt/lists/*` 在同一层 |\n| 只拷贝必要文件 | 用 `.dockerignore` 排除 node_modules/.git |\n\n**关键概念**：每条 `RUN` 是一层，**后一层删除不能缩小前一层**。所以「安装 + 清理」必须写在同一条 RUN 里。\n\n## 二、让构建更快（利用缓存）\n\n- **把变化少的放前面**：先 `COPY package.json` + `RUN npm ci`，最后才 `COPY .`；\n- 这样改代码不会让依赖层失效；\n- 用 `--mount=type=cache` 复用包管理器缓存（BuildKit）。\n\n```dockerfile\nCOPY package*.json ./\nRUN npm ci          # 依赖不变 → 这层命中缓存\nCOPY . .            # 代码变了只影响这一层\nRUN npm run build\n```\n\n## 三、其他实用手段\n\n| 手段 | 说明 |\n|---|---|\n| **BuildKit** | 并行构建、更好的缓存 |\n| **平台交叉构建** | `buildx --platform linux/amd64,arm64` |\n| **固定基础镜像 digest** | 可复现，避免 `latest` 漂移 |\n| **分层推送** | 只推变化的层，加快部署 |\n\n## 一个常被忽略的优化\n\n**镜像层数与体积要平衡**：层数少不等于体积小；关键是每层不留垃圾。\n\n## 验证\n\n```bash\ndocker images                          # 看总体积\ndocker history <image>                 # 看哪层最大\n```",
+    "tags": [
+      "Docker",
+      "镜像优化",
+      "多阶段构建",
+      "缓存"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4768,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Docker 容器的性能监控与优化有哪些方法？",
+    "answer": "**分「怎么观测」与「怎么优化」两部分。**\n\n## 一、常用观测命令\n\n| 命令 | 看什么 |\n|---|---|\n| `docker stats` | 实时 CPU/内存/网络/磁盘（类似 top） |\n| `docker ps` | 容器是否反复重启（Restart 次数） |\n| `docker inspect` | 详细配置与状态、ExitCode |\n| `docker logs` | 应用层日志 |\n| `crictl`（K8s 环境） | 同类能力 |\n\n## 二、系统级对照\n\n容器本质是进程，**宿主机的工具同样适用**：\n\n```bash\ntop / htop              # 找高 CPU 容器（进程名可识别）\npidstat -u -t 1         # 线程级 CPU（找热点线程）\nfree -h                 # 容器内存看 cgroup 而非 free\niostat -x 1             # 磁盘 IO\ndocker stats --no-stream # 一次性快照\n```\n\n**关键认知**：容器内 `free` 看到的是宿主机内存，**不反映 limit** —— 要看 limit 得读 cgroup（`/sys/fs/cgroup/.../memory.max`）或 `docker stats`。\n\n## 三、优化方向\n\n| 问题 | 优化 |\n|---|---|\n| CPU 打满 | 找热点进程（pidstat/pstack）、限流、优化算法 |\n| 内存接近 limit | 调堆参数（JVM 用 MaxRAMPercentage）、修泄漏 |\n| IO 慢 | 检查是否共享磁盘、考虑挂载独立卷、调整存储驱动 |\n| 网络慢 | 检查 CNI/端口映射的开销、避免 NAT 频繁 |\n\n## 四、容器特有的注意点\n\n1. **CPU limits 会导致 throttle**：`cpu.max` 限死后应用会变慢（查 `cpu.stat` 的 `throttled`）；\n2. **存储驱动影响 IO**：overlay2 一般够用，高 IO 场景考虑直接挂卷；\n3. **`--network host` 可减少 NAT 开销**，但牺牲隔离。\n\n## 一句话提醒\n\n**容器性能问题的排查，八成要回到宿主机层面** —— 容器只是进程，资源争抢发生在宿主机。",
+    "tags": [
+      "Docker",
+      "性能监控",
+      "cgroup"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4769,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "etcd 怎么用命令查看集群状态？",
+    "answer": "**`etcdctl` 是入口，重点看健康、成员、端点状态与 leader。**\n\n## 常用命令\n\n```bash\n# 1. 集群健康（最常用）\nETCDCTL_API=3 etcdctl --endpoints=<ip:2379> \\\n  --cacert=/etc/etcd/ca.crt --cert=/etc/etcd/server.crt --key=/etc/etcd/server.key \\\n  endpoint health --cluster\n\n# 2. 成员列表（看有几个节点、谁是 learner）\netcdctl member list -w table\n\n# 3. 端点状态（看 raftIndex、dbSize、isLeader）\netcdctl endpoint status -w table\n\n# 4. 告警与碎片\netcdctl alarm list          # 有 NOSPACE 告警说明空间不足\netcdctl defrag              # 碎片整理（需逐节点执行）\n\n# 5. 快照备份（运维必会）\netcdctl snapshot save /backup/etcd-$(date +%F).db\n```\n\n## 关键输出怎么看\n\n| 字段 | 含义 |\n|---|---|\n| **isLeader** | 谁是 leader；只能有一个 |\n| **raftIndex / raftTerm** | 进度是否一致（差距大说明落后） |\n| **dbSize** | 数据库大小（含碎片，接近配额会报警） |\n| **errors** | 端点是否可达 |\n\n## 三个高频运维项\n\n1. **dbSize 达到配额（默认 2GB / 8GB）** → 会触发 `NOSPACE` 告警，**集群变只读**；处理：调大配额 + defrag + 清理无用 key；\n2. **成员变更**（增删节点）要走 `member add/remove`，不能直接删文件；\n3. **定期快照备份**，并**验证可恢复**（只备份不演练＝没备份）。\n\n## K8s 环境下的路径\n\nkubeadm 集群的证书在 `/etc/kubernetes/pki/etcd/`，命令要用这些证书。\n\n## 一个容易忘的点\n\n**etcd 的 apiserver 与 etcd 之间不是走 SQL**，所以「etcd 慢」会直接表现为**所有 kubectl 操作变慢** —— 这是排查「集群整体卡顿」的关键切入点。",
+    "tags": [
+      "etcd",
+      "集群状态",
+      "快照"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4770,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "k8s Service 的作用是什么？有哪些类型？",
+    "answer": "**Service 的作用：给一组 Pod 提供一个稳定的访问入口（稳定 IP + 稳定 DNS + 负载均衡）。**\n\n## 为什么需要 Service\n\nPod 是**易变的**：\n- IP 会变（重建后重新分配）；\n- 副本数会变；\n- 节点会变。\n\n如果应用直接连 Pod IP，Pod 一重建就「连接失效」。Service 解决的就是这件事：\n\n1. **稳定 IP**（ClusterIP，虚拟地址）；\n2. **稳定 DNS 名**（`<service>.<ns>.svc.cluster.local`）；\n3. **自动负载均衡**（把流量分给后端 Ready 的 Pod）。\n\n## 四种类型\n\n| 类型 | 作用 | 场景 |\n|---|---|---|\n| **ClusterIP**（默认） | 集群内虚拟 IP | 服务间调用 |\n| **NodePort** | 每节点开端口（30000-32767） | 无 LB 时对外暴露 |\n| **LoadBalancer** | 对接云 LB，分配外部 IP | 云上生产对外 |\n| **ExternalName** | DNS CNAME 到外部域名 | 包装外部依赖 |\n\n## 补充：Headless Service\n\n`clusterIP: None` —— 不分配虚拟 IP，DNS 直接返回各 Pod 地址，供 **StatefulSet** 使用（获得稳定网络标识）。\n\n## 关键机制（面试常问）\n\n**Service 本身不是进程**，它只是一组规则：\n- **kube-proxy** 在每个节点上把 Service 的转发规则写进 iptables/IPVS；\n- 后端列表由 **Endpoints/EndpointSlice** 维护（由 selector 自动关联）。\n\n## 最高频故障\n\n`kubectl get endpoints <svc>` **为空** → selector 没选中任何 Pod（标签不匹配或 Pod 未 Ready）。这是 Service 不通的第一大原因。",
+    "tags": [
+      "Service",
+      "类型",
+      "Endpoints"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4771,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "kube-proxy 是基于什么实现的？有哪些工作模式？",
+    "answer": "**kube-proxy 不转发流量，它只负责「写内核转发规则」。**\n\n## 三种模式\n\n| 模式 | 原理 | 特点 |\n|---|---|---|\n| **iptables**（默认） | 为每个 Service 生成规则链，用 `statistic random` 做负载均衡 | 规则是链表，**Service 多时线性遍历变慢** |\n| **IPVS** | 用内核 IPVS 虚拟服务表，哈希查找 | **O(1) 查找**，支持更多调度算法，大规模更优 |\n| **nftables**（较新） | 用 nftables 替代 iptables | 规则更高效，逐步推广 |\n| userspace（已淘汰） | 用户态转发 | 性能差，仅历史 |\n\n## 关键理解：它不是「代理进程」\n\n名字叫 proxy，但**它不接管流量**：\n\n```\n请求 → 内核 iptables/IPVS 规则 → DNAT 到某个后端 Pod IP\n```\n\n所以：\n- Service 的「负载均衡」实际是**内核规则**在做；\n- kube-proxy 只是**规则的维护者**（监听 Service/Endpoint 变化并更新规则）。\n\n## iptables 与 IPVS 的选择\n\n| 场景 | 建议 |\n|---|---|\n| Service 少于几百 | iptables 够用 |\n| Service 上千 / 节点多 | **IPVS**（否则规则链过长，延迟升高） |\n\n## 常见问题\n\n| 现象 | 原因 |\n|---|---|\n| Service 不通 | kube-proxy 未运行 / 规则没同步 |\n| 大规模集群延迟高 | iptables 规则链过长 → 换 IPVS |\n| 换模式后异常 | 切换需清理旧规则，并确认内核模块（IPVS 需 `ip_vs`） |\n\n## 排查命令\n\n```bash\n# iptables 模式\niptables-save | grep KUBE-SERVICES | head\n# IPVS 模式\nipvsadm -Ln --stats\n```",
+    "tags": [
+      "kube-proxy",
+      "iptables",
+      "IPVS"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4772,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "k8s 怎么部署一个有状态服务？",
+    "answer": "**用 StatefulSet + Headless Service + 独立 PVC，三件套。**\n\n## 为什么不能用 Deployment\n\nStatefulSet 给出三样 Deployment 没有的东西：\n\n| 特性 | 说明 |\n|---|---|\n| **稳定网络标识** | Pod 名固定有序（`mysql-0`、`mysql-1`），配合 Headless Service 得到稳定 DNS |\n| **独立存储** | 每个副本一个 PVC（`volumeClaimTemplates`），重建后仍挂回原盘 |\n| **有序启停** | 默认按序启动、逆序停止（可配 `podManagementPolicy`） |\n\n## 部署步骤\n\n1. **准备存储**：StorageClass（动态供给）或预先创建 PV；\n2. **创建 Headless Service**（`clusterIP: None`）—— StatefulSet 用它控制网络域；\n3. **写 StatefulSet**：\n\n```yaml\nkind: StatefulSet\nspec:\n  serviceName: mysql            # 指向 Headless Service\n  replicas: 3\n  selector: { matchLabels: { app: mysql } }\n  template:\n    spec:\n      containers:\n        - name: mysql\n          image: mysql:8.0\n          volumeMounts:\n            - { name: data, mountPath: /var/lib/mysql }\n  volumeClaimTemplates:         # 每个副本自动创建一个 PVC\n    - metadata: { name: data }\n      spec:\n        accessModes: [ReadWriteOnce]\n        resources: { requests: { storage: 10Gi } }\n```\n\n4. **验证**：`kubectl get pods` 看到 `mysql-0/1/2`；DNS 用 `mysql-0.mysql` 访问。\n\n## 关键注意点\n\n| 点 | 说明 |\n|---|---|\n| **集群初始化** | 有序启动只是「顺序」，**不保证数据复制**；主从/集群初始化仍需应用层处理（如 mysql 的初始化脚本或 operator） |\n| **PVC 不会随 Pod 删除** | StatefulSet 缩容不会删 PVC，需手工清理 |\n| **访问单个副本** | 只能通过 Headless Service 的 DNS，普通 Service 会负载到所有副本 |\n\n## 生产建议\n\n复杂的数据库/中间件（MySQL 主从、Redis 集群、Kafka）建议用 **Operator**，它把「初始化、扩缩、故障处理」都编码了，比自己写 StatefulSet 可靠得多。",
+    "tags": [
+      "StatefulSet",
+      "有状态",
+      "Headless Service",
+      "PVC"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4773,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "有没有搭建过 Harbor 仓库？怎么做主从高可用？",
+    "answer": "**Harbor 的高可用分两层：镜像仓库本身（主从复制）+ 数据库/Redis 高可用。**\n\n## 一、Harbor 的复制（主从）\n\nHarbor 自带 **Replication** 功能：\n\n- 在「系统管理 → 仓库管理」里添加对端仓库；\n- 创建**复制策略**（按项目/tag 规则，push/pull 方向）；\n- 由 Harbor 实例主动推送/拉取镜像，**不是实时双向同步**。\n\n**关键限制**：\n- 复制是**异步**的，主挂了可能丢最近推送；\n- 用户/项目/策略等元数据**不随镜像复制**，要另行处理；\n- 客户端需要改 registry 地址才能切到从（或者用 DNS 切换）。\n\n## 二、真正的高可用形态\n\n| 组件 | 高可用做法 |\n|---|---|\n| **Harbor core/portal** | 多实例 + LB |\n| **数据库**（PostgreSQL） | 主从 + 故障切换（元数据的关键） |\n| **Redis** | 哨兵或集群 |\n| **存储后端** | 共享对象存储（S3/MinIO/OBS）**而不是本地盘** |\n| **镜像仓库** | 共享存储 + 多实例，或依赖底层对象存储 |\n\n## 三、推荐架构（生产常用）\n\n```\n        LB (VIP)\n          ↓\n  Harbor-A / Harbor-B（多实例）\n     ↓            ↓\n  共享对象存储（S3/MinIO）\n  共享 PostgreSQL（主从）\n  共享 Redis（哨兵）\n```\n\n**核心**：把**状态外置**（存储、DB、Redis），Harbor 实例本身无状态，就能水平扩展。\n\n## 四、常见坑\n\n1. **用本地磁盘存镜像** → 多实例无法共享，必须换对象存储；\n2. **只做主从复制** → 元数据不同步，切过去项目/用户权限会丢；\n3. **证书与域名**：切换后客户端要信任新地址；\n4. **复制带宽**：跨机房复制大镜像会吃满带宽，要限速/错峰。\n\n## 验证\n\n- push 一个镜像到主 → 检查从端是否出现；\n- 手工停主节点 → 客户端（改地址）能否正常 pull/push。",
+    "tags": [
+      "Harbor",
+      "高可用",
+      "镜像仓库"
+    ],
+    "frequency": "中频"
   },
   {
     "id": 4800,
@@ -69910,5 +70730,34 @@
       "PYTHONUNBUFFERED"
     ],
     "frequency": "中频"
+  },
+  {
+    "id": 5610,
+    "type": "short",
+    "category": "Python",
+    "difficulty": "中等",
+    "question": "如何在 Python 中管理并发和并行编程？",
+    "answer": "**并发 ≠ 并行：并发是「交替处理多任务」，并行是「同时执行」。Python 的选择受 GIL 约束。**\n\n## 三种模型的定位\n\n| 模型 | 适合 | 受 GIL 影响 | 开销 |\n|---|---|---|---|\n| **多线程**（threading） | I/O 密集（网络、磁盘） | 不影响（等待时释放 GIL） | 中 |\n| **多进程**（multiprocessing） | **CPU 密集**（计算、加解密） | 不受影响（独立解释器） | 大 |\n| **协程**（asyncio） | 高并发 I/O（数千连接） | 单线程内切换 | 极小 |\n\n## 具体写法\n\n**线程池 / 进程池（最常用）**\n```python\nfrom concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor\n\n# I/O 密集\nwith ThreadPoolExecutor(max_workers=20) as ex:\n    results = list(ex.map(fetch, urls))\n\n# CPU 密集\nwith ProcessPoolExecutor(max_workers=4) as ex:   # ≈ CPU 核数\n    results = list(ex.map(compute, items))\n```\n\n**asyncio**\n```python\nimport asyncio\n\nasync def main():\n    await asyncio.gather(*[fetch_async(u) for u in urls])\n\n# 阻塞调用要丢给线程池\nawait loop.run_in_executor(None, blocking_fn, arg)\n```\n\n## 关键选型规则\n\n1. **先判断瓶颈**：CPU 密集 → 多进程；I/O 密集 → 线程或协程；\n2. **协程不能有阻塞调用**：一个 `requests.get` 或 `time.sleep` 会阻塞整个事件循环；\n3. **多进程注意**：进程间通信（Queue/Pipe）有序列化开销、内存翻倍；容器里 `fork` 大内存需谨慎（Python 3.12+ 默认 forkserver 更稳）。\n\n## 常见错误（面试高频）\n\n| 错误 | 后果 |\n|---|---|\n| 用多线程做 CPU 计算 | 抢 GIL，比单线程还慢 |\n| 协程里调同步库 | 所有协程一起卡住 |\n| 线程数开太多 | 内存与切换开销大（每线程约 8MB 栈） |\n| 多进程共享大对象 | 每个进程一份拷贝，内存爆 |\n\n## 混合场景的标准做法\n\n协程里做 CPU 密集 → `run_in_executor` 丢给进程池；线程池里做 CPU 密集 → 同样是错，要换进程池。",
+    "tags": [
+      "并发",
+      "并行",
+      "asyncio",
+      "多进程"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5611,
+    "type": "short",
+    "category": "Python",
+    "difficulty": "中等",
+    "question": "Python 中内存泄漏怎么诊断和解决？",
+    "answer": "**先分清「真泄漏」还是「缓存/碎片」，再定位「谁在持有对象」。**\n\n## 第一步：确认是否真泄漏\n\n| 现象 | 判断 |\n|---|---|\n| RSS 持续上升，GC 后不回落 | 泄漏 |\n| 重启后回落 | 泄漏 |\n| 只是高但不涨 | 正常（缓存/预分配） |\n\n## 第二步：两个核心工具\n\n**tracemalloc —— 回答「哪一行分配最多」**\n```python\nimport tracemalloc\ntracemalloc.start(25)\ns1 = tracemalloc.take_snapshot()\n# ... 跑一段时间 ...\ns2 = tracemalloc.take_snapshot()\nfor stat in s2.compare_to(s1, 'lineno')[:10]:\n    print(stat)\n```\n\n**objgraph —— 回答「谁在引用它」**\n```python\nimport objgraph\nobjgraph.show_growth(limit=10)           # 增长最多的类型\nobjgraph.show_backrefs(obj, max_depth=5) # 引用链\n```\n\n## 第三步：对照五个高频来源\n\n| 来源 | 说明 |\n|---|---|\n| **全局缓存无上限** | dict 只增不减、`lru_cache(maxsize=None)` |\n| **监听/回调未注销** | 注册了 handler 却没 remove |\n| **ThreadLocal 未清理** | 线程池复用导致数据累积 |\n| **循环引用 + `__del__`** | 对象永不回收 |\n| **大对象挂在长生命周期集合里** | 请求对象被塞进全局 list |\n\n## 第四步：特殊情况\n\n**tracemalloc 平稳但 RSS 涨** → 不是 Python 层的问题：\n- `glibc` 内存碎片（可设 `MALLOC_ARENA_MAX=2`，或换 jemalloc/mimalloc）；\n- C 扩展未释放（用 valgrind 排查）。\n\n## 在线排查手段\n\n```bash\npy-spy dump --pid <pid>        # 看卡在哪\npyrasite/gdb 注入             # 深挖引用\n```\n\n## 解决思路\n\n1. 给缓存加上限（LRU/TTL）；\n2. 回调要成对注册/注销；\n3. 用 `weakref` 打破强引用；\n4. 明确对象生命周期（请求级对象不要挂到全局）。",
+    "tags": [
+      "内存泄漏",
+      "tracemalloc",
+      "objgraph"
+    ],
+    "frequency": "高频"
   }
 ]
