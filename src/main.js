@@ -4,7 +4,6 @@ import App from './App.vue'
 import router from './router'
 import './assets/styles.css'
 import { bindFlushOnHide } from './utils/storage'
-import { migrateEarlyIds } from './utils/idMigration'
 import { useSettingsStore } from './stores/settingsStore'
 import { useStudyStore } from './stores/studyStore'
 import { useBankStore } from './stores/bankStore'
@@ -29,10 +28,6 @@ settings.init()
 // 只需要摘要字段。需要答案的页面（详情/刷题）会调 load() 或 hydrateCategory() 补齐。
 const bank = useBankStore()
 bank.loadIndex().catch(() => {})
-
-// 早期题目 id 迁移（1–119 → 各分类编号段）：必须在 studyStore 读记录之前执行，
-// 否则老用户在这些题上的进度会因 id 失效而退出统计。幂等，只跑一次。
-migrateEarlyIds()
 
 // 触达一次 studyStore，确保记录从 localStorage 读入
 useStudyStore()
