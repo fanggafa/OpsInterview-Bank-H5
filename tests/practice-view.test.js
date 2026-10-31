@@ -266,6 +266,25 @@ describe('刷题页 · 「看答案」按钮与标签同行', () => {
     expect(body.text()).toContain('解析')
   })
 
+  /**
+   * 回归：按钮要「点好几次」才展开/收起。
+   * 连续点三次，状态必须严格交替：开 → 关 → 开。
+   */
+  it('连续点击时状态严格交替（不必点多次）', async () => {
+    const { wrapper } = await mountPractice({ studyMode: 'practice', category: 'MySQL' })
+    const toggle = wrapper.find('.qcard-p__toggle')
+
+    const states = []
+    for (let i = 0; i < 3; i++) {
+      await toggle.trigger('click')
+      await flushPromises()
+      await wrapper.vm.$nextTick()
+      states.push(wrapper.findAll('.answer--open').length)
+    }
+
+    expect(states).toEqual([1, 0, 1])
+  })
+
   it('未作答时就展开：不显示判定结果，但能看到正确答案', async () => {
     const { wrapper } = await mountPractice({ studyMode: 'practice', category: 'MySQL' })
     await wrapper.find('.qcard-p__toggle')

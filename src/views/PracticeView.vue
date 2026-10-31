@@ -814,7 +814,10 @@ const emptyDesc = computed(() => {
           <div class="qcard-p__head">
             <h2 class="qcard-p__q">{{ current.question }}</h2>
 
-            <div v-if="current.tags?.length || short" class="qcard-p__qfoot">
+            <!-- 题脚：标签 + 看答案按钮。
+               两种题型都有「看答案」按钮，所以这行恒显示；
+               没有标签时只有按钮，靠右对齐（见 .qcard-p__qfoot 的 justify-content）。 -->
+          <div class="qcard-p__qfoot">
               <ul v-if="current.tags?.length" class="qcard-p__tags">
                 <li v-for="tag in current.tags" :key="tag" class="qcard-p__tag">#{{ tag }}</li>
               </ul>
@@ -1453,6 +1456,8 @@ const emptyDesc = computed(() => {
   align-items: center;
   gap: 3px;
   height: 28px;
+  /* 始终贴最右：无标签时（只有按钮）也靠右，不依赖前面的标签撑开 */
+  margin-left: auto;
   padding: 0 9px 0 11px;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--c-primary) 30%, transparent);
