@@ -750,7 +750,7 @@ URL 变成 `/#/bank`、`/#/question/3`。**任何静态托管、甚至直接双�
 | 首页正常，刷新 `/bank` 出现 404 / Nginx 默认页 | 缺 rewrite 回退 | 加 `try_files $uri $uri/ /index.html;`，或改用 hash 模式 |
 | 页面全白，控制台 `Failed to load module script` | 资源路径不对（部署在子目录但没设 base） | 用 `BASE_PATH=/子目录/ npm run build` 重新构建 |
 | 白屏且 `index.html` 引用的旧 hash 文件 404 | `index.html` 被强缓存了 | 给 `index.html` 设 `no-cache`，assets 才设长缓存 |
-| 题库页一直转圈 / 显示加载失败 | `data/questions.json` 路径错或未上传 | 确认 `dist/data/questions.json` 存在；点页面上的「重试」 |
+| 题库页一直转圈 / 显示加载失败 | 索引或分片路径错、未上传，或改了题库没重新生成分片 | 确认 `dist/data/questions-index.json` 与 `dist/data/answers/manifest.json` 存在；本地跑 `npm run split:data` 再构建；点页面上的「重试」 |
 | CDN 后面仍然 404 | CDN 层没配回退 | 在 CDN 的「自定义错误页 / 回源规则」里也做 404→index.html |
 | 手机上左右滑动切题没反应 | 浏览器未触发 pointer 事件（极老内核） | 用键盘/按钮切题；或升级 WebView |
 | 深色模式不跟随系统 | 浏览器不支持 `prefers-color-scheme` 或非 HTTPS | 在「我的」里手动固定为深色；生产用 HTTPS |
