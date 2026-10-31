@@ -4,8 +4,8 @@
    ============================================================ */
 
 :root {
-  --c-primary: #0e8298;
-  --c-primary-weak: rgba(14, 130, 152, 0.1);
+  --c-primary: #4f7cff;
+  --c-primary-weak: rgba(79, 124, 255, 0.1);
   --c-bg: #f6f7fb;
   --c-card: #ffffff;
   --c-border: #e8eaf0;
@@ -21,8 +21,8 @@
   --c-danger-weak: rgba(245, 34, 45, 0.12);
 
   /* 渐变与光效（首页/卡片背景用） */
-  --grad-hero: linear-gradient(135deg, #0e8298 0%, #1690a8 55%, #22a0b8 100%);
-  --grad-card: linear-gradient(180deg, rgba(14, 130, 152, 0.06), rgba(14, 130, 152, 0));
+  --grad-hero: linear-gradient(135deg, #4f7cff 0%, #7b6cf6 55%, #a06af5 100%);
+  --grad-card: linear-gradient(180deg, rgba(79, 124, 255, 0.06), rgba(79, 124, 255, 0));
   --grad-indigo: linear-gradient(135deg, #6366f1, #8b5cf6);
   --grad-teal: linear-gradient(135deg, #14b8a6, #06b6d4);
   --grad-amber: linear-gradient(135deg, #f59e0b, #f97316);
@@ -43,8 +43,8 @@
   --hue-sky: #0ea5e9;
 
   /* 插图专用：比 UI 色更饱和一点，保证小尺寸可辨识 */
-  --fig-bg: linear-gradient(160deg, #f6fcfe 0%, #eef8fb 100%);
-  --fig-stroke: #a8dcea;
+  --fig-bg: linear-gradient(160deg, #f8faff 0%, #f2f6ff 100%);
+  --fig-stroke: #c7d2fe;
   --fig-node-a: #3b82f6;
   --fig-node-b: #8b5cf6;
   --fig-node-c: #14b8a6;
@@ -53,16 +53,16 @@
   --fig-muted: #64748b;
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-lift: 0 4px 16px rgba(14, 130, 152, 0.12);
+  --shadow-lift: 0 4px 16px rgba(79, 124, 255, 0.12);
 
   /* 答案渲染：代码块 / 表格 / 行内代码 */
-  --c-code-bg: #f3fafc;
-  --c-code-head: #e4f3f7;
-  --c-code-border: #d9eef4;
+  --c-code-bg: #f4f6fb;
+  --c-code-head: #eaeefa;
+  --c-code-border: #e2e7f3;
   --c-code-text: #2b3245;
   --c-table-head: #f2f5fd;
   --c-table-line: #edf0f7;
-  --c-table-zebra: rgba(14, 130, 152, 0.028);
+  --c-table-zebra: rgba(79, 124, 255, 0.028);
   --c-answer-bg: #f7f9ff;
   --c-answer-border: #e6ebf9;
 
@@ -76,8 +76,8 @@
 }
 
 :root[data-theme='dark'] {
-  --c-primary: #3cd4e0;
-  --c-primary-weak: rgba(60, 212, 224, 0.16);
+  --c-primary: #6e93ff;
+  --c-primary-weak: rgba(110, 147, 255, 0.16);
   --c-bg: #121212;
   --c-card: #1e1e1e;
   --c-border: #2a2a2a;
@@ -94,8 +94,8 @@
   --c-danger-weak: rgba(255, 120, 117, 0.16);
 
   /* 深色下渐变降饱和，避免刺眼 */
-  --grad-hero: linear-gradient(135deg, #0a6478 0%, #117d92 55%, #1692a8 100%);
-  --grad-card: linear-gradient(180deg, rgba(60, 212, 224, 0.08), rgba(60, 212, 224, 0));
+  --grad-hero: linear-gradient(135deg, #3d5fc4 0%, #5a4fb8 55%, #6d47a3 100%);
+  --grad-card: linear-gradient(180deg, rgba(110, 147, 255, 0.08), rgba(110, 147, 255, 0));
   --grad-indigo: linear-gradient(135deg, #4f46e5, #7c3aed);
   --grad-teal: linear-gradient(135deg, #0d9488, #0891b2);
   --grad-amber: linear-gradient(135deg, #d97706, #ea580c);
@@ -129,15 +129,15 @@
   --shadow-lift: 0 4px 16px rgba(0, 0, 0, 0.5);
 
   /* 答案渲染：深色下的代码块与表格 */
-  --c-code-bg: #142124;
-  --c-code-head: #1a2b2f;
-  --c-code-border: #22363a;
-  --c-code-text: #d4e8ea;
-  --c-table-head: #1a2b2f;
-  --c-table-line: #22343a;
-  --c-table-zebra: rgba(60, 212, 224, 0.045);
-  --c-answer-bg: #131f22;
-  --c-answer-border: #223438;
+  --c-code-bg: #1b2130;
+  --c-code-head: #232b3c;
+  --c-code-border: #2c3547;
+  --c-code-text: #d7e0ef;
+  --c-table-head: #232b3c;
+  --c-table-line: #2a3243;
+  --c-table-zebra: rgba(110, 147, 255, 0.045);
+  --c-answer-bg: #191e29;
+  --c-answer-border: #2a3140;
 }
 
 * {
