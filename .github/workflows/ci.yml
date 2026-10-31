@@ -61,11 +61,16 @@ jobs:
         run: |
           set -e
           test -f dist/index.html                      || { echo "缺少 index.html"; exit 1; }
-          test -f dist/data/questions.json             || { echo "缺少题库数据"; exit 1; }
+          # 运行时数据：索引 + 答案分片（questions.json 是编辑期源数据，构建时已剔除）
+          test -f dist/data/questions-index.json       || { echo "缺少题库索引"; exit 1; }
+          test -f dist/data/answers/manifest.json      || { echo "缺少分片清单"; exit 1; }
+          test -f "dist/data/answers/k8s.json"         || { echo "缺少答案分片"; exit 1; }
+          # 源数据不应被部署（它 4.3 MB，只用于编辑期）
+          test ! -f dist/data/questions.json           || { echo "questions.json 不应出现在 dist"; exit 1; }
           ls dist/assets/*.js >/dev/null 2>&1          || { echo "缺少 JS 产物"; exit 1; }
           ls dist/assets/*.css >/dev/null 2>&1         || { echo "缺少 CSS 产物"; exit 1; }
           grep -q '/ops/assets/' dist/index.html       || { echo "BASE_PATH 未生效"; exit 1; }
-          echo "✓ 构建产物完整，BASE_PATH 生效"
+          echo "✓ 构建产物完整，BASE_PATH 生效，源数据已剔除"
 
       # 上传构建产物，方便在 Actions 页直接下载部署
       - name: 上传构建产物
