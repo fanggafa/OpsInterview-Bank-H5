@@ -276,6 +276,13 @@ import CanaryMethods from './CanaryMethods.vue'
 import EtcdCommands from './EtcdCommands.vue'
 import DockerImageOptimize from './DockerImageOptimize.vue'
 import DockerSecrets from './DockerSecrets.vue'
+import K8sComponents from './K8sComponents.vue'
+import DeploymentCreate from './DeploymentCreate.vue'
+import RollingUpdate from './RollingUpdate.vue'
+import ApiserverHa from './ApiserverHa.vue'
+import PvLifecycle from './PvLifecycle.vue'
+import FlannelVsCalico from './FlannelVsCalico.vue'
+import PodSchedulingMethods from './PodSchedulingMethods.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -614,6 +621,13 @@ export const FIGURES = {
   'etcd-commands': EtcdCommands,
   'docker-image-optimize': DockerImageOptimize,
   'docker-secrets': DockerSecrets,
+  'k8s-components': K8sComponents,
+  'deployment-create': DeploymentCreate,
+  'rolling-update': RollingUpdate,
+  'apiserver-ha': ApiserverHa,
+  'pv-lifecycle': PvLifecycle,
+  'flannel-vs-calico': FlannelVsCalico,
+  'pod-scheduling-methods': PodSchedulingMethods,
 }
 
 /**
