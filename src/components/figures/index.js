@@ -165,6 +165,14 @@ import VmIoPerformance from './VmIoPerformance.vue'
 import VmNetwork from './VmNetwork.vue'
 import VmHostSlow from './VmHostSlow.vue'
 import VmThrottle from './VmThrottle.vue'
+import ConfigCenterVsAnsible from './ConfigCenterVsAnsible.vue'
+import AutomationArchitecture from './AutomationArchitecture.vue'
+import AnsibleCopyVsTemplate from './AnsibleCopyVsTemplate.vue'
+import AnsibleImportVsInclude from './AnsibleImportVsInclude.vue'
+import Nginx502504 from './Nginx502504.vue'
+import NginxReloadRestart from './NginxReloadRestart.vue'
+import NginxRootAlias from './NginxRootAlias.vue'
+import NginxStreamVsHttp from './NginxStreamVsHttp.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -389,6 +397,14 @@ export const FIGURES = {
   'vm-network': VmNetwork,
   'vm-host-slow': VmHostSlow,
   'vm-throttle': VmThrottle,
+  'config-center-vs-ansible': ConfigCenterVsAnsible,
+  'automation-architecture': AutomationArchitecture,
+  'ansible-copy-vs-template': AnsibleCopyVsTemplate,
+  'ansible-import-vs-include': AnsibleImportVsInclude,
+  'nginx-502-504': Nginx502504,
+  'nginx-reload-vs-restart': NginxReloadRestart,
+  'nginx-root-vs-alias': NginxRootAlias,
+  'nginx-stream-vs-http': NginxStreamVsHttp,
   'p99-spike-triage': P99SpikeTriage,
   'k8s-metrics-sources': K8sMetricsSources,
   'prometheus-storage': PrometheusStorage,
