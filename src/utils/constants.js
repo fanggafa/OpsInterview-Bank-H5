@@ -28,6 +28,7 @@ export const CATEGORIES = [
   '安全与跳板机',
   '云与高可用',
   'Python',
+  'AI与大模型',
   '综合场景题',
 ]
 
@@ -79,6 +80,8 @@ export const CATEGORY_ADVICE = {
     '理解 SLB/VPC/安全组的分工、多可用区与异地容灾的 RTO/RPO、弹性伸缩与容量评估，能讲清单点在哪。',
   Python:
     '掌握虚拟环境与依赖锁定、GIL 与多进程/多线程/协程的取舍、内存与常见 OOM、以及线上 Python 服务的排查手段。',
+  'AI与大模型':
+    '理解 LLM 推理链路（Token/上下文/量化/GPU 显存）、RAG 与 Agent 的落地方式，以及运维视角的观测、成本、安全与灰度发布。',
   综合场景题:
     '按「先止损 → 再定位 → 后复盘」的顺序组织回答，量化影响面与耗时，并给出可落地的预防措施。',
 }
@@ -115,6 +118,7 @@ export const CATEGORY_HUE = {
   '安全与跳板机': 'rose',
   '云与高可用': 'sky',
   Python: 'lime',
+  'AI与大模型': 'indigo',
   综合场景题: 'amber',
 }
 

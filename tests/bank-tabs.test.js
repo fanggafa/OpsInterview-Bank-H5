@@ -70,7 +70,7 @@ function categoryChips(wrapper) {
 
 
 describe('分类 Tab · 展开后全部可见（回归）', () => {
-  it('展开后渲染「全部」+ 全部 24 个分类，无遗漏', async () => {
+  it('展开后渲染「全部」+ 全部 25 个分类，无遗漏', async () => {
     const { wrapper } = await mountBank()
     await wrapper.find('.chip--expand').trigger('click')
     expect(categoryChips(wrapper)).toHaveLength(CATEGORIES.length + 1)
@@ -175,7 +175,7 @@ describe('分类 Tab · 折叠与展开', () => {
     expect(toggle.classes()).toContain('chip--expand--open')
   })
 
-  it('展开后全部 24 个分类都可见可点', async () => {
+  it('展开后全部 25 个分类都可见可点', async () => {
     const { wrapper } = await mountBank()
     await wrapper.find('.chip--expand').trigger('click')
     const texts = wrapper.findAll('nav[aria-label="分类筛选"] .chip').map((t) => t.text())
