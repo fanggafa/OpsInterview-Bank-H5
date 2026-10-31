@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **248 张内联 SVG 图解**（248 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **260 张内联 SVG 图解**（260 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1139,7 +1139,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（248 张，24 个分类全覆盖）
+### 已注册的插图（260 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1391,6 +1391,18 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `tracing-concepts` | Tracing 的 trace/span 与落地 | 题 5018 |
 | `capacity-planning` | 用监控数据做容量规划 | 题 5019 |
 | `monitor-triage-path` | 用监控定位故障的五步 | 题 5020 |
+| `dns-recursive-vs-iterative` | 递归查询与迭代查询 | 题 1005 |
+| `dns-server-faults` | DNS 服务端故障四类 | 题 1024 |
+| `nginx-change-flow` | Nginx 改配置的标准流程 | 题 1409 |
+| `nginx-access-log` | access.log 关键字段与排查 | 题 1434 |
+| `mongo-vs-mysql` | MongoDB 与 MySQL 的区别与选型 | 题 2000 |
+| `python-deps` | Python 依赖声明与锁定 | 题 5601 |
+| `python-containers` | list/dict/set 复杂度 | 题 5605 |
+| `cross-dc-sync` | 跨机房同步的三种取舍 | 题 2424 |
+| `ansible-unreachable` | Ansible UNREACHABLE 排查 | 题 3223 |
+| `cronjob-vs-job` | CronJob 与 Job | 题 4623 |
+| `single-domain-slow` | 单域名慢的分段计时 | 题 4413 |
+| `virtualization-plan` | 虚拟化平台五层规划 | 题 2612 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
