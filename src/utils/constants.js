@@ -3,32 +3,41 @@
  * 组件内禁止硬编码中文字面量做比较，一律引用此文件。
  */
 
-/** 分类枚举（顺序即 UI 展示顺序） */
+/**
+ * 分类枚举（**顺序即 UI 展示顺序**，题库页筛选条按这个顺序渲染）。
+ *
+ * 排序规则：**A→Z 混排**
+ *   - 英文开头的分类取首字母（Linux基础 → L）
+ *   - 中文分类取**拼音首字母**（安全与跳板机 → ān → A）
+ *
+ * 由 `tests/categoryOrder.test.js` 守护：新增分类时若拼音首字母表没补，
+ * 或顺序被打乱，测试会失败。
+ */
 export const CATEGORIES = [
-  'Linux基础',
-  'Shell脚本',
-  '网络基础',
-  'DNS',
-  'iptables/firewalld',
-  'Nginx',
-  'LVS/HAProxy',
-  'Tomcat/JVM',
-  'MySQL',
-  'Redis',
-  'MongoDB',
-  '消息队列',
-  '容器与K8s',
-  '存储与备份',
-  '虚拟化',
-  'CI/CD',
-  'Git/GitLab',
-  '监控告警',
-  '日志与ELK',
-  '自动化与配置管理',
   '安全与跳板机',
-  '云与高可用',
-  'Python',
   'AI与大模型',
+  '存储与备份',
+  'CI/CD',
+  'DNS',
+  'Git/GitLab',
+  'iptables/firewalld',
+  '监控告警',
+  'Linux基础',
+  'LVS/HAProxy',
+  'MongoDB',
+  'MySQL',
+  'Nginx',
+  'Python',
+  '日志与ELK',
+  '容器与K8s',
+  'Redis',
+  'Shell脚本',
+  'Tomcat/JVM',
+  '网络基础',
+  '消息队列',
+  '虚拟化',
+  '云与高可用',
+  '自动化与配置管理',
   '综合场景题',
 ]
 
