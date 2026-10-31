@@ -6,6 +6,7 @@ import FrequencyBadge from '@/components/FrequencyBadge.vue'
 import { useStudyStore } from '@/stores/studyStore'
 import { STATUS, TYPE_LABEL, categoryColor } from '@/utils/constants'
 import { truncate } from '@/utils/format'
+import { highlightSegments } from '@/utils/highlight'
 import { isChoice, getType } from '@/utils/question'
 
 const props = defineProps({
@@ -14,6 +15,8 @@ const props = defineProps({
   showStatus: { type: Boolean, default: true },
   /** 列表项序号（可选） */
   index: { type: Number, default: null },
+  /** 搜索关键词（用于题干高亮；为空则不高亮） */
+  keyword: { type: String, default: '' },
 })
 
 const router = useRouter()
@@ -22,6 +25,15 @@ const study = useStudyStore()
 const status = computed(() => (props.showStatus ? study.statusOf(props.question.id) : null))
 const favorite = computed(() => study.isFavorite(props.question.id))
 const summary = computed(() => truncate(props.question.question, 50))
+/**
+ * 题干高亮片段。
+ *
+ * 顺序很重要：**先截断、再高亮**。
+ * 若反过来（先高亮再截断），截断点可能切在一个 <mark> 片段中间，
+ * 拼接出来的文本会缺字或多字。截断后的文本才是实际显示的内容，
+ * 高亮应基于它来切分。
+ */
+const summarySegments = computed(() => highlightSegments(summary.value, props.keyword))
 const choice = computed(() => isChoice(props.question))
 const typeLabel = computed(() => TYPE_LABEL[getType(props.question)])
 /** 分类专属色，用于左侧色条与分类徽标 */
@@ -47,7 +59,12 @@ function toggleFavorite(e) {
   <article class="qcard card" :style="{ '--qcard-hue': catColor }" @click="open">
     <div class="qcard__top">
       <span v-if="index !== null" class="qcard__index">{{ index }}</span>
-      <p class="qcard__summary">{{ summary }}</p>
+      <p class="qcard__summary">
+        <template v-for="(seg, si) in summarySegments" :key="si">
+          <mark v-if="seg.hit" class="qcard__hl">{{ seg.text }}</mark>
+          <template v-else>{{ seg.text }}</template>
+        </template>
+      </p>
       <button
         class="qcard__star"
         :class="{ 'qcard__star--on': favorite }"
@@ -127,10 +144,23 @@ function toggleFavorite(e) {
   font-weight: 500;
 }
 
+/**
+ * 搜索命中高亮。
+ *
+ * 用半透明底色而非纯色块：题目文字本身有颜色，实色底 + 白字在浅色/深色主题下
+ * 都可能对比不足。半透明黄底与文字保持原有对比关系，两套主题都清晰。
+ */
+.qcard__hl {
+  background: color-mix(in srgb, var(--c-warning) 32%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  font-weight: 600;
+}
+
 .qcard__star {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 28px;  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -393,7 +393,11 @@ const resultText = computed(() => {
 
     <ul v-else class="list">
       <li v-for="(q, i) in pagedList" :key="q.id">
-        <QuestionCard :question="q" :index="pageStartIndex + i + 1" />
+        <QuestionCard
+          :question="q"
+          :index="pageStartIndex + i + 1"
+          :keyword="state.keyword"
+        />
       </li>
     </ul>
 
