@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **206 张内联 SVG 图解**（206 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **214 张内联 SVG 图解**（214 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1139,7 +1139,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（206 张，24 个分类全覆盖）
+### 已注册的插图（214 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1349,6 +1349,14 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `lvs-real-ip` | 四层传递真实 IP | 题 1617 |
 | `lvs-active-vs-active-active` | 主备与主主模式 | 题 1627 |
 | `partial-users-fail` | 部分用户访问不了 | 题 1629 |
+| `logical-vs-physical-backup` | 逻辑备份与物理备份 | 题 2409 |
+| `snapshot-vs-clone` | 快照与克隆（快照不是备份） | 题 2417 |
+| `iscsi-vs-nfs` | iSCSI 块存储与 NFS 文件存储 | 题 2418 |
+| `archive-vs-backup` | 归档与备份的区别 | 题 2422 |
+| `log-history-missing` | 查不到历史日志的排查 | 题 3031 |
+| `es-index-planning` | 多应用的 ES 索引规划 | 题 3030 |
+| `log-alert-options` | 日志告警的三种方案 | 题 3013 |
+| `log-platform-design` | 日写 100GB 日志平台设计 | 题 3035 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。

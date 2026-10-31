@@ -1,0 +1,14 @@
+{
+  "figures": [
+    { "component": "LogicalVsPhysicalBackup", "id": "logical-vs-physical-backup" },
+    { "component": "SnapshotVsClone", "id": "snapshot-vs-clone" },
+    { "component": "IscsiVsNfs", "id": "iscsi-vs-nfs" },
+    { "component": "ArchiveVsBackup", "id": "archive-vs-backup" }
+  ],
+  "attach": [
+    { "question": 2409, "figure": "logical-vs-physical-backup", "anchor": "逻辑备份" },
+    { "question": 2417, "figure": "snapshot-vs-clone", "anchor": "快照" },
+    { "question": 2418, "figure": "iscsi-vs-nfs", "anchor": "iSCSI" },
+    { "question": 2422, "figure": "archive-vs-backup", "anchor": "归档" }
+  ]
+}

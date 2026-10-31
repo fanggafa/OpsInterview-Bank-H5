@@ -181,6 +181,14 @@ import LvsResponseIssue from './LvsResponseIssue.vue'
 import LvsRealIp from './LvsRealIp.vue'
 import LvsActiveStandby from './LvsActiveStandby.vue'
 import PartialUsersFail from './PartialUsersFail.vue'
+import LogicalVsPhysicalBackup from './LogicalVsPhysicalBackup.vue'
+import SnapshotVsClone from './SnapshotVsClone.vue'
+import IscsiVsNfs from './IscsiVsNfs.vue'
+import ArchiveVsBackup from './ArchiveVsBackup.vue'
+import LogHistoryMissing from './LogHistoryMissing.vue'
+import EsIndexPlanning from './EsIndexPlanning.vue'
+import LogAlertOptions from './LogAlertOptions.vue'
+import LogPlatformDesign from './LogPlatformDesign.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -424,6 +432,14 @@ export const FIGURES = {
   'lvs-real-ip': LvsRealIp,
   'lvs-active-vs-active-active': LvsActiveStandby,
   'partial-users-fail': PartialUsersFail,
+  'logical-vs-physical-backup': LogicalVsPhysicalBackup,
+  'snapshot-vs-clone': SnapshotVsClone,
+  'iscsi-vs-nfs': IscsiVsNfs,
+  'archive-vs-backup': ArchiveVsBackup,
+  'log-history-missing': LogHistoryMissing,
+  'es-index-planning': EsIndexPlanning,
+  'log-alert-options': LogAlertOptions,
+  'log-platform-design': LogPlatformDesign,
 }
 
 /**
