@@ -75,6 +75,16 @@ describe('TabBar', () => {
     expect(wrapper.text()).not.toContain('统计')
   })
 
+  it('底部栏顺序是 首页 → 刷题 → 题库 → 我的（刷题在题库之前）', async () => {
+    const router = makeRouter()
+    router.push('/')
+    await router.isReady()
+
+    const wrapper = mount(TabBar, { global: { plugins: [pinia, router] } })
+    const labels = wrapper.findAll('.tabbar__label').map((n) => n.text())
+    expect(labels).toEqual(['首页', '刷题', '题库', '我的'])
+  })
+
   it('底部栏包含「首页」入口，且能回到首页（否则进去就出不来）', async () => {
     const router = makeRouter()
     router.push('/bank')
