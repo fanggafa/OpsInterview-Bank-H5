@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2695 题**（983 简答 + 1540 单选 + 172 多选），25 个分类；含 **340 张内联 SVG 图解**（340 题带图）
+- 题库：**2695 题**（983 简答 + 1540 单选 + 172 多选），25 个分类；含 **363 张内联 SVG 图解**（340 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -95,7 +95,7 @@ npm run dev          # http://127.0.0.1:5273
 ops-interview-h5/
 ├── docs/
 │   ├── ops-interview-bank-PRD.md    # 产品需求文档
-│   ├── figures-registry.md          # 340 张插图的完整注册表（按分类分组）
+│   ├── figures-registry.md          # 363 张插图的完整注册表（按分类分组）
 │   ├── batch-choice-spec.md         # 选择题补题规范
 │   └── figure-text-rules.md         # 插图文字排版规则（修超界时照这个做）
 ├── public/data/questions.json       # 题库（2529 题）
@@ -1140,7 +1140,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 ### 已注册的插图
 
-共 **340 张**，按 25 个分类分组维护 —— 完整清单见 [`docs/figures-registry.md`](docs/figures-registry.md)
+共 **363 张**，按 25 个分类分组维护 —— 完整清单见 [`docs/figures-registry.md`](docs/figures-registry.md)
 （含每张图的 id、内容与挂载题目）。
 
 新增插图后需要同步该文档（追加一行），否则清单会与实际不符。
