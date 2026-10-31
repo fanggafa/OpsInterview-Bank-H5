@@ -238,6 +238,19 @@ onMounted(() => {
     })
 })
 
+/**
+ * 错误态里的「重试」：必须走索引 + 分片路径。
+ * 不能再调 bank.retry() —— 那是全量加载，会请求已从部署产物里剔除的
+ * questions.json，结果只会 404。
+ */
+function retryLoad() {
+  return bank
+    .retryIndex()
+    .then(() => bank.hydrateCategory(category.value || ''))
+    .then(() => build())
+    .catch(() => {})
+}
+
 watch([mode, studyMode, category, reviewKind], () => {
   if (!bank.questions.length) return
   // 换分类时要补该分类的答案，否则新队列里的题没有 answer/explanation
@@ -740,7 +753,7 @@ const emptyDesc = computed(() => {
       title="题库加载失败"
       :desc="bank.error"
       action="重试"
-      @action="bank.retry().then(build).catch(() => {})"
+      @action="retryLoad"
     />
 
     <EmptyState

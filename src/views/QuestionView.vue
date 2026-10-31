@@ -98,6 +98,20 @@ onMounted(async () => {
   }
 })
 
+/**
+ * 错误态里的「重试」：走索引 + 分片路径。
+ * 不能调 bank.retry() —— 那是全量加载，会请求已从部署产物剔除的 questions.json。
+ */
+async function retryLoad() {
+  try {
+    await bank.retryIndex()
+    const cat = bank.getById(id.value)?.category
+    await bank.hydrateCategory(cat || '')
+  } catch {
+    // 失败仍由 bankStore 的 error 呈现
+  }
+}
+
 /** 切题时重置作答态与折叠态 */
 watch(id, () => {
   expanded.value = false
@@ -190,7 +204,7 @@ const statusText = computed(() => {
       title="题库加载失败"
       :desc="bank.error"
       action="重试"
-      @action="bank.retry().catch(() => {})"
+      @action="retryLoad"
     />
 
     <EmptyState

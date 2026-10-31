@@ -1,13 +1,16 @@
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { stripSourceData } from './scripts/vite-plugin-strip-data.mjs'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   // 部署到子目录时用环境变量指定，例如：BASE_PATH=/ops/ npm run build
   // 默认 '/'（根域名或独立域名部署）
   base: process.env.BASE_PATH || '/',
-  plugins: [vue()],
+  // stripSourceData：构建后删掉 dist/data/questions.json —— 运行时已用
+  // questions-index.json + answers/*.json，这份 4.3 MB 的源数据只用于编辑期。
+  plugins: [vue(), stripSourceData()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

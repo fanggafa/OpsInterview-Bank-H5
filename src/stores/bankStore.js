@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { fetchQuestions, fetchIndex, hydrateAnswers, DataError } from '@/api/dataService'
+import { fetchAllSharded, fetchIndex, hydrateAnswers, DataError } from '@/api/dataService'
 
 /**
  * 题库数据 + 加载态（loading / error / empty 三态）。
@@ -15,6 +15,9 @@ export const useBankStore = defineStore('bank', () => {
   /** ref 只加载一次成功的 Promise，避免并发重复请求 */
   let inflight = null
 
+  /** 是否已按「全量含答案」加载过（决定 load() 能否直接复用缓存） */
+  let fullLoaded = false
+
   const total = computed(() => questions.value.length)
   const isEmpty = computed(() => !loading.value && !error.value && questions.value.length === 0)
 
@@ -25,16 +28,25 @@ export const useBankStore = defineStore('bank', () => {
     return map
   })
 
+  /**
+   * 加载**全部题目**（含答案）。
+   *
+   * 现在内部走分片路径（索引 + 全部分片），不再请求单文件 questions.json ——
+   * 后者已从部署产物中剔除（只有 4.3 MB，运行时用不到）。
+   * 返回值语义不变：完整题目数组，元素含 answer/explanation/options。
+   */
   async function load(force = false) {
     if (inflight && !force) return inflight
-    if (!force && questions.value.length) return questions.value
+    if (!force && questions.value.length && fullLoaded) return questions.value
 
     loading.value = true
     error.value = ''
 
-    inflight = fetchQuestions({ force })
+    inflight = fetchAllSharded({ force })
       .then((data) => {
         questions.value = data
+        fullLoaded = true
+        indexLoaded.value = true
         return data
       })
       .catch((err) => {
@@ -90,9 +102,6 @@ export const useBankStore = defineStore('bank', () => {
 
     return indexInflight
   }
-
-  /** 是否已按「全量含答案」加载过 */
-  let fullLoaded = false
 
   /**
    * 为某个分类补齐答案（只拉该分类的分片）。
