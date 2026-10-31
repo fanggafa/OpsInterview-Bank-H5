@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2489 题**（795 简答 + 1527 单选 + 167 多选），24 个分类；含 **281 张内联 SVG 图解**（281 题带图）
+- 题库：**2489 题**（795 简答 + 1527 单选 + 167 多选），24 个分类；含 **291 张内联 SVG 图解**（291 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1139,7 +1139,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（281 张，24 个分类全覆盖）
+### 已注册的插图（291 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1420,6 +1420,16 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `redis-slot` | slot 分片与 hash tag | 题 3929 |
 | `rabbit-message-loss` | RabbitMQ 消息丢失三段 | 题 2316 |
 | `undelete-principle` | 误删文件恢复原理 | 题 4127 |
+| `restart-policy` | 重启策略三选与容器/Pod 分层 | 题 4731 |
+| `image-pull-policy` | 镜像拉取策略与默认值规则 | 题 4732 |
+| `pv-and-pvc` | PV 与 PVC 的定位与访问模式 | 题 4741 |
+| `daemonset-traits` | DaemonSet 三特性与用途 | 题 4743 |
+| `flannel-modes` | flannel 三种模式选型 | 题 4745 |
+| `k8s-install-steps` | K8s 安装三段与三个坑 | 题 4734 |
+| `deployment-yaml` | Deployment YAML 三层结构 | 题 4737 |
+| `pod-network-triage` | Pod 网络五层排查 | 题 4748 |
+| `pod-triage-steps` | Pod 异常定位四步与退出码 | 题 4750 |
+| `node-failure-triage` | 节点宕机的两类原因 | 题 4754 |
 | `cpu-spike-incident` | CPU 异常高的应急顺序 | 题 5204 |
 | `cloud-migration-plan` | 自建机房上云迁移 | 题 5411 |
 | `arch-evolution-plan` | 3 年架构演进规划 | 题 5421 |

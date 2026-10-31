@@ -1,0 +1,16 @@
+{
+  "figures": [
+    { "component": "RestartPolicy", "id": "restart-policy" },
+    { "component": "ImagePullPolicy", "id": "image-pull-policy" },
+    { "component": "PvPvc", "id": "pv-and-pvc" },
+    { "component": "DaemonsetTraits", "id": "daemonset-traits" },
+    { "component": "FlannelModes", "id": "flannel-modes" }
+  ],
+  "attach": [
+    { "question": 4731, "figure": "restart-policy", "anchor": "重启策略" },
+    { "question": 4732, "figure": "image-pull-policy", "anchor": "更新策略" },
+    { "question": 4741, "figure": "pv-and-pvc", "anchor": "PV" },
+    { "question": 4743, "figure": "daemonset-traits", "anchor": "DaemonSet" },
+    { "question": 4745, "figure": "flannel-modes", "anchor": "flannel" }
+  ]
+}

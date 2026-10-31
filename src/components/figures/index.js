@@ -256,6 +256,16 @@ import SentinelVsCluster from './SentinelVsCluster.vue'
 import RedisSlot from './RedisSlot.vue'
 import RabbitMessageLoss from './RabbitMessageLoss.vue'
 import UndeletePrinciple from './UndeletePrinciple.vue'
+import RestartPolicy from './RestartPolicy.vue'
+import ImagePullPolicy from './ImagePullPolicy.vue'
+import PvPvc from './PvPvc.vue'
+import DaemonsetTraits from './DaemonsetTraits.vue'
+import FlannelModes from './FlannelModes.vue'
+import K8sInstallSteps from './K8sInstallSteps.vue'
+import DeploymentYaml from './DeploymentYaml.vue'
+import PodNetworkTriage from './PodNetworkTriage.vue'
+import PodTriageSteps from './PodTriageSteps.vue'
+import NodeFailureTriage from './NodeFailureTriage.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -574,6 +584,16 @@ export const FIGURES = {
   'redis-slot': RedisSlot,
   'rabbit-message-loss': RabbitMessageLoss,
   'undelete-principle': UndeletePrinciple,
+  'restart-policy': RestartPolicy,
+  'image-pull-policy': ImagePullPolicy,
+  'pv-and-pvc': PvPvc,
+  'daemonset-traits': DaemonsetTraits,
+  'flannel-modes': FlannelModes,
+  'k8s-install-steps': K8sInstallSteps,
+  'deployment-yaml': DeploymentYaml,
+  'pod-network-triage': PodNetworkTriage,
+  'pod-triage-steps': PodTriageSteps,
+  'node-failure-triage': NodeFailureTriage,
 }
 
 /**
