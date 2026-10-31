@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2489 题**（795 简答 + 1527 单选 + 167 多选），24 个分类；含 **301 张内联 SVG 图解**（301 题带图）
+- 题库：**2489 题**（795 简答 + 1527 单选 + 167 多选），24 个分类；含 **308 张内联 SVG 图解**（308 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1139,7 +1139,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（301 张，24 个分类全覆盖）
+### 已注册的插图（308 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1440,6 +1440,13 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `etcd-commands` | etcdctl 四个关键命令 | 题 4769 |
 | `docker-image-optimize` | 镜像优化两目标与同层清理 | 题 4767 |
 | `docker-secrets` | Docker 密钥管理四档安全性 | 题 4766 |
+| `k8s-components` | K8s 核心组件与作用 | 题 4727 |
+| `deployment-create` | Deployment 三级创建链路 | 题 4738 |
+| `rolling-update` | 滚动升级与回滚本质 | 题 4739 |
+| `apiserver-ha` | apiserver 的高可用三要素 | 题 4736 |
+| `pv-lifecycle` | PV 四状态与回收策略 | 题 4742 |
+| `flannel-vs-calico` | flannel 与 calico 对比 | 题 4753 |
+| `pod-scheduling-methods` | 五种调度到指定节点的方法 | 题 4755 |
 | `cpu-spike-incident` | CPU 异常高的应急顺序 | 题 5204 |
 | `cloud-migration-plan` | 自建机房上云迁移 | 题 5411 |
 | `arch-evolution-plan` | 3 年架构演进规划 | 题 5421 |
