@@ -1,0 +1,12 @@
+{
+  "figures": [
+    { "component": "TracingConcepts", "id": "tracing-concepts" },
+    { "component": "CapacityPlanning", "id": "capacity-planning" },
+    { "component": "MonitorTriagePath", "id": "monitor-triage-path" }
+  ],
+  "attach": [
+    { "question": 5018, "figure": "tracing-concepts", "anchor": "trace" },
+    { "question": 5019, "figure": "capacity-planning", "anchor": "容量规划" },
+    { "question": 5020, "figure": "monitor-triage-path", "anchor": "排查路径" }
+  ]
+}

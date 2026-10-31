@@ -1,0 +1,12 @@
+{
+  "figures": [
+    { "component": "GitCloneSlow", "id": "git-clone-slow" },
+    { "component": "GitlabCiStructure", "id": "gitlab-ci-structure" },
+    { "component": "SubmoduleVsSubtree", "id": "submodule-vs-subtree" }
+  ],
+  "attach": [
+    { "question": 2812, "figure": "git-clone-slow", "anchor": "clone" },
+    { "question": 2828, "figure": "gitlab-ci-structure", "anchor": "stages" },
+    { "question": 2830, "figure": "submodule-vs-subtree", "anchor": "submodule" }
+  ]
+}

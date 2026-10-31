@@ -1,0 +1,14 @@
+{
+  "figures": [
+    { "component": "ConnStateTriage", "id": "conn-state-triage" },
+    { "component": "LimitLayers", "id": "limit-layers" },
+    { "component": "LogrotateFlow", "id": "logrotate-flow" },
+    { "component": "SystemdFailure", "id": "systemd-failure" }
+  ],
+  "attach": [
+    { "question": 4009, "figure": "conn-state-triage", "anchor": "TIME_WAIT" },
+    { "question": 4024, "figure": "limit-layers", "anchor": "资源限制" },
+    { "question": 4025, "figure": "logrotate-flow", "anchor": "logrotate" },
+    { "question": 4122, "figure": "systemd-failure", "anchor": "systemd" }
+  ]
+}
