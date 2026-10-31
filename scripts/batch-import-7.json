@@ -1,0 +1,42 @@
+[
+  {
+    "id": 3927,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 常见的数据结构有哪些？各自适合什么场景？",
+    "answer": "**五种基础类型 + 四种进阶结构，关键是把「类型 ↔ 场景」对上。**\n\n## 基础类型\n\n| 类型 | 结构 | 典型场景 |\n|---|---|---|\n| **String** | 简单键值（最大 512MB） | 缓存对象、计数器、分布式锁、Session |\n| **Hash** | 字段-值映射 | 存对象的部分字段、购物车 |\n| **List** | 双向链表（支持两端操作） | 消息队列（简单）、最新列表、栈 |\n| **Set** | 无序去重集合 | 标签、共同好友（交集）、去重统计 |\n| **ZSet** | 带分数的有序集合（跳表+哈希） | **排行榜**、延时队列、滑动窗口限流 |\n\n## 进阶结构\n\n| 类型 | 用途 |\n|---|---|\n| **Bitmap** | 位图，签到、活跃用户统计（省内存） |\n| **HyperLogLog** | 基数估算（UV 统计），误差约 0.81%，极省内存 |\n| **GEO** | 地理位置（附近的人） |\n| **Stream** | 消息流（带消费者组，比 List 更适合做 MQ） |\n\n## 选型要点\n\n1. **要排序又要按成员查 → ZSet**（排行榜首选）；\n2. **要存对象的一部分 → Hash**（比 String 序列化更省、可局部更新）；\n3. **要两端进出 → List**；要可靠消息 → **Stream**；\n4. **只做去重/交集 → Set**；\n5. **海量 UV 统计 → HyperLogLog**（不要用 Set，内存会爆）。\n\n## 一个常见误区\n\n**别用 List 做正经消息队列**：它没有 ack 机制，消费失败消息就丢了。要可靠消费用 **Stream**（有消费者组与 ack），或者用 Kafka/RabbitMQ。\n\n## 底层编码（面试常追问）\n\n小数据量时用紧凑编码（listpack/ziplist/quicklist），超阈值才转成跳表/哈希表 —— 这正是「小集合更省内存」的原因。",
+    "tags": ["数据结构", "ZSet", "Stream", "选型"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3928,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 的集群模式和哨兵模式有什么区别？",
+    "answer": "**一句话：哨兵解决「高可用」，集群解决「高可用 + 水平扩展」。**\n\n| 维度 | 哨兵（Sentinel） | 集群（Cluster） |\n|---|---|---|\n| 数据分片 | ❌ 不分片，每个节点存全量 | ✅ 分 16384 个 slot，数据分散 |\n| 容量上限 | 受单机内存限制 | 可水平扩展（加节点扩容量） |\n| 高可用 | ✅ 哨兵监控 + 自动主从切换 | ✅ 内置故障转移 |\n| 客户端复杂度 | 低（连哨兵拿主地址） | 中（客户端要支持 cluster、处理 MOVED/ASK） |\n| 多 key 操作 | ✅ 支持（同实例） | ⚠️ 跨 slot 的 mget/事务受限，要用 hash tag |\n| 适用规模 | 单机内存够用 | 数据量大 / 写入压力高 |\n\n## 哨兵模式要点\n\n- 至少 **3 个哨兵**（奇数，避免脑裂判断失效）；\n- 哨兵监控主从，主挂了**投票选出新主**并通知客户端；\n- 数据仍然是「一主多从」，**写能力受单主限制**。\n\n## 集群模式要点\n\n- **最少 6 节点**（3 主 3 从，主从保证高可用）；\n- 数据按 **slot** 分布，客户端按 key 计算 slot 找节点；\n- 扩容要**迁移 slot**（会占带宽，需错峰）。\n\n## 选型的实际判断\n\n| 情况 | 建议 |\n|---|---|\n| 数据 < 单机内存，只要高可用 | **哨兵**（简单） |\n| 数据超单机内存 / 写压力大 | **集群** |\n| 强依赖多 key 事务 | 哨兵（集群下受限） |\n\n## 一个常见误区\n\n「集群一定比哨兵好」—— 不对。集群带来**跨 slot 操作限制、客户端复杂度、运维复杂度**，只是容量够用时哨兵更划算。",
+    "tags": ["集群", "哨兵", "Sentinel", "Cluster"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3929,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 集群模式中的 slot 是什么？",
+    "answer": "**slot（哈希槽）是 Redis Cluster 的数据分片单位，共 16384 个。**\n\n## 工作原理\n\n```\nkey → CRC16(key) mod 16384 → slot 编号 → 该 slot 归属的节点\n```\n\n每个主节点负责一段 slot 区间，例如：\n- 节点 A：0 ~ 5460\n- 节点 B：5461 ~ 10922\n- 节点 C：10923 ~ 16383\n\n## 为什么是 16384 个\n\n- 16384 = 2^14，槽位图用 bitmap 表示只需 2KB，节点间同步成本低；\n- 足够分散，又不至于让集群元数据过大。\n\n## 三个关键行为\n\n| 行为 | 说明 |\n|---|---|\n| **MOVED 重定向** | 客户端请求的 key 不在该节点 → 返回 MOVED + 正确节点，客户端重连 |\n| **ASK 重定向** | slot 正在迁移中 → 临时重定向到目标节点 |\n| **hash tag** | 用 `{...}` 强制同 slot，如 `{user:1}:name` 与 `{user:1}:age` 同 slot |\n\n## 为什么要 hash tag（最实用的一点）\n\n**跨 slot 的多 key 操作会失败**：\n\n```\nMGET user:1:name user:2:name   # 若两 key 不同 slot → 报 CROSSSLOT 错误\n```\n\n用 hash tag 让相关 key 落同一 slot：\n```\n{user:1}:name  {user:1}:age   # 都落 user:1 计算的 slot\n```\n代价：**所有相关 key 集中到一个节点**，热点风险上升。\n\n## 扩容与 slot 迁移\n\n- 加节点后要**手工迁移 slot**（`redis-cli --cluster reshard`）；\n- 迁移期间该 slot 的请求会走 ASK 重定向，**有短暂额外延迟**；\n- 迁移量大时注意网络与 CPU 占用。\n\n## 常见问题\n\n| 现象 | 原因 |\n|---|---|\n| CROSSSLOT 错误 | 多 key 操作跨 slot → 用 hash tag |\n| 数据分布倾斜 | 大量 key 用了同一个 hash tag |\n| 集群某节点内存高 | slot 分配不均或热点 key |",
+    "tags": ["slot", "Cluster", "hash tag", "MOVED"],
+    "frequency": "高频"
+  },
+  {
+    "id": 3930,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 怎么正确地停止一个节点？",
+    "answer": "**关键：分集群/哨兵/单机，且要避免「误停主节点导致故障转移」。**\n\n## 一、集群模式下的正常下线\n\n**不能直接 kill**，要走 cluster 命令让 slot 先迁走：\n\n```bash\n# 1. 看节点 ID\nredis-cli -c -h <host> -p <port> cluster nodes\n\n# 2. 把 slot 迁到其他节点（优雅下线）\nredis-cli --cluster reshard <任意存活节点> \\\n  --cluster-from <要下线的ID> --cluster-to <目标ID> \\\n  --cluster-slots <数量> --cluster-yes\n\n# 3. 从集群移除该节点\nredis-cli --cluster del-node <存活节点> <节点ID>\n```\n\n## 二、主从/单机：避免「意外故障转移」\n\n| 命令 | 效果 |\n|---|---|\n| `SHUTDOWN` | 保存后退出（会触发故障转移，因为主没了） |\n| `SHUTDOWN NOSAVE` | 不保存直接退出（可能丢数据） |\n| `DEBUG SLEEP` | 模拟阻塞（调试用） |\n\n**正确姿势**（计划内维护）：\n1. 先 **手动触发故障转移**（集群用 `cluster failover`，哨兵环境先让从升主），让流量先切走；\n2. 再停原主节点；\n3. 避免「主节点突然消失」造成的客户端短暂报错。\n\n## 三、停节点的注意事项\n\n| 项 | 说明 |\n|---|---|\n| **持久化** | 确认 RDB/AOF 是否保存完成（别让进程被 kill -9） |\n| **优雅退出** | 用 `SHUTDOWN` 而不是 kill -9（后者可能数据不一致） |\n| **slot 归属** | 集群节点下线前必须迁走 slot，否则集群报 fail |\n| **从节点** | 从节点可较随意停（不影响可用性），但会降低读能力/冗余 |\n\n## 四、验证\n\n```bash\nredis-cli -p <port> ping        # 确认已停\nredis-cli -p <port> info replication   # 看主从关系是否已切换\n```\n\n**核心原则**：计划内维护要「先切流量再停进程」，而不是「先停再说」。",
+    "tags": ["停止节点", "Cluster", "故障转移"],
+    "frequency": "中频"
+  }
+]

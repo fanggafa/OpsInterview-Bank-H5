@@ -1,0 +1,82 @@
+[
+  {
+    "id": 4742,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "PV 的生命周期状态有哪些？",
+    "answer": "**五个阶段：Available → Bound → Released → Failed（及其回收）。**\n\n| 状态 | 含义 | 触发 |\n|---|---|---|\n| **Available**（可用） | PV 已就绪，等待被 PVC 绑定 | 创建后 / 释放后 |\n| **Bound**（已绑定） | 已被某个 PVC 独占绑定 | PVC 匹配成功 |\n| **Released**（已释放） | PVC 删除后，PV 尚未被回收处理 | 删除 PVC |\n| **Failed**（失败） | 自动回收失败，需要人工介入 | 回收策略失败 |\n\n## 回收策略决定「释放后去哪」\n\nPV 的 `persistentVolumeReclaimPolicy` 有三种：\n\n| 策略 | 行为 | 适用 |\n|---|---|---|\n| **Retain**（保留） | 保留数据，PV 回到 Available，需人工清理 | 重要数据 |\n| **Delete**（删除） | 删除 PV 及底层存储数据 | 动态供给的临时卷（默认） |\n| **Recycle**（回收） | 清空文件后回到 Available（已逐步废弃） | 旧场景 |\n\n## 生命周期图解\n\n```\n创建 → Available ──绑定──→ Bound\n                    ↑          │\n                    │      删除 PVC\n              回收成功          ↓\n                    └──── Released\n                               │\n                        回收失败↓\n                            Failed\n```\n\n## 排查常用\n\n```bash\nkubectl get pv                       # STATUS 列直接看到阶段\nkubectl describe pv <name>           # 看 Claim 与回收策略\nkubectl get pvc                      # 看 PVC 的 Bound/ Lost 状态\n```\n\n**常被追问**：PVC 显示 `Lost` 表示它原本绑定的 PV 已不存在 —— 通常是 PV 被误删，需要重新绑定或恢复数据。",
+    "tags": ["PV", "生命周期", "回收策略"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4743,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "简述 DaemonSet 类型的资源特性？",
+    "answer": "**核心特性：保证「每个（或指定的）节点上恰好运行一个 Pod」。**\n\n## 三个特性\n\n1. **每节点一个**：新节点加入集群时自动调度上去，节点移除时对应 Pod 也被回收；\n2. **不受 replicas 控制**：副本数由节点数量决定，不是手动指定；\n3. **支持节点选择**：可用 `nodeSelector` / 亲和性 / 污点容忍限定只跑在部分节点。\n\n## 典型用途\n\n| 场景 | 说明 |\n|---|---|\n| 日志采集 | fluentd/filebeat 每节点一个，采集本机日志 |\n| 监控 agent | node-exporter 采集节点指标 |\n| 网络插件 | CNI 组件（如 calico-node） |\n| 节点级代理 | 需要访问宿主机资源的场景 |\n\n## 与 Deployment 的关键区别\n\n| | Deployment | DaemonSet |\n|---|---|---|\n| 副本数 | 手动指定 replicas | 由节点数决定 |\n| Pod 分布 | 任意节点，可能集中在几台 | **每个节点都有** |\n| 用途 | 业务服务 | 节点级守护进程 |\n\n## 常见限制与坑\n\n- **不保证「最先启动」**：节点 NotReady 时不会调度；\n- 需要访问宿主机文件/网络时，要配 `hostPath` 与 `hostNetwork`（并接受其安全代价）；\n- 更新 DaemonSet 的模板会**滚动替换各节点上的 Pod**，与 Deployment 类似。\n\n**面试追问点**：「DaemonSet 的 Pod 会不会因为节点 NotReady 而不跑？」→ 会，要等节点 Ready 后才调度。",
+    "tags": ["DaemonSet", "节点级", "日志采集"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4744,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "什么是有状态应用和无状态应用？K8s 里怎么分别对待？",
+    "answer": "**区别在于「实例之间能否互换」：无状态可互换，有状态每个实例有独特身份。**\n\n| | 无状态 | 有状态 |\n|---|---|---|\n| 数据 | 不存本地（或存了也不重要） | 每个实例持有独特数据 |\n| 实例 | 可互换，任意增删 | 身份固定，不能随意替换 |\n| 扩展 | 加副本即可 | 要处理数据分片/复制 |\n| 例子 | Web API、网关、无状态服务 | 数据库、消息队列、Redis 集群 |\n\n## K8s 里怎么分别对待\n\n| 类型 | 控制器 | 原因 |\n|---|---|---|\n| 无状态 | **Deployment** | 副本可互换，滚动升级简单 |\n| 有状态 | **StatefulSet** | 提供**稳定网络标识**（`mysql-0`）、**独立存储**（每副本一个 PVC）、**有序启停** |\n\n## 无状态的关键前提\n\n「无状态」不等于「没有数据」，而是**数据不留在实例本地**：\n- 会话放 Redis；\n- 上传文件放对象存储；\n- 本地只留可丢弃的缓存。\n\n这也是为什么「把 session 存本地磁盘」的服务**扩副本会出问题** —— 它实际上变成了有状态。\n\n## 面试常追问\n\n「有状态服务能不能用 Deployment？」→ 技术上能跑，但会丢失「固定身份」：Pod 名随机、重启后可能换节点、多副本共享不了独立存储。数据库这类必须用 StatefulSet。",
+    "tags": ["有状态", "无状态", "StatefulSet"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4745,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "flannel 有哪几种工作模式？各有什么区别？",
+    "answer": "**三种主流模式：VXLAN / host-gw / UDP（已淘汰），另有较新的 WireGuard。**\n\n| 模式 | 原理 | 性能 | 跨子网 |\n|---|---|---|---|\n| **VXLAN**（默认） | 把 Pod 包封进 UDP 包传输，解封装后投递 | 中（有封装开销） | ✅ 可跨三层网络 |\n| **host-gw** | 直接写宿主机路由表，Pod 包直接发出 | **高**（无封装） | ❌ 要求节点在同一二层网络 |\n| **UDP**（旧） | 早期模式，用户态封装 | 低 | ✅ 但已被 VXLAN 取代 |\n| **WireGuard** | 用内核 WireGuard 加密隧道 | 较高且有加密 | ✅ |\n\n## 选型关键\n\n- **节点都在同一个二层网络（同机房、同网段可达）** → 用 **host-gw**，性能最好；\n- **节点跨机房/跨子网** → 必须 **VXLAN**；\n- 优先 VXLAN（默认，兼容性好），性能敏感且网络条件满足时切 host-gw。\n\n## 一个重要限制\n\nflannel 工作在**三层**，它**不做网络策略**（NetworkPolicy）—— 需要策略隔离时要换 calico 或叠加 Cilium。\n\n## 排查要点\n\n| 现象 | 常见原因 |\n|---|---|\n| 同节点 Pod 通、跨节点不通 | 模式选错（跨子网用了 host-gw）、VXLAN 端口（8472/UDP）被防火墙拦 |\n| 全部不通 | flanneld 未启动、CNI 配置未生效 |\n| 通但慢 | 用了 UDP 旧模式，或 VXLAN 封装损耗 |\n\n**验证**：`kubectl exec` 进 Pod ping 另一节点的 Pod；宿主 `iptables -L`/`ss -uapn | grep 8472` 确认 VXLAN 端口。",
+    "tags": ["flannel", "VXLAN", "host-gw", "CNI"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4746,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "flannel 可以固定节点 IP 和 Pod 的 IP 地址吗？",
+    "answer": "**节点 IP 可以（本来就固定）；Pod IP 默认不能固定，但有条件可实现。**\n\n## 节点 IP\n\nflannel 使用节点已有 IP 通信，**这个 IP 由宿主机决定**（网卡地址），flannel 不改它。所以「节点 IP 固定」= 你在装机时固定网卡地址即可。\n\n## Pod IP：默认是动态分配的\n\n- flannel 给每个节点分配一个 **Pod 网段**（`--pod-network-cidr` 切分）；\n- 节点内的 Pod IP 由 **host-local IPAM** 从该网段分配；\n- Pod 重建后 **IP 会变**（分配是按序复用，不保证同一 Pod 拿回原 IP）。\n\n## 能固定的三种做法\n\n| 做法 | 说明 | 局限 |\n|---|---|---|\n| **静态 IP + host-local 指定** | 手工配 CNI 配置里的 ranges/静态段 | 要自己维护分配表，冲突风险 |\n| **用固定网段 + 预留** | 把某段留给需要固定的 Pod | 仍需人工分配 |\n| **改用支持固定 IP 的 CNI** | 如 calico 的 IP 池可指定，或 Multus 多网卡 | 复杂度上升 |\n\n## 更常用的替代思路\n\n**不要依赖 Pod IP**：\n- 有状态服务用 **Headless Service** → 得到稳定 DNS 名（`mysql-0.mysql`）；\n- 应用间用 **Service 名**访问，而不是 Pod IP。\n\n## 面试追问点\n\n「为什么 K8s 不鼓励固定 Pod IP？」→ 因为 Pod 是**可丢弃、可重建**的（这正是 K8s 的设计前提），固定 IP 会让调度与重建变得僵化。需要稳定标识时应该用 **Service/StatefulSet 的 DNS 标识**，而不是 IP。",
+    "tags": ["flannel", "Pod IP", "IPAM"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4747,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "说下你对 Pod 亲和性（Affinity）的理解？",
+    "answer": "**亲和性 = 用「规则」而不是「精确名称」表达 Pod 与节点/其他 Pod 的放置关系。**\n\n## 两大类\n\n| 类型 | 作用对象 | 用途 |\n|---|---|---|\n| **节点亲和**（nodeAffinity） | Pod ↔ 节点 | 要求 Pod 落在特定标签的节点上 |\n| **Pod 亲和/反亲和**（podAffinity / podAntiAffinity） | Pod ↔ 其他 Pod | 与某些 Pod 聚在一起 / 分开 |\n\n## 硬与软\n\n- **requiredDuringSchedulingIgnoredDuringExecution**：**硬约束**，不满足就不调度（Pod 会 Pending）\n- **preferredDuringSchedulingIgnoredDuringExecution**：**软约束**，尽量满足，不满足也调度\n\n名字里的 `IgnoredDuringExecution` 很关键：**只影响调度时，运行后节点标签变了不会驱逐已有 Pod**。\n\n## 典型用法\n\n| 需求 | 做法 |\n|---|---|\n| 只跑在 SSD 节点 | nodeAffinity required + label `disk=ssd` |\n| 尽量同机房 | nodeAffinity preferred + 机房标签 |\n| 同服务的 Pod 聚在一起（减少跨节点流量） | podAffinity 按 `app=web` |\n| 副本必须分散（避免同节点全挂） | **podAntiAffinity** 按 `app=web` + topologyKey=hostname |\n\n## 与 nodeSelector 的关系\n\n- `nodeSelector` 是**最简单**的硬约束（精确匹配标签）；\n- 亲和性支持**表达式**（`In`/`NotIn`/`Exists`）与**软约束**，表达能力更强。\n\n## 常见坑\n\n1. **硬亲和写了但集群没有匹配节点** → Pod 永远 Pending（describe 会写 `didn't match node selector/affinity`）；\n2. **podAntiAffinity 要求「副本分散」但节点数少于副本数** → 后面的副本 Pending；\n3. 亲和性强依赖**节点标签维护**，标签未打或打错会静默失效。\n\n**排查命令**：`kubectl describe pod` 的 Events 段会明确说明亲和性不满足的原因。",
+    "tags": ["亲和性", "nodeAffinity", "podAntiAffinity"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4748,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如果因为网络原因导致 Pod 异常，如何排查？",
+    "answer": "**分四层查：Pod 内 → Pod 间（同节点）→ Pod 间（跨节点）→ 出集群。**\n\n## 分层排查表\n\n| 层级 | 检查 | 命令 |\n|---|---|---|\n| Pod 内 | 有没有 IP、DNS 能不能解析 | `ip addr`、`cat /etc/resolv.conf`、`nslookup` |\n| 同节点 Pod | 能不能互 ping | `kubectl exec` ping |\n| 跨节点 Pod | 隧道是否通 | ping + 查 flannel/calico |\n| 出集群 | Service 能否访问、出网是否正常 | `curl` Service 名 / 外网 |\n| 被策略拦 | NetworkPolicy 是否生效 | 对照策略规则 |\n\n## 具体排查顺序\n\n1. **Pod 有没有分到 IP**：`kubectl exec -it <pod> -- ip addr`（没 IP 说明 CNI 没给网卡配地址）\n2. **同节点通不通**：排除 Pod 自身配置（DNS、端口）问题\n3. **跨节点通不通**：不通大概率是 **CNI 隧道问题**\n   - flannel：`ss -uapn | grep 8472`，宿主 `iptables` 是否拦了 VXLAN\n   - calico：`calico-node` 健康检查、BGP 对等状态\n4. **Service 通不通**：`kubectl get endpoints` 是否为空（selector 没选中 Pod）\n5. **抓包定位**：宿主 tcpdump 抓 VXLAN（`port 8472`）或 Pod 网卡\n\n## 高频原因清单\n\n| 原因 | 表现 |\n|---|---|\n| CNI 未装 / 未就绪 | Node NotReady 或 Pod 无 IP |\n| 防火墙拦 VXLAN/IPIP | 同节点通、跨节点不通 |\n| Pod CIDR 与宿主机网段重叠 | 解析/路由异常，难以察觉 |\n| NetworkPolicy 过严 | 只有部分 Pod 间不通 |\n| CoreDNS 异常 | 能 ping IP 但域名解析失败 |\n\n## 一个关键判断\n\n**同节点通、跨节点不通 → 一定优先怀疑 CNI 隧道**，而不是应用配置。这是最快的分流依据。",
+    "tags": ["网络排查", "CNI", "VXLAN"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4749,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "如何排查与解决 Pod 出现 OOM 的问题？",
+    "answer": "**先分清是「容器内 OOM」还是「节点驱逐」，两者的证据位置不同。**\n\n## 两种 OOM\n\n| 类型 | 谁杀的 | 证据 |\n|---|---|---|\n| **容器 OOMKilled** | 内核 OOM killer（超 limits） | `kubectl describe pod` 的 `Last State: OOMKilled`、Exit Code **137** |\n| **节点内存压力驱逐** | kubelet 驱逐 | Pod 状态 `Evicted`，Node 有 `MemoryPressure` |\n\n## 排查步骤\n\n1. `kubectl describe pod` 看 **Last State / Reason / Exit Code**\n   - **137** = 128 + 9（SIGKILL）→ 被 OOM killer 杀\n   - **被驱逐**则看 Events 里的 `eviction` 记录\n2. 对照 `resources.limits.memory` 与**实际使用峰值**\n3. 看应用层：是否堆设得不对（Java `-Xmx` 超过 limits 一定死）、是否内存泄漏\n4. 节点侧：`kubectl describe node` 看 Allocated 与 Pressure\n\n## 最常见的三个根因\n\n| 根因 | 说明 |\n|---|---|\n| **limits < 实际需求** | 应用启动就要 2Gi，limit 设 1Gi |\n| **JVM 堆 + 非堆超出 limit** | `-Xmx2g` 但 limit 2Gi → 元空间/线程栈/直接内存一加就超 |\n| **内存泄漏** | 缓慢增长，最终被 killed |\n\n**JVM 的正确算法**：limit 要 ≥ 堆 + 元空间 + 线程栈 + 直接内存 + 系统开销，通常堆设为 limit 的 **50~75%**，或直接用 `-XX:MaxRAMPercentage`。\n\n## 解决方向\n\n1. 短期：调大 `limits.memory`（但要确认节点有资源）；\n2. 中期：修内存泄漏 / 调堆参数；\n3. 长期：按 `requests` 做好调度规划，关键服务给更高 QoS（Guaranteed）。\n\n## 一个容易忽略的点\n\n`requests.memory` 约等于 limit 时 QoS 会变 **Guaranteed**，节点内存紧张时**最后被驱逐**；requests 远小于 limit 则是 Burstable，更容易被牺牲。",
+    "tags": ["OOM", "OOMKilled", "137", "limits"],
+    "frequency": "高频"
+  }
+]

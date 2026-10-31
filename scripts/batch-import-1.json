@@ -1,0 +1,82 @@
+[
+  {
+    "id": 4726,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "K8s 的基本工作流程是怎样的？",
+    "answer": "**一句话：声明期望状态，控制器不断把实际状态拉向期望状态（调谐循环）。**\n\n## 完整链路\n\n```\n用户/CI 提交 YAML → apiserver 校验并写入 etcd\n                          ↓\n            控制器（Deployment/ReplicaSet 等）监听变更\n                          ↓\n              创建/更新 Pod 对象（此时只是「期望」）\n                          ↓\n            scheduler 选节点（写入 pod.spec.nodeName）\n                          ↓\n          kubelet 监听到「该我节点上的 Pod」→ 调 CRI 起容器\n                          ↓\n        容器运行 → kubelet 持续上报状态 → 控制器继续对齐副本数\n```\n\n## 三个要点\n\n1. **声明式而非命令式**：你写「要 3 个副本」，而不是「启动第 2 个副本」；差多少由控制器自己补。\n2. **每个组件只做一件事**：apiserver 管读写、scheduler 管选点、kubelet 管本机落地、controller-manager 管对齐。\n3. **异步与最终一致**：提交 YAML 成功 ≠ Pod 已跑起来；中间任何一步都可能卡住（Pending/ContainerCreating 就是在这一步等）。\n\n## 排查时如何用这个流程\n\n顺着链路问「卡在哪一环」：\n- Pod 一直 Pending → 卡在 scheduler（资源/亲和/污点不满足）\n- Pod ContainerCreating → 卡在 kubelet（拉镜像/挂卷）\n- Pod Running 但访问不通 → 卡在 Service/网络或探针\n\n这条链路是后面所有排查题的骨架。",
+    "tags": ["工作流程", "调谐循环", "声明式"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4727,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "K8s 有哪些核心组件？各自的作用是什么？",
+    "answer": "**分两组：控制面（管决策）与工作节点（管执行）。**\n\n## 控制面\n\n| 组件 | 作用 | 关键点 |\n|---|---|---|\n| **apiserver** | 所有操作的唯一入口，校验后读写 etcd | 无状态，可多副本；kubectl 只跟它说话 |\n| **etcd** | 存集群全部状态（唯一真相源） | 有状态、必须备份；丢 etcd = 丢集群 |\n| **scheduler** | 为未调度的 Pod 选节点 | 看资源、亲和、污点、拓扑 |\n| **controller-manager** | 各控制器的集合（Deployment/ReplicaSet/Node 等） | 靠「调谐循环」补齐期望状态 |\n| **cloud-controller-manager** | 对接云厂商（负载均衡、节点生命周期） | 自建集群没有它 |\n\n## 工作节点\n\n| 组件 | 作用 | 关键点 |\n|---|---|---|\n| **kubelet** | 在本机管理 Pod 的实际运行（调 CRI/CNI/CSI） | 只认「分配给自己的 Pod」 |\n| **kube-proxy** | 实现 Service 的转发规则（iptables/IPVS） | 不是进程转发，是写内核规则 |\n| **容器运行时** | 真正跑容器（containerd/CRI-O） | 通过 CRI 接口与 kubelet 交互 |\n\n## 常被忽略的\n\n- **CoreDNS**：集群内域名解析，Pod 的 `/etc/resolv.conf` 指向它\n- **CNI 插件**：给 Pod 分配网络（flannel/calico），不属于 K8s 本体\n- **CSI 插件**：提供存储\n\n## 面试常追问\n\n「哪些组件是单点」→ **etcd 与 apiserver 的多副本设计**是重点（见高可用题）。",
+    "tags": ["组件", "控制面", "工作节点"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4728,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "K8s 的各个组件是如何实现高可用的？",
+    "answer": "**分两类：无状态组件靠「多副本 + 负载」，有状态组件靠「副本 + 选主」。**\n\n## 无状态组件：apiserver / scheduler / controller-manager\n\n- 本身不存状态，多个实例**同时工作**，前面挂负载均衡；\n- 任何一台挂了，请求打到其他实例即可。\n\n## 有状态组件：etcd\n\n- **3 或 5 个节点**组成集群（奇数，利于选主与容错）；\n- 用 **Raft** 选主 + 多数派写入；\n- 允许挂掉少数（3 节点挂 1、5 节点挂 2）；\n- 关键：**必须真备份** —— etcd 丢了整个集群的定义就没了。\n\n## 特殊：kubelet 不是高可用对象\n\nkubelet 是「每台机器一个的本地代理」，它挂了该节点的 Pod 就失去管理（容器可能还在跑但无法上报）。\n\n## 实际生产部署形态\n\n| 组件 | 常见做法 |\n|---|---|\n| apiserver | 3 副本 + 前置 LB（或用 VIP/keepalived） |\n| etcd | 3~5 节点独立部署（不与 apiserver 混部） |\n| controller-manager | 3 副本，靠**领导者选举**（同一时刻只有 leader 生效） |\n| scheduler | 3 副本，同样靠选举 |\n\n**注意这处容易说错**：controller-manager 与 scheduler 是「多副本但先选主、只让 leader 工作」，而不是像 apiserver 那样所有副本都对外服务 —— 因为它们的操作（创建 Pod、调度）不能重复执行。\n\n## 一个常被追问的细节\n\ncontroller-manager 选主时其他副本在**待命**，leader 挂了才切换 —— 这不是负载均衡，是**避免重复决策**。",
+    "tags": ["高可用", "多副本", "etcd", "选主"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4729,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 的创建过程是怎样的？",
+    "answer": "**创建是「对象流水线」：控制器生成 Pod → scheduler 选点 → kubelet 落地。**\n\n## 完整步骤\n\n1. **kubectl apply** → apiserver 校验后写入 etcd（此时还没有 Pod，只有 Deployment）\n2. **Deployment 控制器**根据模板生成 ReplicaSet（记录期望副本数）\n3. **ReplicaSet 控制器**创建 Pod 对象，写入 etcd（此时 Pod 已存在，但 `nodeName` 为空）\n4. **scheduler** 发现「未调度 Pod」→ 选节点 → 把 nodeName 写回 etcd\n5. **kubelet** 在自己节点上监听到「有 Pod 分给我」→ 依次：\n   - 调 CNI 建网络（sandbox）\n   - 拉镜像（按 imagePullPolicy）\n   - 挂卷（CSI）\n   - 用 CRI 启动容器\n6. 探针通过后 → Pod 变为 Ready；kubelet 持续上报状态\n\n## 这个顺序解释了两个常见现象\n\n| 现象 | 说明 |\n|---|---|\n| Pod 一直 **Pending** | 卡在第 4 步：调度器选不出节点（资源不足/亲和/污点） |\n| Pod 一直 **ContainerCreating** | 卡在第 5 步：拉镜像慢、网络建不出来、卷挂不上 |\n\n## 面试常问「为什么 Pending 和 ContainerCreating 要分开看」\n\n因为它们属于不同组件：Pending 是**调度**问题（看 describe 的 Events 会写 `FailedScheduling`），ContainerCreating 是**本机落地**问题（看 kubelet 日志与 Events）。",
+    "tags": ["创建过程", "调度", "Pending"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4730,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "Pod 的删除过程是怎样的？",
+    "answer": "**删除是「先温柔后强硬」，且要等优雅终止走完。**\n\n## 步骤\n\n1. `kubectl delete pod` → apiserver 在 etcd 里给 Pod 打上 **deletionTimestamp**（不立刻消失）\n2. **kubelet** 收到「该 Pod 要删」→ 向容器发 **SIGTERM**\n3. 等待 **terminationGracePeriodSeconds**（默认 30 秒），给容器时间收尾\n4. 若超时未退出 → 发 **SIGKILL** 强杀\n5. 清理网络（CNI 删 sandbox）、卸载卷、上报完成\n6. 最终从 etcd 移除对象\n\n## 三个关键理解\n\n1. **不是立刻删除**：因为有优雅终止窗口，`kubectl delete` 后还会看到 Pod 短暂存在（状态 Terminating）。\n2. **preStop hook 在 SIGTERM 之前**执行（如果配了），用来「关连接、摘注册中心」。\n3. **副本会被补回来**：如果是 Deployment 管理的 Pod，删除后 ReplicaSet 立刻创建新的 —— 要真正减副本得改 replicas 或删控制器。\n\n## 常见坑\n\n| 现象 | 原因 |\n|---|---|\n| Pod 卡在 **Terminating** 很久 | 应用处理 SIGTERM 太慢，或卷卸载卡住（如 NFS 挂死） |\n| 删了 Pod 又出现 | Deployment 补副本，属正常行为 |\n| 强删（--grace-period=0 --force）后资源残留 | 跳过优雅流程，卷/网络可能没清理干净 |\n\n**排查卡住**：`kubectl get pod -o yaml` 看 `deletionTimestamp`，再对照 kubelet 日志看卡在哪一步清理。",
+    "tags": ["删除过程", "优雅终止", "Terminating"],
+    "frequency": "中频"
+  },
+  {
+    "id": 4731,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "Pod 的重启策略（restartPolicy）有哪几种？",
+    "answer": "**三种：Always / OnFailure / Never，只作用于「容器退出」时是否重启。**\n\n| 策略 | 行为 | 适用 |\n|---|---|---|\n| **Always**（默认） | 容器退出就重启，不论退出码 | 长期运行的服务 |\n| **OnFailure** | 仅非 0 退出码才重启 | 批处理、可能失败的任务 |\n| **Never** | 从不重启 | 一次性任务、调试 |\n\n## 关键区别：它管的是「容器」，不是「Pod」\n\n- 重启策略是 **Pod 内容器的行为**，由 kubelet 执行；\n- 它**不是**控制器的行为 —— Deployment 补副本是另一套机制。\n\n两者容易混淆，用一张表厘清：\n\n| 场景 | 谁负责 |\n|---|---|\n| 容器进程崩了 | kubelet 按 restartPolicy 重启容器 |\n| Pod 整个被删/节点挂了 | 控制器（ReplicaSet）补新 Pod |\n\n## 与 Job 的关系\n\n- **Job** 通常用 `OnFailure` 或 `Never`（跑完就结束）；\n- **CronJob** 创建的 Job 同理；\n- 普通服务用 `Always`。\n\n## 和探针的区别（常被追问）\n\n- restartPolicy 处理「**退出**」；\n- livenessProbe 处理「**没退出但卡住**」（探针失败 → kubelet 重启容器）。\n\n两者一个管「死没死」，一个管「活得好不好」。",
+    "tags": ["重启策略", "restartPolicy", "探针"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4732,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "简单",
+    "question": "镜像的更新策略（imagePullPolicy）有哪几种？分别什么时候用？",
+    "answer": "**三种：Always / IfNotPresent / Never，决定 kubelet 何时去拉镜像。**\n\n| 策略 | 行为 | 适用 |\n|---|---|---|\n| **Always** | 每次启动都去 registry 拉 | ：latest 标签、需要「重新拉即更新」的场景 |\n| **IfNotPresent**（默认） | 本地有就不拉 | 固定版本 tag（推荐） |\n| **Never** | 只用本地镜像，从不拉 | 离线环境、预热镜像 |\n\n## 默认值不是固定的（易错点）\n\n- 镜像 tag 是 **`:latest`** → 默认 **Always**\n- tag 是**具体版本**（如 `:1.2.3`）→ 默认 **IfNotPresent**\n- 不写 tag → 等于 `:latest` → 默认 Always\n\n## 生产实践\n\n1. **永远不要用 `:latest`**，用不可变 tag（镜像 digest 或 语义化版本 + git sha）；\n2. 固定 tag 时用 `IfNotPresent`（默认即可），节省拉取时间；\n3. 发布新版本 = 换 tag，而不是靠 `Always` 重拉同名 tag。\n\n## 常见坑\n\n| 现象 | 原因 |\n|---|---|\n| 改了镜像但 Pod 还是旧的 | 用了固定 tag + IfNotPresent，节点上有旧缓存；同名 tag 被覆盖 |\n| 每次重启都慢 | 用了 Always，每次都去 registry |\n| 离线环境启动失败 | 镜像没预热，且策略是 Always |\n\n**排查**：`kubectl describe pod` 看 `Image ID`，对照 registry 里该 tag 当前指向的 digest 是否一致。",
+    "tags": ["imagePullPolicy", "镜像", "latest"],
+    "frequency": "高频"
+  },
+  {
+    "id": 4733,
+    "type": "short",
+    "category": "容器与K8s",
+    "difficulty": "中等",
+    "question": "什么是静态 Pod、自主式 Pod、动态 Pod？",
+    "answer": "**按「谁创建、谁管理」划分，最容易被追问的是静态 Pod。**\n\n## 静态 Pod（Static Pod）\n\n- **由 kubelet 直接从本机目录读取 manifest 创建的 Pod**（默认 `/etc/kubernetes/manifests/`）；\n- **不经过 apiserver**、不受控制器管理；\n- apiserver 里能看到一个**镜像 Pod（mirror pod）**，只用于展示，删不掉；\n- 典型用途：**kubeadm 部署的控制面组件**（apiserver、controller-manager、scheduler、etcd 都是静态 Pod）；\n- 修改方式：改本机文件 → kubelet 自动重建，不能 `kubectl delete`。\n\n## 自主式 Pod（Bare Pod / 独立 Pod）\n\n- 直接用 `kubectl run` 或手写 Pod YAML 创建的 Pod；\n- **没有控制器管理**：删了就没了，节点挂了也不会被重建；\n- 只适合临时调试，**生产不要这么干**。\n\n## 动态 Pod（Managed Pod）\n\n- 由控制器（Deployment/StatefulSet/DaemonSet 等）创建的 Pod；\n- 有期望副本数，**删了会自动补**、节点挂了会重新调度；\n- 生产里的绝大多数 Pod 属于这类。\n\n## 一张表看清\n\n| 类型 | 谁创建 | 删了会重建吗 | 用途 |\n|---|---|---|---|\n| 静态 Pod | kubelet（本机文件） | 会（kubelet 重建） | 控制面组件 |\n| 自主式 Pod | 用户直接创建 | 不会 | 临时调试 |\n| 动态 Pod | 控制器 | 会（控制器补） | 生产负载 |\n\n## 面试常追问\n\n「静态 Pod 能不能用 kubectl 改？」→ **不能**，改了会被 kubelet 用文件内容覆盖回去；mirror pod 是只读镜像。",
+    "tags": ["静态Pod", "自主式Pod", "动态Pod"],
+    "frequency": "高频"
+  }
+]
