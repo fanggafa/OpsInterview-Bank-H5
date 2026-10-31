@@ -236,6 +236,63 @@ describe('刷题页 · 「看答案」按钮与标签同行', () => {
     const { wrapper } = await mountPractice({ studyMode: 'practice', category: 'MySQL' })
     expect(wrapper.find('.answer--open').exists()).toBe(false)
   })
+
+  /**
+   * 做题模式（只含选择题）也要有「看答案」按钮，但默认不展开。
+   * 之前的实现用 `v-if="short"` 把按钮限制在简答题上，选择题根本看不到。
+   */
+  it('做题模式（选择题）也显示看答案按钮，且默认收起', async () => {
+    const { wrapper } = await mountPractice({ studyMode: 'practice', category: 'MySQL' })
+    const toggle = wrapper.find('.qcard-p__toggle')
+    expect(toggle.exists()).toBe(true)
+    expect(toggle.text()).toContain('看答案')
+    expect(wrapper.find('.answer--open').exists()).toBe(false)
+  })
+
+  it('做题模式点看答案后展开，能读到正确答案与解析', async () => {
+    const { wrapper } = await mountPractice({ studyMode: 'practice', category: 'MySQL' })
+    await wrapper.find('.qcard-p__toggle')
+      .trigger('click')
+    expect(wrapper.find('.answer--open').exists()).toBe(true)
+    expect(wrapper.find('.qcard-p__toggle').text()).toContain('收起答案')
+
+    // 答案只给选项键（不重复选项原文，省空间）
+    const body = wrapper.find('.answer__body')
+    expect(body.text()).toContain('正确答案')
+    expect(body.text()).toContain('A')
+    // 不该再把选项原文抄一遍
+    expect(body.text()).not.toContain('A. a')
+    // 解析也在展开区里
+    expect(body.text()).toContain('解析')
+  })
+
+  /**
+   * 回归：按钮要「点好几次」才展开/收起。
+   * 连续点三次，状态必须严格交替：开 → 关 → 开。
+   */
+  it('连续点击时状态严格交替（不必点多次）', async () => {
+    const { wrapper } = await mountPractice({ studyMode: 'practice', category: 'MySQL' })
+    const toggle = wrapper.find('.qcard-p__toggle')
+
+    const states = []
+    for (let i = 0; i < 3; i++) {
+      await toggle.trigger('click')
+      await flushPromises()
+      await wrapper.vm.$nextTick()
+      states.push(wrapper.findAll('.answer--open').length)
+    }
+
+    expect(states).toEqual([1, 0, 1])
+  })
+
+  it('未作答时就展开：不显示判定结果，但能看到正确答案', async () => {
+    const { wrapper } = await mountPractice({ studyMode: 'practice', category: 'MySQL' })
+    await wrapper.find('.qcard-p__toggle')
+      .trigger('click')
+    // 还没选，所以不该有「回答正确/错误」
+    expect(wrapper.find('.result').exists()).toBe(false)
+    expect(wrapper.find('.answer__body').text()).toContain('A')
+  })
 })
 
 describe('刷题页 · 断点续刷', () => {
