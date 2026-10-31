@@ -1,0 +1,10 @@
+{
+  "figures": [
+    { "component": "NetworkPolicyMechanism", "id": "network-policy-mechanism" },
+    { "component": "CanaryMethods", "id": "canary-methods" }
+  ],
+  "attach": [
+    { "question": 4762, "figure": "network-policy-mechanism", "anchor": "NetworkPolicy" },
+    { "question": 4764, "figure": "canary-methods", "anchor": "灰度" }
+  ]
+}

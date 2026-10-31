@@ -1,0 +1,16 @@
+{
+  "figures": [
+    { "component": "ServiceTypes", "id": "service-types" },
+    { "component": "KubeProxyMechanism", "id": "kube-proxy-mechanism" },
+    { "component": "StatefulsetDeploy", "id": "statefulset-deploy" },
+    { "component": "AffinityTypes", "id": "affinity-types" },
+    { "component": "AutoRecoveryLayers", "id": "auto-recovery-layers" }
+  ],
+  "attach": [
+    { "question": 4747, "figure": "affinity-types", "anchor": "亲和性" },
+    { "question": 4751, "figure": "auto-recovery-layers", "anchor": "自动清除" },
+    { "question": 4770, "figure": "service-types", "anchor": "Service 的作用" },
+    { "question": 4771, "figure": "kube-proxy-mechanism", "anchor": "kube-proxy" },
+    { "question": 4772, "figure": "statefulset-deploy", "anchor": "有状态服务" }
+  ]
+}
