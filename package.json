@@ -17,7 +17,8 @@
     "verify": "npm run check:encoding && npm run validate:data && npm run check:figures && npm run check:import-case && npm run check:figure-sfc && npm run check:figure-placement && npm run test && npm run build",
     "check:import-case": "node scripts/check-import-case.mjs",
     "check:figure-sfc": "node scripts/check-figure-sfc.mjs",
-    "check:figure-placement": "node scripts/check-figure-placement.mjs"
+    "check:figure-placement": "node scripts/check-figure-placement.mjs",
+    "split:data": "node scripts/split-data.mjs"
   },
   "dependencies": {
     "pinia": "^2.2.6",

@@ -24,11 +24,12 @@ npm run dev          # http://127.0.0.1:5273
 | `npm run dev` | 开发服务器（127.0.0.1:5273） |
 | `npm run build` | 生产构建到 `dist/` |
 | `npm run preview` | 预览构建产物（127.0.0.1:5274） |
-| `npm run test` | 运行 vitest（37 个文件 / 708 个用例） |
+| `npm run test` | 运行 vitest（39 个文件 / 722 个用例） |
 | `npm run validate:data` | 校验题库结构（枚举 / id / 题数 / 字段） |
 | `npm run check:encoding` | 编码守卫（防中文被写坏，见[编码守卫](#编码守卫)） |
 | `npm run check:figures` | 插图文字溢出检查（防被 SVG 裁掉半句，见[画图注意事项](#画图注意事项踩过的坑)） |
 | `npm run check:figure-sfc` | 插图结构检查：SFC 完整性 + **文字压字 / 行距过紧**（连同名文件过滤可用） |
+| `npm run split:data` | 由 `questions.json` 生成轻量索引 + 按分类的答案分片（见[分片数据](#分片数据p0-性能优化第一步)） |
 | `npm run verify` | **提交前跑这个**：编码 + 题库 + 插图 + 测试 + 构建 全流程 |
 
 环境要求：Node.js ≥ 18。
@@ -1338,6 +1339,56 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
 
 ---
 
+## 分片数据（P0 性能优化第一步）
+
+首屏慢的根源是「一次拉全量题库」：`questions.json` 4.20 MB / **gzip 1455 KB**。
+而列表页其实只需要 `id / type / category / difficulty / frequency / question` 几个字段。
+
+`npm run split:data` 会从 `questions.json` 生成两套产物：
+
+| 产物 | 内容 | 原始 | gzip |
+|---|---|---|---|
+| `public/data/questions-index.json` | 列表页索引（7 字段） | 308 KB | **121 KB** |
+| `public/data/answers/<slug>.json` | 25 个分类的答案分片（answer/explanation/options） | — | 最大 **85 KB**（k8s） |
+| `public/data/answers/manifest.json` | 分类 → slug 映射 + 每片题数 | 很小 | — |
+
+**体积收益**：首屏最坏情况（索引 + 最大分片）约 **gzip 206 KB**，
+相比原来的 1455 KB 减少约 **86%**。
+
+### 当前状态：产物已就位，但**尚未切换**
+
+`dataService.js` 已经提供了三个接口：
+
+```js
+fetchIndex()             // 列表页索引（短字段名会还原成完整字段名）
+fetchAnswerShard(slug)   // 按分类取答案分片
+fetchAnswersManifest()   // 取分类 → slug 映射
+```
+
+但 `fetchQuestions()` 与 `bankStore` **仍在用单文件**，因为切换要动的地方较多
+（`bankStore` 的 `questions` 变成「索引 + 按需答案」，`getById()` 需要处理未加载状态，
+详情页要处理加载中的短暂空态）。所以先落地产物 + 接口，切换单独做。
+
+**切换前请注意**：`dist/data` 会同时包含 `questions.json`（4.2 MB）和分片（约 1.8 MB）。
+体积翻倍是这一阶段的预期代价，切换完成后再删 `questions.json`。
+
+### 为什么分片文件要提交进 git
+
+GitHub Pages 直接发布构建产物，而构建不会自动跑 `split:data`。
+所以分片必须以「已生成」的状态存在于仓库。
+
+**修改题库后必须重新生成**，否则会脱节（列表能看到题、点进去没答案）：
+
+```bash
+npm run split:data
+```
+
+`tests/splitData.test.js` 会校验索引与分片能否还原出 `questions.json` 的全部内容，
+包括答案一致性、分类覆盖、slug 的 URL 安全性，以及 gzip 体积预算 —— 脱节会被测试拦住。
+
+---
+
+
 ## 已知限制
 
 - 无后端 / 无 AI：所有判定都在本地完成，不调用任何远程接口。
@@ -1368,38 +1419,65 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
 
 ### P0 — 已确认的性能问题
 
-**1. `gestures` chunk 有 892 KB（gzip 265 KB），严重超预算**
+> **先看压缩后的真实数字**（用 `zlib` 实测，不是估算）：
+>
+> | 数据 | 原始 | gzip | brotli |
+> |---|---|---|---|
+> | `questions.json`（全量题库） | 4.20 MB | **1455 KB** | 1057 KB |
+> | 列表页所需字段组成的索引 | 226 KB | **89 KB** | — |
+> | 按分类拆分后最大单片（容器与K8s） | — | 79 KB | — |
+>
+> 结论：**首屏瓶颈是题库本身的 1.46 MB（gzip 后），不是插图组件的 chunk 体积。**
+> 下面两条按这个结论排优先级。
 
-实测 `npm run build` 输出：`gestures-CgUBdf8a.js 892.05 kB`，Vite 已警告
-「Some chunks are larger than 500 kB」。
+**1. 题库 4.2 MB 单文件全量加载（gzip 后仍 1.46 MB）— 最优先**
 
-用字符串检索确认该 chunk 里**混入了题库数据与插图组件**
-（含题目标题文本、含 `dns-resolve` 等 figure id），而不是只有 144 行的手势工具。
+`public/data/questions.json` 实测 4.20 MB / gzip 1455 KB，`fetchQuestions()` 一次 `fetch`
+全量拉取，且 `cache: 'no-cache'`（每次强行走网络校验）。手机弱网下首屏会很慢。
 
-根因：`PracticeView` / `QuestionView` 同时依赖 `@/utils/gestures` + 题库 store +
-题目渲染链路，Vite 把这条依赖链合并成了一个大型共享 chunk，于是在「只加载手势」
-时也把题库相关内容一起拉了进来。
+而首屏真正需要的信息量很小：列表页只用
+`id / type / category / difficulty / frequency / question`，
+这些字段组成的索引实测 **226 KB（gzip 89 KB）**，只占全量的 **6%**。
 
-建议：
-- `vite.config.js` 里配 `build.rollupOptions.output.manualChunks`，把
-  `utils/gestures`、`utils/pinch` 这类纯工具单独切出来；
-- 或把题库数据改成「按分类分片 + 按需加载」（见下一条），从源头减小。
+建议做法（已实测过体积）：
 
-**2. 题库 4.2 MB 单文件全量加载**
+```
+questions-index.json         226 KB / gzip  89 KB   ← 列表页只用这个
+data/<分类>.json             最大 gzip 79 KB          ← 进分类/看详情时按需加载
+```
 
-`public/data/questions.json` 实测 4.15 MB，`fetchQuestions()` 一次 `fetch` 全量拉取，
-且 `cache: 'no-cache'`（每次强行走网络校验）。对手机端首屏不友好。
+- 索引方案首屏 gzip 从 1455 KB 降到 **89 KB（-94%）**；
+- 最坏情况（进一个大分类）是 89 + 79 = 168 KB；
+- 代价：题库从 1 个文件变 26 个，`validate:data`、`merge-batch.mjs`、
+  `dataService`、`bankStore` 都要跟着改，详情页需要处理短暂加载态。
 
-建议：
-- 按分类拆分（如 `data/linux.json`、`data/k8s.json`），进分类时才加载对应分片；
-- 或保留单文件但改为服务端 gzip + 强缓存（`questions.<hash>.json` + 长 `max-age`）；
-- 列表页只需要 `id/category/difficulty/question` 这几个字段，可做一个
-  **轻量索引文件**（约 200 KB），详情页再按需取正文。
+**2. 340 个插图组件全量打进共享 chunk（未压缩 892 KB，gzip 265 KB）— 次优先**
+
+实测 `npm run build`：`gestures-*.js 892.05 kB`，Vite 警告超过 500 kB。
+
+**根因不是 chunk 划分策略**：用字符串检索确认该 chunk 里装的是
+340 个插图组件的渲染代码（含 `t("rect", …)` 形式的组件渲染语句）。
+`index.js` 用静态 `import` 引入全部 340 个组件，而 `AnswerText.vue` 会用到整张注册表，
+于是它们被打包成一个共享 chunk，**任何页面都会下载全部插图**。
+
+⚠️ **重要修正**：这一条之前建议用 `manualChunks` 切分，**那个建议是错的** ——
+切分只会把它拆得更零碎，不会减少总量。正确的方向是「按需加载」。
+
+⚠️ **实测踩坑**：试过把 `index.js` 改成 `defineAsyncComponent(() => import(...))`，
+构建产物从 892 KB 降到 80 KB（-812 KB），**但会破坏功能**：
+`getFigure()` 返回的 `AsyncComponentWrapper` 在测试环境下渲染不出任何内容
+（`.fig` / `svg` 均为 0），图解放大层随之失效。
+试过 `flushPromises` 循环等待、`<Suspense>` 包裹、`suspensible: false`，**均无效**。
+对照组：直接 `await import('./DnsResolve.vue')` 再挂载完全正常，
+说明问题出在 `defineAsyncComponent` 与该测试环境（`@vue/test-utils` + jsdom）的交互。
+
+所以这条**暂缓**，前置条件是先有浏览器级验证手段（见 P2 的 Playwright 一条），
+否则改了无法确认核心交互没坏。压缩后的实际收益约 200 KB，也小于第 1 条的 1.37 MB。
 
 **3. 首页/列表无骨架屏与加载时间预算**
 
-`bankStore` 有 `loading` 三态，但没有明确的加载时间预算与失败重试退避。4.2 MB 在弱网
-下可能十几秒。建议加「进度提示 + 超时降级 + 重试」。
+`bankStore` 有 `loading` 三态，但没有明确的加载时间预算与失败重试退避。1.46 MB 在弱网
+下仍可能十几秒。建议加「进度提示 + 超时降级 + 重试」。
 
 ### P1 — 产品能力缺口
 
