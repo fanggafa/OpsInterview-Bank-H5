@@ -245,8 +245,8 @@ export const STORAGE_KEYS = {
  */
 export const TAB_ITEMS = [
   { path: '/', label: '首页', icon: 'home' },
-  { path: '/bank', label: '题库', icon: 'bank' },
   { path: '/practice', label: '刷题', icon: 'practice' },
+  { path: '/bank', label: '题库', icon: 'bank' },
   { path: '/me', label: '我的', icon: 'me' },
 ]
 
