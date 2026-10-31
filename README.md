@@ -1491,6 +1491,18 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
   会让长名字撑破胶囊。改用 `flex-wrap` + 每个胶囊按内容自适应宽度。
   `tests/chip-overflow.test.js` 会检查这条不被回退。
 - 改动后务必跑**全量** `npm run test`，不能只看被改动的文件。
+- **不要在 PowerShell 里用 `node -e "..."` 内联脚本改文件**（Windows 上这是最大的效率杀手）。
+  PowerShell 会先解析命令行，`"` `'` `$` 和反引号会在 Node 看到之前被吃掉，
+  表现为各种随机错误：`Unterminated string constant`、`Expected ',', got 'ident'`、
+  `一元运算符后缺少表达式`，甚至把中文变成乱码再塞进文件。
+  **正确做法**：把要改的内容写进 `.mjs` / `.json` 文件，再用纯参数调用脚本。
+  注册插图与挂图用 `scripts/fig.mjs`（数据驱动，参数只有文件路径）：
+  ```bash
+  node scripts/fig.mjs register scripts/batch.json --dry-run   # 先看要做什么
+  node scripts/fig.mjs register scripts/batch.json             # 实际写入
+  ```
+  `batch.json` 结构见 `scripts/fig.mjs` 头部注释。它幂等、锚点落进表格时自动退回开头，
+  替代了此前散落的 50 多个 `register-batchN.mjs` / `attach-batchN.mjs`。
 
 ---
 
