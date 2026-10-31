@@ -1,5 +1,4 @@
-import { describe, expect, it, beforeAll } from 'vitest'
-import { execSync } from 'node:child_process'
+import { describe, expect, it } from 'vitest'
 import { existsSync, readdirSync, readFileSync, mkdtempSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
