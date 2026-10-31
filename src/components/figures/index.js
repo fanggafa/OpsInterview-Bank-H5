@@ -173,6 +173,14 @@ import Nginx502504 from './Nginx502504.vue'
 import NginxReloadRestart from './NginxReloadRestart.vue'
 import NginxRootAlias from './NginxRootAlias.vue'
 import NginxStreamVsHttp from './NginxStreamVsHttp.vue'
+import IptablesDropReject from './IptablesDropReject.vue'
+import IptablesOrder from './IptablesOrder.vue'
+import SecGroupVsIptables from './SecGroupVsIptables.vue'
+import K8sNodeIptables from './K8sNodeIptables.vue'
+import LvsResponseIssue from './LvsResponseIssue.vue'
+import LvsRealIp from './LvsRealIp.vue'
+import LvsActiveStandby from './LvsActiveStandby.vue'
+import PartialUsersFail from './PartialUsersFail.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -408,6 +416,14 @@ export const FIGURES = {
   'p99-spike-triage': P99SpikeTriage,
   'k8s-metrics-sources': K8sMetricsSources,
   'prometheus-storage': PrometheusStorage,
+  'iptables-drop-vs-reject': IptablesDropReject,
+  'iptables-rule-order': IptablesOrder,
+  'security-group-vs-iptables': SecGroupVsIptables,
+  'k8s-node-iptables': K8sNodeIptables,
+  'lvs-response-issue': LvsResponseIssue,
+  'lvs-real-ip': LvsRealIp,
+  'lvs-active-vs-active-active': LvsActiveStandby,
+  'partial-users-fail': PartialUsersFail,
 }
 
 /**

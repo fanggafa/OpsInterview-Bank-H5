@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **198 张内联 SVG 图解**（198 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **206 张内联 SVG 图解**（206 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1139,7 +1139,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（198 张，24 个分类全覆盖）
+### 已注册的插图（206 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1341,6 +1341,14 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `nginx-reload-vs-restart` | reload 与 restart | 题 1408 |
 | `nginx-root-vs-alias` | root 与 alias | 题 1422 |
 | `nginx-stream-vs-http` | stream（4 层）与 http（7 层） | 题 1433 |
+| `iptables-drop-vs-reject` | DROP 与 REJECT | 题 1208 |
+| `iptables-rule-order` | 规则顺序决定结果 | 题 1233 |
+| `security-group-vs-iptables` | 安全组与 iptables 的排查顺序 | 题 1220 |
+| `k8s-node-iptables` | K8s 节点上的 iptables 规则 | 题 1230 |
+| `lvs-response-issue` | LVS 响应不回客户端 | 题 1612 |
+| `lvs-real-ip` | 四层传递真实 IP | 题 1617 |
+| `lvs-active-vs-active-active` | 主备与主主模式 | 题 1627 |
+| `partial-users-fail` | 部分用户访问不了 | 题 1629 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
@@ -1503,6 +1511,17 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
   ```
   `batch.json` 结构见 `scripts/fig.mjs` 头部注释。它幂等、锚点落进表格时自动退回开头，
   替代了此前散落的 50 多个 `register-batchN.mjs` / `attach-batchN.mjs`。
+- **Windows 上 `vite build` 会随机失败**，报
+  `[vite:esbuild-transpile] remove ...Temp\esbuild-xxxx: Access is denied`。
+  **不是代码问题**：esbuild 把待转译模块写到 `%TEMP%` 再删除，而 QQProtect 等
+  安全组件的实时扫描会短暂锁住新建文件，删除就失败。实测同一个工作区里，
+  加 8 个新组件必现、去掉后连续 3 次全过——文件越多撞锁概率越高。
+  **已修**：`npm run build` 改走 `scripts/build.mjs`，它把 `TMP`/`TEMP` 指到项目内的
+  `.buildtmp/`（扫描器不覆盖），跑完自动清理。真身仍在 `npm run build:raw`（`vite build`）。
+  若在别的机器上又遇到同样报错，先检查是否有杀软在扫系统 TEMP。
+- **别用 PowerShell 的 `Set-Content` 写 `package.json`**：它会加上 UTF-8 BOM，
+  导致 Vite 报 `Unexpected token '', "{" ... is not valid JSON`。
+  用 Node 的 `writeFileSync` 写（不带 BOM）。`check:encoding` 能查出来这类问题。
 
 ---
 
