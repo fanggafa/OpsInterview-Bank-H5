@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **174 张内联 SVG 图解**（174 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **182 张内联 SVG 图解**（182 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1115,7 +1115,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（174 张，23 个分类覆盖；Python 分类暂未配图）
+### 已注册的插图（182 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1293,6 +1293,14 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `suspicious-account-triage` | 可疑账号与异常登录排查 | 题 5205 |
 | `secret-management` | 密钥管理四种做法对比 | 题 66 |
 | `sql-injection` | SQL 注入原理与运维侧降损 | 题 64 |
+| `python-gil` | GIL 与线程/进程的取舍 | 题 5602 |
+| `python-concurrency` | 进程/线程/协程选型 | 题 5603 |
+| `python-memory-leak` | 内存泄漏：tracemalloc/objgraph | 题 5604 |
+| `python-triage` | CPU 100% 与卡住的定位 | 题 5608 |
+| `arch-explaining` | 怎么讲清系统架构 | 题 5456 |
+| `config-ab-difference` | 配置只在 A 生效的排查 | 题 5436 |
+| `k8s-migration-plan` | 迁移到 K8s 的规划 | 题 117 |
+| `ha-refactor-layers` | 单机改造高可用的分层 | 题 72 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。

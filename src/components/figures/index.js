@@ -149,6 +149,14 @@ import AuditReplay from './AuditReplay.vue'
 import SuspiciousAccountTriage from './SuspiciousAccountTriage.vue'
 import SecretManagement from './SecretManagement.vue'
 import SqlInjection from './SqlInjection.vue'
+import PythonGil from './PythonGil.vue'
+import PythonConcurrency from './PythonConcurrency.vue'
+import PythonMemoryLeak from './PythonMemoryLeak.vue'
+import PythonTriage from './PythonTriage.vue'
+import ArchExplaining from './ArchExplaining.vue'
+import ConfigABDifference from './ConfigABDifference.vue'
+import K8sMigrationPlan from './K8sMigrationPlan.vue'
+import HaRefactorLayers from './HaRefactorLayers.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -357,6 +365,14 @@ export const FIGURES = {
   'suspicious-account-triage': SuspiciousAccountTriage,
   'secret-management': SecretManagement,
   'sql-injection': SqlInjection,
+  'python-gil': PythonGil,
+  'python-concurrency': PythonConcurrency,
+  'python-memory-leak': PythonMemoryLeak,
+  'python-triage': PythonTriage,
+  'arch-explaining': ArchExplaining,
+  'config-ab-difference': ConfigABDifference,
+  'k8s-migration-plan': K8sMigrationPlan,
+  'ha-refactor-layers': HaRefactorLayers,
   'p99-spike-triage': P99SpikeTriage,
   'k8s-metrics-sources': K8sMetricsSources,
   'prometheus-storage': PrometheusStorage,
