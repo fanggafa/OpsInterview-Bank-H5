@@ -157,6 +157,14 @@ import ArchExplaining from './ArchExplaining.vue'
 import ConfigABDifference from './ConfigABDifference.vue'
 import K8sMigrationPlan from './K8sMigrationPlan.vue'
 import HaRefactorLayers from './HaRefactorLayers.vue'
+import MongoMemoryTriage from './MongoMemoryTriage.vue'
+import MongoReadConcern from './MongoReadConcern.vue'
+import MongoNotWritable from './MongoNotWritable.vue'
+import MongoChunkMigrate from './MongoChunkMigrate.vue'
+import VmIoPerformance from './VmIoPerformance.vue'
+import VmNetwork from './VmNetwork.vue'
+import VmHostSlow from './VmHostSlow.vue'
+import VmThrottle from './VmThrottle.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -373,6 +381,14 @@ export const FIGURES = {
   'config-ab-difference': ConfigABDifference,
   'k8s-migration-plan': K8sMigrationPlan,
   'ha-refactor-layers': HaRefactorLayers,
+  'mongo-memory-triage': MongoMemoryTriage,
+  'mongo-read-concern': MongoReadConcern,
+  'mongo-not-writable': MongoNotWritable,
+  'mongo-chunk-migrate': MongoChunkMigrate,
+  'vm-io-performance': VmIoPerformance,
+  'vm-network': VmNetwork,
+  'vm-host-slow': VmHostSlow,
+  'vm-throttle': VmThrottle,
   'p99-spike-triage': P99SpikeTriage,
   'k8s-metrics-sources': K8sMetricsSources,
   'prometheus-storage': PrometheusStorage,

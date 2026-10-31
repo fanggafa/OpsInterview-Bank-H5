@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **182 张内联 SVG 图解**（182 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **190 张内联 SVG 图解**（190 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1115,7 +1115,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（182 张，24 个分类全覆盖）
+### 已注册的插图（190 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1301,6 +1301,14 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `config-ab-difference` | 配置只在 A 生效的排查 | 题 5436 |
 | `k8s-migration-plan` | 迁移到 K8s 的规划 | 题 117 |
 | `ha-refactor-layers` | 单机改造高可用的分层 | 题 72 |
+| `mongo-memory-triage` | MongoDB 内存高：缓存 vs 真不够 | 题 2018 |
+| `mongo-read-concern` | readConcern 三级与代价 | 题 2021 |
+| `mongo-not-writable` | NotWritablePrimary 三类原因 | 题 2028 |
+| `mongo-chunk-migrate` | chunk 迁移五步与风险 | 题 2032 |
+| `vm-io-performance` | 虚拟机数据库 IO 差的四层 | 题 2609 |
+| `vm-network` | 虚拟网络三模式与排查 | 题 2615 |
+| `vm-host-slow` | 宿主不忙但 VM 卡的四因 | 题 2624 |
+| `vm-throttle` | 虚拟机被限速的识别 | 题 2631 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
