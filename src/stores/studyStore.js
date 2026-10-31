@@ -228,6 +228,47 @@ export const useStudyStore = defineStore('study', () => {
    */
   const wrongList = computed(() => bank.questions.filter((q) => isWrong(q.id)))
 
+  /**
+   * 薄弱环节：按分类统计错题的**错误率**，降序排列（不截断，详情页要全列）。
+   *
+   * 两条计算规则，都是为了让「弱」这个判断可信：
+   *
+   * 1. **分母是已刷题数，不是分类总题数**。
+   *    某分类 30 题只刷 5 题、错 3 题：按总数算是 10%（看着挺健康），
+   *    按已刷数算是 60%（这才是真实水平）。分母必须是有记录的题。
+   *
+   * 2. **样本不足不进榜（门槛 3 题）**。
+   *    只刷 1 题就错 → 100%，会排到第一，但那是样本不足不是真弱。
+   *    刷题量少时宁可不返回数据，也不给误导结论。
+   *
+   * 返回项同时带 reviewed / total，界面可显示「已刷 5/30」，
+   * 让用户知道这份错误率是在多大样本上得出的。
+   */
+  const MIN_SAMPLE = 3
+  const weakCategories = computed(() => {
+    const stats = new Map()
+
+    bank.questions.forEach((q) => {
+      if (!stats.has(q.category)) {
+        stats.set(q.category, { category: q.category, total: 0, reviewed: 0, wrong: 0 })
+      }
+      const s = stats.get(q.category)
+      s.total += 1
+      const r = records.value[q.id]
+      // 已刷：有记录且实际刷过（times>0），或已进错题本
+      if (r && (r.times > 0 || r.inWrong)) s.reviewed += 1
+      if (r && r.inWrong) s.wrong += 1
+    })
+
+    return Array.from(stats.values())
+      .filter((s) => s.reviewed >= MIN_SAMPLE && s.wrong > 0)
+      .map((s) => ({ ...s, rate: ratio(s.wrong, s.reviewed) }))
+      .sort((a, b) => b.rate - a.rate || b.wrong - a.wrong)
+  })
+
+  /** 薄弱环节里错误率最高的那个分类（首页卡片用它显示摘要） */
+  const weakestCategory = computed(() => weakCategories.value[0] || null)
+
   /** 某题是否在错题本 */
   function isWrong(id) {
     const r = records.value[Number(id)]
@@ -403,6 +444,8 @@ export const useStudyStore = defineStore('study', () => {
     todayReviewedCount,
     categoryStats,
     wrongList,
+    weakCategories,
+    weakestCategory,
     favoriteList,
     // helpers
     recordOf,

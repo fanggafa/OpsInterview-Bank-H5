@@ -48,6 +48,12 @@ const routes = [
     meta: { title: '错题本', parent: '/me' },
   },
   {
+    path: '/weak',
+    name: 'weak',
+    component: () => import('@/views/WeakView.vue'),
+    meta: { title: '薄弱分类', parent: '/' },
+  },
+  {
     path: '/me',
     name: 'me',
     component: () => import('@/views/MeView.vue'),

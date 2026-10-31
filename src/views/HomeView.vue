@@ -87,6 +87,11 @@ const dateText = computed(() => {
 function openDaily() {
   if (daily.value) router.push(`/question/${daily.value.id}`)
 }
+
+/** 进入薄弱环节详情页（完整榜单在那里） */
+function openWeak() {
+  router.push('/weak')
+}
 </script>
 
 <template>
@@ -229,6 +234,36 @@ function openDaily() {
           <span class="review__title">错题复习</span>
           <span class="review__desc">
             {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 10)} 题 · 连对 3 次移出` : '错题本是空的' }}
+          </span>
+        </span>
+        <span class="review__arrow" aria-hidden="true">→</span>
+      </button>
+
+      <!--
+        薄弱环节入口：与上面两张卡同款式，只显示「最弱的是哪块」这一条摘要。
+        完整榜单（含样本量、分类题库入口）在 /weak 页 —— 首页不该被一长条列表撑开。
+        没有足够样本时（刷得少）不显示，避免给出误导性结论。
+      -->
+      <button v-if="study.weakCategories.length" class="review" @click="openWeak">
+        <span class="review__icon review__icon--weak" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="19" height="19">
+            <path
+              d="M4 18V9m4 9V5m4 13v-6m4 6V8m4 10v-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
+        <span class="review__text">
+          <span class="review__title">薄弱分类</span>
+          <span class="review__desc">
+            {{ study.weakCategories[0].category }} ·
+            {{ study.weakCategories[0].wrong }}/{{ study.weakCategories[0].reviewed }} 错
+            <template v-if="study.weakCategories.length > 1">
+              · 共 {{ study.weakCategories.length }} 个待补
+            </template>
           </span>
         </span>
         <span class="review__arrow" aria-hidden="true">→</span>
@@ -533,6 +568,10 @@ function openDaily() {
 }
 .review__icon--wrong {
   background: linear-gradient(135deg, #f0736f, #d64b52);
+}
+/* 薄弱环节：用琥珀色，与「错题」的红区分开 —— 它代表「趋势/分析」而非「错误」 */
+.review__icon--weak {
+  background: linear-gradient(135deg, #f7b955, #e09428);
 }
 .review__text {
   flex: 1;
