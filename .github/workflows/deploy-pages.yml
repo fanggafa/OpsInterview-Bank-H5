@@ -65,10 +65,17 @@ jobs:
           test -f "dist/data/answers/k8s.json"    || { echo "缺少答案分片"; exit 1; }
           # 源数据不该被部署：它 4.3 MB，页面运行时完全不碰
           test ! -f dist/data/questions.json      || { echo "questions.json 不应出现在 dist"; exit 1; }
+          # PWA 产物：Service Worker、manifest、图标（缺了就无法离线 / 无法安装）
+          test -f dist/sw.js                      || { echo "缺少 sw.js（PWA 未生效）"; exit 1; }
+          test -f dist/manifest.webmanifest       || { echo "缺少 PWA manifest"; exit 1; }
+          test -f dist/icon-192.png               || { echo "缺少 192 图标"; exit 1; }
+          test -f dist/icon-512.png               || { echo "缺少 512 图标"; exit 1; }
+          # sw.js 必须预缓存题库数据，否则「离线能打开但点进去没答案」
+          grep -q 'questions-index.json' dist/sw.js || { echo "sw.js 未预缓存题库索引"; exit 1; }
+          grep -q 'answers' dist/sw.js            || { echo "sw.js 未预缓存答案分片"; exit 1; }
           grep -q "/${{ github.event.repository.name }}/assets/" dist/index.html \
             || { echo "BASE_PATH 未生效"; exit 1; }
-          echo "✓ 产物校验通过（索引 + 分片齐全，源数据已剔除）"
-          echo "✓ 产物校验通过"
+          echo "✓ 产物校验通过（索引 + 分片齐全，源数据已剔除，PWA 已预缓存题库）"
 
       # 防止 GitHub Pages 的 Jekyll 处理干扰下划线开头的文件
       - name: 添加 .nojekyll

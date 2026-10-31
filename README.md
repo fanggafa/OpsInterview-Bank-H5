@@ -1540,7 +1540,7 @@ data/<分类>.json             最大 gzip 79 KB          ← 进分类/看详�
 | **薄弱分类** | ✅ **已实现**：首页入口卡 → `/weak` 详情页 | 见下节说明 |
 | **学习数据可视化** | 「我的」页有分类掌握度图表 | 加时间维度（本周/本月趋势、连续打卡曲线） |
 | **协作/分享** | 无 | 分享某道题/某个题单的链接（带 `?ids=` 参数） |
-| **离线可用（PWA）** | 无 PWA | **已提高优先级**，见下节说明 |
+| **离线可用（PWA）** | ✅ **已实现**：全量预缓存 + 手动更新提示 | 见下节说明 |
 
 #### 搜索关键词高亮（已实现）
 
@@ -1591,6 +1591,42 @@ data/<分类>.json             最大 gzip 79 KB          ← 进分类/看详�
 
 实现：`studyStore.weakCategories`（不截断，全列）与 `weakestCategory`（首页摘要用）。
 测试：`tests/weakRank.test.js`（6 个，口径与门槛）、`tests/weakView.test.js`（10 个，含两个去向的 URL 参数）。
+
+#### PWA 离线（已实现）
+
+目标场景：**通勤/地铁没网时也能刷题**。
+
+**缓存策略：全量预缓存**。`vite-plugin-pwa` 的 `globPatterns` 显式包含 `json`，
+把索引（460 KB）与 25 个答案分片（约 3.2 MB）全部纳入 precache ——
+实测构建输出 `precache 71 entries (5199 KiB)`。
+
+> 为什么不全量：只缓存首屏会导致「离线能打开列表、点进题目没答案」，
+> 那等于不能刷题。而缓存全部数据的代价只是一次性多下 3 MB。
+
+**更新策略：手动提示**（`registerType: 'prompt'`）。
+
+新版本安装完成后**不自动接管**，而是通过 `usePwaUpdate` 暴露 `needRefresh`，
+由 `PwaUpdateBar` 弹出页内提示条（「稍后 / 立即更新」）。
+
+> 为什么不自动更新：用户可能正在刷题（题卡占满一屏），
+> Service Worker 立刻接管会强制重载页面、丢失当前作答状态。
+> 另设了每小时一次的 `registration.update()` 检查，应用常驻时也能发现新版本。
+
+**关键实现细节**：
+
+- SW 注册放在 `app.mount()` **之后**，不与首屏抢带宽与主线程；
+- `virtual:pwa-register` 用**动态 import**引入 —— 它是构建期生成的虚拟模块，
+  静态 import 会让单元测试直接崩；无 SW 环境下 `register()` 静默跳过，功能正常；
+- 图标由 `scripts/gen-icons.mjs` **手写 PNG 编码器**生成（项目没有 sharp/canvas，
+  为一个图标装图像库不值当）；
+- **与 `stripSourceData` 插件的顺序是对的**：`sw.js` 里已确认不含
+  `questions.json`，说明剔除发生在生成预缓存清单之前。
+
+**CI 与部署工作流都加了 PWA 产物断言**：检查 `sw.js` / `manifest.webmanifest` /
+两个图标存在，并且 `grep` 确认 `sw.js` 里真的预缓存了 `questions-index.json`
+与 `answers` —— 防止出现「能装但离线没数据」这种静默失效。
+
+测试：`tests/pwaUpdate.test.js`（7 个，覆盖无 SW 环境降级、提示条联动、非原生弹窗约定）。
 
 #### 已剔除的扩展点（明确不做）
 
