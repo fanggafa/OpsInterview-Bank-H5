@@ -8680,6 +8680,180 @@
     "frequency": "低频"
   },
   {
+    "id": 1515,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx、OpenResty、Tengine 有什么区别？该怎么选？",
+    "answer": "**三者内核都是 Nginx，差异在「扩展能力」与「维护方」。**\n\n| | Nginx | OpenResty | Tengine |\n|---|---|---|---|\n| 维护方 | Nginx Inc / F5 | OpenResty Inc | **淘宝/阿里** |\n| 核心增强 | — | **内嵌 LuaJIT**，可用 Lua 写逻辑 | 集成大量第三方模块 |\n| 定位 | 通用 Web/反向代理 | **可编程网关** | 高并发场景的增强版 |\n| 生态 | 官方、稳定 | 大量 Lua 库（lua-resty-*） | 阿里系，社区活跃度下降 |\n| 学习成本 | 低 | 中（要会 Lua） | 低 |\n\n## 各自适合什么\n\n**Nginx**：纯静态服务、反向代理、负载均衡。**需求用配置就能表达时，它就是最优解**（最稳定、资料最多）。\n\n**OpenResty**：需要在网关层写逻辑时：\n- 动态路由、灰度分流（按 header/cookie）\n- 鉴权（验 JWT、查 Redis 白名单）\n- 响应改写、聚合多个后端\n- **限流/防刷的复杂策略**\n\n**Tengine**：基本是历史选择。它早期（2011 前后）提供了 Nginx 没有的特性（如动态加载模块、更优的负载均衡算法），但现在官方 Nginx 也都有了，**新项目一般不再选它**。\n\n## 选型建议\n\n| 情况 | 选 |\n|---|---|\n| 只要代理/静态 | **Nginx**（够用、少踩坑） |\n| 网关层要写业务逻辑 | **OpenResty** |\n| 已有阿里系技术栈 | Tengine（沿用即可） |\n\n## 一个实际提醒\n\nOpenResty 的威力来自 Lua，但它也是**风险点**：Lua 里做阻塞操作（同步 IO、sleep）会卡住整个 worker。要严格用 `lua-resty-*` 的非阻塞库。",
+    "tags": [
+      "Nginx",
+      "OpenResty",
+      "Tengine"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1516,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 是如何处理一个请求的？简述请求处理过程。",
+    "answer": "**请求 → 连接建立 → 读取解析 → 定位 server/location → 各阶段处理 → 转发上游或返回 → 写回响应。**\n\n## 完整链路\n\n```\n① 客户端发起连接\n   master 早已 bind/listen，worker 通过 epoll 收到可读事件\n② 读取并解析请求行/头/体\n③ 按 Host + 端口 匹配 server 块\n④ 按 URI 匹配 location（最长前缀 / 正则等）\n⑤ 进入各处理阶段（见下）\n⑥ 若是代理 → 连上游、转发、读响应\n   若是静态 → 读文件（可走 sendfile）\n⑦ 生成响应头/体，回写连接（可能 gzip、缓存）\n⑧ 按 keepalive 决定保持还是关闭\n```\n\n## 关键：Nginx 的阶段化处理（11 个 phase）\n\n这是它「模块化」的核心。请求会依次经过：\n\n| 阶段 | 做什么 |\n|---|---|\n| POST_READ | 读完请求头后（如 realip 取真实 IP） |\n| SERVER_REWRITE | server 级 rewrite |\n| FIND_CONFIG | **选 location** |\n| REWRITE | location 级 rewrite |\n| **ACCESS** | 访问控制（allow/deny、auth） |\n| **CONTENT** | 生成内容（proxy_pass / 静态文件） |\n| LOG | 记录日志 |\n\n**理解这个顺序就能回答很多问题**：比如「为什么 deny 能拦住 proxy_pass」→ 因为 ACCESS 阶段在 CONTENT 之前。\n\n## 单线程事件驱动的含义\n\n每个 worker 是**单线程**，用 epoll 多路复用处理成千连接。\n\n**所以任何阻塞操作都会拖慢整个 worker** —— 这是「不要在 Nginx 里做同步 IO」的根本原因。\n\n## 一个常被问的细节\n\n**静态文件如何高效**：靠 `sendfile`（零拷贝，数据从磁盘直接到 socket，不经过用户态）。",
+    "tags": [
+      "请求处理",
+      "phase",
+      "epoll"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1517,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 的 master 进程和 worker 进程分别有什么作用？",
+    "answer": "**master 管「管理」，worker 管「干活」。**\n\n| | master 进程 | worker 进程 |\n|---|---|---|\n| 数量 | 1 个 | 多个（通常 = CPU 核数） |\n| 职责 | 读配置、启停/管理 worker、**平滑重载** | 接收连接、处理请求 |\n| 是否处理请求 | ❌ 不处理 | ✅ 全部处理 |\n| 权限 | 通常 root（要 bind 低端口） | 通常降权为普通用户 |\n\n## master 具体做什么\n\n1. **读取并校验配置**\n2. **bind/listen** 端口（然后 worker 继承监听 socket）\n3. 启动 worker，**监控它们**（worker 异常退出会自动重建）\n4. 处理信号（reload / stop / quit）\n\n## 平滑重载（reload）的过程（高频考点）\n\n```\n收到 SIGHUP\n → master 校验新配置\n → 启动**新 worker**（用新配置）\n → 向**旧 worker 发信号**：不再接新连接，处理完存量再退出\n → 新旧短暂并存，实现零中断\n```\n\n**这就是 Nginx 可以「不重启生效配置」的原理**，也是它比「重启服务」强的地方。\n\n## 为什么用多进程而非多线程\n\n- **隔离性好**：一个 worker 崩了不影响其它（master 会补起来）\n- **无锁**：多进程间几乎不需要同步\n- **可 CPU 亲和**：`worker_cpu_affinity` 减少切换\n\n## 为什么 worker 数 ≈ CPU 核数\n\n每个 worker 是单线程，多了只增加上下文切换开销。\n\n```nginx\nworker_processes auto;        # 自动 = CPU 核数\nworker_cpu_affinity auto;     # 绑定核心\n```\n\n## 一个实用排查命令\n\n```bash\nps -ef | grep nginx          # 看 1 个 master + N 个 worker\nnginx -s reload              # 触发平滑重载\n```",
+    "tags": [
+      "master",
+      "worker",
+      "reload"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1518,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 的核心模块有哪些？分别起什么作用？",
+    "answer": "**Nginx 是「核心 + 模块」架构，功能几乎全靠模块。**\n\n## 一、核心模块（Core）\n\n| 模块 | 作用 |\n|---|---|\n| **ngx_core** | 进程模型、配置解析、错误日志等基础 |\n| **ngx_http_core** | HTTP 的 server/location 匹配、listen、client_max_body_size 等 |\n| **ngx_events** | 事件驱动（epoll/kqueue）、worker_connections |\n\n## 二、HTTP 常用模块\n\n| 模块 | 作用 | 典型指令 |\n|---|---|---|\n| **ngx_http_proxy** | 反向代理到后端 | `proxy_pass` |\n| **ngx_http_rewrite** | URL 重写与跳转 | `rewrite`、`return` |\n| **ngx_http_upstream** | 上游分组与负载均衡 | `upstream {}`、`server` |\n| **ngx_http_access** | 访问控制 | `allow` / `deny` |\n| **ngx_http_auth_basic** | 基础认证 | `auth_basic` |\n| **ngx_http_gzip** | 响应压缩 | `gzip on` |\n| **ngx_http_limit_req** | **请求速率限流** | `limit_req` |\n| **ngx_http_limit_conn** | **并发连接数限制** | `limit_conn` |\n| **ngx_http_ssl** | HTTPS | `ssl_certificate` |\n| **ngx_http_headers** | 增删请求/响应头 | `add_header` |\n| **ngx_http_static** | 静态文件服务 | `root` / `alias` |\n| **ngx_http_log** | 访问日志 | `access_log`、`log_format` |\n| **ngx_http_fastcgi** | 转发给 PHP-FPM | `fastcgi_pass` |\n| **ngx_http_cache** | 响应缓存 | `proxy_cache` |\n\n## 三、两个「参数级」核心配置\n\n```nginx\nworker_processes auto;          # 进程数 = CPU 核数\nevents { worker_connections 10240; }   # 每 worker 最大连接数\n```\n\n**理论上限**：`worker_processes × worker_connections`（但受系统 fd 上限限制）。\n\n## 一个高频追问\n\n「Nginx 最大并发怎么算」→ `worker_processes × worker_connections`，再受 `ulimit -n` 限制。反代场景每个连接要占 2 个（客户端 + 上游），所以实际减半。",
+    "tags": [
+      "核心模块",
+      "proxy",
+      "upstream"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 1519,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 的 location 匹配规则是什么？请举几个典型示例。",
+    "answer": "**匹配顺序：`=` 精确 → `^~` 前缀优先 → 正则（按顺序）→ 普通前缀（最长）。**\n\n## 五种修饰符\n\n| 写法 | 含义 | 优先级 |\n|---|---|---|\n| `location = /path` | **精确匹配**（完全相等） | 最高 |\n| `location ^~ /path` | 前缀匹配，**命中后不再试正则** | 高 |\n| `location ~ regex` | 正则（**区分大小写**） | 中 |\n| `location ~* regex` | 正则（**不区分大小写**） | 中 |\n| `location /path` | 普通前缀，**最长前缀优先** | 最低 |\n\n## 典型示例\n\n```nginx\n# 1. 精确：只匹配 /（首页）\nlocation = / { return 200 'home'; }\n\n# 2. 前缀但「不再走正则」：静态资源目录\nlocation ^~ /static/ { root /data; }\n\n# 3. 正则：图片按扩展名\nlocation ~* \\.(jpg|png|gif)$ { expires 30d; }\n\n# 4. 普通前缀：接口反代\nlocation /api/ { proxy_pass http://backend; }\n\n# 5. 兜底\nlocation / { try_files $uri $uri/ /index.html; }\n```\n\n## 最经典的对比：root 与 alias\n\n```nginx\nlocation /img/ { root   /data; }   # 实际找 /data/img/xxx\nlocation /img/ { alias  /data; }   # 实际找 /data/xxx（去掉了 /img/）\n```\n\n**`alias` 是替换整个 location 路径**，这是最容易配错的一条。\n\n## 一个常见坑\n\n`location /api { proxy_pass http://backend; }` 与 `location /api/ { proxy_pass http://backend/; }` 行为不同：**末尾带 `/` 会改写 URI 前缀**，不带则原样传递。这直接影响后端能否收到正确路径。\n\n## 记忆法\n\n**先找精确（=），再看阻止正则的前缀（^~），然后按顺序试正则（~），最后取最长前缀。**",
+    "tags": [
+      "location",
+      "匹配优先级",
+      "root",
+      "alias"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1520,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 如何配置访问控制？",
+    "answer": "**四种手段：IP 黑白名单、Basic 认证、请求方法限制、隐藏文件。**\n\n## 一、IP 黑白名单（最常用）\n\n```nginx\nlocation /admin/ {\n    allow 10.0.0.0/24;      # 允许内网段\n    allow 203.0.113.10;     # 允许单个 IP\n    deny  all;              # 其余全部拒绝\n}\n```\n\n**规则是「自上而下，命中即停」**，所以 `deny all` 必须放最后。反过来先写 `deny all` 会把所有请求都拒掉。\n\n## 二、Basic 认证\n\n```nginx\nlocation /admin/ {\n    auth_basic \"Restricted\";\n    auth_basic_user_file /etc/nginx/.htpasswd;\n}\n```\n\n生成密码文件：`htpasswd -c /etc/nginx/.htpasswd user`\n\n注意：Basic 认证是 **base64 而非加密**，必须配 HTTPS 才有意义。\n\n## 三、限制请求方法\n\n```nginx\nif ($request_method !~ ^(GET|POST|HEAD)$) {\n    return 405;\n}\n```\n\n## 四、限制 User-Agent / Referer\n\n```nginx\nif ($http_user_agent ~* (curl|python|scrapy)) { return 403; }\n```\n\n注意：UA 可伪造，**只适合挡掉「无脑扫描」**，不能当安全边界。\n\n## 两条重要的实践提醒\n\n**1. `if` 在 location 里有陷阱**\n\n`if` 是 rewrite 模块指令，在 location 里使用有已知问题（如与 try_files 冲突）。**能用 `map` 或 `limit_except` 就别用 `if`**：\n\n```nginx\nlimit_except GET { deny all; }\n```\n\n**2. 真实 IP 问题**\n\n经过 CDN/代理后 `$remote_addr` 是代理 IP，白名单会失效。要先用 `real_ip` 还原：\n\n```nginx\nset_real_ip_from 10.0.0.1;\nreal_ip_header X-Forwarded-For;\nreal_ip_recursive on;\n```",
+    "tags": [
+      "访问控制",
+      "allow",
+      "deny",
+      "auth_basic"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1521,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 如何配置限流？limit_req 和 limit_conn 有什么区别？",
+    "answer": "**两种限流：limit_req 限「速率」，limit_conn 限「并发」。**\n\n| | **limit_req**（漏桶） | **limit_conn**（连接数） |\n|---|---|---|\n| 限什么 | 单位时间请求数 | 同时存在的连接数 |\n| 单位 | r/s、r/m | 个数 |\n| 适用 | 防刷、防突发 | 防慢连接耗尽资源、下载限流 |\n\n## limit_req（请求速率）\n\n```nginx\nhttp {\n    # 定义区域：按 IP 限速，10MB 内存\n    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;\n\n    server {\n        location /api/ {\n            limit_req zone=api burst=20 nodelay;\n            proxy_pass http://backend;\n        }\n    }\n}\n```\n\n**三个参数的含义（这是关键）**：\n\n| 参数 | 作用 |\n|---|---|\n| `rate=10r/s` | 平均每秒放 10 个 |\n| **`burst=20`** | 允许突发积压 20 个（超出排队） |\n| **`nodelay`** | 突发的那部分**立即处理**（不加延迟） |\n\n- 不加 `nodelay`：超出的请求会被**延迟**处理（削峰）\n- 加 `nodelay`：突发直接放行，只限制平均值\n\n## limit_conn（并发连接）\n\n```nginx\nlimit_conn_zone $binary_remote_addr zone=conn:10m;\n\nlocation /download/ {\n    limit_conn conn 5;        # 单 IP 最多 5 个并发连接\n    limit_rate 500k;          # 顺带限速 500KB/s\n}\n```\n\n## 三条实践要点\n\n**1. 被限流时的状态码**\n\n默认返回 **503**，可改成 429（更语义化）：\n\n```nginx\nlimit_req_status 429;\n```\n\n**2. zone 的内存要够**\n\n`zone=api:10m` 里的 10m 是**记录状态的内存**，太小会淘汰旧记录导致限流失效。\n\n**3. 分布式限流不精确**\n\nNginx 限流是**单机**的。多台机器时每台各限 10r/s → 总体 10×N。要全局精确需要 Redis/网关层做。\n\n## 一个选择建议\n\n**防刷用 limit_req，防大文件下载拖死用 limit_conn，两者常一起用。**",
+    "tags": [
+      "限流",
+      "limit_req",
+      "limit_conn",
+      "burst"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1522,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 中 500、502、503、504 有什么区别？分别怎么排查？",
+    "answer": "**四个码，指向四个完全不同的故障点。**\n\n| 码 | 含义 | 谁产生的 | 根因方向 |\n|---|---|---|---|\n| **500** | 服务器内部错误 | **应用/Nginx 自身** | 应用代码报错、Nginx 配置错 |\n| **502** | 网关收到无效响应 | 网关（Nginx） | **后端连不上或返回非法** |\n| **503** | 服务暂不可用 | 网关 | 后端全挂、限流、维护中 |\n| **504** | 网关等待超时 | 网关 | **后端处理太慢** |\n\n## 逐个排查\n\n### 500 Internal Server Error\n\n**Nginx 自己报 500 的典型原因**：\n- `proxy_pass` 指向了错误位置（如变量里有非法字符）\n- rewrite 死循环（超 10 次）\n- 上游返回了异常头\n\n**应用报 500**：去看**应用日志**（不是 Nginx 日志）。\n\n```bash\n# Nginx 错误日志里会有具体行\ntail -f /var/log/nginx/error.log\n```\n\n### 502 Bad Gateway（最高频）\n\n**原因分三类**：\n\n| 情况 | 排查 |\n|---|---|\n| 后端进程没起 | `ss -tlnp | grep 端口`、看后端服务状态 |\n| 后端端口配错 | 检查 `proxy_pass` 的端口/IP |\n| 后端连上但**返回不合法** | 后端返回了非 HTTP、或提前断连 |\n| **后端超时后断开** | 看 error.log 里 `upstream prematurely closed` |\n\n**关键动作**：绕过 Nginx 直连后端\n\n```bash\ncurl -v http://backend_ip:8080/health\n```\n通 → 问题在 Nginx 到后端之间；不通 → 后端本身有问题。\n\n### 503 Service Unavailable\n\n- **所有后端都被健康检查摘掉**（`upstream` 里全是 down）\n- **触发限流**（`limit_req`/`limit_conn`）\n- 后端主动返回 503（如 K8s 滚动更新）\n\n### 504 Gateway Timeout\n\n**后端处理超过 `proxy_read_timeout`（默认 60s）**。\n\n- 查后端慢在哪（DB 慢查询？下游超时？）\n- 注意**不要无脑调大超时**：掩盖问题，还会拖垮连接池\n\n## 一张最快的定位图\n\n```\n502 → 后端连不上/非法响应（直连测）\n504 → 后端慢（看耗时、慢查询）\n503 → 后端全挂或限流\n500 → 应用自身报错（看应用日志）\n```\n\n## 一定要看的两个日志位置\n\n```bash\n/var/log/nginx/access.log    # status + upstream_status + upstream_response_time\n/var/log/nginx/error.log     # 具体原因\n```\n\n`upstream_status` 能区分「Nginx 报的 502」和「后端返回的 502」，这一步很多人漏掉。",
+    "tags": [
+      "500",
+      "502",
+      "503",
+      "504",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1523,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "简单",
+    "question": "Nginx 如何将请求转发给后端应用服务器？proxy_pass 有哪些要点？",
+    "answer": "**核心是 `proxy_pass` + `upstream`，配套要设转发头与超时。**\n\n## 最小可用配置\n\n```nginx\nupstream backend {\n    server 10.0.0.11:8080;\n    server 10.0.0.12:8080;\n}\n\nlocation /api/ {\n    proxy_pass http://backend;            # 转发到上游组\n    proxy_set_header Host $host;          # 带上原始 Host\n    proxy_set_header X-Real-IP $remote_addr;\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    proxy_set_header X-Forwarded-Proto $scheme;\n}\n```\n\n## 必须设置的四个头（否则后端拿不到真实信息）\n\n| 头 | 作用 |\n|---|---|\n| `Host` | 后端按域名做逻辑时必需 |\n| `X-Real-IP` | 真实客户端 IP |\n| `X-Forwarded-For` | IP 链（**经多级代理时追加**） |\n| `X-Forwarded-Proto` | 原始是 http 还是 https（生成跳转链接用） |\n\n**不设 `Host` 的后果**：后端收到的 Host 是上游地址，按域名的逻辑会全错。\n\n## 最容易错的：末尾斜杠\n\n```nginx\nlocation /api/ { proxy_pass http://backend;  }   # 传 /api/user\nlocation /api/ { proxy_pass http://backend/; }   # 传 /user（去掉了 /api/）\n```\n\n**带 `/` 表示「替换掉 location 匹配到的前缀」**。配错就是后端 404。\n\n## 常用配套指令\n\n```nginx\nproxy_connect_timeout 5s;    # 连后端超时\nproxy_read_timeout 60s;      # 等响应超时\nproxy_send_timeout 60s;      # 发请求超时\nproxy_buffering on;          # 缓冲上游响应\nproxy_http_version 1.1;      # 用 1.1（支持长连接）\nproxy_set_header Connection \"\";  # 配合 1.1 使用长连接\n```\n\n## 一个高频追问\n\n「Nginx 到后端用短连接还是长连接？」默认是**短连接**（HTTP/1.0）。要长连接必须设 `proxy_http_version 1.1` + `Connection \"\"`，否则每次请求都新建连接，高并发下端口很快耗尽。",
+    "tags": [
+      "proxy_pass",
+      "upstream",
+      "转发头"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1524,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 中怎么设置超时时间？有哪些超时配置？",
+    "answer": "**超时分三类：客户端、上游、连接与传输。**\n\n## 一、客户端相关\n\n| 指令 | 默认 | 作用 |\n|---|---|---|\n| `client_header_timeout` | 60s | 读完请求头的时间 |\n| `client_body_timeout` | 60s | 读请求体的空闲间隔 |\n| `send_timeout` | 60s | **向客户端发送响应的间隔** |\n| `keepalive_timeout` | 75s | 长连接空闲多久关闭 |\n\n## 二、上游（反向代理）相关\n\n| 指令 | 默认 | 作用 |\n|---|---|---|\n| **`proxy_connect_timeout`** | 60s | **连后端**超时 |\n| **`proxy_read_timeout`** | 60s | **等后端响应**超时（**504 的元凶**） | `proxy_send_timeout` | 60s | 发请求给后端超时 |\n\n## 三、upstream 块级（更细粒度）\n\n```nginx\nupstream backend {\n    server 10.0.0.11:8080 max_fails=2 fail_timeout=10s;\n}\n```\n\n- `max_fails`：失败几次标记为 down\n- `fail_timeout`：标记后多久再试探\n\n## 典型配置（分层设置）\n\n```nginx\nhttp {\n    # 全局兜底\n    proxy_connect_timeout 5s;\n    proxy_read_timeout   60s;\n\n    server {\n        location /api/ {\n            proxy_read_timeout 30s;   # 普通接口收紧\n        }\n        location /export/ {\n            proxy_read_timeout 300s;  # 导出任务放宽\n        }\n    }\n}\n```\n\n## 三条重要提醒\n\n**1. 分层覆盖顺序**\n\n越内层优先级越高：`location` > `server` > `http`。\n\n**2. 不要无脑调大 `proxy_read_timeout`**\n\n把 504 靠改超时「解决」只是把问题藏起来：\n- 慢请求继续占着连接，连接池会耗尽\n- 用户等待时间没变短\n\n**正确做法是找出后端为什么慢。**\n\n**3. 与上游负载均衡配合**\n\n`max_fails` + `fail_timeout` 让故障后端被快速摘除，比单纯调超时更有效。\n\n## 一个高频追问\n\n「504 该调哪个」→ **`proxy_read_timeout`**（等响应）。「502 该调哪个」→ 通常是 `proxy_connect_timeout` 或后端根本没起。",
+    "tags": [
+      "超时",
+      "proxy_read_timeout",
+      "504"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1525,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 日志有什么作用？日志格式怎么解析？",
+    "answer": "**访问日志看「发生了什么」，错误日志看「为什么失败」。**\n\n## 两种日志\n\n| 日志 | 默认路径 | 作用 |\n|---|---|---|\n| **access.log** | `/var/log/nginx/access.log` | 每个请求一行：状态、耗时、大小 |\n| **error.log** | `/var/log/nginx/error.log` | 分级记录错误与警告 |\n\n## 默认格式（combined）\n\n```\n$remote_addr - $remote_user [$time_local] \"$request\"\n$status $body_bytes_sent \"$http_referer\" \"$http_user_agent\"\n```\n\n解析示例：\n\n```\n203.0.113.5 - - [01/Nov/2026:10:20:30 +0800] \"GET /api/user HTTP/1.1\" 200 512 \"-\" \"curl/8.0\"\n  ↑IP                ↑时间                          ↑请求行         ↑码 ↑字节 ↑来源 ↑UA\n```\n\n## 生产推荐格式（关键是加耗时与上游信息）\n\n```nginx\nlog_format main '$remote_addr \"$request\" $status '\n    '$body_bytes_sent $request_time '\n    'upstream_status=$upstream_status '\n    'upstream_time=$upstream_response_time '\n    'ua=\"$http_user_agent\"';\n```\n\n**必须加的四个字段**：\n\n| 字段 | 为什么重要 |\n|---|---|\n| **`$request_time`** | 总耗时（含 Nginx 自身处理） |\n| **`$upstream_response_time`** | 后端耗时——**区分「Nginx 慢」还是「后端慢」** |\n| **`$upstream_status`** | 后端返回码，区分 502 是谁产生的 |\n| `$http_x_forwarded_for` | 真实客户端 IP（经 CDN 时必需） |\n\n## 最常用的三条分析命令\n\n```bash\n# 1. 状态码分布\nawk '{print $9}' access.log | sort | uniq -c | sort -rn | head\n\n# 2. Top 10 慢请求\nawk '{print $NF, $0}' access.log | sort -rn | head -10\n\n# 3. 按 IP 统计（近似 UV）\nawk '{print $1}' access.log | sort -u | wc -l\n```\n\n## 一个实践要点\n\n**日志会写满磁盘**。生产必须配 `logrotate`（按天切割 + 压缩 + 保留 N 天），否则迟早遇到「磁盘满导致服务挂」。",
+    "tags": [
+      "日志",
+      "log_format",
+      "request_time"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1526,
+    "type": "short",
+    "category": "Nginx",
+    "difficulty": "中等",
+    "question": "Nginx 调优有哪些方向？关键参数怎么配？",
+    "answer": "**分五层：进程与连接、系统内核、传输效率、缓存、上游连接。**\n\n## 一、进程与连接数\n\n```nginx\nworker_processes auto;              # = CPU 核数\nworker_rlimit_nofile 65535;         # 单 worker 可开的 fd 数\nevents {\n    worker_connections 10240;       # 单 worker 最大连接\ne}\n```\n\n**上限 = `worker_processes × worker_connections`**，但受系统 `ulimit -n` 约束 —— **两者都要调，只改 Nginx 没用**。\n\n## 二、系统内核（这条常被漏掉）\n\n```bash\n# /etc/sysctl.conf\nnet.core.somaxconn = 65535        # 等待队列长度\nnet.ipv4.tcp_tw_reuse = 1         # 复用 TIME_WAIT\nnet.ipv4.ip_local_port_range = 1024 65000   # 扩大可用端口\nfs.file-max = 655350              # 系统级 fd 上限\n```\n\n**其中 `ip_local_port_range` 最关键**：Nginx 作为代理时是「主动连接方」，每连一个后端占一个本地端口。默认范围只有约 2.8 万个，高并发下**端口耗尽**会报 `Cannot assign requested address`。\n\n## 三、传输效率\n\n```nginx\nsendfile on;              # 零拷贝（静态文件必开）\ntcp_nopush on;            # 配合 sendfile 减少小包\ntcp_nodelay on;           # 长连接下禁用 Nagle，降低延迟\ngzip on;                  # 文本压缩\ngzip_comp_level 5;         # 5 是性价比拐点\n```\n\n## 四、缓存\n\n```nginx\nopen_file_cache max=10000 inactive=60s;   # 缓存文件句柄\nopen_file_cache_valid 80s;\nproxy_cache_path /data/cache levels=1:2 keys_zone=my:100m max_size=10g;\n```\n\n## 五、上游长连接（提升最大的一项）\n\n```nginx\nupstream backend {\n    keepalive 64;            # 保持 64 个空闲长连接\n    keepalive_timeout 60s;\n}\nlocation /api/ {\n    proxy_http_version 1.1;\n    proxy_set_header Connection \"\";   # 清空才能用长连接\n    proxy_pass http://backend;\n}\n```\n\n**默认是短连接**，每个请求新建连接 —— 高并发下这是最大的开销来源。\n\n## 三条提醒\n\n1. **先压测再调参**：没有基线数据的调优都是猜测\n2. **`gzip_comp_level` 超过 6 后收益很小**，CPU 成本却陡增\n3. **图片/视频不要 gzip**（已压缩过，再压纯浪费 CPU）",
+    "tags": [
+      "调优",
+      "sendfile",
+      "keepalive",
+      "sysctl"
+    ],
+    "frequency": "高频"
+  },
+  {
     "id": 1601,
     "type": "short",
     "category": "LVS/HAProxy",
@@ -11687,6 +11861,37 @@
     "frequency": "中频"
   },
   {
+    "id": 1715,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "F5、LVS、Nginx、HAProxy 有什么区别？该怎么选择？",
+    "answer": "**核心区别：硬件 vs 软件，四层 vs 七层。**\n\n| | F5 BIG-IP | LVS | Nginx | HAProxy |\n|---|---|---|---|---|\n| 类型 | **硬件负载均衡** | 内核四层 | 七层（也支持四层流） | 七层（四层也很强） |\n| 工作层 | 4/7 层 | **4 层** | **7 层为主** | **7 层为主** |\n| 性能 | 极高（专用硬件） | **极高**（内核态） | 高（用户态） | 高（用户态） |\n| 功能 | 最全（含 WAF、SSL 卸载） | 只做转发 | 齐全（代理/缓存/重写） | 专注代理，配置精细 |\n| 成本 | 很贵 | 免费 | 免费 | 免费 |\n| 运维 | 厂商支持 | 需懂 DR/TUN | 简单常用 | 配置灵活 |\n\n## 各自适合什么\n\n**F5**：金融、大企业核心业务。**买的是硬件性能 + 厂商 SLA + 全套功能**（SSL 卸载、WAF、链路负载）。\n\n**LVS**：超高并发四层入口。**工作在 kernel 里，转发效率接近线速**，常见做法是 LVS 在最前面做四层分发，后端接 Nginx/HAProxy 做七层。\n\n**Nginx**：最通用。既能做 Web 服务又能做七层代理，**配置直观、生态成熟**。缺点是七层代理在用户态，超高并发不如 LVS。\n\n**HAProxy**：纯负载均衡专家。四层/七层都强，**健康检查与配置精细度优于 Nginx**，不支持静态服务。\n\n## 典型组合架构\n\n```\n用户 → F5/LVS（四层，抗压）→ Nginx/HAProxy（七层，路由与业务）→ 应用\n```\n\n**这就是行业里最常见的「四层 + 七层」两级负载均衡。**\n\n## 选择建议\n\n| 场景 | 选 |\n|---|---|\n| 要最高性能四层入口 | **LVS** |\n| 要七层路由/缓存/HTTPS | **Nginx** |\n| 要精细健康检查与长连接 | **HAProxy** |\n| 预算充足、要厂商保障 | **F5** |\n\n## 一个实话\n\n绝大多数公司：**Nginx 或 HAProxy 就够**。LVS 和 F5 通常出现在「单 Nginx 扛不住」的规模。",
+    "tags": [
+      "F5",
+      "LVS",
+      "nginx",
+      "HAProxy",
+      "选型"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 1716,
+    "type": "short",
+    "category": "LVS/HAProxy",
+    "difficulty": "中等",
+    "question": "LVS 有哪三种模式？它们的工作过程有什么区别？",
+    "answer": "**三种：DR（直接路由）、NAT（地址转换）、TUN（IP 隧道）。**\n\n## 一、DR 模式（Direct Routing，最常用）\n\n```\n客户端 → LB（改目的 MAC 为后端 MAC，IP 头不变）→ 后端\n后端直接回包给客户端（不经 LB）\n```\n\n**关键点**：\n- LB 只改**二层 MAC**，IP 头完全不变\n- 后端必须配置 VIP（且需抑制 ARP 响应，避免抢 VIP）\n- **响应不经过 LB** → LB 只承担入向流量，**吞吐最高**\n\n限制：LB 与后端**必须在同一二层网络**。\n\n## 二、NAT 模式\n\n```\n客户端 → LB（改目的 IP 为后端 IP）→ 后端\n后端回包给 LB → LB 改回 VIP → 客户端\n```\n\n**关键点**：\n- 进和出**都经过 LB** → LB 成为瓶颈（双向流量）\n- 支持后端跨网段（三层可达即可）\n- 配置简单\n\n## 三、TUN 模式（IP 隧道）\n\n```\n客户端 → LB（在原包外再包一层 IP 头，目的为后端）→ 后端\n后端解封装，直接回包给客户端\n```\n\n**关键点**：\n- 支持后端**跨机房/跨网段**（这是它存在的理由）\n- 响应不经 LB（类似 DR）\n- 需后端支持 IP 隧道封装（多一层开销）\n\n## 三者对比（这是应答的核心）\n\n| 模式 | 改什么 | 回包经过 LB | 后端网络要求 | 性能 |\n|---|---|---|---|---|\n| **DR** | 二层 MAC | ❌ 不经过 | **同一二层** | 最高 |\n| **NAT** | 三层 IP | ✅ 都经过 | 三层可达 | 低（双向瓶颈） |\n| **TUN** | 加一层 IP 头 | ❌ 不经过 | 三层可达、可跨机房 | 中高 |\n\n## 选择逻辑\n\n- **同机房、要性能** → **DR**（生产首选）\n- **后端跨网段且不想配 VIP** → NAT（小规模）\n- **跨机房** → TUN\n\n## 一个高频追问\n\n「DR 模式为什么要抑制 ARP？」\n\n因为后端也配了 VIP，如果它响应 ARP，客户端的请求可能直接跑到后端而绕过 LB 的调度。需要配 `arp_ignore=1`、`arp_announce=2`。",
+    "tags": [
+      "LVS",
+      "DR",
+      "NAT",
+      "TUN"
+    ],
+    "frequency": "高频"
+  },
+  {
     "id": 1801,
     "type": "short",
     "category": "Tomcat/JVM",
@@ -14594,6 +14799,21 @@
       "收集器"
     ],
     "frequency": "低频"
+  },
+  {
+    "id": 1915,
+    "type": "short",
+    "category": "Tomcat/JVM",
+    "difficulty": "简单",
+    "question": "Tomcat 的 8005、8009、8080 三个端口分别是什么含义？",
+    "answer": "**三个端口分别管：关闭、AJP 连接、HTTP 业务。**\n\n| 端口 | 用途 | 说明 |\n|---|---|---|\n| **8005** | **关闭端口** | 收到 `SHUTDOWN` 字符串则关闭 Tomcat |\n| **8009** | **AJP 协议端口** | 供 Apache httpd 等用 AJP 协议通信 |\n| **8080** | **HTTP 业务端口** | 真正对外服务 |\n\n## 逐个说明\n\n**8005（shutdown）**\n\n```bash\n# 优雅关闭 Tomcat（向 8005 发字符串）\ntelnet 127.0.0.1 8005\nSHUTDOWN\n```\n\n配置在 `server.xml`：\n```xml\n<Server port=\"8005\" shutdown=\"SHUTDOWN\">\n```\n\n把 `port` 设为 `-1` 可禁用（**生产建议禁用或只监听 127.0.0.1**，否则任何人能远程关你的服务）。\n\n**8009（AJP）**\n\n- AJP（Apache JServ Protocol）是二进制协议，比 HTTP 更省（少传输头）\n- 传统场景：Apache httpd 处理静态 + AJP 转给 Tomcat 处理动态\n- **安全提醒**：曾有 **Ghostcat（CVE-2020-1938）** 漏洞通过 AJP 读任意文件。现代部署若不需 Apache 前置，**建议直接注释掉 AJP Connector**。\n\n**8080（HTTP）**\n\n- 主业务端口，外部访问走这里\n- 生产常常改端口或前置 Nginx 反向代理，不让它直接对外\n\n## 一个常见追问\n\n「为什么 Tomcat 要前置 Nginx」\n\n- 静态文件、SSL、限流、缓存由 Nginx 处理（更高效）\n- Tomcat 专注处理动态请求（JSP/Servlet）\n- 屏蔽 Tomcat 直接暴露\n\n## 排查提示\n\n```bash\nss -tlnp | grep -E '8005|8009|8080'   # 确认监听\nnetstat -tlnp | grep 8080\n```",
+    "tags": [
+      "Tomcat",
+      "端口",
+      "AJP",
+      "Ghostcat"
+    ],
+    "frequency": "中频"
   },
   {
     "id": 2000,
@@ -20776,6 +20996,251 @@
     "frequency": "高频"
   },
   {
+    "id": 2317,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "什么是消费堆积？为什么会发生？怎么处理？",
+    "answer": "**消费堆积 = 消息生产速度 > 消费速度，未消费的消息持续累积。**\n\n## 判断依据\n\n| 指标 | 说明 |\n|---|---|\n| **Kafka**：`LAG`（消费者滞后量）持续增长 | 最直接 |\n| **RabbitMQ**：`messages_ready` / `messages_unacknowledged` 增长 | 队列深度 |\n| 端到端延迟变大 | 业务侧感知 |\n\n## 四类原因\n\n| 原因 | 表现 |\n|---|---|\n| **消费者太少/太慢** | 消费能力不足 |\n| **生产端突增**（大促、批量导入） | 短时洪峰 |\n| **单条消息处理太慢**（慢查询、远程调用） | 消费 TPS 低 |\n| **消费逻辑阻塞**（重试风暴、死锁） | 卡住不动 |\n\n## 处置优先级（从快到慢）\n\n**1. 先止损**\n- 扩容消费者（消费组加实例）\n- 提高并发（Kafka 加到分区数；RabbitMQ 提高 prefetch）\n\n**2. 削弱瓶颈**\n- 找出单条慢在哪（DB 慢查询？下游超时？）\n- 批量消费（一次处理 N 条）\n\n**3. 分流与丢弃**\n- 非核心消息降级（跳过或进死信队列）\n- 紧急时导流到新 topic，专项回放\n\n## 一个关键前提\n\n**消费者数不能超过分区数**（Kafka）—— 加再多实例，多出来的也分不到分区。\n\n**所以 Kafka 的正确顺序是「先扩分区，再扩消费者」。**\n\n## 预防措施\n\n- **监控 LAG**（这是最早能发现的指标）\n- 消费逻辑设超时，避免一条消息卡死\n- 重试设上限 + 退避（防止重试风暴）\n- 压测时按峰值的 2~3 倍设计消费能力",
+    "tags": [
+      "消费堆积",
+      "LAG",
+      "扩容"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2318,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "RabbitMQ 中的虚拟主机（vhost）有什么作用？",
+    "answer": "**vhost 是「逻辑隔离的命名空间」，相当于 RabbitMQ 里的独立分区。**\n\n## 它能隔离什么\n\n| 隔离对象 | 说明 |\n|---|---|\n| **队列 / 交换机 / 绑定** | 每个 vhost 内独立，**同名互不影响** |\n| **权限** | 用户只对授权的 vhost 有权限 |\n| 资源配额 | 可按 vhost 限制 |\n\n## 典型用途\n\n1. **多业务隔离**：A 业务与 B 业务用不同 vhost，互不干扰（哪怕都叫 `order_queue`）\n2. **多环境隔离**：开发/测试/生产各一个 vhost，共用一套集群\n3. **权限边界**：不同团队只看得到自己的 vhost\n\n## 连接时怎么指定\n\n```\namqp://user:pass@host:5672/vhost_name\n                                        ↑ 路径就是 vhost\n```\n\n不写则用默认 vhost `/`。\n\n## 常用管理命令\n\n```bash\nrabbitmqctl add_vhost prod\nrabbitmqctl set_permissions -p prod user \"*\" \"*\" \"*\"\nrabbitmqctl list_vhosts\n```\n\n## 一个实践提醒\n\n**vhost 不等于物理隔离**：它们仍在同一个 Erlang 集群里，共享 CPU/内存/磁盘。一个 vhost 里消息堆积会把整节点的内存吃满，影响其他 vhost。\n\n要真正隔离得用独立集群（或至少独立节点 + 配额限制）。\n\n## 一个高频追问\n\n「vhost 和 User 的关系？」→ **User 是身份，vhost 是资源域，权限是把某 User 授权到某 vhost**。一个 User 可以访问多个 vhost。",
+    "tags": [
+      "RabbitMQ",
+      "vhost",
+      "隔离"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2319,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "RabbitMQ 中生产者和消费者分别是什么角色？消息是怎么流转的？",
+    "answer": "**生产者发消息到交换机，消费者从队列取消息；两者不直接接触。**\n\n## 两个角色\n\n| 角色 | 职责 |\n|---|---|\n| **Producer（生产者）** | 创建消息，发到**Exchange**（不是队列） |\n| **Consumer（消费者）** | 从**Queue** 拉取/订阅消息，处理并 ack |\n\n## 完整流转\n\n```\nProducer → Exchange（按 routing key 和类型路由）\n         → Binding 决定进哪些 Queue\n         → Queue（存储消息）\n         → Consumer 取走 → ack\n```\n\n**关键：生产者和队列之间隔着一层 Exchange** —— 这就是 RabbitMQ 比「直接写队列」灵活的原因。\n\n## 为什么要有 Exchange（常被追问）\n\n| 需求 | 靠 Exchange 实现 |\n|---|---|\n| 一条消息发给多个队列 | fanout 交换机 |\n| 按路由键精确分发 | direct 交换机 |\n| 按模式匹配（`order.*.paid`） | topic 交换机 |\n\n如果生产者直接写队列，这些都得在代码里做。\n\n## 消费者的两种模式\n\n| 模式 | 行为 |\n|---|---|\n| **push**（默认） | Broker 主动推（`basic.consume`） |\n| **pull** | 消费者主动拉（`basic.get`，**性能差，生产不用**） |\n\n## 生产者的可靠性要点\n\n- **开启 publisher confirm**：确认消息真到 Broker\n- **声明 durable 队列 + persistent 消息**（要两个都设）\n- 用 **mandatory** 参数感知「路由不到任何队列」的消息\n\n## 消费者必做的一件事\n\n**手动 ack**（`autoAck=false`）。\n\n自动 ack 时消息一投递就算成功，消费者崩溃 = **消息丢失**。这是最常见的坑。",
+    "tags": [
+      "Producer",
+      "Consumer",
+      "Exchange"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2320,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 的基本架构是怎样的？",
+    "answer": "**五个核心组件：Producer → Exchange → Binding → Queue → Consumer，另有 vhost 与节点集群。**\n\n## 架构图\n\n```\nProducer\n   ↓ (routing key)\nExchange ──Binding──→ Queue A ──→ Consumer 1\n   │                     └───────→ Consumer 2（竞争消费）\n   └──Binding──→ Queue B ──→ Consumer 3\n```\n\n## 五个组件\n\n| 组件 | 作用 |\n|---|---|\n| **Producer** | 发消息到 Exchange |\n| **Exchange** | 按类型 + routing key 把消息路由到队列 |\n| **Binding** | Exchange 与 Queue 的「绑定规则」 |\n| **Queue** | 真正存储消息（FIFO） |\n| **Consumer** | 从队列取消息、处理、ack |\n\n## 四种交换机类型\n\n| 类型 | 路由规则 | 场景 |\n|---|---|---|\n| **direct** | routing key **精确匹配** | 按类型分发 |\n| **fanout** | **忽略 key，广播到所有绑定队列** | 通知全体 |\n| **topic** | 按**通配符**（`*` 一个词，`#` 零到多） | 按主题分类 |\n| **headers** | 按消息头匹配（少用） | 复杂条件 |\n\n## 两个结构层面的概念\n\n**vhost**：逻辑隔离的命名空间（每 vhost 内队列/交换机独立）\n\n**集群**：多节点共享队列元数据，但**消息体只存在某一个节点上**（HA 队列才会有副本）\n\n## 一条重要的运维认知\n\n**避免「集群 ≠ 高可用」的误解**：默认队列在单节点，该节点挂了消息就不可用。要配 **quorum queue（仲裁队列，RabbitMQ 3.8+ 推荐）** 或老式的镜像队列才有副本。\n\n## 常见追问\n\n「消息积压在哪一层？」→ **Queue**。Exchange 不存储（除非设了 `alternate-exchange` 兜底）。",
+    "tags": [
+      "架构",
+      "Exchange",
+      "Binding",
+      "topic"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2321,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 有哪些队列类型？分别用在什么场景？",
+    "answer": "**按用途分五类，另有「死信队列」是必会的一类。**\n\n## 一、普通队列（Classic）\n\n最基础的 FIFO 队列。**元数据在集群共享，消息只在一个节点上** —— 节点挂了消息不可用。\n\n适合：允许偶尔不可用的业务、吞吐优先场景。\n\n## 二、仲裁队列（Quorum Queue，3.8+ 推荐）\n\n基于 **Raft** 的一致性队列，消息有多个副本。\n\n| 优点 | 代价 |\n|---|---|\n| 节点故障不丢消息 | 写性能比经典队列低（要同步副本） |\n| 自动故障恢复 | 需要至少 3 个节点 |\n\n适合：**重要业务、不能丢消息的场景**（这是当前官方推荐的生产选择）。\n\n## 三、流队列（Stream，3.9+）\n\n类似 Kafka 的**追加日志模型**：消息可重复消费（多个消费者各自记录 offset）。\n\n适合：需要「同一份消息多方处理」或「回放历史消息」。\n\n## 四、惰性队列（Lazy Queue）\n\n消息**尽可能早写入磁盘**，内存只留索引。\n\n适合：**大量堆积**场景（内存有限但要存很多消息）。代价是消费时读盘，略有延迟。\n\n## 五、死信队列（DLX，不是独立类型，是一种机制）\n\n**三个条件进死信**：\n\n| 条件 | 说明 |\n|---|---|\n| 被 reject/nack 且 `requeue=false` | 明确拒绝 |\n| **超过最大重试次数**（`x-max-retries`） | 重试耗尽 |\n| **消息 TTL 过期** / 队列超长 | 过期或溢出 |\n\n**为什么必须有死信队列**：否则失败消息会「无限重投」打满队列，或直接丢失无法排查。\n\n## 选型速表\n\n| 场景 | 选 |\n|---|---|\n| 能容忍偶尔不可用 | Classic |\n| 不能丢消息 | **Quorum** |\n| 要回放/多方消费 | Stream |\n| 大量堆积、内存紧张 | Lazy |\n| 失败消息要兜底 | **配 DLX**（几乎必配） |",
+    "tags": [
+      "队列类型",
+      "Quorum",
+      "死信队列",
+      "Lazy"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2322,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 中消息重复消费怎么处理？",
+    "answer": "**重复消费无法避免，只能靠「消费端幂等」来消解。**\n\n## 为什么必然重复\n\n| 场景 | 为什么重复 |\n|---|---|\n| 生产者重试 | 发了两次（网络超时但实际成功） |\n| **消费者 ack 前崩溃** | 消息会被重投 |\n| 网络抖动 | 确认丢失导致重发 |\n\n这就是 **at-least-once（至少一次）语义** —— 要可靠就必然可能重复。\n\n## 三种幂等实现\n\n**1. 唯一键去重（最常用）**\n\n```\n消息带 bizId（订单号/事件ID）\n消费前 INSERT INTO 去重表(bizId UNIQUE) \n  → 插入成功 = 首次消费，继续\n  → 主键冲突 = 已消费过，直接返回成功\n```\n\n**要点：用数据库唯一约束保证原子性**，不要「先查再插」（并发下会漏）。\n\n**2. 状态机校验**\n\n```\n只允许 待支付 → 已支付 的转移\n重复消息来时状态已是「已支付」→ 拒绝\n```\n\n适合有明确状态流转的业务。\n\n**3. Redis SETNX**\n\n```\nSET dedup:{bizId} 1 NX EX 86400\n成功 → 首次；失败 → 重复\n```\n\n快，但要考虑 Redis 挂了/过期后的行为（**不能只靠它做唯一性保证**）。\n\n## 一个必须设计的细节：消息 ID 从哪来\n\n| 做法 | 说明 |\n|---|---|\n| 业务侧生成（订单号） | 最可靠，天然唯一 |\n| 生产者生成 UUID | 需随消息传递 |\n| 用消息内容哈希 | 内容相同视为同一消息（要谨慎） |\n\n**不要用 RabbitMQ 的 `message_id`**（默认不填，重投时也不保证不变）。\n\n## 一句话总结\n\n**「防重复」是错觉，「接受重复 + 保证幂等」才是正解**。这也是为什么 ack 必须先处理后确认（不能先 ack 再处理，那样会丢）。",
+    "tags": [
+      "重复消费",
+      "幂等",
+      "at-least-once"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2323,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 如何防止消息堆积？",
+    "answer": "**从三个环节防：生产限流、消费能力、堆积兜底。**\n\n## 一、消费能力（根本）\n\n| 手段 | 说明 |\n|---|---|\n| **增加消费者实例** | 同队列多消费者自动竞争消费（RabbitMQ 不需要扩分区） |\n| **提高 prefetch** | `basic_qos(prefetch_count=N)`：一次预取 N 条，减少网络往返 |\n| **批量处理** | 一次取多条一起处理（但要权衡 ack 粒度） |\n| **异步化耗时操作** | 消费逻辑里别做慢查询/远程同步调用 |\n\n**RabbitMQ 的优势**：加消费者就能线性扩消费能力（不像 Kafka 受分区数限制）。\n\n## 二、生产端限流\n\n- 生产侧做**削峰**（限速发送，或先入本地队列再匀速发）\n- 大促时**提前扩容**消费能力\n\n## 三、堆积兜底（已经在堆了怎么办）\n\n| 手段 | 说明 |\n|---|---|\n| **Lazy Queue / Quorum** | 消息尽早落盘，避免内存打满导致集群崩溃 |\n| **设 `x-max-length` / `x-max-length-bytes`** | 超限丢弃最旧消息（**避免雪崩式 OOM**） |\n| **配 TTL + 死信** | 过期消息转死信，不占主队列 |\n| **临时扩容消费者** | 处理完再缩回 |\n\n**最危险的是「内存打满 → 节点挂 → 集群不可用」**，这比丢消息严重。所以宁可设队列上限。\n\n## 四、必须监控的指标\n\n```bash\nrabbitmqctl list_queues name messages_ready messages_unacknowledged\n```\n\n- `messages_ready`：待消费（**这个持续增长就是堆积**）\n- `messages_unacknowledged`：已投递未确认（大说明消费卡住或 ack 延迟）\n\n## 一句话总结\n\n**预防靠「消费能力跟上 + 生产削峰」，兜底靠「队列上限 + 死信」，发现靠「监控 messages_ready」。**",
+    "tags": [
+      "堆积",
+      "prefetch",
+      "Lazy",
+      "监控"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2324,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 的分区问题是什么？怎么解决？",
+    "answer": "**分区（network partition）指集群节点间网络断了，被切成几个互不相通的「孤岛」。**\n\n## 为什么会发生\n\nRabbitMQ 集群依赖**节点间持续通信**（Erlang 分布式协议）。网络抖动、交换机故障、跨机房链路中断都会导致节点互不可见。\n\n## 发生时的现象\n\n| 现象 | 说明 |\n|---|---|\n| 集群被切成 2 个以上子集 | 每个子集认为「对方挂了」 |\n| **两边都继续服务** | 各自接生产与消费 |\n| 数据不一致 | 不同子集上看到不同的队列/消息状态 |\n| UI 告警 | 出现 `partition` 字样 |\n\n**最麻烦的是：两边都还活着、都在服务，但数据不是一个逻辑视图。**\n\n## 三种处理策略（`cluster_partition_handling`）\n\n| 策略 | 行为 | 适用 |\n|---|---|---|\n| **`ignore`**（默认） | 不做处理，各子集继续服务 | —— **最危险，可能导致数据不一致** |\n| **`pause_minority`**（推荐） | **少数派的节点自动暂停**，等恢复后重新加入 | 有可靠网络、以多数派为准 |\n| `autoheal` | 网络恢复后**自动选一个子集重同步**（会丢弃另一边的状态） | 可接受丢部分状态 |\n\n## 生产推荐\n\n```conf\ncluster_partition_handling = pause_minority\n```\n\n**理由**：宁可让少数派停服（暂时不可用），也不要两边各自为政造成数据分叉。\n\n## 配套预防\n\n1. **集群节点控制在同一交换机/同一机房**（跨机房延迟与断链风险高）\n2. 节点数用奇数（3、5），避免 2:2 平票\n3. 监控告警：`rabbitmqctl cluster_status` 看 `partitions` 列表\n4. 用 **Quorum Queue**（Raft）本身对分区更健壮\n\n## 一个高频追问\n\n「分区和脑裂是同一件事吗？」→ **分区是原因，脑裂是结果**。网络断了（分区），导致两个子集都自认是「主」（脑裂）。",
+    "tags": [
+      "网络分区",
+      "pause_minority",
+      "脑裂"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2325,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "RabbitMQ 中网络分区和脑裂有什么区别？如何避免？",
+    "answer": "**分区是「网络断了」这个事实，脑裂是「断了之后两边都自认是主」这个后果。**\n\n| | 网络分区（Partition） | 脑裂（Split-Brain） |\n|---|---|---|\n| 性质 | **原因**（网络故障） | **结果**（状态分叉） |\n| 表现 | 节点间互不可见，集群被切块 | 各子集都继续服务，数据不一致 |\n| 必然关系 | 分区**可能**导致脑裂 | 脑裂**通常由**分区引起 |\n\n**所以「防分区」和「防脑裂」是两个层次的措施。**\n\n## 如何避免（分三层）\n\n**1. 物理层：减少分区概率**\n\n| 措施 | 说明 |\n|---|---|\n| 节点**同机房、同交换机** | 跨机房链路是最大风险源 |\n| 网络设备冗余 | 双上联 |\n| **奇数节点**（3/5） | 避免 2:2 平票无法判定多数派 |\n\n**2. 配置层：明确「少数派怎么办」**\n\n```conf\ncluster_partition_handling = pause_minority\n```\n\n**这是防脑裂最有效的一项**：少数派节点自动暂停服务，让集群只有一个「有效视图」。\n\n**3. 数据层：用对队列类型**\n\n**Quorum Queue（Raft）** 对分区有明确的多数派语义：少数派无法提交，天然不会分叉。比经典队列 + 镜像更健壮。\n\n## 一个必须接受的取舍\n\n`pause_minority` 的代价是**少数派节点会短暂不可用**。\n\n这是**刻意的设计选择**：\n\n> 宁可短暂不可用，也不要两边各自为政写出不一致数据。\n\n不可用可以恢复，**数据分叉很难修**。\n\n## 排查命令\n\n```bash\nrabbitmqctl cluster_status          # 看 partitions 段\nrabbitmqctl eval 'rabbit_nodes_common:partitions().'  # 当前分区列表\n```",
+    "tags": [
+      "网络分区",
+      "脑裂",
+      "pause_minority"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2326,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 的基本架构是怎样的？",
+    "answer": "**四层组成：Producer / Broker 集群 / Topic-Partition / Consumer Group，靠 ZooKeeper 或 KRaft 协调。**\n\n## 架构图\n\n```\nProducer ──→ Broker 集群 ──→ Consumer Group\n              ├ Topic A     ├ Partition 0 (Leader + Follower)\n              └ Topic B     └ Partition 1 ...\n                   ↑\n           ZooKeeper / KRaft（元数据与协调）\n```\n\n## 核心组件\n\n| 组件 | 作用 |\n|---|---|\n| **Producer** | 发消息，按 key 决定进哪个 partition |\n| **Broker** | Kafka 服务节点，存储消息、处理读写 |\n| **Topic** | 逻辑分类，物理上分成多个 Partition |\n| **Partition** | **并行与有序的基本单位**，每个有 Leader + Followers |\n| **Replica** | 副本，Leader 处理读写，Follower 同步 |\n| **Consumer Group** | 消费组，组内瓜分 partition（一条消息只被组内一个消费者消费） |\n| **Controller** | 集群中有个 broker 被选为 controller，负责分区 Leader 选举 |\n\n## 三个关键设计（这几条是 Kafka 快的原因）\n\n1. **顺序写磁盘**：消息追加写入，不是随机写 → 接近内存速度\n2. **零拷贝**：`sendfile` 把数据直接从页缓存发到 socket\n3. **分区并行**：一个 topic 拆多分区，读写都能并行\n\n## 两个元数据方案\n\n| 方案 | 说明 |\n|---|---|\n| **ZooKeeper**（传统） | 存 broker 注册、topic 元数据、controller 选举 |\n| **KRaft**（2.8+ 新模式） | 用 Kafka 自己管元数据，**去掉 ZK 依赖**（推荐新部署） |\n\n## 一个高频追问\n\n「Broker 挂了消息会丢吗」→ **看副本数**。`replication-factor=3` 时挂 1 个不影响；`replication-factor=1` 就真丢了。\n\n## 必须记的三个数字\n\n```\n分区是并行度的上限\n副本数 3 是生产标准\nISR = 与 Leader 数据同步的副本集合\n```",
+    "tags": [
+      "Kafka",
+      "架构",
+      "Broker",
+      "Partition"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2327,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 各组件的工作机制是什么？有哪些常见优化点？",
+    "answer": "**各组件职责清晰：Producer 决定分区、Broker 存盘、Consumer Group 分摊消费。**\n\n## Producer 的工作机制\n\n```\n消息 → 序列化 → 分区器（key 哈希 / 轮询）→ 累积成 batch → 发送\n                                              ↑ 这是吞吐的关键\n```\n\n**优化点**：\n\n| 参数 | 作用 |\n|---|---|\n| `batch.size`（默认 16KB） | 批量大小，**调大提升吞吐但增延迟** |\n| `linger.ms`（默认 0） | 等多久凑批，**加 5~10ms 吞吐明显提升** |\n| `acks` | `0` 不等确认（最快）/`1` Leader 确认/**`all` 全 ISR 确认（最安全）** |\n| `compression.type` | 压缩（lz4/snappy 常用，省带宽） |\n\n## Broker 的工作机制\n\n- 消息**追加写入 segment 文件**（`00000.log`）\n- 索引文件（`.index`）加速定位 offset\n- **按时间/大小滚动**（`log.retention.hours`、`log.segment.bytes`）\n\n**优化点**：\n\n| 项 | 说明 |\n|---|---|\n| 磁盘 | 用多块盘 + 顺序写（**不要 RAID 5**，用 JBOD 或 RAID 10） |\n| `num.partitions` | 分区数决定并行度（生产常用 6~12） |\n| `log.retention` | 别设太长，磁盘会爆 |\n| 页缓存 | 留足 OS 页缓存（Kafka 靠它加速） |\n\n## Consumer Group 的工作机制\n\n```\n同组：partition 被瓜分（一条消息只消费一次）\n不同组：每组都拿全量（广播）\n消费者 > 分区 → 多出来的空转\n```\n\n**优化点**：\n\n| 参数 | 说明 |\n|---|---|\n| `fetch.min.bytes` | 一次拉多少（调大减少往返） |\n| `max.poll.records` | 单次处理上限（避免处理太久被判死） |\n| 手动提交 offset | 处理完再提交（**否则会丢消息**） |\n| 增加消费者前先加分区 | **顺序不能反** |\n\n## 一张优化速查表\n\n| 问题 | 调什么 |\n|---|---|\n| 吞吐上不去 | batch.size、linger.ms、压缩 |\n| 延迟高 | 减小 linger、减小 batch |\n| 消费堆积 | 加分区 + 加消费者 |\n| 数据安全 | acks=all、replication=3、手动提交 |",
+    "tags": [
+      "Producer",
+      "Consumer",
+      "优化",
+      "acks"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2328,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "简单",
+    "question": "Kafka 的 Topic 是什么？",
+    "answer": "**Topic 是消息的逻辑分类，物理上由多个 Partition 组成。**\n\n## 三个层次\n\n| 概念 | 说明 |\n|---|---|\n| **Topic** | 逻辑名（如 `order-events`），生产者发到它 |\n| **Partition** | Topic 的物理分片，每个是**有序的追加日志** |\n| **Replica** | 每个 partition 的副本（1 个 Leader + N Follower） |\n\n```\ntopic: order-events\n ├─ partition 0  [Leader@broker1, Follower@broker2]\n ├─ partition 1  [Leader@broker2, Follower@broker3]\n └─ partition 2  [Leader@broker3, Follower@broker1]\n```\n\n## 为什么 Topic 要分 Partition\n\n| 目的 | 说明 |\n|---|---|\n| **并行** | 多分区可同时读写 → 吞吐线性扩展 |\n| **有序** | 单分区内严格有序（跨分区不保证） |\n| 负载均衡 | 分区分散到不同 Broker |\n\n**所以「分区数 = 并行度的上限」。**\n\n## 常用命令\n\n```bash\nkafka-topics.sh --create --topic order-events \\\n  --partitions 6 --replication-factor 3\n\nkafka-topics.sh --describe --topic order-events\nkafka-topics.sh --alter --topic order-events --partitions 12   # 只能增不能减\n```\n\n## 两个重要限制\n\n**1. 分区只能增加不能减少**\n\n减分区要删 topic 重建（数据会丢）。规划时要预留。\n\n**2. 分区不是越多越好**\n\n- 每个 partition 有文件句柄、内存开销\n- `num.partitions` 太多会导致 rebalance 慢、controller 压力大\n- 经验值：单 broker 上分区数控制在千级以内\n\n## 一个高频追问\n\n「删了 Topic 消息能恢复吗」→ **不能**（除非有副本且未删）。反过来说：`delete.topic.enable=true` 要谨慎开启。",
+    "tags": [
+      "Topic",
+      "Partition",
+      "Replica"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2329,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 有哪些内部 Topic？分别有什么作用？",
+    "answer": "**四个关键内部 topic，都是双下划线开头，用来支撑集群自身的协调。**\n\n| 内部 Topic | 作用 |\n|---|---|\n| **`__consumer_offsets`** | **存储消费者组的 offset 提交**（替代了 ZK 存 offset） |\n| **`__transaction_state`** | 存储事务状态（支持 exactly-once） |\n| `__deleted_...` | 标记删除的临时 topic |\n| `__remote_log_metadata` | 新版远程存储元数据 |\n\n## 重点说 `__consumer_offsets`\n\n**这是最常被问到的一个。**\n\n- 消费者提交 offset 时，实际写到这个 topic\n- **默认 50 个分区**（由 `offsets.topic.num.partitions` 控制）\n- 每个消费者组的数据落在固定分区（按 group id 哈希）\n- 副本数由 `offsets.topic.replication.factor` 控制（**默认 3，若集群 broker 少于 3 会创建失败！**）\n\n**这条很实用**：单机测试集群起消费者时若报错，往往是这个副本数要求 3 但只有 1 个 broker。\n\n## 查看方式\n\n```bash\nkafka-topics.sh --list | grep '^__'\nkafka-topics.sh --describe --topic __consumer_offsets\n```\n\n## 两个运维要点\n\n**1. 不要手动改这些 topic**\n\n改了分区数或副本数会影响消费组的 offset 分布，可能导致 offset 丢失。\n\n**2. 监控它的体积**\n\noffset 是持续写入的（每次提交一条），`__consumer_offsets` 会不断增长（受 `log.retention` 控制，默认 7 天清理）。异常增长说明提交过于频繁。\n\n## 一个关联知识点\n\n`__consumer_offsets` 的出现是 **Kafka 0.9 之后** 的改进：之前 offset 存在 ZooKeeper，**频繁提交会把 ZK 压垮** —— 这正是它诞生原因。",
+    "tags": [
+      "内部topic",
+      "consumer_offsets",
+      "offset"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 2330,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 中 Producer 和 Consumer 分别是什么角色？怎么生产和消费消息？",
+    "answer": "**Producer 写、Consumer 读，两者通过 Partition 与 Consumer Group 解耦。**\n\n## Producer（生产者）\n\n**怎么发**：\n\n```java\nProducerRecord<String,String> rec = new ProducerRecord<>(\"order\", key, value);\nproducer.send(rec);   // 异步，带 callback 拿结果\n```\n\n**三个关键决策**：\n\n| 决策 | 说明 |\n|---|---|\n| **进哪个 partition** | 有 key → 按 key 哈希；无 key → 轮询（sticky 分配到同一分区） |\n| **可靠性** | `acks=all` + `retries` + `replication-factor=3` |\n| **批量** | `batch.size` + `linger.ms` 影响吞吐与延迟 |\n\n**同一 key 必进同一分区**，这是「局部有序」的基础。\n\n## Consumer（消费者）\n\n**怎么读**：\n\n```java\nwhile (true) {\n  ConsumerRecords<String,String> recs = consumer.poll(Duration.ofMillis(100));\n  for (var r : recs) { handle(r); }\n  consumer.commitSync();   // 处理完再提交 offset\n}\n```\n\n**Consumer Group 是核心机制**：\n\n| 规则 | 说明 |\n|---|---|\n| 同组 | partition 被组内消费者**瓜分**，一条消息只被一个消费者处理 |\n| 不同组 | 每组都收到**全量**（这就是广播） |\n| 消费者 > 分区 | 多出来的**空转** |\n\n## 三个必须知道的语义\n\n| 语义 | 怎么实现 | 风险 |\n|---|---|---|\n| **at most once** | 先提交 offset 再处理 | **丢消息** |\n| **at least once**（默认） | 先处理再提交 | **可能重复** |\n| **exactly once** | 事务 + 幂等生产者 | 成本高 |\n\n**生产一般选 at-least-once + 消费端幂等**（重复比丢失好处理）。\n\n## 一个高频追问\n\n「为什么消费者数超过分区数会空转？」→ 因为**一个分区同一时刻只能被一个组内消费者消费**，多出来的分不到分区。\n\n**所以扩容顺序：先加分区，再加消费者。**",
+    "tags": [
+      "Producer",
+      "Consumer",
+      "Group",
+      "语义"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2331,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 中 Partition 是什么？划分数量对性能有什么影响？",
+    "answer": "**Partition 是并行与有序的基本单位，数量直接决定吞吐上限。**\n\n## Partition 是什么\n\n- Topic 的物理分片，**每个是一个有序的追加日志**\n- 内部顺序写入（`00000.log` segment）\n- 每个 partition 有 1 个 Leader（处理读写）和 N 个 Follower（同步）\n- **offset 在 partition 内单调递增**\n\n## 对性能的影响（两面）\n\n**分多 → 快（但有上限）**\n\n| 好处 | 说明 |\n|---|---|\n| 并行读写 | 多个 partition 可同时被不同 broker/消费者处理 |\n| 分散磁盘 IO | 分摊到不同 broker |\n\n**分太多 → 变慢**\n\n| 代价 | 说明 |\n|---|---|\n| 文件句柄与内存开销 | 每 partition 若干 segment 文件 |\n| **rebalance（再平衡）变慢** | 分区多时切换耗时更长 |\n| controller 压力 | 元数据操作变重 |\n| 顺序性被削弱 | 跨分区不保证顺序 |\n\n## 分区数的两个关键结论\n\n**1. 分区数是并行度的上限**\n\n消费者多于分区 → 多出的空转。**扩容顺序必须先加分区**。\n\n**2. 只能增不能减**\n\n减少分区要删 topic 重建（数据丢失）。**所以要提前规划**。\n\n## 经验值\n\n```\n分区数 ≈ 目标吞吐 / 单分区吞吐能力\n单分区参考：约 10MB/s 读、数百 MB/s 写（视硬件）\n```\n\n一般生产：**6~12 个分区**起步；单 broker 分区总数控制千级以内。\n\n## 一个高频追问\n\n「分区多能保证顺序吗？」→ **不能**。只能保证**单个 partition 内**消息有序。要全 topic 有序只能设 1 个分区（放弃并行）。",
+    "tags": [
+      "Partition",
+      "并行度",
+      "分区数"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2332,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 如何保证消息顺序性？什么场景下顺序性是必须的？",
+    "answer": "**Kafka 只保证「单 partition 内有序」，靠「同 key 落同分区」来实现业务上的有序。**\n\n## 三层保证\n\n| 层面 | 保证 |\n|---|---|\n| **单 partition** | ✅ 严格有序（追加日志 + offset 递增） |\n| **跨 partition** | ❌ 无序 |\n| **全局有序** | 只能设 1 个 partition（牺牲并行） |\n\n## 业务有序的正确做法\n\n```\n同一订单的所有事件 → 用 order_id 作为 key\n → 哈希到同一 partition → 该 partition 单消费者串行处理 → 有序\n```\n\n**关键链条**：\n同 key → 同 partition → 单消费者（组内）→ 串行消费 → 有序\n\n## 三个破坏顺序的坑\n\n| 坑 | 说明 |\n|---|---|\n| **改了分区数** | key 的哈希落点变了，同一 key 可能进新分区 |\n| **消费端多线程** | 同一 partition 的消息被并发处理 → 乱序 |\n| **异步处理** | 消费到手后丢线程池，处理完成顺序不可控 |\n\n**第一条很隐蔽**：扩分区后历史消息与新消息不在同一分区，顺序就断了。\n\n## 必须有序的场景\n\n| 场景 | 为什么必须 |\n|---|---|\n| **订单状态流转** | 必须「创建 → 支付 → 发货」，倒序会出错 |\n| **账户余额变更** | 加减顺序影响结果 |\n| **数据库变更同步（CDC）** | 必须按 binlog 顺序重放 |\n| 库存扣减 | 超卖/负数问题 |\n\n## 不需要有序的场景\n\n日志采集、埋点统计、通知推送 —— **顺序无所谓，吞吐更重要**。\n\n## 一个实用的折中\n\n按业务键分区（订单场景用 `order_id`），既能并行（不同订单在不同分区），又能保证同一实体的有序。\n\n**这是 Kafka 在顺序与并行之间最常见的平衡点。**",
+    "tags": [
+      "顺序性",
+      "partition",
+      "key",
+      "有序"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2333,
+    "type": "short",
+    "category": "消息队列",
+    "difficulty": "中等",
+    "question": "Kafka 的 Offset 是什么？如何追踪消息的消费进度？",
+    "answer": "**Offset 是消息在 partition 内的唯一递增编号，也是消费进度的「游标」。**\n\n## Offset 是什么\n\n```\npartition 0:  [msg@0][msg@1][msg@2][msg@3] → 新消息追加到末尾\n                ↑ 已消费到 2（下次从 3 开始）\n```\n\n- 每个 partition **独立编号**，从 0 开始\n- 消息写入后 offset 固定不变\n- **消费者提交的 offset = 「下一条要消费的位置」**（不是最后消费的那条）\n\n## 三个关键 Offset\n\n| 概念 | 含义 |\n|---|---|\n| **earliest / latest** | `auto.offset.reset`：无提交记录时从头还是从最新开始 |\n| **committed offset** | 消费者**已提交**的进度（存在 `__consumer_offsets`） |\n| **current position** | 消费者当前读到的位置 |\n\n**LAG = 生产末端（log-end-offset）− committed offset** —— 这就是「堆积量」。\n\n## 怎么追踪消费进度\n\n**1. 命令行（最常用）**\n\n```bash\nkafka-consumer-groups.sh --describe --group my-group\n\n# 输出关键列：\n# CURRENT-OFFSET  LOG-END-OFFSET  LAG\n```\n\n**LAG 持续增长 = 消费跟不上**，这是最重要的告警指标。\n\n**2. 提交方式（影响可靠性）**\n\n| 方式 | 特点 |\n|---|---|\n| 自动提交（`enable.auto.commit=true`） | 简单，但**可能在处理完成前就提交 → 丢消息** |\n| **手动同步提交** | 处理完再提交，可靠（推荐） |\n| 手动异步提交 | 性能好，但要注意失败重试 |\n\n**3. 重置 offset（回放消息）**\n\n```bash\nkafka-consumer-groups.sh --reset-offsets --to-earliest \\\n  --group my-group --topic order --execute\n```\n\n**注意：必须先停掉消费者组**，否则重置无效。\n\n## 两个高频坑\n\n1. **改分区数会让 offset 错乱**（新分区从 0 开始，但消费组的记录没对应调整）\n2. **`auto.offset.reset` 只在「无提交记录」时生效**，不是「每次重置」",
+    "tags": [
+      "Offset",
+      "LAG",
+      "消费进度"
+    ],
+    "frequency": "高频"
+  },
+  {
     "id": 2400,
     "type": "short",
     "category": "存储与备份",
@@ -23681,6 +24146,49 @@
       "安全"
     ],
     "frequency": "低频"
+  },
+  {
+    "id": 2515,
+    "type": "short",
+    "category": "存储与备份",
+    "difficulty": "简单",
+    "question": "RAID 是什么？为什么要用 RAID？",
+    "answer": "**RAID = 把多块磁盘组合成一个逻辑设备，用冗余换可靠性、用并行换性能。**\n\n## 解决两个问题\n\n| 问题 | RAID 怎么解决 |\n|---|---|\n| **单盘会坏**（数据丢失、服务中断） | 冗余：一份数据存多份或加校验 |\n| **单盘太慢**（IO 瓶颈） | 并行：多盘同时读写 |\n\n## 三个关键概念\n\n- **条带化（Striping）**：数据切块分散到多盘 → **提升读写性能**（多盘并行）\n- **镜像（Mirroring）**：一份数据写两份 → **提升可靠性**\n- **校验（Parity）**：用异或算出校验块 → **用较小空间换容错**\n\n## 为什么生产必须用 RAID\n\n1. **磁盘故障是必然事件**：盘越多，坏盘概率越高（MTBF 再高也扛不住数量）\n2. **SLA 要求**：单盘坏不能导致业务中断\n3. **在线更换**：热插拔换盘 + 重建，不需要停机\n\n## 但 RAID ≠ 备份\n\n这是最需要强调的一条：\n\n| RAID 能防 | RAID 防不了 |\n|---|---|\n| 磁盘物理损坏 | **误删（rm -rf）** |\n| 部分介质错误 | **勒索病毒加密** |\n| 短暂不可用 | **机房火灾/断电损坏整组盘** |\n\n**因为 RAID 是「同一份数据的多份副本实时同步」**，误删会立刻同步到所有盘。所以仍然需要 3-2-1 备份。\n\n## 常见级别\n\nRAID 0（性能）/ RAID 1（镜像）/ RAID 5（校验）/ RAID 6（双校验）/ RAID 10（镜像+条带）。",
+    "tags": [
+      "RAID",
+      "冗余",
+      "条带化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2516,
+    "type": "short",
+    "category": "存储与备份",
+    "difficulty": "中等",
+    "question": "RAID 0、RAID 1、RAID 5、RAID 10 的工作原理和特点分别是什么？",
+    "answer": "**四种级别的核心差异：要不要冗余、冗余怎么算、代价多大。**\n\n| 级别 | 原理 | 容量利用率 | 容错 | 读性能 | 写性能 | 最少盘数 |\n|---|---|---|---|---|---|---|\n| **RAID 0** | 纯条带化，数据切块分散 | **100%** | **0（一块坏全丢）** | 最高 | 最高 | 2 |\n| **RAID 1** | 镜像，两份完全相同 | 50% | 1 块 | 高（可并行读） | 低（要写两份） | 2 |\n| **RAID 5** | 条带 + **1 份分布式校验** | (N-1)/N | 1 块 | 高 | **中等（写要读改写校验）** | 3 |\n| **RAID 10** | 先镜像（1）再条带（0） | 50% | 每组镜像可坏 1 块 | 高 | **高** | 4 |\n\n## 各自的「致命点」\n\n**RAID 0**\n- 完全无冗余，**任何一块盘坏 = 全部数据丢失**\n- 只适合「可丢弃的临时数据」（如缓存、临时计算）\n\n**RAID 1**\n- 容量浪费一半，性价比低\n- 但**重建快、无校验计算**，写密集且可靠性优先时最稳\n\n**RAID 5**\n- **写惩罚**：每写一次要「读旧数据 + 读旧校验 + 写新数据 + 写新校验」= 4 次 IO\n- **重建风险**：大容量盘重建要数小时到数十小时，期间再坏一块就全丢\n- 所以**大容量盘慎用 RAID 5**（这是面试高频结论）\n\n**RAID 10**\n- 容量浪费一半，但**重建只影响一对镜像**（快很多）\n- 读写性能最好，是**数据库的首选**\n\n## 一句话选型逻辑\n\n- 只要性能不要安全 → RAID 0\n- 要安全且写入频繁、容量不敏感 → RAID 1\n- 要容量与性能平衡、盘不大 → RAID 5\n- 要性能与安全兼顾（数据库） → RAID 10",
+    "tags": [
+      "RAID0",
+      "RAID1",
+      "RAID5",
+      "RAID10"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 2517,
+    "type": "short",
+    "category": "存储与备份",
+    "difficulty": "中等",
+    "question": "RAID 选型该参考哪些因素？不同业务场景分别推荐哪种？",
+    "answer": "**选型看四件事：读写特征、容量成本、可靠性要求、盘的数量与大小。**\n\n## 四个判断维度\n\n| 维度 | 影响 |\n|---|---|\n| **读写比例** | 写密集 → 避开 RAID 5（写惩罚重） |\n| **容量成本** | 能接受 50% 浪费吗 |\n| **可靠性等级** | 能否容忍重建期间的风险窗口 |\n| **单盘容量** | 大容量盘重建时间长 → 慎用 RAID 5/6 |\n\n## 场景推荐表\n\n| 场景 | 推荐 | 理由 |\n|---|---|---|\n| **数据库（MySQL/Redis 持久化）** | **RAID 10** | 写密集、延迟敏感、重建快 |\n| 虚拟化宿主机 | RAID 10 或 RAID 6 | 多 VM 混合 IO |\n| 文件/备份存储 | RAID 6 或 RAID 5 | 大容量、读多写少 |\n| 日志存储 | RAID 1 / RAID 10 | 顺序写、量小 |\n| 临时计算/缓存 | RAID 0 | 无价值数据，要速度 |\n| 大容量归档（单盘 16TB+） | **RAID 6 或 RAID 10** | 重建窗口太长，单校验太险 |\n\n## 两个必须说清的风险点\n\n**1. RAID 5 的重建窗口**\n\n8 块 8TB 盘做 RAID 5，坏一块后重建要「读 7 块全盘」≈ 数十小时，期间磁盘满负荷、再坏一块就全丢。这叫 **URE（不可恢复读错误）风险**。\n\n**2. 盘多不等于可靠**\n\nRAID 6 允许坏 2 块，但**双校验带来更重的写惩罚**。写密集场景用 RAID 6 反而慢。\n\n## 还要配套做的\n\n- **热备盘（Hot Spare）**：坏盘后自动顶上，缩短人工介入时间\n- **监控**：`smartctl` 定期查 SMART、盯阵列状态（否则「坏了两块才知道」）\n- **备份**：RAID 不是备份，3-2-1 必须另做\n\n**一句总结**：数据库用 10、归档用 6、临时用 0，别在写密集上用 5。",
+    "tags": [
+      "RAID",
+      "选型",
+      "重建"
+    ],
+    "frequency": "中频"
   },
   {
     "id": 2600,
@@ -41212,6 +41720,178 @@
     "frequency": "中频"
   },
   {
+    "id": 3728,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "MySQL 中常见的 RDBMS 术语有哪些？分别是什么意思？",
+    "answer": "**掌握十个术语，就能读懂大部分 MySQL 文档与面试题。**\n\n## 结构类\n\n| 术语 | 含义 |\n|---|---|\n| **Database（库）** | 逻辑容器，可包含多个表 |\n| **Table（表）** | 二维数据集合（行 × 列） |\n| **Row / Record（行）** | 一条记录 |\n| **Column / Field（列）** | 字段，有数据类型约束 |\n| **Schema** | 在 MySQL 中≈ 库；在别的数据库里指表结构定义 |\n\n## 约束类\n\n| 术语 | 含义 |\n|---|---|\n| **Primary Key（主键）** | 唯一标识一行，**不能重复、不能 NULL**，每表最多一个 |\n| **Foreign Key（外键）** | 关联另一表的主键（MySQL 中 InnoDB 才支持） |\n| **Unique Key（唯一键）** | 值唯一（允许多个 NULL） |\n| **Index（索引）** | 加速查询的数据结构（B+Tree） |\n\n## 存储与管理类\n\n| 术语 | 含义 |\n|---|---|\n| **Storage Engine（存储引擎）** | InnoDB（默认，支持事务）/ MyISAM（不支持事务） |\n| **Tablespace（表空间）** | 物理存储单元（InnoDB 的 `.ibd` 文件） |\n| **Transaction（事务）** | 一组要么全成、要么全回滚的操作 |\n\n## 常被混淆的三组\n\n**1. 主键 vs 唯一键**\n\n| | 主键 | 唯一键 |\n|---|---|---|\n| 允许 NULL | ❌ | ✅（多个 NULL 可以） |\n| 每表数量 | 1 个 | 多个 |\n| 用途 | 标识一行 | 保证某列不重复 |\n\n**2. Schema vs Database**\n\nMySQL 里 `CREATE SCHEMA` 与 `CREATE DATABASE` **等价**；其他数据库（如 Oracle/PG）里 schema 是库内的命名空间。\n\n**3. InnoDB vs MyISAM**\n\n| | InnoDB | MyISAM |\n|---|---|---|\n| 事务 | ✅ | ❌ |\n| 行锁 | ✅ | ❌（表锁） |\n| 崩溃恢复 | ✅ | ❌ |\n| 说明 | **默认且推荐** | 已过时 |",
+    "tags": [
+      "RDBMS",
+      "术语",
+      "主键",
+      "InnoDB"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 3729,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "关系型数据库和非关系型数据库有什么区别？",
+    "answer": "**关系型强一致、有结构；非关系型灵活/高性能，但牺牲部分保证。**\n\n| 维度 | 关系型（MySQL/PG） | 非关系型（Redis/MongoDB/ES） |\n|---|---|---|\n| 数据结构 | **固定表结构（Schema）** | 灵活（KV/文档/列族/图） |\n| 事务 | **强 ACID** | 多数最终一致（部分支持事务） |\n| 查询 | SQL，支持复杂 JOIN | 简单查询（按 key/条件） |\n| 扩展 | **垂直为主**（分库分表实现水平） | **天然水平扩展**（分片） |\n| 一致性 | 强 | 图性能常牺牲一致性 |\n| 典型场景 | 交易、账务、需关联查询 | 缓存、日志、检索、海量写入 |\n\n## 各自擅长的场景\n\n| 需求 | 选 |\n|---|---|\n| 严格一致（转账） | **关系型** |\n| 复杂关联查询 | **关系型** |\n| 超高并发 KV 读写 | **Redis** |\n| 半结构化文档 | **MongoDB** |\n| 全文检索/日志分析 | **Elasticsearch** |\n| 海量时序数据 | 时序库（Prometheus/TDengine） |\n\n## 关键澄清（面试常错点）\n\n**1. 「非关系型更快」是片面结论**\n\n它快在**特定模式**：简单 KV 查询、海量写入、无 JOIN。复杂关联查询它反而做不了。\n\n**2. 「关系型不能水平扩展」也不完全对**\n\n可以**分库分表**（Sharding）实现水平扩展，只是比 NoSQL 麻烦。\n\n**3. 实际生产是「混合使用」**\n\n```\nMySQL 存权威数据（账务）\nRedis 做缓存层\nES 做搜索层（从 MySQL 同步）\n```\n\n**不要把「选型」当成排他选择。**\n\n## 一个判断方法\n\n先问三个问题：**要不要强事务？要不要复杂查询？数据量多大？**\n\n前两个是 yes → 关系型；数据量超单机且只需 KV → NoSQL。",
+    "tags": [
+      "关系型",
+      "非关系型",
+      "选型"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3730,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "ACID 是什么？简述其理论。",
+    "answer": "**A 原子性、C 一致性、I 隔离性、D 持久性——事务的四个保证。**\n\n| 特性 | 含义 | 靠什么实现 |\n|---|---|---|\n| **A 原子性**（Atomicity） | 要么全成功，要么全回滚 | **undo log**（回滚日志） |\n| **C 一致性**（Consistency） | 从一种合法状态到另一种合法状态 | **由 A/I/D 共同保证**（这是目标，不是手段） |\n| **I 隔离性**（Isolation） | 并发事务互不干扰 | **锁 + MVCC** |\n| **D 持久性**（Durability） | 提交后即使断电也不丢 | **redo log** |\n\n## 两个日志的作用（这是核心）\n\n```\nundo log  ← A：记录「反向操作」，回滚时执行\nredo log  ← D：记录「物理修改」，崩溃后重放\n```\n\n**为什么两个都要**：\n- undo 保证能撤销（回滚）\n- redo 保证提交的能恢复（不丢）\n\n## C 一致性为什么说「不是手段」\n\n这是面试的加分点：\n\n> **一致性是 A、I、D 达成后的结果，MySQL 本身不提供独立的「一致性机制」。**\n\n举例：转帐时 A 扣 100、B 加 100，原子性保证不会只扣不加；隔离性保证并发不出错；持久性保证提交后不丢 —— **三者合起来才有一致性**。\n\n## 隔离级别与 ACID 的取舍\n\n| 级别 | 脏读 | 不可重复读 | 幻读 |\n|---|---|---|---|\n| **读未提交** | ✅会发生 | ✅ | ✅ |\n| **读已提交**（RC） | ❌ | ✅ | ✅ |\n| **可重复读**（RR，MySQL 默认） | ❌ | ❌ | 大部分避免 |\n| **串行化** | ❌ | ❌ | ❌（性能最差） |\n\n**级别越高 → 隔离性越强 → 并发性能越低**，这就是取舍。\n\n## 一个高频追问\n\n「MySQL 默认隔离级别是什么」→ **可重复读（RR）**，Oracle 是 RC，这是常考的差异点。",
+    "tags": [
+      "ACID",
+      "事务",
+      "redo",
+      "undo"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3731,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 主从同步延迟如何处理？",
+    "answer": "**先定位延迟成因，再按「治标→治本」分层处理。**\n\n## 一、先测量\n\n```sql\nSHOW SLAVE STATUS\\G\n-- 关键字段：\n--   Seconds_Behind_Master   延迟秒数（突然变大即异常）\n--   Slave_SQL_Running_State 卡在哪个 SQL\n```\n\n## 二、四类成因与对策\n\n| 成因 | 表现 | 处理 |\n|---|---|---|\n| **主库写入过猛** | 从库单线程重放跟不上 | 并行复制（`slave_parallel_workers`） |\n| **大事务** | 一条语句执行很久 | **拆分大事务**（批量更新拆小批） |\n| **从库硬件弱** | 长期延迟 | 升级从库（IO/CPU） |\n| **锁等待/慢 SQL** | `Slave_SQL_Running_State` 显示等待 | 优化 SQL、调整隔离级别 |\n\n## 三、治标：如何「读到最新数据」\n\n| 手段 | 说明 |\n|---|---|\n| **关键读走主库** | 刚写完立刻要读的业务（如支付后查订单） |\n| 强制主库读（代码层标记） | 加个「强一致」注解 |\n| 半同步复制 | 主库等至少一个从库确认再返回 |\n\n## 四、治本：减少延迟\n\n**1. 开启并行复制**（MySQL 5.7+ 重点改进）\n\n```conf\nslave_parallel_workers = 8\nslave_parallel_type = LOGICAL_CLOCK\nslave_preserve_commit_order = ON\n```\n\n**按「组提交（LOGICAL_CLOCK）」并行重放**，能把延迟降低一个量级。\n\n**2. 拆分大事务**\n\n```sql\n-- 坏：一次更新 10 万行\nUPDATE t SET status=1 WHERE id < 100000;\n-- 好：分批\nUPDATE t SET status=1 WHERE id < 100000 LIMIT 1000;  -- 循环执行\n```\n\n**3. 从库配置优化**\n\n- `innodb_flush_log_at_trx_commit=0/2`（从库可放松，主库必须 1）\n- 用 SSD\n\n## 五、防坑\n\n**半同步复制的代价**：主库要等从库确认，**写入延迟会增加**。要在「一致性」和「性能」之间权衡。\n\n## 一句话总结\n\n**延迟是架构问题，不是参数问题**：并行复制能缓解，根本还是要控住主库写入峰值与事务粒度。",
+    "tags": [
+      "主从延迟",
+      "并行复制",
+      "大事务"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3732,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 中一条 SQL 语句的执行过程是怎样的？",
+    "answer": "**四层：连接器 → 解析器 → 优化器 → 执行器，最后到存储引擎。**\n\n## 完整链路\n\n```\n客户端 → ① 连接器（认证、权限）\n       → ② 解析器（词法/语法分析，生成语法树）\n       → ③ 优化器（选索引、决定执行计划）\n       → ④ 执行器（按计划调用存储引擎）\n       → ⑤ 存储引擎（InnoDB 读页：缓冲池 → 磁盘）\n```\n\n## 逐层说明\n\n| 层 | 做什么 | 关键点 |\n|---|---|---|\n| **连接器** | 建立连接、验证账号权限、管理连接池 | **权限在这里校验**（所以改权限后要重连才生效） |\n| **解析器** | 词法 + 语法分析 | 报 `You have an error in your SQL syntax` 就在这一层 |\n| **优化器** | 选择索引、决定 JOIN 顺序、生成执行计划 | **`EXPLAIN` 看到的就是它的决策** |\n| **执行器** | 按计划逐行取数、调用引擎接口 | 有「server 层过滤」的 rows examined 概念 |\n| **存储引擎** | InnoDB 从缓冲池/磁盘读页 | **真正读数据在这里** |\n\n## 一个高频追问：查询在哪里查权限\n\n**在连接器**。所以：\n\n> 在会话过程中修改权限，**当前连接不会立即生效**，需要重新连接。\n\n## 另一个高频点：更新语句的执行\n\n```sql\nUPDATE t SET c=c+1 WHERE id=1;\n```\n\n比查询多三步：\n\n| 步骤 | 说明 |\n|---|---|\n| **写 undo log** | 记录旧值（用于回滚） |\n| **改缓冲池页** | 数据先改内存（脏页） |\n| **写 redo log**（两阶段提交） | 先 prepare 再 commit |\n\n**redo log 的顺序**：先写 redo（prepare）→ 刷脏页 → 写 binlog → redo commit。\n\n这解释了为什么「崩溃后能恢复」：**redo 已落盘，脏页还没刷完也能重放**。\n\n## 一个实用推论\n\n「为什么 EXPLAIN 显示的 rows 与实际扫描量不同」→ **优化器基于统计信息估算**，统计过期就不准（可 `ANALYZE TABLE` 更新）。",
+    "tags": [
+      "SQL执行过程",
+      "优化器",
+      "存储引擎"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3733,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 慢查询日志怎么配置和使用？如何监控与优化慢 SQL？",
+    "answer": "**开启慢查询日志 → 分析出高频慢 SQL → EXPLAIN 定位 → 优化并验证。**\n\n## 一、配置\n\n```conf\n# my.cnf\nslow_query_log = ON\nslow_query_log_file = /var/log/mysql/slow.log\nlong_query_time = 1              # 超过 1 秒记录（默认 10，太大）\nlog_queries_not_using_indexes = ON   # 记录未走索引的\n```\n\n**动态开启（不用重启）**：\n\n```sql\nSET GLOBAL slow_query_log = ON;\nSET GLOBAL long_query_time = 1;\n```\n\n**注意**：`long_query_time` 改了只对**新连接**生效。\n\n## 二、分析工具\n\n**`mysqldumpslow`**（自带）：\n\n```bash\nmysqldumpslow -s t -t 10 /var/log/mysql/slow.log\n# -s t 按耗时排序；-t 10 取前10\n```\n\n**`pt-query-digest`**（Percona，更强）：\n\n```bash\npt-query-digest slow.log\n# 输出：总耗时占比、执行次数、平均/最长耗时\n```\n\n**这是生产首选**：它能按「同类 SQL 归并」统计，比逐条看有效得多。\n\n## 三、监控指标（不止日志）\n\n```sql\nSHOW GLOBAL STATUS LIKE 'Com_select';       -- 查询次数\nSHOW GLOBAL STATUS LIKE 'Slow_queries';     -- 慢查询数\nSHOW PROCESSLIST;                            -- 当前在跑什么\n```\n\n配合 **performance_schema** 看实时 TOP SQL：\n\n```sql\nSELECT * FROM performance_schema.events_statements_summary_by_digest\nORDER BY SUM_TIMER_WAIT DESC LIMIT 10;\n```\n\n## 四、优化思路\n\n| 问题 | 手段 |\n|---|---|\n| 没走索引 | 加索引 / 调整 WHERE 顺序（最左前缀） |\n| 索引不生效 | 检查是否用了函数、隐式类型转换、`!=` 或 `LIKE '%x'` |\n| 扫描行数太多 | 缩小范围、加覆盖索引 |\n| JOIN 太多 | 拆查询或冗余字段 |\n| 锁等待 | 缩短事务、调整隔离级别 |\n\n## 五、三个常见坑\n\n1. **`long_query_time` 设太小**：日志爆炸，影响 IO\n2. **只看单条不看聚合**：要按「总耗时」排序（`pt-query-digest` 默认就是）\n3. **开了日志忘了清理**：慢日志本身会撑爆磁盘\n\n**一句总结**：**排序看「总耗时×次数」，不是看「最慢的那一条」** —— 因为高频的 100ms 查询危害大于偶发的 10s 查询。",
+    "tags": [
+      "慢查询",
+      "pt-query-digest",
+      "优化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3734,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 中什么是分库分表？有哪些类型或策略？",
+    "answer": "**分库分表 = 把数据拆到多个库/表，突破单机容量与性能上限。**\n\n## 为什么要做\n\n| 瓶颈 | 表现 |\n|---|---|\n| **单表太大** | 索引膨胀、查询变慢、DDL 锁表时间长 |\n| **单库连接数/IO 打满** | 并发上不去 |\n| 磁盘容量 | 单机装不下 |\n\n## 两种拆分方向\n\n| 类型 | 说明 | 目的 |\n|---|---|---|\n| **垂直拆分** | 按**业务/列**拆（如用户表与订单表分库） | 解耦、降低单库压力 |\n| **水平拆分** | 按**行**拆（同表数据分到多张同构表） | 解决单表过大 |\n\n## 水平拆分的四种分片策略\n\n| 策略 | 做法 | 优点 | 缺点 |\n|---|---|---|---|\n| **范围（Range）** | 按 ID 区间/id 段 | 易于扩容、范围查询快 | **热点**（新数据都进最后一片） |\n| **哈希（Hash）** | `hash(key) % N` | 数据均匀 | **扩容要迁移大量数据** |\n| **一致性哈希** | 环形哈希 + 虚拟节点 | 扩容只影响相邻部分 | 实现复杂、可能不均 |\n| **按业务键**（如 user_id 取模） | 特定维度分片 | 同用户数据在同一片，便于局部查询 | 跨维度查询要扫全部分片 |\n\n## 分片键（Sharding Key）的选择（最关键）\n\n**决策原则**：选**查询最频繁的维度**。\n\n| 分片键 | 好处 | 代价 |\n|---|---|---|\n| `user_id` | 查某用户的所有数据都在一片 | **按订单号查要扫全部片** |\n| `order_id` | 订单查询快 | 查某用户要扫全部 |\n\n**没有「完美分片键」** —— 选了一个维度，另一维度就要「广播查询」。\n\n## 引入的五个新问题（必须说清代价）\n\n1. **跨片 JOIN** 做不了 → 改冗余字段或应用层聚合\n2. **跨片事务** → 用分布式事务（TCC/Seata）或最终一致\n3. **跨片分页/排序** → 各片取 N 条再归并，复杂且性能差\n4. **全局唯一 ID** → 雪花算法/号段模式（不能靠自增）\n5. **扩容迁移** → 一致性哈希或「双倍扩容」\n\n## 一个重要的忠告\n\n**能不拆就不拆**。优先做：加索引 → 优化 SQL → 读写分离 → 归档冷数据 → 分区表。这些做完还不行，再分库分表。\n\n**因为分库分表是「不可逆」的重构**，后期改动成本极高。\n\n（可用中间件：ShardingSphere、MyCat；或用 TiDB 这类原生分布式库避免手工拆分。）",
+    "tags": [
+      "分库分表",
+      "sharding",
+      "分片键"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3735,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 的 EXPLAIN 怎么进行查询分析？关键字段怎么看？",
+    "answer": "**EXPLAIN 看「优化器打算怎么执行」，重点看 type、key、rows、Extra 四个字段。**\n\n## 基本用法\n\n```sql\nEXPLAIN SELECT * FROM orders WHERE user_id = 100;\nEXPLAIN ANALYZE ...   # 8.0.18+，会真实执行并给实际耗时\n```\n\n## 四个必看字段\n\n### 1. type（访问类型，最重要）\n\n**从好到坏排序**：\n：\n```\nsystem > const > eq_ref > ref > range > index > ALL\n```\n\n| type | 含义 | 评价 |\n|---|---|---|\n| **const** | 主键/唯一键等值命中一行 | 最好 |\n| **eq_ref** | JOIN 时被驱动表用主键关联 | 很好 |\n| **ref** | 走非唯一索引等值查询 | 好 |\n| **range** | 索引范围扫描（`between`/`>`） | 可接受 |\n| **index** | 扫整个索引（不回表但扫全部） | 偏差 |\n| **ALL** | **全表扫描** | **要优化** |\n\n### 2. key\n\n实际用的索引。**为 NULL 说明没走索引**（要重点排查）。\n\n### 3. rows\n\n**估算**要扫描的行数。数字大说明过滤效率低。\n\n### 4. Extra（信息量最大）\n\n| 值 | 含义 | 评价 |\n|---|---|---|\n| **`Using index`** | **覆盖索引**（不回表） | ✅ 最优 |\n| `Using where` | 服务层过滤 | 中性 |\n| **`Using filesort`** | 需要额外排序 | ⚠️ 要优化（加索引或改 ORDER BY） |\n| **`Using temporary`** | 用了临时表（常见于 GROUP BY） | ⚠️ 要优化 |\n| `Using index condition` | 索引条件下推 | 好 |\n\n## 一个典型诊断流程\n\n```\n① type=ALL 或 key=NULL → 没走索引，查 WHERE 是否破坏最左前缀\n② rows 很大 → 过滤条件选择性差，考虑加更精确的索引\n③ Extra 有 filesort/temporary → 看 ORDER BY / GROUP BY 能否用索引\n④ 都正常但还慢 → 用 EXPLAIN ANALYZE 看实际耗时分布\n```\n\n## 三个常见坑\n\n1. **rows 是估算值**（基于统计信息），统计过期就不准 → `ANALYZE TABLE`\n2. **EXPLAIN 不显示真实耗时**，慢查询要配 `EXPLAIN ANALYZE`\n3. 复杂查询一行一个表，**要从上到下看「驱动表」是谁**\n\n**一句总结**：**先看 type 有没有 ALL、key 是不是 NULL、rows 大不大、Extra 有没有 filesort。**这四个能定位八成问题。",
+    "tags": [
+      "EXPLAIN",
+      "执行计划",
+      "type",
+      "filesort"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3736,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "简单",
+    "question": "MySQL 中 DELETE、DROP 和 TRUNCATE 有什么区别？",
+    "answer": "**DELETE 删行（可回滚）、TRUNCATE 清空表（不可回滚但快）、DROP 删表（含结构）。**\n\n| 维度 | DELETE | TRUNCATE | DROP |\n|---|---|---|---|\n| 删除什么 | **数据行**（可带 WHERE） | **全部行**（表结构保留） | **整张表**（结构+数据+索引） |\n| 能否带条件 | ✅ WHERE | ❌ | ❌ |\n| 事务/回滚 | ✅ **可回滚** | ❌ **不可回滚**（DDL） | ❌ 不可回滚 |\n| 速度 | 慢（逐行删，写 undo/redo） | **快**（重建表） | 快 |\n| 自增 ID | **不重置**（继续往后） | **重置为 1** | 表没了 |\n| 触发器 | ✅ 会触发 | ❌ 不触发 | ❌ |\n| 锁 | 行锁（InnoDB） | 表锁 | 表锁 |\n| 空间释放 | ❌ 不释放（标记删除） | ✅ 释放 | ✅ 释放 |\n\n## 三个必须知道的点\n\n**1. DELETE 不释放磁盘空间**\n\nInnoDB 删除只是标记，空间留给后续复用。要真正回收需 `OPTIMIZE TABLE`（会锁表，生产慎用）。\n\n**2. TRUNCATE 快是因为它重建表**\n\n不是逐行删，而是直接丢数据页 —— 所以它不可回滚（DDL 会隐式提交）。\n\n**3. DELETE 分不清「删了多少」**\n\n`DELETE` 返回影响行数；`TRUNCATE`/`DROP` 返回 0（因为不是行操作）。\n\n## 使用建议\n\n| 场景 | 用什么 |\n|---|---|\n| 删部分数据 | **DELETE**（带回滚保护） |\n| 清空整表（测试环境） | TRUNCATE（快） |\n| 彻底移除表 | DROP |\n| 大表清理历史数据 | **分批 DELETE**（避免长事务与锁表） |\n\n## 一个高危提醒\n\n**`DELETE FROM t`（不带 WHERE）在千万级大表上会造成长时间锁与巨量 undo**，可能拖垮数据库。要么用 TRUNCATE，要么分批删。",
+    "tags": [
+      "DELETE",
+      "TRUNCATE",
+      "DROP"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3737,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 的索引是什么？有哪些类型？",
+    "answer": "**索引是加速查询的数据结构；InnoDB 用 B+Tree，另有哈希、全文、空间索引。**\n\n## 索引是什么\n\n**本质是一棵排好序的数据结构**，把「全表扫描」变成「按树查找」。代价是：\n\n| 收益 | 代价 |\n|---|---|\n| 查询快（O(log n)） | 占额外空间 |\n| 加速排序与分组 | 写入变慢（要维护索引） |\n\n## 按数据结构分类\n\n| 类型 | 引擎 | 说明 |\n|---|---|---|\n| **B+Tree** | InnoDB（默认） | **范围查询友好、支持排序**，绝大多数索引用它 |\n| Hash | Memory 引擎 | 等值查询 O(1)，**不支持范围** |\n| 全文（FULLTEXT） | InnoDB（5.6+） | 中文分词效果一般，生产多用 ES |\n| 空间（SPATIAL） | InnoDB | 地理位置 |\n\n**为什么 InnoDB 选 B+Tree 而不是 B-Tree 或二叉树**：\n\n- **层数少**（每层存很多 key）→ 磁盘 IO 少\n- **叶子链表相连** → 范围查询只需顺着链扫\n- 数据只在叶子节点 → 单点查询稳定\n\n## 按逻辑功能分类（这是常考的）\n\n| 类型 | 说明 |\n|---|---|\n| **主键索引**（聚集索引） | **叶子节点存整行数据**，每表只有一个 |\n| **唯一索引** | 值唯一（可多个 NULL） |\n| **普通索引** | 只加速查询 |\n| **联合索引** | 多列组合，遵循**最左前缀** |\n| **覆盖索引** | 不是独立类型，指「查询字段全在索引里，不回表」 |\n\n## 聚簇索引 vs 二级索引（最高频考点）\n\n```\n聚簇索引（主键）：叶子 = 整行数据\n二级索引（普通）：叶子 = 主键值  →  需回表再查一次\n```\n\n**这就是「为什么建议用自增主键」的原因**：主键短，二级索引叶子也小；随机主键（如 UUID）会导致插入时频繁页分裂。\n\n## 一个重要结论\n\n**覆盖索引能避免回表**，是性能优化的重点 —— `EXPLAIN` 里看到 `Using index` 就说明命中了。",
+    "tags": [
+      "索引",
+      "B+Tree",
+      "聚簇索引",
+      "覆盖索引"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3738,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "MySQL 中建索引时需要注意哪些事项？",
+    "answer": "**索引不是越多越好：要算收益，也要防「建了但用不上」。**\n\n## 一、选对列\n\n| 原则 | 说明 |\n|---|---|\n| **选择性高的列** | 区分度低（如性别）建索引意义不大 |\n| **WHERE / JOIN / ORDER BY 常用列** | 索引价值来自查询 |\n| **联合索引把选择性高的放左边** | 提升过滤效率 |\n\n## 二、遵循最左前缀\n\n联合索引 `(a, b, c)` 能被 `a`、`a,b`、`a,b,c` 使用，**不能被 `b`、`b,c` 单独使用**。\n\n## 三、注意这些会让索引失效\n\n| 写法 | 问题 | 改法 |\n|---|---|---|\n| `LIKE '%xx'` | 前置模糊无法用索引 | 改后缀或全文检索 |\n| `WHERE id=1 OR name='x'` | OR 一侧没索引就全表扫 | 两侧都建索引 |\n| **在索引列上用函数** | `WHERE YEAR(create_time)=2024` | 改写为范围查询 |\n| **隐式类型转换** | `WHERE id='1'`（id 是 int） | 类型对齐 |\n| `!=` / `NOT IN` | 难优化 | 改 `IN` 或范围 |\n\n**其中「函数」与「隐式转换」最隐蔽**，看 EXPLAIN 的 key 为 NULL 才发现。\n\n## 四、控制索引数量\n\n| 代价 | 说明 |\n|---|---|\n| 写入变慢 | 每次 INSERT/UPDATE 要维护所有索引 |\n| 空间占用 | 索引可能比数据还大 |\n| 优化器负担 | 索引太多，选择本身变慢 |\n\n**经验**：单表索引一般不超过 5~6 个。\n\n## 五、几条实用建议\n\n1. **用联合索引替代多个单列索引**（避免索引冗余）\n2. **优先利用覆盖索引**（减少回表）\n3. **主键用短类型自增**（`INT UNSIGNED AUTO_INCREMENT`），减少二级索引体积与页分裂\n4. **长字符串用前缀索引**：`INDEX(name(20))`\n5. 定期 `SHOW INDEX` + 慢查询验证索引是否真的被用到\n\n## 一个常见误区\n\n「索引建了就一定生效」→ **错**。要 `EXPLAIN` 确认 `key` 有值，否则就是白建（还拖慢写入）。",
+    "tags": [
+      "索引设计",
+      "最左前缀",
+      "索引失效"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3739,
+    "type": "short",
+    "category": "MySQL",
+    "difficulty": "中等",
+    "question": "在什么情况下不推荐为数据库建立索引？",
+    "answer": "**索引有成本，六种情况下建了是负担。**\n\n## 一、区分度低的列\n\n如**性别（只有男女）**、状态（只有几个值）。\n\n**为什么没用**：过滤后还剩一半数据，优化器可能直接选择全表扫描。\n\n**例外**：如果这类列**作为联合索引的一部分**（配合高选择性列），仍有价值。\n\n## 二、频繁更新的列或表\n\n每次 UPDATE 都要维护索引。**写密集表**上索引越多，写入越慢。\n\n## 三、很少被查询的列\n\n索引价值来自「查询用它」。**建了但没人用的索引 = 纯负担**（可通过 `performance_schema` 找「从未被使用的索引」）。\n\n## 四、数据量很小的表\n\n几百行的表全表扫描也很快，**索引反而增加维护成本**。\n\n## 五、大文本/二进制列\n\n`TEXT`、`BLOB` 列上建普通索引**代价太大**（索引会巨大）。\n\n**替代方案**：前缀索引 `name(20)`，或全文索引。\n\n## 六、已经存在等价索引（索引冗余）\n\n```\n已有 (a, b, c) 联合索引\n再建 (a) 就是冗余 —— 最左前缀已经能覆盖\n```\n\n**冗余索引是常见浪费**：拖慢写入、占空间，但收益为零。\n\n## 一个实用的判断方法\n\n建索引前问三个问题：\n\n| 问题 | 如果不满足 |\n|---|---|\n| 这个列会被频繁查询吗 | 别建 |\n| 选择性高吗（过滤比例小） | 单独用它没意义 |\n| 表够大吗（万行以上） | 小表不用 |\n\n## 一个常见误区\n\n**「索引越多查询越快」** → 错。\n\n优化器要**从多个索引里选**，索引过多会让选择本身成为负担，还可能选错执行计划。\n\n**所以「少而精」比「多而全」好。**",
+    "tags": [
+      "索引",
+      "不推荐",
+      "冗余索引"
+    ],
+    "frequency": "中频"
+  },
+  {
     "id": 3801,
     "type": "short",
     "category": "Redis",
@@ -44462,6 +45142,64 @@
       "故障转移"
     ],
     "frequency": "中频"
+  },
+  {
+    "id": 3931,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "简单",
+    "question": "Redis 有哪些数据类型？分别适合什么场景？",
+    "answer": "**五种基础 + 四种进阶，关键是「类型 ↔ 场景」对上。**\n\n## 基础类型\n\n| 类型 | 结构 | 典型场景 |\n|---|---|---|\n| **String** | 简单键值（最大 512MB） | 缓存对象、计数器、分布式锁、Session |\n| **Hash** | 字段-值映射 | 存对象的部分字段、购物车 |\n| **List** | 双向链表（两端操作） | 简单队列、最新列表、栈 |\n| **Set** | 无序去重集合 | 标签、共同好友（交集）、去重 |\n| **ZSet** | 带分数的有序集合（跳表+哈希） | **排行榜**、延时队列、滑动窗口限流 |\n\n## 进阶结构\n\n| 类型 | 用途 |\n|---|---|\n| **Bitmap** | 位图：签到、活跃用户统计（极省内存） |\n| **HyperLogLog** | 基数估算（UV 统计），误差约 0.81%，极省内存 |\n| **GEO** | 地理位置（附近的人） |\n| **Stream** | 消息流（带消费者组，比 List 更适合做 MQ） |\n\n## 选型要点\n\n1. **要排序又要按成员查 → ZSet**（排行榜首选）\n2. **要存对象的一部分 → Hash**（比 String 序列化更省、可局部更新）\n3. **要两端进出 → List**；**要可靠消息 → Stream**\n4. **只做去重/交集 → Set**\n5. **海量 UV → HyperLogLog**（不要用 Set，内存会爆）\n\n## 一个常见误区\n\n**别用 List 做正经消息队列**：它没有 ack 机制，消费失败消息就丢了。要可靠消费用 **Stream**（有消费者组与 ack），或者用 Kafka/RabbitMQ。\n\n## 底层编码（面试常追问）\n\n小数据量时用紧凑编码（listpack/quicklist/intset），超阈值才转成跳表/哈希表 —— **这就是「小集合更省内存」的原因**。",
+    "tags": [
+      "数据类型",
+      "ZSet",
+      "Stream",
+      "选型"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3932,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 主从复制的原理是什么？",
+    "answer": "**全量同步 + 增量同步（命令传播），配合 repl_backlog 实现断线续传。**\n\n## 首次同步（全量）\n\n```\n① 从库连主库，发 PSYNC ? -1\n② 主库执行 BGSAVE 生成 RDB\n③ 把这期间的写命令缓存在缓冲区\n④ 发 RDB 给从库（从库先清空自己数据再加载）\n⑤ 再发缓冲区的增量命令\n⑥ 进入「命令传播」阶段：主库每条写命令都同步给从库\n```\n\n## 断线重连（增量）\n\n```\n从库发 PSYNC <runid> <offset>\n主库检查：runid 是否匹配 + offset 是否还在 repl_backlog 里\n  → 命中：只发 offset 之后的命令（增量，很快）\n  → 不命中：退回全量同步\n```\n\n**这就是 `repl-backlog-size` 的意义**：环形缓冲区（默认 1MB）。太小的话，断线稍久就得全量重同步，**主库压力骤增**。\n\n## 三个关键参数\n\n| 参数 | 作用 |\n|---|---|\n| `repl-backlog-size` | 增量缓冲大小（大流量要调大，如 64MB） |\n| `repl-diskless-sync` | 无盘复制（不落 RDB 文件，直接走网络） |\n| `min-replicas-to-write` | 至少 N 个从库才允许写（防脑裂丢数据） |\n\n## 复制延迟怎么造成的\n\n1. **命令传播是异步的** → 主库写完就返回，不等从库\n2. 从库要**单线程重放命令**，主库写入过猛会积压\n3. 网络带宽与 RDB 传输时间\n\n## 运维要点\n\n- **主从复制不是高可用**：主挂了不会自动切换，要配哨兵/集群\n- **读到旧数据**：从库延迟期间可能读到过期值（强一致需读主库）\n- **监控**：`info replication` 的 `master_link_status` 与 `master_repl_offset` 差值\n\n**一个高频追问**：`slave_read_only=yes`（默认）保护从库不被误写。",
+    "tags": [
+      "主从复制",
+      "PSYNC",
+      "repl_backlog"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3933,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 有哪些部署模式？各自的应用场景是什么？",
+    "answer": "**四种模式：单机、主从、哨兵、集群。**\n\n| 模式 | 高可用 | 水平扩展 | 复杂度 | 场景 |\n|---|---|---|---|---|\n| **单机** | ❌ | ❌ | 最低 | 开发、小流量 |\n| **主从** | ❌ 需人工切换 | ❌ | 低 | **读写分离**（读多写少） |\n| **哨兵** | ✅ 自动切换 | ❌ 每节点全量 | 中 | 数据量在单机内存内 |\n| **集群** | ✅ | ✅ slot 分片 | 高 | 数据量大 / 写压力高 |\n\n## 逐个说明\n\n**主从**\n作用：**分摊读请求**、数据冗余。缺点：主挂了不会自动切，要人工。\n\n**哨兵（Sentinel）**\n- 至少 **3 个哨兵**（奇数，才能投票）\n- 监控主从，主挂了投票选新主并通知客户端\n- **数据仍是全量**（每节点存全部数据），写能力受单主限制\n\n**集群（Cluster）**\n- **最少 6 节点**（3 主 3 从）\n- 数据按 **16384 个 slot** 分散\n- 扩容要迁 slot（有额外延迟）\n- 客户端要处理 MOVED/ASK 重定向，**跨 slot 操作受限**\n\n## 选型判断\n\n| 情况 | 选 |\n|---|---|\n| 只读扩展 | 主从 |\n| 要自动故障转移、数据不超单机内存 | **哨兵**（更简单） |\n| 数据超单机内存 / 写压力大 | 集群 |\n| 强依赖多 key 事务或 mget | 哨兵（集群下受限） |\n\n## 一个常见误区\n\n**「集群一定更好」** —— 不对。集群带来跨 slot 限制、客户端复杂度、运维复杂度。**容量够用时哨兵更划算。**",
+    "tags": [
+      "部署模式",
+      "哨兵",
+      "集群"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 3934,
+    "type": "short",
+    "category": "Redis",
+    "difficulty": "中等",
+    "question": "Redis 怎么持久化数据？RDB 和 AOF 各有什么策略？",
+    "answer": "**两种机制：RDB（快照）与 AOF（追加日志），生产常混合使用。**\n\n## 一、RDB（快照）\n\n**原理**：把内存数据**全量序列化**成二进制文件（`dump.rdb`）。\n\n| 触发方式 | 说明 |\n|---|---|\n| `save <sec> <n>` | 手动同步保存（**会阻塞**，生产慎用） |\n| **`bgsave`** | **fork 子进程**写，主进程继续服务 |\n| 自动触发 | 按 `save 900 1` 这类规则 |\n\n**优点**：文件小、恢复快（直接加载）、适合备份。\n**缺点**：**可能丢最后一次快照之后的所有数据**；fork 时内存翻倍（写时复制）。\n\n## 二、AOF（追加日志）\n\n**原理**：把每条**写命令**追加到文件，重启时重放。\n\n三种 fsync 策略（**核心考点**）：\n\n| 策略 | 行为 | 安全性 | 性能 |\n|---|---|---|---|\n| `always` | 每条命令都 fsync | **最安全（几乎不丢）** | 最慢 |\n| **`everysec`**（默认） | 每秒 fsync | 最多丢 1 秒 | 折中（推荐） |\n| `no` | 交给操作系统 | 可能丢较多 | 最快 |\n\n**优点**：丢数据少（秒级）。\n**缺点**：文件大（要 `AOF 重写`压缩）、恢复慢（重放所有命令）。\n\n## 三、混合持久化（Redis 4.0+，推荐）\n\n`aof-use-rdb-preamble yes`：AOF 重写时**前半部分用 RDB 格式，后半部分追加增量命令**。\n\n**兼顾两者的优点**：文件小 + 恢复快 + 丢数据少。\n\n## 四、生产配置建议\n\n```conf\nappendonly yes\nappendfsync everysec\nauto-aof-rewrite-percentage 100\nauto-aof-rewrite-min-size 64mb\n```\n\n## 三个必说要点\n\n1. **RDB 的 fork 会短暂阻塞**（大内存实例可达秒级），高并发时要留意\n2. **持久化 ≠ 备份**：文件还在同一台机器上，机器毁了照样丢\n3. **只用 RDB 做主存储很危险**：可能一次丢几十分钟数据",
+    "tags": [
+      "RDB",
+      "AOF",
+      "持久化",
+      "everysec"
+    ],
+    "frequency": "高频"
   },
   {
     "id": 4000,
@@ -47881,6 +48619,121 @@
       "lsblk",
       "磁盘",
       "inode"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4130,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 系统开机流程是怎样的？CentOS 6 和 7 有什么区别？",
+    "answer": "**六步：BIOS/UEFI → 引导程序 → 内核 → initramfs → init 系统 → 用户登录**\n\n| 阶段 | 做什么 |\n|---|---|\n| **① 固件** | BIOS/UEFI 自检，按启动顺序找引导设备 |\n| **② 引导程序** | GRUB 加载内核与 initramfs，读取菜单配置 |\n| **③ 内核** | 初始化硬件、挂载 initramfs、加载驱动 |\n| **④ initramfs** | 临时根文件系统，加载真正的 `/` 所需的驱动 |\n| **⑤ init 系统** | 启动服务、挂载文件系统、设置网络 |\n| **⑥ 登录** | getty / sshd 就绪，等待用户 |\n\n## 6 和 7 的核心区别：init 系统换了\n\n| | CentOS 6 | CentOS 7 |\n|---|---|---|\n| init 系统 | **SysV init** | **systemd** |\n| 启动脚本 | `/etc/rc.d/rc.sysinit` + `/etc/rc.d/rcN.d` | 服务单元（`.service`） |\n| 并行启动 | ❌ 串行（慢） | ✅ 并行 + 按依赖图（快） |\n| 管理命令 | `service`、`chkconfig` | `systemctl` |\n| 运行级别 | `/etc/inittab` 配 `id:3` | 用 **target**（`multi-user.target`、`graphical.target`） |\n| 日志 | `/var/log/messages` | **journald**（`journalctl`），可结构化查询 |\n| 服务自启 | `chkconfig on` | `systemctl enable` |\n\n## 为什么 systemd 更快\n\nSysV 按编号顺序**串行**执行脚本；systemd 用**依赖关系图**决定顺序，能并行的就并行，还用 socket/D-Bus 激活让服务按需启动。\n\n## 排查口诀\n\n- 卡在 GRUB → 引导配置或磁盘问题\n- 卡在 initramfs shell → 根分区找不到（常见于换盘、改 fstab）\n- 起来了但服务没起 → `systemctl status <服务>` + `journalctl -u <服务>`",
+    "tags": [
+      "开机流程",
+      "systemd",
+      "SysV",
+      "GRUB"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4131,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "线程和进程有什么区别？",
+    "answer": "**进程是资源分配的单位，线程是 CPU 调度的单位。**\n\n| 维度 | 进程 | 线程 |\n|---|---|---|\n| 资源 | **独立**地址空间、文件句柄 | **共享**进程的内存与句柄 |\n| 隔离性 | 强（一个崩了不影响别的进程） | 弱（一个线程崩了整个进程退出） |\n| 创建开销 | 大（要复制地址空间、页表） | 小（同一进程内只需独立栈与寄存器） |\n| 切换开销 | 大（切页表、刷 TLB） | 小（同一地址空间） |\n| 通信 | 需 IPC（管道/共享内存/消息队列） | 直接读写共享变量（**要加锁**） |\n\n## 一条常被追问的：内存是共享还是独立\n\n- **进程**：默认独立（fork 后写时复制）\n- **同一进程的多个线程**：共享堆、全局变量、文件描述符，**各自独立栈**\n\n所以「线程间共享变量要加锁、进程间不用」的根因就在这。\n\n## 各自的代价\n\n| 选线程 | 选进程 |\n|---|---|\n| 省内存、切换快 | 隔离强、一个崩不影响全局 |\n| 但要自己处理竞态与死锁 | 但通信与创建成本高 |\n\n**实践里的对应**：Nginx 用「多进程 + 单线程」换隔离；Java/Python 用多线程省内存；Chrome 每个标签一个进程换稳定性。\n\n## 一个常见误解\n\n「线程一定比进程快」——只在**通信与切换**上快。如果是 CPU 密集计算且要并行，进程反而更合适（Python 尤其如此，因为 GIL）。",
+    "tags": [
+      "进程",
+      "线程",
+      "资源分配"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4132,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "什么是并发和并行？有什么区别？",
+    "answer": "**并发是「交替处理多个任务」，并行是「同时执行多个任务」。**\n\n| | 并发（Concurrency） | 并行（Parallelism） |\n|---|---|---|\n| 是否同时 | ❌ 同一时刻只做一件 | ✅ 同一时刻做多件 |\n| 硬件要求 | **单核即可** | **必须多核** |\n| 手段 | 时间片轮转、事件循环、协程切换 | 多进程、多线程绑多核 |\n| 目标 | 提高**响应性**（不让任务互相阻塞） | 提高**吞吐**（缩短总耗时） |\n\n## 类比\n\n- **并发**：一个厨师同时看三个锅，哪个开了就处理哪个（速度快的是人，不是锅）\n- **并行**：三个厨师各守一个锅\n\n## 在单核上「并行」是不存在的\n\n单核跑两个线程看起来在「同时」工作，实际是快速切换 —— 那是并发。**只有多核才能真正并行。**\n\n## 为什么要区分\n\n| 场景 | 该用 |\n|---|---|\n| I/O 密集（等网络/磁盘） | **并发**足够（等待时切去干别的） |\n| CPU 密集（计算） | 必须**并行**（加核才有用） |\n\n**这解释了一个高频现象**：Python 多线程做 CPU 密集计算没提速 —— 因为它受 GIL 限制，只是并发不是并行，要改用多进程。",
+    "tags": [
+      "并发",
+      "并行",
+      "多核"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4133,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "inode 和 block 是什么？它们分别是干什么的？",
+    "answer": "**block 存数据，inode 存「数据在哪」的元信息。**\n\n## block（数据块）\n\n- 文件系统的**最小存储单位**（常见 4 KB）\n- 文件内容被切成块存放\n- 一个 1 字节的文件也占满 1 个块（这就是「磁盘空间与文件大小不一致」的原因）\n\n## inode（索引节点）\n\n每个文件一个 inode，记录的是**元数据，不是内容**：\n\n| 字段 | 说明 |\n|---|---|\n| 文件大小 | 字节数 |\n| 权限、属主、属组 | `rwx`、uid、gid |\n| 时间戳 | atime / mtime / ctime |\n| 链接计数 | 硬链接数量 |\n| **数据块指针** | 直接块 + 一级/二级/三级间接块 |\n\n## 关键推论（这些都从「inode 存指针」推出来）\n\n1. **文件名存在目录项里，不在 inode 里** → 所以一个 inode 可以有多个名字（硬链接）\n2. **小文件多会耗尽 inode**：`df -h` 有空间但写不进去，要看 `df -i`\n3. **rm 只是断开目录项、inode 标记空闲，不删数据块** → 这是误删能恢复的原理\n4. **块与 inode 数量在建文件系统时就固定了**（`mkfs` 时确定）\n\n## 两个命令的区别\n\n```bash\nstat file      # 看 inode 信息（大小/权限/链接数/块数）\ndf -h          # 看块的使用\ndf -i          # 看 inode 的使用\n```\n\n**运维最常见的坑**：`df -h` 显示还剩空间，服务却报「No space left on device」——八成是 **inode 用完了**。",
+    "tags": [
+      "inode",
+      "block",
+      "文件系统"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4134,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "vim 有哪三种模式？分别能做什么？",
+    "answer": "**三种模式：普通模式（命令模式）→ 插入模式 → 命令模式（底行模式）。**\n\n| 模式 | 进入方式 | 能做什么 |\n|---|---|---|\n| **普通模式** | 默认进入；`Esc` 回到它 | 移动光标、删除、复制粘贴、跳转 |\n| **插入模式** | `i`（光标前）、`a`（后）、`o`（下一行） | 正常输入文字 |\n| **命令模式**（底行） | `:` | 保存、退出、查找替换、执行外部命令 |\n\n## 最容易混的一点\n\n很多资料把「命令模式」指代两个不同的东西：\n\n- 按 `Esc` 回到的是**普通模式**（敲 `dd` 删行这里才有效）\n- 敲 `:` 进入的是**命令行模式/底行模式**（敲 `wq` 保存退出）\n\n**记忆法**：`Esc` → 普通（能按快捷键）；`:` → 底行（能敲命令）。\n\n## 常用速查\n\n| 普通模式 | 作用 |\n|---|---|\n| `dd` | 删除（剪切）当前行 |\n| `yy` / `p` | 复制一行 / 粘贴 |\n| `gg` / `G` | 跳到首行 / 末行 |\n\n| 底行模式 | 作用 |\n|---|---|\n| `:w` / `:q` / `:wq` / `:q!` | 保存 / 退出 / 保存退出 / 强制不保存退出 |\n| `:%s/a/b/g` | 全文替换 |\n| `:set nu` | 显示行号 |\n\n## 一个高频困惑\n\n「为什么输入字母变成命令了？」→ 因为你在普通模式。按 `i` 进插入模式即可。",
+    "tags": [
+      "vim",
+      "三种模式"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4135,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中用户是什么？用户有哪些分类？相关配置文件有哪些？",
+    "answer": "**用户是「权限的载体」——每个进程都归属于某个用户，靠它决定能访问什么。**\n\n## 三类用户\n\n| 类型 | UID | 说明 |\n|---|---|---|\n| **root** | 0 | 超级用户，绕过所有权限检查 |\n| **普通用户** | 1000 起（视发行版） | 日常使用 |\n| **系统用户/服务用户** | 1~999 | 跑服务用，无登录权限（如 `nginx`、`mysql`） |\n\n## 相关配置文件\n\n| 文件 | 作用 |\n|---|---|\n| `/etc/passwd` | 用户列表：`用户名:密码占位:UID:GID:描述:家目录:shell` |\n| `/etc/shadow` | **真实密码哈希**（只有 root 可读） |\n| `/etc/group` | 组与成员 |\n| `/etc/gshadow` | 组密码 |\n| `/etc/sudoers` | 谁能提权（用 `visudo` 编辑） |\n| `/etc/skel/` | 新建用户时复制到家目录的模板 |\n\n## 为什么密码不在 /etc/passwd\n\n历史上确实在（第二个字段），但 `/etc/passwd` 全世界可读，所以把哈希迁到 `/etc/shadow`（仅 root 可读），passwd 里仅留 `x` 占位。\n\n## 常用命令\n\n```bash\nuseradd -m -s /bin/bash alice   # 建用户（-m 建家目录）\npasswd alice                    # 设密码\nusermod -aG docker alice        # 加入附加组（-a 必须带，否则会覆盖原有组）\nuserdel -r alice                # 删用户并删家目录\nid alice                        # 查 UID/GID/组\n```\n\n## 一个高频坑\n\n`usermod -G docker alice` **不加 `-a`** 会清空用户原有的所有附加组，只留 docker —— 这是很常见的误操作。",
+    "tags": [
+      "用户",
+      "UID",
+      "passwd",
+      "shadow"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4136,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "简单",
+    "question": "权限中的 rwx 分别是什么意思？对文件和目录有什么不同？",
+    "answer": "**r=读、w=写、x=执行；但「对文件」和「对目录」的含义完全不同。**\n\n| 权限 | 对文件 | 对目录 |\n|---|---|---|\n| **r** | 可读内容（`cat`） | 可列出目录内文件（`ls`） |\n| **w** | 可修改内容 | 可在目录内**新建/删除/重命名**文件 |\n| **x** | 可执行（脚本/二进制） | 可**进入目录**（`cd`）与访问其中文件 |\n\n## 最容易记混的三组\n\n**1. 目录的 w 不等于「能改文件内容」**\n\n对目录有 `w` 只能删/建文件（因为改的是目录项），要改文件内容还要文件本身有 `w`。\n\n**2. 目录的 x 是「钥匙」**\n\n只有 `r` 没有 `x`：能 `ls` 看到文件名，但**打不开**（`cat` 会 Permission denied）。\n**有 `x` 没有 `r`**：能进目录、能按已知路径访问文件，但列不出内容。\n\n**3. 删文件看的是目录权限，不是文件权限**\n\n只要有目录的 `w`+`x`，就算文件本身是 `000` 也能删掉它。\n\n## 特殊权限位（面试常追问）\n\n| 位 | 名称 | 作用 |\n|---|---|---|\n| **SUID**（4） | 执行时以**属主**身份运行 | `passwd` 就靠它让普通用户改 shadow |\n| **SGID**（2） | 以**属组**身份运行；对目录则新建文件继承该组 | 共享目录常用 |\n| **Sticky**（1） | 只有**属主**能删自己的文件 | `/tmp` 就是 `1777` |\n\n## 常见权限串含义\n\n- `-rw-r--r--`：文件，属主读写，其他人只读\n- `drwxrwxrwt`：目录带 sticky\n- `-rwsr-xr-x`：文件带 SUID（`s` 出现在属主 x 位）",
+    "tags": [
+      "rwx",
+      "权限",
+      "SUID",
+      "sticky"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4137,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 系统中常见协议有哪些？分别对应什么用途？",
+    "answer": "**按「用途」分五组，比死记端口更好记。**\n\n## 一、远程登录与管理\n\n| 协议 | 端口 | 说明 |\n|---|---|---|\n| **SSH** | 22 | 加密远程登录（运维最常用） |\n| Telnet | 23 | 明文远程登录（**已淘汰**，不安全） |\n\n## 二、文件传输\n\n| 协议 | 端口 | 说明 |\n|---|---|---|\n| **FTP** | 21（控制）/20（数据） | 明文文件传输 |\n| **SFTP** | 走 SSH 22 | 加密文件传输（推荐） |\n| NFS | 2049 | 网络文件系统（Linux 间共享目录） |\n| SMB/CIFS | 445 | Windows 共享 |\n\n## 三、Web 与 HTTP 家族\n\n| 协议 | 端口 | 说明 |\n|---|---|---|\n| **HTTP/HTTPS** | 80 / 443 | Web 服务 |\n| WebSocket | 复用 80/443 | 双向长连接 |\n\n## 四、邮件\n\n| 协议 | 端口 | 说明 |\n|---|---|---|\n| SMTP | 25/587 | **发送**邮件 |\n| POP3 | 110 | 拉取（下载后通常删除） |\n| IMAP | 143 | 拉取（与服务器同步） |\n\n## 五、基础设施\n\n| 协议 | 传输/端口 | 说明 |\n|---|---|---|\n| **DNS** | UDP 53 | 域名解析 |\n| **DHCP** | UDP 67/68 | 自动分配 IP |\n| **NTP** | UDP 123 | 时间同步（集群必须先对齐） |\n| **LDAP** | 389 | 目录服务/统一认证 |\n| SNMP | UDP 161/162 | 网络设备监控 |\n\n## 一张必背的端口表（运维高频）\n\n```\n22 SSH    53 DNS    80 HTTP   443 HTTPS\n3306 MySQL   6379 Redis   5672 RabbitMQ\n9092 Kafka   9200 ES    2379/2380 etcd\n```\n\n## 排查提示\n\n`ss -tunlp` 看本机监听了哪些端口；`iptables`/`firewalld` 拦不拦，是「端口通不通」的第一怀疑点。",
+    "tags": [
+      "协议",
+      "端口",
+      "SSH",
+      "DNS"
     ],
     "frequency": "中频"
   },
@@ -54628,6 +55481,92 @@
     "tags": [
       "网络排查",
       "ICMP"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4529,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "什么是网络地址转换（NAT）？描述其工作原理。",
+    "answer": "**NAT = 改写 IP 包头里的地址/端口，让内网机器共用一个公网 IP 出网。**\n\n## 为什么需要\n\n- 公网 IP 有限，内网机器远多于可用 IP\n- 内网需要隐藏拓扑（安全）\n\n## 工作原理（以最常用的 SNAT/PAT 为例）\n\n```\n内网 192.168.1.10:5000 → 要访问 8.8.8.8:53\n   ↓ 经过 NAT 设备\n改写源地址为公网 203.0.113.5:6000\n   ↓ 并记录映射表：203.0.113.5:6000 ↔ 192.168.1.10:5000\n发到公网，收到回包的目的地址是 203.0.113.5:6000\n   ↓ 查表\n改回 192.168.1.10:5000，回给内网机器\n```\n\n**关键：靠「端口」区分是哪台内网机器**（因为大家共用同一个公网 IP）。\n\n## 三种类型\n\n| 类型 | 改什么 | 场景 |\n|---|---|---|\n| **SNAT**（源地址转换） | 改**源** IP/端口 | 内网出去访问外网（最常见） |\n| **DNAT**（目的地址转换） | 改**目的** IP/端口 | 外部访问内网服务（端口映射） |\n| **PAT/NAPT** | 同时改 IP + 端口 | 「多对一」，也就是上面的例子 |\n\n## 在 Linux 上怎么做\n\n```bash\n# SNAT / 伪装（出口）\niptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE\n# DNAT / 端口映射（入口，把 8080 转到内网 80）\niptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to 192.168.1.20:80\n```\n\n前提是开了 `net.ipv4.ip_forward=1`。\n\n## 常见副作用\n\n1. **外部无法直连内网**（要 DNAT 才行）\n2. **部分协议穿透困难**（FTP、SIP 的地址写在载荷里，需 ALG 处理）\n3. **NAT 表有上限**：连接数暴涨会耗尽（表现为新连接建不起来）",
+    "tags": [
+      "NAT",
+      "SNAT",
+      "DNAT",
+      "iptables"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4530,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "PV 是什么？UV 是什么？它们有什么区别？",
+    "answer": "**PV = 页面访问次数，UV = 独立访客数。**\n\n| | PV（Page View） | UV（Unique Visitor） |\n|---|---|---|\n| 统计什么 | **访问次数** | **去重后的人（设备）数** |\n| 同一人多次访问 | 每次都算 | 只算 1 次 |\n| 反映 | 内容被看了多少 | 有多少真实用户 |\n\n## 举例\n\n一个人这一天打开你的站点 5 次，每次看 3 个页面：\n\n- **PV = 15**\n- **UV = 1**\n\n## 运维视角的意义\n\n| 指标 | 用途 |\n|---|---|\n| **PV** | 容量规划：QPS、带宽、缓存命中 |\n| **UV** | 用户规模、转化率 |\n| **PV/UV 比值** | 比值高说明用户粘性强（一人看很多页）；突然变低可能是缓存/跳转异常 |\n\n## 怎么统计\n\n- **PV**：Web 日志里数请求数（`awk` 数行数即可）\n- **UV**：按 IP / Cookie / 设备 ID **去重**\n\n```bash\nawk '{print $1}' access.log | sort -u | wc -l   # 按 IP 去重（近似 UV）\n```\n\n## 一个必须知道的坑\n\n**按 IP 统计 UV 不准**：公司/学校共用出口 IP，会被算成 1 个人。生产上更常用 **Cookie / 设备指纹 / 登录 ID**。\n\n## 相关概念（常一起问）\n\n- **DAU/MAU**：日活/月活（按用户去重）\n- **QPS/TPS**：每秒请求数/事务数（这是**并发能力**指标，与 PV 不同）",
+    "tags": [
+      "PV",
+      "UV",
+      "统计"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4531,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "OSI 七层模型分别是哪七层？各层的作用是什么？",
+    "answer": "**七层：物理 → 数据链路 → 网络 → 传输 → 会话 → 表示 → 应用。**\n\n| 层 | 名称 | 作用 | 典型协议/设备 |\n|---|---|---|---|\n| 7 | **应用层** | 为用户程序提供网络服务 | HTTP、DNS、SSH、FTP |\n| 6 | 表示层 | 编码/解码、加密、压缩 | TLS、JPEG、ASCII |\n| 5 | 会话层 | 建立/维护/结束会话 | RPC、会话管理 |\n| 4 | **传输层** | 端到端传输、可靠性与流量控制 | **TCP、UDP** |\n| 3 | **网络层** | 寻址与路由（找路） | IP、ICMP、路由器 |\n| 2 | 数据链路层 | 同一链路上帧的传输、MAC 寻址 | Ethernet、交换机 |\n| 1 | 物理层 | 比特流传输、电气特性 | 网线、光纤、集线器 |\n\n## 一个更好记的记法\n\n```\n7 应用 —— 你能看到的（HTTP）\n4 传输 —— 端到端（TCP/UDP，靠端口）\n3 网络 —— 找路（IP，靠 IP 地址）\n2 链路 —— 一跳一跳（MAC，靠 MAC 地址）\n1 物理 —— 电信号\n```\n\n## 中间三层常被合并\n\n实际工程里 5、6 层很少单独提，多数协议（如 HTTP）把会话/表示/应用合在一起。**这就是 TCP/IP 四层模型省略它们的原因。**\n\n## 面试常见追问\n\n- 「交换机在第几层」→ **2 层**（按 MAC 转发）；三层交换机是 3 层\n- 「路由器在第几层」→ **3 层**\n- 「HTTP 在哪层」→ 应用层\n- 「TLS 在哪层」→ 通常算表示层（或说夹在应用与传输之间）",
+    "tags": [
+      "OSI",
+      "七层",
+      "分层"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4532,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP/IP 四层模型分别是哪四层？与 OSI 七层怎么对应？",
+    "answer": "**四层：网络接口层 → 网络层 → 传输层 → 应用层。**\n\n## 与 OSI 的对应关系\n\n| TCP/IP | 对应 OSI | 关键协议 |\n|---|---|---|\n| **应用层** | 应用 + 表示 + 会话（5~7） | HTTP、DNS、SSH、FTP、SMTP |\n| **传输层** | 传输层（4） | **TCP、UDP** |\n| **网络层** | 网络层（3） | IP、ICMP、ARP |\n| **网络接口层** | 数据链路 + 物理（1~2） | Ethernet、Wi-Fi |\n\n## 为什么要合并\n\nOSI 是**理论模型**（教学、描述问题用）；TCP/IP 是**实际落地的协议栈**，它的实现里会话/表示层没有独立协议，直接并进应用层。\n\n**记住这句**：OSI 用来「描述」，TCP/IP 用来「实现」。\n\n## 数据封装过程（面试常考）\n\n```\n应用数据 → 加 TCP 头（段 Segment）→ 加 IP 头（包 Packet）\n        → 加 MAC 头尾（帧 Frame）→ 变成比特流转发\n```\n\n每层只关心自己的头，这就是分层的价值。\n\n## 一个常见误记\n\n「四层」在某些语境里指的是**负载均衡的四层**（按 IP+端口转发，如 LVS），与这里的四层模型不是同一件事 —— 面试时注意上下文。",
+    "tags": [
+      "TCP/IP",
+      "四层",
+      "封装"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4533,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "中等",
+    "question": "TCP 状态转换图中，有哪些关键状态？它们分别什么含义？",
+    "answer": "**11 个状态，运维最关心 5 个：LISTEN / ESTABLISHED / TIME_WAIT / CLOSE_WAIT / SYN_RECV。**\n\n## 建立连接（三次握手）\n\n```\n客户端: CLOSED → SYN_SENT → ESTABLISHED\n服务端: CLOSED → LISTEN → SYN_RECEIVED → ESTABLISHED\n```\n\n## 断开连接（四次挥手）\n\n```\n主动关闭方: ESTABLISHED → FIN_WAIT_1 → FIN_WAIT_2 → TIME_WAIT → CLOSED\n被动关闭方: ESTABLISHED → CLOSE_WAIT → LAST_ACK → CLOSED\n```\n\n## 五个关键状态的含义\n\n| 状态 | 含义 | 运维关注点 |\n|---|---|---|\n| **LISTEN** | 服务端在端口上等待连接 | 正常 |\n| **ESTABLISHED** | 已连上，可以传数据 | 数量 = 当前并发 |\n| **TIME_WAIT** | 主动关闭方等待 2MSL（约 60s） | 大量堆积会耗尽本地端口 |\n| **CLOSE_WAIT** | 被动关闭方**还没调 close()** | **大量堆积说明应用有 bug** |\n| **SYN_RECV** | 收到 SYN，还未完成握手 | 大量堆积说明可能被 SYN Flood |\n\n## 两个最经典的面试点\n\n**1. 为什么要 TIME_WAIT？**\n\n- 保证**最后一个 ACK 能送到**（丢了对方会重发 FIN）\n- 让本次连接的**旧报文在网络中消失**，避免串到新连接\n\n**2. TIME_WAIT 和 CLOSE_WAIT 怎么优化？**\n\n| 状态 | 根因 | 做法 |\n|---|---|---|\n| 大量 **TIME_WAIT** | 短连接太多（服务端主动关闭） | 用长连接；调 `tcp_tw_reuse`；扩端口范围 |\n| 大量 **CLOSE_WAIT** | **应用没正确关闭 socket**（代码 bug） | **改代码**，不是调内核参数 |\n\n**这是最容易答错的地方**：CLOSE_WAIT 堆积调内核参数没用，必须修应用。",
+    "tags": [
+      "TCP",
+      "状态转换",
+      "TIME_WAIT",
+      "CLOSE_WAIT"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4534,
+    "type": "short",
+    "category": "网络基础",
+    "difficulty": "简单",
+    "question": "TCP 和 UDP 有什么区别？各自的应用场景是什么？",
+    "answer": "**TCP 可靠但慢，UDP 快但不可靠。**\n\n| 维度 | TCP | UDP |\n|---|---|---|\n| 连接 | **面向连接**（三次握手） | 无连接 |\n| 可靠性 | **可靠**（确认、重传、排序） | 不可靠（丢了就丢了） |\n| 有序性 | 保证顺序 | 不保证 |\n| 数据形态 | **字节流** | **数据报**（保留边界） |\n| 头部开销 | 20 字节起 | 8 字节 |\n| 传输速度 | 慢（握手、确认、拥塞控制） | 快 |\n| 广播/组播 | ❌ 不支持 | ✅ 支持 |\n| 流量控制 | 有（滑动窗口 + 拥塞控制） | 无 |\n\n## 应用场景\n\n| 协议 | 场景 | 为什么 |\n|---|---|---|\n| **TCP** | HTTP、SSH、MySQL、消息队列 | 数据不能丢不能乱（网页缺一段就废了） |\n| **UDP** | DNS、NTP、音视频、游戏、QUIC | 要快、能容忍少量丢失（视频丢一帧还能看） |\n\n## 一个进阶但仍要懂的\n\n**QUIC（HTTP/3）基于 UDP**：因为 UDP 快，可靠性由应用层自己实现（自己在用户态做重传与拥塞控制，比改内核 TCP 容易）。\n\n## 面试常追问\n\n- 「TCP 为什么可靠」→ 序号 + 确认 + 重传 + 校验和 + 拥塞控制\n- 「TCP 粘包怎么解决」→ 它本身就是字节流，要**应用层约定边界**（长度前缀 / 分隔符）\n- 「UDP 会不会丢包」→ 会，可靠性要应用层自己做\n\n## 一个实用判断\n\n**先问「丢一点数据会不会出事」**：会 → TCP；不会 → UDP。",
+    "tags": [
+      "TCP",
+      "UDP",
+      "对比"
     ],
     "frequency": "高频"
   },
@@ -69012,6 +69951,20 @@
       "复用"
     ],
     "frequency": "中频"
+  },
+  {
+    "id": 5469,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "什么是 CAP 理论？它对分布式系统设计有什么指导意义？",
+    "answer": "**CAP：一致性（C）、可用性（A）、分区容错（P）三者最多同时满足两个。**\n\n## 三个字母\n\n| 字母 | 含义 |\n|---|---|\n| **C**（Consistency） | 所有节点看到同一份数据（线性一致） |\n| **A**（Availability） | 每个请求都能得到非错误响应 |\n| **P**（Partition tolerance） | 网络分区时系统仍能运行 |\n\n## 关键理解：P 是「必选项」\n\n这是最重要的认知：\n\n> **分布式系统里网络分区是必然发生的客观事实，不是你能选的。**\n\n所以真正的问题是：**分区发生时，你要 C 还是要 A？**\n\n| 选择 | 行为 | 系统举例 |\n|---|---|---|\n| **CP** | 分区时拒绝服务，保数据一致 | ZooKeeper、etcd、HBase |\n| **AP** | 分区时继续服务，接受不一致（最终一致） | Cassandra、Eureka、DNS |\n\n## 常见误解\n\n**1. 「三选二」不是随时都能自由选**\n\nP 不能放弃，所以实际上是「分区发生时，C 和 A 只能保一个」。\n\n**2. CA 系统不存在于分布式环境**\n\n单机数据库（如单实例 MySQL）算 CA，但只要做分布式（主从/分片），就必须面对 P。\n\n## 与 BASE 的对应\n\n| 理论 | 主张 |\n|---|---|\n| **ACID** | 强一致（传统数据库） |\n| **BASE** | **基本可用 + 软状态 + 最终一致**（NoSQL） |\n\n## 实际应用（这才是考点）\n\n| 业务 | 选 |\n|---|---|\n| **账务/交易** | **CP**（宁可可短暂不可用，也不能算错） |\n| 商品展示、评论 | AP（最终一致即可） |\n| 注册中心 | AP（可用性优先，短时不一致可接受） |\n| 配置中心 | CP（etcd，配置不能错） |\n\n## 一个补充：BASE 之外还有第三种\n\n实际上现代系统还有「**Tunable consistency**」（可调一致性，如 Cassandra 的 QUORUM）—— 允许按请求指定要强一致还是弱一致。\n\n**这比死守 CAP 二分法更实用。**",
+    "tags": [
+      "CAP",
+      "分布式",
+      "最终一致"
+    ],
+    "frequency": "高频"
   },
   {
     "id": 5500,
