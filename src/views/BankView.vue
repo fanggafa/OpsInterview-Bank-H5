@@ -24,7 +24,7 @@ const keywordInput = ref(state.value.keyword)
 let debounceTimer = null
 
 onMounted(() => {
-  bank.load().catch(() => {})
+  bank.loadIndex().catch(() => {})
   // 滚动位置恢复（配合路由 scrollBehavior 的 savedPosition 不够，列表是动态渲染的）
   restoreScroll()
 })
@@ -364,7 +364,7 @@ const resultText = computed(() => {
       title="题库加载失败"
       :desc="bank.error"
       action="重试"
-      @action="bank.retry().catch(() => {})"
+      @action="bank.retryIndex().catch(() => {})"
     />
 
     <EmptyState

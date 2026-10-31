@@ -17,7 +17,7 @@ const study = useStudyStore()
 
 const page = ref(1)
 
-onMounted(() => bank.load().catch(() => {}))
+onMounted(() => bank.loadIndex().catch(() => {}))
 
 /** 收藏列表：按收藏时间倒序（store 已处理） */
 const list = computed(() => study.favoriteList)
@@ -73,7 +73,7 @@ function clearAll() {
       title="题库加载失败"
       :desc="bank.error"
       action="重试"
-      @action="bank.retry().catch(() => {})"
+      @action="bank.retryIndex().catch(() => {})"
     />
 
     <template v-else>

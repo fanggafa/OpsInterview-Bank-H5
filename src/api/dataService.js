@@ -63,6 +63,8 @@ export async function fetchQuestions({ force = false } = {}) {
 export function clearCache() {
   cache = null
   indexCache = null
+  allCache = null
+  manifestCache = null
   shardCache.clear()
 }
 
@@ -158,6 +160,67 @@ export async function fetchAnswersManifest() {
   }
   if (!res.ok) throw new DataError(`分片清单加载失败（HTTP ${res.status}）`)
   return res.json()
+}
+
+/** 分片清单也缓存一份，避免每次加载分类都请求 */
+let manifestCache = null
+
+/**
+ * 按分类加载答案，并把答案合并进索引行 —— 返回**完整的题目对象**。
+ *
+ * 这是切换分片方案的核心入口：调用方拿到的东西与原来 `fetchQuestions()`
+ * 返回的数组元素结构完全一样（含 answer / explanation / options），
+ * 所以视图层不用改。
+ *
+ * @param {Array} indexRows fetchIndex() 的结果
+ * @param {string} category 分类名（空字符串 = 加载全部分类）
+ * @returns {Promise<Array>} 合并了答案的完整题目数组
+ */
+export async function hydrateAnswers(indexRows, category = '') {
+  if (!manifestCache) manifestCache = await fetchAnswersManifest()
+
+  // 要加载哪些分类的 slug
+  const targets = category
+    ? [[category, manifestCache[category]]]
+    : Object.entries(manifestCache)
+
+  if (category && !manifestCache[category]) {
+    throw new DataError(`未知分类：${category}`)
+  }
+
+  // 并行拉取所需分片
+  const shards = await Promise.all(
+    targets.filter(([, meta]) => meta).map(async ([cat, meta]) => {
+      const rows = await fetchAnswerShard(meta.slug)
+      return [cat, new Map(rows.map((r) => [r.id, r]))]
+    }),
+  )
+
+  const byCat = new Map(shards)
+  return indexRows.map((row) => {
+    const m = byCat.get(row.category)
+    const ans = m && m.get(row.id)
+    if (!ans) return row
+    const full = { ...row, answer: ans.answer }
+    if (ans.explanation) full.explanation = ans.explanation
+    if (ans.options) full.options = ans.options
+    return full
+  })
+}
+
+/** 全量（分片版）缓存 */
+let allCache = null
+
+/**
+ * 一次性加载「索引 + 全部答案」，语义等价于旧的 fetchQuestions()。
+ *
+ * 主要用于：刷题/复习这类需要跨分类抽题、且立刻要用答案的场景。
+ */
+export async function fetchAllSharded({ force = false } = {}) {
+  if (allCache && !force) return allCache
+  const idx = await fetchIndex({ force })
+  allCache = await hydrateAnswers(idx)
+  return allCache
 }
 
 export class DataError extends Error {

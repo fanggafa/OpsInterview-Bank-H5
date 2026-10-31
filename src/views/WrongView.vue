@@ -17,7 +17,7 @@ const study = useStudyStore()
 
 const page = ref(1)
 
-onMounted(() => bank.load().catch(() => {}))
+onMounted(() => bank.loadIndex().catch(() => {}))
 
 /**
  * 错题本由 records 的 inWrong 标记派生。
@@ -67,7 +67,7 @@ const clearStreak = WRONG_CLEAR_STREAK
       title="题库加载失败"
       :desc="bank.error"
       action="重试"
-      @action="bank.retry().catch(() => {})"
+      @action="bank.retryIndex().catch(() => {})"
     />
 
     <template v-else>
