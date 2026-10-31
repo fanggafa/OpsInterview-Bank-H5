@@ -5,56 +5,59 @@ import { CATEGORIES } from '@/utils/constants'
  * 分类枚举顺序守卫。
  *
  * 分类筛选条的展示顺序直接由 `CATEGORIES` 数组决定
- * （见 BankView 的 `CATEGORIES.filter(...)`），所以这个顺序是「产品行为」，
- * 不该被随手改动。这里固化「A→Z」规则，并校验拼音首字母表。
+ * （见 BankView 的 `CATEGORIES.filter(...)`），所以这个顺序是**产品行为**。
+ *
+ * 这份顺序是**人工指定的业务优先级**（不是字母序）：
+ * 高频必考分类在前（Linux基础、网络基础、综合场景题），冷门辅助分类靠后。
+ *
+ * 下面的 EXPECTED 是唯一事实来源 —— 改顺序时同时改这里，测试才能通过。
+ * 这样能防止「改了一处忘了另一处」或「新增分类时漏登记展示顺序」。
  */
 
-/** 中文分类的拼音首字母（与 scripts 里的排序依据一致） */
-const PINYIN = {
-  安全与跳板机: 'A',
-  存储与备份: 'C',
-  监控告警: 'J',
-  日志与ELK: 'R',
-  容器与K8s: 'R',
-  网络基础: 'W',
-  消息队列: 'X',
-  虚拟化: 'X',
-  云与高可用: 'Y',
-  自动化与配置管理: 'Z',
-  综合场景题: 'Z',
-}
+/** 期望的展示顺序（按业务优先级，与 src/utils/constants.js 保持一致） */
+const EXPECTED = [
+  'Linux基础',
+  '网络基础',
+  '综合场景题',
+  '虚拟化',
+  'DNS',
+  'iptables/firewalld',
+  'Nginx',
+  'Tomcat/JVM',
+  'LVS/HAProxy',
+  'Redis',
+  'MySQL',
+  'MongoDB',
+  'Git/GitLab',
+  'Shell脚本',
+  'Python',
+  'CI/CD',
+  '自动化与配置管理',
+  '消息队列',
+  '日志与ELK',
+  '容器与K8s',
+  '存储与备份',
+  '云与高可用',
+  '监控告警',
+  '安全与跳板机',
+  'AI与大模型',
+]
 
-const firstLetter = (cat) => {
-  if (PINYIN[cat]) return PINYIN[cat]
-  const ch = cat[0]
-  return /[A-Za-z]/.test(ch) ? ch.toUpperCase() : null
-}
-
-describe('CATEGORIES 顺序（A→Z）', () => {
-  it('首字母整体单调不减（中文按拼音、英文按字母）', () => {
-    const letters = CATEGORIES.map(firstLetter)
-    const missing = CATEGORIES.filter((c, i) => letters[i] === null)
-    expect(missing, `这些分类缺少首字母定义: ${missing.join(',')}`).toEqual([])
-
-    for (let i = 1; i < letters.length; i++) {
-      expect(
-        letters[i] >= letters[i - 1],
-        `第 ${i + 1} 项「${CATEGORIES[i]}」(${letters[i]}) 不应排在「${CATEGORIES[i - 1]}」(${letters[i - 1]}) 之后`,
-      ).toBe(true)
-    }
+describe('CATEGORIES 展示顺序（业务优先级）', () => {
+  it('顺序与约定的优先级完全一致', () => {
+    expect(CATEGORIES).toEqual(EXPECTED)
   })
 
-  it('同一首字母内按名称排序', () => {
-    for (let i = 1; i < CATEGORIES.length; i++) {
-      const a = CATEGORIES[i - 1]
-      const b = CATEGORIES[i]
-      if (firstLetter(a) !== firstLetter(b)) continue
-      expect(a.localeCompare(b, 'zh-CN'), `「${a}」与「${b}」顺序不对`).toBeLessThanOrEqual(0)
-    }
+  it('分类数量与预期一致（新增分类时必须同时登记顺序）', () => {
+    expect(CATEGORIES.length).toBe(EXPECTED.length)
   })
 
-  it('每个分类都有拼音首字母定义（新增分类时不能漏）', () => {
-    const unknown = CATEGORIES.filter((c) => firstLetter(c) === null)
-    expect(unknown).toEqual([])
+  it('无重复分类', () => {
+    const dup = CATEGORIES.filter((c, i) => CATEGORIES.indexOf(c) !== i)
+    expect(dup, `重复的分类: ${dup.join(',')}`).toEqual([])
+  })
+
+  it('高频分类排在前面（冒烟：前 3 项是最常刷的）', () => {
+    expect(CATEGORIES.slice(0, 3)).toEqual(['Linux基础', '网络基础', '综合场景题'])
   })
 })
