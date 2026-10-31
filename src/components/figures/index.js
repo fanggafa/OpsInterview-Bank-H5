@@ -246,6 +246,26 @@ import CpuSpikeIncident from './CpuSpikeIncident.vue'
 import CloudMigrationPlan from './CloudMigrationPlan.vue'
 import ArchEvolutionPlan from './ArchEvolutionPlan.vue'
 import PromotionLoadTest from './PromotionLoadTest.vue'
+import K8sWorkflow from './K8sWorkflow.vue'
+import PodCreateFlow from './PodCreateFlow.vue'
+import PodDeleteFlow from './PodDeleteFlow.vue'
+import K8sComponentHa from './K8sComponentHa.vue'
+import PodTypes from './PodTypes.vue'
+import KubeadmVsBinary from './KubeadmVsBinary.vue'
+import SentinelVsCluster from './SentinelVsCluster.vue'
+import RedisSlot from './RedisSlot.vue'
+import RabbitMessageLoss from './RabbitMessageLoss.vue'
+import UndeletePrinciple from './UndeletePrinciple.vue'
+import RestartPolicy from './RestartPolicy.vue'
+import ImagePullPolicy from './ImagePullPolicy.vue'
+import PvPvc from './PvPvc.vue'
+import DaemonsetTraits from './DaemonsetTraits.vue'
+import FlannelModes from './FlannelModes.vue'
+import K8sInstallSteps from './K8sInstallSteps.vue'
+import DeploymentYaml from './DeploymentYaml.vue'
+import PodNetworkTriage from './PodNetworkTriage.vue'
+import PodTriageSteps from './PodTriageSteps.vue'
+import NodeFailureTriage from './NodeFailureTriage.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -554,6 +574,26 @@ export const FIGURES = {
   'cloud-migration-plan': CloudMigrationPlan,
   'arch-evolution-plan': ArchEvolutionPlan,
   'promotion-load-test': PromotionLoadTest,
+  'k8s-workflow': K8sWorkflow,
+  'pod-create-flow': PodCreateFlow,
+  'pod-delete-flow': PodDeleteFlow,
+  'k8s-component-ha': K8sComponentHa,
+  'pod-types': PodTypes,
+  'kubeadm-vs-binary': KubeadmVsBinary,
+  'sentinel-vs-cluster': SentinelVsCluster,
+  'redis-slot': RedisSlot,
+  'rabbit-message-loss': RabbitMessageLoss,
+  'undelete-principle': UndeletePrinciple,
+  'restart-policy': RestartPolicy,
+  'image-pull-policy': ImagePullPolicy,
+  'pv-and-pvc': PvPvc,
+  'daemonset-traits': DaemonsetTraits,
+  'flannel-modes': FlannelModes,
+  'k8s-install-steps': K8sInstallSteps,
+  'deployment-yaml': DeploymentYaml,
+  'pod-network-triage': PodNetworkTriage,
+  'pod-triage-steps': PodTriageSteps,
+  'node-failure-triage': NodeFailureTriage,
 }
 
 /**

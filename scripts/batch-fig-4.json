@@ -1,0 +1,16 @@
+{
+  "figures": [
+    { "component": "K8sInstallSteps", "id": "k8s-install-steps" },
+    { "component": "DeploymentYaml", "id": "deployment-yaml" },
+    { "component": "PodNetworkTriage", "id": "pod-network-triage" },
+    { "component": "PodTriageSteps", "id": "pod-triage-steps" },
+    { "component": "NodeFailureTriage", "id": "node-failure-triage" }
+  ],
+  "attach": [
+    { "question": 4734, "figure": "k8s-install-steps", "anchor": "安装过程" },
+    { "question": 4737, "figure": "deployment-yaml", "anchor": "YAML" },
+    { "question": 4748, "figure": "pod-network-triage", "anchor": "网络原因" },
+    { "question": 4750, "figure": "pod-triage-steps", "anchor": "定位问题" },
+    { "question": 4754, "figure": "node-failure-triage", "anchor": "宕机" }
+  ]
+}
