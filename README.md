@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2547 题**（835 简答 + 1540 单选 + 172 多选），25 个分类；含 **340 张内联 SVG 图解**（340 题带图）
+- 题库：**2695 题**（983 简答 + 1540 单选 + 172 多选），25 个分类；含 **340 张内联 SVG 图解**（340 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -172,7 +172,7 @@ ops-interview-h5/
 
 ## 维护题库
 
-题库共 **2547 题**：835 道简答题 + 1540 道单选题 + 172 道多选题，分布在 25 个分类中。
+题库共 **2695 题**：983 道简答题 + 1540 道单选题 + 172 道多选题，分布在 25 个分类中。
 
 ### 当前进度
 
@@ -1352,7 +1352,7 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
 | `public/data/answers/<slug>.json` | 25 个分类的答案分片（answer/explanation/options） | — | 最大 **85 KB**（k8s） |
 | `public/data/answers/manifest.json` | 分类 → slug 映射 + 每片题数 | 很小 | — |
 
-**体积收益**：首屏最坏情况（索引 + 最大分片）约 **gzip 206 KB**，
+**体积收益**：首屏最坏情况（索引 + 最大分片）约 **gzip 210 KB**，
 相比原来的 1455 KB 减少约 **86%**。
 
 ### 已切换：列表页走索引，详情/刷题按分类补答案
@@ -1364,15 +1364,26 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
 | 首页 / 题库列表 / 收藏 / 错题 / 统计 | `bank.loadIndex()` | 只有索引（gzip 121 KB） |
 | 题目详情 | `loadIndex()` + `hydrateCategory(该题分类)` | 索引 + 1 个分片 |
 | 刷题 / 复习（指定分类） | 同上 | 索引 + 1 个分片 |
-| 刷题（全部分类） | `hydrateCategory('')` | 索引 + 全部 25 个分片 |
+| 刷题（全部分类） | `hydrateCategory('')` | 索引 + 全部 28 个分片（大分类拆成多片） |
+
+**大分类会自动拆成多个分片**（`scripts/split-data.mjs` 的 `SPLIT_THRESHOLD = 180 KB`）。
+
+题量增长后「综合场景题」「Linux基础」「容器与K8s」单个分片体积超标，
+会突破「索引 + 最大分片」的首屏预算（gzip 220 KB，由 `tests/splitData.test.js` 守住）。
+
+所以改成：超过阈值的分类自动按条目数切成多片（如 `scenario-1` / `scenario-2`），
+manifest 用 **`slugs` 数组**（单分片时也是数组，前端逻辑统一），
+`hydrateAnswers` 并行拉取同一分类的多片再合并。
+
+实测效果：最大分片 gzip 从 141 KB 降到 85 KB，首屏最坏回到 210 KB（预算内）。
 
 **实测首屏数据体积**（dev server 不压缩，取原始字节）：
 
 ```
-questions-index.json      459 KB   ← 首屏只拉这个
+questions-index.json      488 KB   ← 首屏只拉这个
 answers/manifest.json       1 KB
 ────────────────────────────────
-首屏合计                  ~460 KB   （旧方案 questions.json 是 4297 KB，减少 89%）
+首屏合计                  ~489 KB   （旧方案 questions.json 是 4687 KB，减少 90%）
 ```
 
 线上开启 gzip 后索引约 **121 KB**，相比原来的 **1455 KB** 减少 **92%**。
@@ -1585,7 +1596,7 @@ data/<分类>.json             最大 gzip 79 KB          ← 进分类/看详�
 目标场景：**通勤/地铁没网时也能刷题**。
 
 **缓存策略：全量预缓存**。`vite-plugin-pwa` 的 `globPatterns` 显式包含 `json`，
-把索引（460 KB）与 25 个答案分片（约 3.2 MB）全部纳入 precache ——
+把索引（488 KB）与 28 个答案分片（约 3.6 MB）全部纳入 precache ——
 实测构建输出 `precache 71 entries (5199 KiB)`。
 
 > 为什么不全量：只缓存首屏会导致「离线能打开列表、点进题目没答案」，

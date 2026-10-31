@@ -64,7 +64,20 @@ jobs:
           # 运行时数据：索引 + 答案分片（questions.json 是编辑期源数据，构建时已剔除）
           test -f dist/data/questions-index.json       || { echo "缺少题库索引"; exit 1; }
           test -f dist/data/answers/manifest.json      || { echo "缺少分片清单"; exit 1; }
-          test -f "dist/data/answers/k8s.json"         || { echo "缺少答案分片"; exit 1; }
+          # 大分类会被拆成多片（如 k8s-1/k8s-2），所以断言 manifest 里列出的分片都真实存在
+          node -e '
+            const fs=require("fs");
+            const m=JSON.parse(fs.readFileSync("dist/data/answers/manifest.json","utf8"));
+            let n=0;
+            for (const [cat,meta] of Object.entries(m)) {
+              for (const s of meta.slugs) {
+                const p="dist/data/answers/"+s+".json";
+                if(!fs.existsSync(p)){ console.error("缺少分片 "+p+"（分类 "+cat+"）"); process.exit(1); }
+                n++;
+              }
+            }
+            console.log("✓ 分片齐全："+n+" 个文件，"+Object.keys(m).length+" 个分类");
+          '
           # 源数据不应被部署（它 4.3 MB，只用于编辑期）
           test ! -f dist/data/questions.json           || { echo "questions.json 不应出现在 dist"; exit 1; }
           # PWA 产物：Service Worker、manifest、图标（缺了就无法离线 / 无法安装）

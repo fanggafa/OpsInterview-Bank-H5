@@ -47800,6 +47800,111 @@
     "frequency": "中频"
   },
   {
+    "id": 4093,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中 load average 是什么？它和 CPU 使用率有什么区别？怎么判断负载是否过高？",
+    "answer": "**load average 是「正在运行 + 等待运行 + 等待 IO」的进程数平均值，不只看 CPU。**\n\n## 三个数字的含义\n\n```\n$ uptime\nload average: 0.52, 0.58, 0.59\n              ↑1分钟 ↑5分钟 ↑15分钟\n```\n\n**它是「队列长度」，不是百分比**，没有 100% 上限。\n\n## 与 CPU 使用率的关键区别\n\n| | load average | CPU 使用率 |\n|---|---|---|\n| 统计什么 | **队列中的人数**（R + D 状态） | CPU 忙的时间比例 |\n| 包含 IO 等待 | ✅ **包含 D 状态** | ❌ 不含 |\n| 上限 | 无（可以 50、100） | 100% |\n\n**这是最常被混淆的一点**：load 高但 CPU 不高 → 说明卡在 IO（D 状态进程多）。\n\n## 怎么判断「过高」\n\n**黄金判断法**：`load average` 与 **CPU 核心数** 比较。\n\n| 负载值 | 判断 |\n|---|---|\n| < 核数 | 正常 |\n| ≈ 核数 | 满载，需关注 |\n| > 核数 | 有排队，**已过载** |\n| > 核数 × 2 | 严重过载 |\n\n```bash\nnproc          # 核数\n```\n\n**8 核机器负载 16 = 有大量排队**，4 核机器负载 8 同理。\n\n## 两个细分指标（更准）\n\n```bash\n# 运行队列长度（不含 D 状态）\nvmstat 1 5    # 看 r 列\n\n# D 状态进程数（IO 阻塞）\nps -eo state,pid,cmd | awk '$1==\"D\"'\n```\n\n**如果 r 列大 → CPU 不够；如果 D 状态多 → 磁盘/网络存储瓶颈。**\n\n## 一个必须做的对照\n\n三者结合看：\n\n| load | CPU | 磁盘 IO | 结论 |\n|---|---|---|---|\n| 高 | 高 | 正常 | CPU 不够 |\n| **高** | **低** | **高** | **IO 瓶颈**（磁盘慢或 NFS 卡住） |\n| 高 | 低 | 正常 | 内存不足（swap）或锁竞争 |\n\n## 一个常见误判\n\n**NFS 挂载卡住会拉高 load**：大量进程进入 D 状态，CPU 却很闲。此时 `df -h` 都可能卡住不动 —— 这是运维里的经典事故现场。",
+    "tags": [
+      "load",
+      "uptime",
+      "D状态",
+      "负载"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4094,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 内存中的 Buffer 和 Cache 有什么区别？free 命令里 buff/cache 很大是正常现象吗？",
+    "answer": "**Buffer 缓存「磁盘块」，Cache 缓存「文件内容」；buff/cache 大是健康的，不是泄漏。**\n\n## 两者区别\n\n| | Buffer | Cache |\n|---|---|---|\n| 缓存什么 | **块设备的元数据 / 原始块** | **文件内容（页）** |\n| 单位 | 块（block） | 页（page，4KB） |\n| 场景 | 文件系统元数据、目录项 | 读写的文件数据 |\n\n**记忆法**：Buffer = 「目录与索引」，Cache = 「文件正文」。\n\n## free 命令怎么读\n\n```bash\n$ free -h\n              total   used   free   shared  buff/cache  available\nMem:           15Gi   4.1Gi  1.2Gi   0.3Gi   10.5Gi   10.8Gi\n```\n\n**关键看最后两列**：\n\n| 列 | 含义 |\n|---|---|\n| `free` | **完全空闲**（没被任何用途占用） |\n| **`available`** | **真正可供新进程使用的**（= free + 可回收的 cache） |\n\n**判断内存够不够，看 `available`，不要看 `free`。**\n\n## 为什么 buff/cache 大是正常的\n\nLinux 采取「**空闲内存不用就浪费**」策略：\n\n> 内核会主动把空闲内存用作缓存，提升 IO 性能；一旦进程需要，会**立即回收**。\n\n所以 **buff/cache 高 + available 高 = 系统健康**。\n\n## 什么才是真问题\n\n| 现象 | 判断 |\n|---|---|\n| **available 很低** | 真的内存不足 |\n| buff/cache 高但 available 充足 | ✅ 正常 |\n| used 高 + swap 大量使用 | 内存压力大 |\n\n```bash\nvmstat 1      # 看 si/so（swap 换入换出），持续非 0 才是问题\n```\n\n## 一个实践操作\n\n「要不要手动清缓存」：\n\n```bash\necho 3 > /proc/sys/vm/drop_caches\n```\n\n**不建议在生产随手执行**：清完缓存会让后续 IO 变慢（要重新读盘），只是让 `free` 数字好看，**没有实际收益**。\n\n## 一个高频追问\n\n「buff/cache 占满是不是 OOM 的原因？」→ 不是。OOM 看的是**可回收失败**，缓存会优先被回收，正常不会导致 OOM。",
+    "tags": [
+      "buffer",
+      "cache",
+      "free",
+      "available"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4095,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的 swap 是什么？生产环境该怎么配置？为什么很多资料说 K8s 环境要关闭 swap？",
+    "answer": "**swap 是磁盘上的「内存后备区」，代价是性能骤降；K8s 关闭它是为了调度可预测。**\n\n## swap 的作用\n\n| 场景 | 收益 |\n|---|---|\n| 内存短时超限 | 避免立即 OOM，用磁盘顶一下 |\n| 冷数据换出 | 释放内存给热数据 |\n| 休眠 | 需要 swap |\n\n**代价**：磁盘比内存慢几个数量级（SSD 也差 100 倍以上），一旦频繁换页，性能断崖式下滑。\n\n## 生产配置建议\n\n| 场景 | 建议 |\n|---|---|\n| **数据库（MySQL/Redis）** | **关闭或极小**（延迟敏感，换页会导致查询卡顿） |\n| 一般应用服务器 | 小 swap（如 2~4G），**只做保险** |\n| 桌面/开发机 | 等于内存大小 |\n| K8s 节点 | **关闭** |\n\n## 关键参数\n\n```bash\n# 查看使用\nswapon --show\nfree -h\nvmstat 1        # 看 si/so，持续非 0 = 在换页\n\n# 关闭\nswapoff -a && sed -i '/swap/s/^/#/' /etc/fstab\n```\n\n`vm.swappiness`（默认 60）：**越低越倾向不用 swap**，数据库常设 1~10。\n\n## 为什么 K8s 要关 swap\n\n三个原因：\n\n**1. 调度失真**\n\nK8s 按 `requests/limits` 调度，认为 Pod 有「N 内存」。若节点能 swap，**实际可超卖**，导致内存压力不可预测。\n\n**2. 性能不可控**\n\n一个 Pod 被换出到磁盘，延迟从微秒变毫秒 —— **对同为延迟敏感的邻居 Pod 是灾难**。\n\n**3. kubelet 明确不支持**\n\n历史上 kubelet 启动会直接报错检查 swap 是否关闭（`--fail-swap-on=true` 默认）。\n\n> 注：K8s 1.22+ 引入了 **NodeSwap 特性（alpha）**，允许在特定配置下开启，但**生产仍建议关闭**。\n\n## 一个实操细节\n\n**`swapoff -a` 在大内存机器上很慢**（要把 swap 内容读回内存）。如果有几十 G swap 在用，可能需要几分钟，且期间内存压力骤增。**建议在低峰期做。**\n\n## 一个判断「是否真的在用 swap」的方法\n\n**只看 swap used 不够**（可能只是早期用过）。要看 **`vmstat` 的 si/so 是否持续非 0** —— 那才是「正在换页」。",
+    "tags": [
+      "swap",
+      "swappiness",
+      "K8s",
+      "OOM"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4096,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的 OOM Killer 是什么？怎么定位是哪个进程被杀，以及如何避免？",
+    "answer": "**内存耗尽时内核主动杀进程保系统存活；定位看 dmesg，避免靠限制与监控。**\n\n## OOM Killer 的工作方式\n\n内存严重不足且无法回收时，内核按 `oom_score` 挑一个进程杀掉。\n\n**`oom_score` 的算法核心**：进程占用的内存越多、越不重要，分数越高（越容易被杀）。\n\n## 定位：谁被杀了\n\n```bash\n# 最直接\ndmesg -T | grep -i 'killed process'\n\n# 完整 OOM 现场（含当时内存状况）\ndmesg -T | grep -A 20 'oom-kill'\n\n# journalctl（CentOS 7+）\njournalctl -k | grep -i oom\n```\n\n典型输出：\n\n```\nOut of memory: Kill process 12345 (java) score 850 or sacrifice child\nKilled process 12345 (java), UID 0, total-vm:8000000kB, anon-rss:7500000kB\n```\n\n**关键字段**：`anon-rss`（实际占用的物理内存）。\n\n## 为什么会 OOM\n\n| 原因 | 说明 |\n|---|---|\n| **应用内存泄漏** | 最常见，`anon-rss` 持续增长 |\n| 突发流量 | 缓存/连接数暴涨 |\n| **堆外内存超限** | JVM 的 Metaspace/direct buffer 不受 `-Xmx` 限制 |\n| 容器 limit 太小 | Pod 的 memory limit 设低了 |\n| 内核/NFS 缓存占满 | 极少见 |\n\n## 如何避免\n\n**1. 让重要进程不易被杀**\n\n```bash\n# 调低 oom_score_adj（范围 -1000~1000，越小越不易被杀）\necho -500 > /proc/<pid>/oom_score_adj\n```\n\n**2. 限制大内存进程**\n\n- 容器：设 `limits.memory`（超出会被 OOM 或限流）\n- 进程级：用 systemd 的 `MemoryMax`，或 `ulimit -v`\n\n**3. JVM 特别处理**\n\n```\n-XX:+HeapDumpOnOutOfMemoryError    # OOM 时 dump 现场\n-XX:MaxMetaspaceSize=...           # 限制堆外\n-XX:MaxDirectMemorySize=...\n```\n\n**注意**：容器里 `-Xmx` 必须小于 limit，否则 JVM 还没 GC 就被容器 OOM 杀了。\n\n**4. 监控**\n\n盯 **`available` 与 swap 使用**，不要等 OOM 了才发现。\n\n## 一个高频追问\n\n「容器里的 OOM 和被系统 OOM 有何不同？」\n\n| | 容器 OOM（cgroup） | 系统 OOM |\n|---|---|---|\n| 触发者 | cgroup 内存限制 | 全局内存不足 |\n| 退出码 | **137**（128+9） | 137 |\n| 查看 | `kubectl describe pod` 的 `OOMKilled` | `dmesg` |\n\n**137 是两者共同的表现**，这也是为什么排查 Pod 被杀要先看 `kubectl describe pod` 的 Reason 字段。",
+    "tags": [
+      "OOM",
+      "oom_score",
+      "内存",
+      "137"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4097,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中进程的五种状态是什么？僵尸进程和孤儿进程有什么区别？出现了怎么处理？",
+    "answer": "**五态：R 运行、S 睡眠、D 不可中断、Z 僵尸、T 停止。处理 Z 要重启父进程，处理孤儿看 init。**\n\n## 五种状态\n\n| 状态 | 含义 | 说明 |\n|---|---|---|\n| **R**（Running） | 运行或可运行 | 在 CPU 上或在运行队列 |\n| **S**（Sleeping） | 可中断睡眠 | 等待事件（多数进程常态） |\n| **D**（Disk sleep） | 不可中断睡眠 | **等 IO，连 kill -9 都杀不掉** |\n| **Z**（Zombie） | 僵尸 | 已结束但父进程未回收 |\n| **T**（Stopped） | 停止 | 被 SIGSTOP 或调试暂停 |\n\n```bash\nps -eo state,pid,ppid,cmd     # 看所有进程状态\n```\n\n## 僵尸进程（Zombie）\n\n**特征**：进程已死，但**父进程没有调用 wait() 回收**，因此保留一条记录（占一个 PID 槽位）。\n\n**危害**：不占内存（资源已释放），但**占用 PID**。大量僵尸会耗尽 PID 空间，无法再创建新进程。\n\n**处理**：\n\n```bash\n# 错误做法：kill -9 僵尸进程 —— 无效（它已经是死的）\n# 正确做法：杀掉它的父进程，让 init 接管并回收\nkill -9 <父进程PID>\n```\n\n**根治：修应用代码**（父进程要及时 `wait()`）。\n\n## 孤儿进程（Orphan）\n\n**特征**：父进程先死了，子进程还在跑。\n\n**结果**：被 **init（PID 1，或 systemd）收养**，由它负责回收。\n\n**危害**：**没有危害**（init 会正常回收）。\n\n## 两者对比（这是考点）\n\n| | 僵尸 | 孤儿 |\n|---|---|---|\n| 谁死了 | **子进程**死了 | **父进程**死了 |\n| 剩余进程 | 只剩一个空壳（已死） | 子进程正常运行 |\n| 谁来收 | 需要父进程 wait（或杀父） | init 自动接管 |\n| 有危害吗 | **有**（占 PID） | 无 |\n\n**一句话记忆**：**僵尸是「死掉的子进程没人埋」**，**孤儿是「活着的子进程没人养」。**\n\n## D 状态的特殊性（高频追问）\n\n**`kill -9` 杀不掉 D 状态进程** —— 因为它在等内核 IO，信号在回到用户态才会处理。\n\n处理办法：\n- 等 IO 完成（或重启相关服务/fuse 挂载）\n- 若是 NFS 卡住：umount 或重启机器\n\n## 一个排查命令\n\n```bash\n# 找僵尸进程及其父进程\nps -eo pid,ppid,stat,cmd | awk '$3 ~ /Z/'\n```",
+    "tags": [
+      "进程状态",
+      "僵尸",
+      "孤儿",
+      "D状态"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4098,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中如何排查磁盘 IO 瓶颈？iostat 的关键指标怎么看？",
+    "answer": "**四步：确认有 IO 压力 → 定位是哪个盘 → 找出哪个进程 → 判断是随机还是顺序。**\n\n## 一、确认是否有 IO 压力\n\n```bash\n# 先看有没有 D 状态进程（IO 阻塞的铁证）\nps -eo state,pid,cmd | awk '$1==\"D\"'\n\n# 综合看（r 列大=CPU，b 列大=阻塞，wa=IO 等待）\nvmstat 1 5\n```\n\n**`wa`（wait）列高 + D 状态多 = IO 瓶颈**。\n\n## 二、iostat 关键指标\n\n```bash\niostat -x 1\n```\n\n| 指标 | 含义 | 判断 |\n|---|---|---|\n| **`%util`** | 设备忙碌时间占比 | **接近 100% = 饱和**（但 SSD 上不完全准） |\n| **`r/s` `w/s`** | 每秒读写次数（IOPS） | 看是否达设备上限 |\n| **`rkB/s` `wkB/s`** | 吞吐量 | 是否达带宽上限 |\n| **`await`** | **平均等待时间（ms）** | **最关键的延迟指标**，>10ms 需关注，>50ms 严重 |\n| `r_await` / `w_await` | 分开看读写延迟 | 定位是读还是写慢 |\n| `aqu-sz`（旧版 `avgqu-sz`） | 平均队列长度 | >2 说明有排队 |\n\n**读 iostat 的正确顺序**：\n\n```\n① %util 是否接近 100%\n② await 是否变大\n③ 是读慢还是写慢（r_await / w_await）\n④ IOPS/带宽 是否接近硬件上限\n```\n\n## 三、找出哪个进程在 IO\n\n```bash\n# iotop（最直观，需要安装）\niotop -oP\n\n# 系统自带：看进程的 IO 计数\niotop -o   # 或\ncat /proc/<pid>/io    # read_bytes / write_bytes\n\n# 按累计排序\nfor p in /proc/*/io; do echo \"$(dirname $p) $(grep write_bytes $p 2>/dev/null)\"; done\n```\n\n**`pidstat -d 1`** 也很好用（sysstat 自带）：\n\n```bash\npidstat -d 1 5    # 显示进程级读写速率\n```\n\n## 四、判断 IO 类型（决定优化方向）\n\n| 类型 | 特征 | 优化 |\n|---|---|---|\n| **随机小 IO** | IOPS 高、吞吐低 | 加缓存、改 SSD、减少 IO 次数 |\n| **顺序大 IO** | 吞吐高、IOPS 低 | 更少但更大的批次 |\n\n```bash\n# 看平均请求大小（sectors/次）\niostat -x 1 | awk '{print $1, $4, $5}'\n```\n\n## 五、常见根因与对策\n\n| 根因 | 对策 |\n|---|---|\n| 日志无节制写 | 调日志级别、异步化 |\n| **数据库慢查询导致大量随机读** | 加索引、加 buffer pool |\n| swap 频繁换页 | 关闭 swap 或加内存 |\n| 备份/压缩任务占用 | 挪到低峰或限速（`ionice`） |\n| 磁盘本身慢（机械盘） | 换 SSD / 加 RAID 条带 |\n\n## 一个高频追问\n\n「%util 100% 就一定是瓶颈吗？」\n\n**不一定**。SSD 并行能力强，`%util` 统计方式可能失真（尤其 NVMe）。**更可靠的是 `await` 与 `aqu-sz`**：延迟高、队列深才是真饱和。",
+    "tags": [
+      "iostat",
+      "磁盘IO",
+      "await",
+      "性能"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4099,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中常用的性能分析工具有哪些？各自适合什么场景？",
+    "answer": "**按「系统 → 进程 → 深入」三层选工具，避免上来就 strace。**\n\n## 第一层：系统整体（先看全貌）\n\n| 工具 | 看什么 |\n|---|---|\n| **`top` / `htop`** | CPU、内存、load、进程总览 |\n| **`vmstat 1`** | **一次性看 CPU/内存/IO/swap 全指标**（最推荐打头阵） |\n| `sar` | 历史趋势（事后回溯，需提前开启） |\n| `uptime` | load average |\n\n**`vmstat` 的字段辨认（高频）**：`r`（运行队列）、`b`（阻塞）、`si/so`（swap）、`us/sy/id/wa`。\n\n## 第二层：定位到具体资源\n\n| 资源 | 工具 | 关键指标 |\n|---|---|---|\n| **CPU** | `mpstat -P ALL 1`、`top -H` | 各核使用率、用户态 vs 系统态 |\n| **内存** | `free -h`、`vmstat`、`pmap <pid>` | available、swap、进程内存映射 |\n| **磁盘 IO** | **`iostat -x 1`**、`iotop`、`pidstat -d` | %util、await、IOPS |\n| **网络** | `ss -s`、`sar -n DEV`、`iftop` | 连接数、带宽、丢包 |\n\n## 第三层：定位到具体进程/函数\n\n| 工具 | 用途 | 注意 |\n|---|---|---|\n| **`strace -p <pid>`** | 看系统调用 | **开销大，生产慎用** |\n| **`perf top` / `perf record`** | CPU 热点函数 | 需要调试符号 |\n| `ltrace` | 库调用 | 开销大 |\n| `gdb` / `pstack` | 看堆栈（Java 用 jstack） | 可能让进程停顿 |\n| `lsof` | 谁打开了哪个文件 | 排查「文件被占用」 |\n\n## 一个实用的排查顺序（这是应答重点）\n\n```\n① vmstat 1         → 哪类资源异常（CPU/内存/IO）\n② 对应细分工具      → 确认到具体设备/进程\n③ perf / strace    → 深入函数或系统调用\n```\n\n**不要一上手就 strace**：它会显著拖慢进程，还可能让生产服务雪上加霜。\n\n## 三个必须知道的坑\n\n1. **`top` 的单进程 CPU% 可能超过 100%**（多核累加，要看总核数）\n2. **`%st`（steal）**：虚拟机被宿主机抢占的时间，**持续高说明宿主机超卖**\n3. **`iostat` 第一次输出的平均值不可信**（从开机累计），要从第二次看\n\n## 一个进阶工具\n\n**`perf` 的火焰图**（`perf record -g` + FlameGraph）能让「卡在哪」一目了然，是排查复杂性能问题的利器。",
+    "tags": [
+      "性能分析",
+      "vmstat",
+      "perf",
+      "strace"
+    ],
+    "frequency": "高频"
+  },
+  {
     "id": 4100,
     "type": "single",
     "category": "Linux基础",
@@ -48736,6 +48841,351 @@
       "DNS"
     ],
     "frequency": "中频"
+  },
+  {
+    "id": 4138,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 网络排查有哪些常用命令？如何判断连接是不通、被拒绝还是超时？",
+    "answer": "**三层排查：链路 → 端口 → 应用；不通/拒绝/超时的原因完全不同。**\n\n## 命令分层\n\n| 层 | 命令 | 用途 |\n|---|---|---|\n| **链路** | `ping` | 主机可达性（ICMP） |\n| | `traceroute` / `mtr` | 路径与在哪一跳断 |\n| **端口** | **`telnet` / `nc`** | 端口是否开放 |\n| | **`ss -tlnp`** | 本机监听状态 |\n| | `nc -zv host port` | 连接测试 |\n| **应用** | `curl -v` | HTTP 层验证 |\n| **抓包** | **`tcpdump`** | 终极手段 |\n\n## 三种失败状态的区别（这是核心考点）\n\n| 现象 | 原因 | 含义 |\n|---|---|---|\n| **`Connection refused`** | 收到 **RST** | 主机在，但端口没程序监听（或有防火墙 reject） |\n| **`Connection timed out`** | 无任何响应 | 包被丢弃（防火墙 DROP）或路由不通 |\n| **`No route to host`** | ICMP 目标不可达 | 路由问题 |\n\n**这个区分极其重要**：\n\n```\n拒绝 = 网络通、到达了主机，只是没服务\n超时 = 包根本没到，或被静默丢弃\n```\n\n**推论**：\n- 拒绝 → 查服务是否启动、端口对不对\n- 超时 → **重点查防火墙/安全组**（DROP 而非 REJECT）\n\n## 典型排查流程\n\n```bash\n# 1. 主机能通吗\nping host\n\n# 2. 端口通吗（不依赖 telnet 是否安装）\nnc -zv host 8080          # 或\ncurl -v telnet://host:8080\n\n# 3. 本机监听了什么\nss -tlnp | grep 8080\n\n# 4. 防火墙拦了吗\niptables -L -n | grep 8080\n\n# 5. 抓包看真实情况\ntcpdump -i eth0 -nn 'host X and port 8080'\n```\n\n## tcpdump 的三种关键观察\n\n| 看到什么 | 结论 |\n|---|---|\n| 有 SYN，**没 SYN-ACK** | 对端未响应（防火墙或服务没起） |\n| 有 SYN，回 **RST** | 端口关闭或被 reject |\n| **没有 SYN** | 本机没发出（本机防火墙或路由问题） |\n\n**「本机没有 SYN 发出」是 OR 方向的经典坑**：看起来是网络问题，实际是本机 iptables 拦住了。\n\n## 两个实用细节\n\n**1. `ss` 比 `netstat` 快**（内核直接取，大连接数时差异明显）\n\n```bash\nss -tan state time-wait | wc -l    # 统计特定状态\nss -s                              # 汇总\n```\n\n**2. DNS 也要排查**\n\n```bash\ndig host      # 或 nslookup\n```\n\n「ping 不通但域名能解析」和「域名解析不了」完全是两类问题。\n\n## 一个高频追问\n\n「curl 报 `Could not resolve host`」→ **DNS 问题**，不是网络连通性问题。此时 `ping` 也可能通（用的是 IP）。",
+    "tags": [
+      "网络排查",
+      "tcpdump",
+      "ss",
+      "connection refused"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4139,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 文件系统中，软链接和硬链接的实现原理有什么区别？为什么硬链接不能跨分区？",
+    "answer": "**硬链接是「多个文件名指向同一 inode」；软链接是「一个独立文件，内容是指向的路径」。**\n\n## 实现原理\n\n| | 硬链接（hard link） | 软链接（symbolic link） |\n|---|---|---|\n| 本质 | **同一 inode 的另一个目录项** | **独立 inode**，内容是目标路径字符串 |\n| 创建 | `ln a b` | `ln -s a b` |\n| inode | **相同** | 不同 |\n| 被链接对象删除后 | **数据还在**（inode 仍被引用） | **断链**（指向不存在的路径） |\n| 跨文件系统 | ❌ **不行** | ✅ 可以 |\n| 指向目录 | ❌ 禁止（普通用户） | ✅ 可以 |\n\n## 为什么硬链接不能跨分区（关键原理）\n\n**因为硬链接直接引用 inode 编号，而 inode 编号只在单个文件系统内唯一。**\n\n```\n/dev/sda1 的 inode 12345  ≠  /dev/sdb1 的 inode 12345\n```\n\n两个分区各有独立的 inode 表，编号会重复。**跨分区做硬链接，内核无法确定「第 12345 号 inode 是哪个分区的」** —— 所以直接禁止。\n\n**软链接没有这个限制**：它存的是路径字符串，解析时按路径去找，与 inode 无关。\n\n## link count 的意义\n\n```bash\n$ stat file\nLinks: 1        ← 硬链接数\n```\n\n- 创建硬链接时 +1\n- **`rm` 只是让链接数 -1**，减到 0 才真正释放数据块\n\n**这解释了「删除文件名但空间没释放」的经典问题**：进程还持有打开的文件句柄，链接数虽为 0 但 inode 仍在使用。\n\n```bash\ndf -h                      # 空间没释放\nlsof | grep deleted        # 找到持有已删文件的进程\n# 重启该进程 或 清空 /proc/<pid>/fd/<n>\n```\n\n## 使用场景\n\n| 场景 | 选 |\n|---|---|\n| 同一分区内节省空间的多份引用 | 硬链接 |\n| 跨分区、指向目录、可换目标 | **软链接** |\n| 版本切换（`current` → 具体版本） | 软链接 |\n| 大量相同文件（如日志归档） | 硬链接 |\n\n## 一个高频追问\n\n「软链接能链接目录吗？为什么硬链接不行？」\n\n硬链接指向目录会造成**循环引用**（`a` 链接到 `b`，`b` 又包含 `a`），文件系统遍历会陷入死循环。软链接因为存的是路径，遍历时不跟随（`ls` 默认不递归跟随），所以安全。",
+    "tags": [
+      "硬链接",
+      "软链接",
+      "inode",
+      "link count"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4140,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中 rsync 的工作原理是什么？和 scp 有什么区别？怎么用它做增量备份？",
+    "answer": "**rsync 用「滚动校验」实现增量同步，scp 只做整体复制。**\n\n## rsync 的增量原理\n\n**核心算法（两个阶段）**：\n\n```\n① 接收端把文件切成固定块，算出每块的弱校验（滚动哈希）\n② 发送端逐字节滚动计算弱校验，与接收端的块校验比对\n   → 匹配的块：只发送「是第几块」的索引（不传内容）\n   → 不匹配的部分：传实际数据\n```\n\n**效果**：一个大文件改了几行，只传改动的部分。\n\n**关键优势在于「滚动哈希」**：即使文件中间插入/删除内容导致块边界偏移，也能重新对上（对比普通哈希，一偏移就全不匹配）。\n\n## rsync vs scp\n\n| | rsync | scp |\n|---|---|---|\n| 增量 | ✅ 只传差异 | ❌ **每次全传** |\n| 断点续传 | ✅ `--partial` | ❌ |\n| 保留属性 | ✅ 权限/时间/属主 | 部分 |\n| 排除规则 | ✅ `--exclude` | ❌ |\n| 删除同步 | ✅ `--delete` | ❌ |\n| 速度（小文件多） | **快**（差异传输） | 慢 |\n| 速度（单次全新大文件） | 略慢（要算校验） | 快 |\n\n**结论：日常同步一律用 rsync**，scp 只在「一次性传个文件」时才方便。\n\n## 常用选项（备份场景必会）\n\n```bash\nrsync -avz --delete \\\n  --exclude='*.log' --exclude='cache/' \\\n  /data/ user@backup:/backup/data/\n```\n\n| 选项 | 作用 |\n|---|---|\n| **`-a`** | 归档模式（= `-rlptgoD`，保留权限/时间/链接） |\n| `-v` | 显示过程 |\n| **`-z`** | 传输压缩（**同机房别开**，浪费 CPU） |\n| **`--delete`** | **删除目标端多余文件**（真正做镜像，慎用） |\n| `--exclude` | 排除规则 |\n| `-P` | `--partial --progress`（断点续传 + 进度） |\n| `--dry-run` | **预演，不实际执行**（强烈建议先跑） |\n\n## 三个生产必须注意的点\n\n**1. `--delete` 是危险操作**\n\n目标端多余的文件会被删掉。**先用 `--dry-run` 验证**，或配 `--backup` 把删除的文件挪到备份目录。\n\n**2. 末尾斜杠的区别（最常见的错误）**\n\n```bash\nrsync -a /src/ /dst/    # 同步 src 的内容（正确）\nrsync -a /src /dst/     # 会把 src 目录本身复制进去\n```\n\n**规律**：源路径带 `/` = 传内容；不带 `/` = 连目录一起传。\n\n**3. 大量小文件慢**\n\n每个文件都要建连接、算校验。解决：打包成大文件再传，或调大 `--block-size`。\n\n## 备份脚本示例\n\n```bash\nrsync -aP --delete --exclude='tmp/' \\\n  /data/ /backup/data-$(date +%F)/\n```\n\n配合 `crontab` 每日执行，或用 `--link-dest` 做**硬链接式增量备份**（每天一个完整目录，但只占新增文件的空间）。",
+    "tags": [
+      "rsync",
+      "scp",
+      "增量同步",
+      "备份"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4141,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的 crontab 怎么用？有哪些常见坑？为什么有时任务没有按时执行？",
+    "answer": "**crontab 本身简单，坑几乎全在「环境变量」与「时间语义」上。**\n\n## 基本格式\n\n```\n*  *  *  *  *  command\n分 时 日 月 周\n```\n\n| 表达式 | 含义 |\n|---|---|\n| `*/5 * * * *` | 每 5 分钟 |\n| `0 2 * * *` | 每天 2:00 |\n| `0 2 * * 1` | 每周一 2:00 |\n| `0 2 1 * *` | 每月 1 号 2:00 |\n| `0 0 * * 0` | 每周日 |\n\n**注意「日」与「周」是「或」的关系**（两者都写时会互相触发，多数人以为是「且」）。\n\n## 五个最常见的坑\n\n**1. 找不到命令（PATH 问题）**\n\n**crontab 的 PATH 极简**（通常只有 `/usr/bin:/bin`），`/usr/local/bin` 下的命令会找不到。\n\n```bash\n# 正确做法：写全路径 + 显式设环境\n*/5 * * * * /usr/local/bin/node /data/script.js\n\n# 或在开头声明\nPATH=/usr/local/bin:/usr/bin:/bin\n```\n\n**2. 环境变量缺失**\n\n交互式 shell 里 `source ~/.bashrc` 有的变量，crontab 里**没有**。\n\n解决：在脚本内部自己 source，或在 crontab 里显式声明。\n\n**3. 工作目录不同**\n\ncrontab 的工作目录是用户家目录，不是你期望的。\n\n```bash\n*/5 * * * * cd /data && ./run.sh    # 显式 cd\n```\n\n**4. 输出无处可去**\n\n任务有输出时，系统会尝试发邮件（通常没配 MTA），**结果任务看起来「没执行」**。\n\n```bash\n*/5 * * * * /data/run.sh >> /var/log/run.log 2>&1\n```\n\n**这一条最隐蔽**：加上 `2>&1` 重定向后，很多「不执行」的问题就消失了。\n\n**5. `%` 需要转义**\n\ncrontab 里 `%` 是换行符，`date +%F` 会出错。要写成 `date +\\%F`。\n\n## 任务真的没执行怎么排查\n\n```bash\n# 1. 看 cron 服务是否在跑\nsystemctl status crond\n\n# 2. 看系统日志\njournalctl -u crond -n 50\ngrep CRON /var/log/syslog\n\n# 3. 手动执行命令验证\n/data/run.sh          # 用与 cron 相同的用户\n\n# 4. 用绝对路径 + 重定向排查\n*/1 * * * * /usr/bin/date >> /tmp/cron-test.log 2>&1\n```\n\n## 定位「跑了但失败」的技巧\n\n```bash\n*/5 * * * * (/data/run.sh; echo \"exit=$?\" >> /tmp/cron.log) 2>&1\n```\n\n**记录退出码**是关键 —— 很多任务是「执行了但失败」，日志里能看到 exit code。\n\n## 一个进阶提醒\n\n**长任务会重叠**：如果任务跑 15 分钟而 cron 每 5 分钟触发，会出现多个实例并发。要用锁（`flock`）：\n\n```bash\n*/5 * * * * flock -n /tmp/lock /data/run.sh\n```\n\n**这是 cron 最容易被忽略的坑**：重叠执行导致资源争抢或数据错乱。",
+    "tags": [
+      "crontab",
+      "定时任务",
+      "PATH",
+      "flock"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4142,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的日志系统是怎样的？rsyslog 和 journald 有什么区别？日志怎么切割与轮转？",
+    "answer": "**两套并存：rsyslog 写文件、journald 存二进制；轮转靠 logrotate。**\n\n## 两套日志机制\n\n| | **rsyslog** | **journald** |\n|---|---|---|\n| 格式 | **纯文本**（`/var/log/messages` 等） | **二进制**（`/var/log/journal/`） |\n| 查询工具 | `cat`/`grep` | **`journalctl`**（支持字段过滤） |\n| 结构化 | ❌ | ✅ 有字段（unit、priority、pid） |\n| 轮转 | **logrotate** | 自动（按大小/时间） |\n| 关系 | 通常由 journald 转发过来（或反之） | 独立收集内核 + 用户态 |\n\n**CentOS 7+ 两者并存**：journald 收集，rsyslog 再从 journal 读出来写文件。\n\n## 常见日志文件位置\n\n| 文件 | 内容 |\n|---|---|\n| `/var/log/messages` | 系统通用消息 |\n| `/var/log/secure` | 认证/登录（`ssh` 失败记录在这） |\n| `/var/log/cron` | 定时任务 |\n| `/var/log/dmesg` 或 `dmesg` | 内核消息（OOM、磁盘错误） |\n| `/var/log/boot.log` | 启动过程 |\n\n## journalctl 常用（比 grep 强大）\n\n```bash\njournalctl -u nginx -n 50        # 某服务最近 50 行\njournalctl -f                     # 实时（类似 tail -f）\njournalctl --since \"1 hour ago\"\njournalctl -p err -b              # 本次启动的错误\njournalctl -b -1                  # 上一次启动（崩溃后排查看）\n```\n\n**`-b -1` 是关键技巧**：机器重启后能看「上一次启动」的日志，定位崩溃原因。\n\n## logrotate（切割与轮转）\n\n配在 `/etc/logrotate.d/`：\n\n```conf\n/var/log/nginx/access.log {\n    daily              # 按天\n    rotate 30          # 保留 30 份\n    compress           # 压缩历史\n    delaycompress      # 延迟一轮压缩（正在写的文件不压）\n    missingok          # 文件不存在不报错\n    notifempty         # 空文件不轮转\n    sharedscripts\n    postrotate\n        nginx -s reopen\n    endscript\n}\n```\n\n**`postrotate` 是关键**：像 Nginx 这类进程**一直持有文件句柄**，仅改名不会让它写新文件 —— 必须发信号让它重新打开。\n\n## 手工轮转\n\n```bash\nlogrotate -d /etc/logrotate.d/nginx   # 调试（不实际执行）\nlogrotate -f /etc/logrotate.d/nginx   # 强制执行\n```\n\n**永远先 `-d` 调试**：能看出它会做什么，避免误删。\n\n## 一个经典事故\n\n**日志撑满磁盘**：`/var` 占用 100%，服务全部不可用。\n\n排查：\n\n```bash\ndu -sh /var/log/* | sort -rh | head\nlsof | grep deleted              # 是否有已删除但被占用的日志\n```\n\n**预防**：给日志单独分区、配 logrotate + 磁盘告警。\n\n## 一个高频追问\n\n「journald 日志丢了怎么找回？」→ **`journalctl --vacuum-size` 是清理，不是找回**。二进制日志被丢了通常无法恢复，所以**关键日志要配 rsyslog 落文件**（双保险）。",
+    "tags": [
+      "日志",
+      "journald",
+      "rsyslog",
+      "logrotate"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4143,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的 systemd 有哪些核心概念？Unit 文件怎么写？怎么排查服务启动失败？",
+    "answer": "**三个核心：Unit（单元）、Target（启动目标）、依赖关系；排查看 status + journalctl。**\n\n## 三类核心单元\n\n| Unit 类型 | 后缀 | 作用 |\n|---|---|---|\n| **Service** | `.service` | 后台服务 |\n| **Target** | `.target` | 一组单元的集合（替代运行级别） |\n| Timer | `.timer` | 定时任务（替代 cron） |\n| Socket | `.socket` | 按需激活 |\n| Mount | `.mount` | 挂载点 |\n\n**Target 与旧运行级别的对应**：\n\n| 旧级别 | 新 Target |\n|---|---|\n| 3（多用户字符） | `multi-user.target` |\n| 5（图形） | `graphical.target` |\n| 0/6（关机/重启） | `poweroff.target` / `reboot.target` |\n\n## Unit 文件的关键段\n\n```ini\n[Unit]\nDescription=My App\nAfter=network.target          # 在谁之后启动（顺序）\nRequires=network.target       # 强依赖（它挂我也挂）\nWants=                     # 弱依赖（它挂我还活）\n\n[Service]\nType=simple                # simple | forking | oneshot | notify\nExecStart=/usr/local/bin/app\nExecReload=/bin/kill -HUP $MAINPID\nRestart=on-failure         # 自动重启策略\nRestartSec=5\nUser=app\nEnvironment=\"ENV=prod\"\nWorkingDirectory=/data\n\n[Install]\nWantedBy=multi-user.target  # 装到哪个 target（enable 用）\n```\n\n**`Type` 的选择是关键**：\n\n| Type | 含义 |\n|---|---|\n| `simple` | 启动后立即认为 ready（默认） |\n| `forking` | 进程后台化，systemd 等父进程退出 |\n| `notify` | 程序主动通知 ready（最精确） |\n| `oneshot` | 执行完就退出（不常驻） |\n\n## 常用命令\n\n```bash\nsystemctl start/stop/restart nginx\nsystemctl reload nginx              # 平滑重载\nsystemctl status nginx              # 状态 + 最近日志\nsystemctl enable/disable nginx      # 开机自启\nsystemctl list-units --failed       # 所有失败的单元\n```\n\n**`daemon-reload` 易忘**：改了 Unit 文件后必须 `systemctl daemon-reload`，否则不生效。\n\n## 排查启动失败（三步）\n\n```bash\n# 1. 看状态（会直接给出关键错误）\nsystemctl status app.service\n\n# 2. 看详细日志\njournalctl -u app.service -n 100 --no-pager\n\n# 3. 看退出码与信号\njournalctl -u app.service | grep -E 'code=|signal='\n```\n\n**常见错误提示对照**：\n\n| 提示 | 原因 |\n|---|---|\n| `status=203/EXEC` | `ExecStart` 路径错或无执行权限 |\n| `status=200/CHDIR` | `WorkingDirectory` 不存在 |\n| `status=217/USER` | `User` 不存在 |\n| `start request repeated too quickly` | 重启过于频繁，被 systemd 限流 |\n\n**最后一条很常见**：`Restart=always` + 程序反复崩溃 → systemd 会进入 failed 并停止重试（`start-limit`）。\n\n## Timer 替代 cron（进阶）\n\n```ini\n# app.timer\n[Timer]\nOnCalendar=daily\nPersistent=true          # 错过会补跑（cron 不会）\n```\n\n**`Persistent=true` 是 systemd timer 的关键优势**：关机期间错过的任务，开机后会补执行。",
+    "tags": [
+      "systemd",
+      "Unit",
+      "journalctl",
+      "Timer"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4144,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的文件系统是如何布局的？为什么通常把 /var、/tmp、/home 单独分区？",
+    "answer": "**按「用途与增长特征」分区，核心目的是「一个目录写满不拖垮整机」。**\n\n## 典型目录布局\n\n| 目录 | 内容 | 增长特征 |\n|---|---|---|\n| `/` | 根，系统文件 | 稳定 |\n| `/boot` | 内核与 initramfs | 极少变（升级时增长） |\n| `/usr` | 程序与库 | 稳定 |\n| `/var` | **日志、队列、缓存、数据库** | **会快速增长** |\n| `/tmp` | 临时文件 | 波动大、可能被塞满 |\n| `/home` | 用户数据 | 与用户行为相关 |\n| `/opt` | 第三方软件 | 稳定 |\n| `/data`（自定义） | 业务数据 | 按业务增长 |\n\n## 为什么要单独分区（核心原因）\n\n**1. 故障隔离**\n\n`/var/log` 被日志写满时，**只影响 `/var`，根分区仍可写**：系统还能登录、还能清理。\n\n> 如果全在一个分区，日志写满 → 根分区满 → **系统无法写任何文件，连 `rm` 都可能失败**（因为要写记录）。这是最经典的运维事故。\n\n**2. IO 隔离**\n\n日志刷盘、数据库随机 IO 相互干扰。分开后（尤其放不同物理盘）能避免「备份任务拖慢数据库」。\n\n**3. 便于扩容与迁移**\n\n`/var` 或 `/data` 单独 LVM/分区后，可以**独立扩容**，不用动根分区。\n\n**4. 备份策略不同**\n\n`/data` 要精细备份，`/tmp` 完全不用备份。分开后备份范围清晰。\n\n## 常见分区方案（生产参考）\n\n```\n/boot     1G\n/         50~100G（系统 + 程序）\n/var      50~200G（日志）\n/tmp      10G（或 tmpfs 放内存）\n/data     剩余全部（业务数据）\nswap      视场景（数据库常关）\n```\n\n## `/tmp` 的特殊做法\n\n可以用 **tmpfs**（内存文件系统）：\n\n```\ntmpfs /tmp tmpfs defaults,size=2G 0 0\n```\n\n**好处**：读写极快、重启自动清空。\n**风险**：**占内存**，且一旦写满会消耗内存导致 OOM。必须设 `size` 上限。\n\n## 一个高频追问：为什么 `/tmp` 目录权限是 `1777`\n\n```\ndrwxrwxrwt  ← 最后的 t 是 sticky 位\n```\n\n**sticky 保证「只有文件属主能删自己的文件」**。否则任何用户都能删别人的临时文件。\n\n## 排查命令\n\n```bash\ndf -h                # 各分区使用率\ndu -sh /* | sort -rh | head   # 哪个目录占最多\nfind / -xdev -size +1G       # 找大文件（-xdev 不跨分区）\n```",
+    "tags": [
+      "文件系统",
+      "分区",
+      "磁盘",
+      "根分区"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4145,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "磁盘空间显示还有剩余，但写入时报 No space left on device，可能是什么原因？",
+    "answer": "**四种可能：inode 耗尽、已删除但被占用的文件、保留块、挂载点问题。**\n\n## 原因一：inode 耗尽（最常见）\n\n**`df -h` 看的是块空间，`df -i` 才是 inode。**\n\n```bash\n$ df -i\nFilesystem      Inodes  IUsed   IFree IUse%\n/dev/sda1     2621440 2621440      0  100%   ← 满了！\n```\n\n**为什么**：每个文件占一个 inode，**大量小文件**（如几十万个日志/缓存/会话文件）会先耗尽 inode，而块空间还有富余。\n\n**排查**：\n\n```bash\n# 找出哪个目录文件最多\nfind / -xdev -type f | wc -l\nfor d in /*; do echo -n \"$d: \"; find $d -xdev -type f 2>/dev/null | wc -l; done\n```\n\n**解决**：删掉大量小文件（如缓存目录）、扩 inode（需重建文件系统）。\n\n## 原因二：文件已删除但被进程占用\n\n```bash\ndf -h                    # 显示 100%\nlsof | grep deleted      # 有进程还持有已删文件\n```\n\n**原理**：`rm` 只删除目录项，**只要有进程保持打开句柄，inode 和数据块就不会释放**。\n\n**解决**：\n\n```bash\n# 方法一：重启该进程（最干净）\nsystemctl restart nginx\n\n# 方法二：清空文件内容（不重启）\n: > /proc/<pid>/fd/<fd号>\n```\n\n**这是日志撑满的标准场景**：日志被 `rm` 了但进程还在写，空间一直不释放。\n\n## 原因三：文件系统保留块\n\n**ext 系列默认给 root 保留 5% 空间**（`df -h` 显示「已满」但 root 还能写）。\n\n```bash\n# 查看/调整\n tune2fs -l /dev/sda1 | grep 'Reserved block count'\ntune2fs -m 1 /dev/sda1        # 降到 1%（数据盘可设 0）\n```\n\n## 原因四：挂载点被覆盖\n\n```bash\ndf -h /data        # 显示已满\numount /data       # 卸载后\nls /data           # 发现下面原来还有一堆文件！\n```\n\n**原理**：挂载前该目录若有文件，挂载后被「遮住」，但这些文件仍占空间。\n\n## 排查顺序（记这个）\n\n```\n① df -h          → 块空间\ndf -i          → inode（先确认是哪个满）\n② lsof | grep deleted  → 是否有已删未释放\n③ du 找大目录\n④ 检查挂载点与保留块\n```\n\n## 一句总结\n\n**「No space」的第一个动作是 `df -i`** —— 很多人只查 `df -h`，看到有空余就陷入困惑。",
+    "tags": [
+      "磁盘满",
+      "inode",
+      "deleted",
+      "lsof"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4146,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中如何做权限提升与命令委托？sudo 的工作原理是什么？配置时要注意什么？",
+    "answer": "**sudo 靠「setuid 二进制 + 配置文件」让普通用户以他人身份执行命令。**\n\n## 工作原理\n\n```\n普通用户执行 sudo →\n  /usr/bin/sudo 有 SUID 位（属主 root）→ 以 root 身份运行\n  → 读取 /etc/sudoers 校验「该用户能否执行这条命令」\n  → 命令以目标用户（默认 root）身份执行\n  → 记录日志到 /var/log/secure 或 auth.log\n```\n\n**关键点：`sudo` 本身是 SUID 程序，提权靠的是它，而不是用户有 root 权限。**\n\n## 配置文件\n\n**永远用 `visudo` 编辑**（会做语法检查，避免写错导致所有人无法 sudo）。\n\n```bash\nvisudo                    # 编辑 /etc/sudoers\nvisudo -f /etc/sudoers.d/app   # 编辑独立片段（推荐）\n```\n\n**推荐放在 `/etc/sudoers.d/` 下**，便于按业务管理。\n\n## 规则格式\n\n```\n用户  主机=(可切换到的用户) 命令\n```\n\n示例：\n\n```conf\n# alice 可免密重启 nginx\nalice ALL=(root) NOPASSWD: /bin/systemctl restart nginx\n\n# 组 ops 可执行所有命令\nalice ALL=(ALL) ALL\n\n# 只允许查看日志\nbob ALL=(root) /usr/bin/tail /var/log/*\n```\n\n## 配置的三个关键注意点（这几条最实用）\n\n**1. 命令路径必须写全，且要防「绕过」**\n\n如果允许 `/usr/bin/vim`，用户就能用 `vim` 打开文件后 `:!bash` 提权 —— **等于给了 root shell**。\n\n> 原则：**只授权「无法被用来获得 shell」的命令**。允许编辑器/解释器/分页器（`less`、`find`、`tar`）几乎都等于给 root。\n\n**2. `NOPASSWD` 要谨慎**\n\n免密意味着只要拿到该账户登录会话就能直接用，失去了「二次验证」这层保护。\n\n**3. 通配符 `*` 不可靠**\n\n`/usr/bin/ls *` 里的 `*` 可被替换成 `;/bin/bash` 之类的参数。**能通过参数逃逸的命令，通配授权很危险**。\n\n## 常用命令\n\n```bash\nsudo -l              # 查看当前用户被授予了哪些\nsudo -u app command  # 以 app 用户执行\nsudo -i              # 切到 root 交互 shell\n```\n\n## 与 su 的区别\n\n| | sudo | su |\n|---|---|---|\n| 要谁的密码 | **自己的** | **目标的（root）** |\n| 粒度 | **按命令精细授权** | 全有或全无 |\n| 审计 | ✅ 有日志 | 差 |\n\n**所以生产要求「用 sudo 而非直接 su」。**\n\n## 一个高频追问\n\n「如何限制用户只能用某几条命令？」→ **用白名单 + 命令绝对路径 + 避免可逃逸的交互式程序**，并配合 `Defaults` 设置 `secure_path` 防止 PATH 劫持。",
+    "tags": [
+      "sudo",
+      "提权",
+      "sudoers",
+      "SUID"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4147,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的防火墙有哪些？iptables 和 firewalld 有什么区别？如何排查「防火墙挡住」的问题？",
+    "answer": "**三代：iptables（规则引擎）→ firewalld（管理前端）→ nftables（新一代引擎）。**\n\n## 三代的关系\n\n| | iptables | firewalld | nftables |\n|---|---|---|---|\n| 定位 | **规则工具**（底层是 netfilter） | **iptables 的管理前端** | **新一代内核框架** |\n| 配置方式 | 命令行直接写规则 | zone + service 概念 | `nft` 命令 |\n| 动态生效 | 需 reload（会断现有连接） | ✅ **不重载规则即可生效** | ✅ |\n| 默认系统 | CentOS 6 | **CentOS 7/8、RHEL** | Debian 10+/新系统 |\n\n**关键理解：firewalld 不是替代 iptables，而是「管理 iptables 规则的方式」**（新版本后端已切到 nftables）。\n\n## firewalld 的 zone 概念\n\n```bash\nfirewall-cmd --get-active-zones\nfirewall-cmd --zone=public --add-port=8080/tcp --permanent\nfirewall-cmd --reload\n```\n\n| Zone | 含义 |\n|---|---|\n| `public` | 默认，只允许指定服务 |\n| `trusted` | 全部放行 |\n| `drop` | 静默丢弃 |\n\n**`--permanent` 才算永久**，不加只在内存生效（重启就没了）。这是最常漏的一步。\n\n## iptables 的四表五链\n\n| 表 | 用途 |\n|---|---|\n| **filter** | 过滤（ACCEPT/DROP/REJECT） |\n| **nat** | 地址转换 |\n| mangle | 修改包头 |\n| raw | 连接跟踪前的处理 |\n\n链：`INPUT`（入本机）、`OUTPUT`、`FORWARD`（转发）、`PREROUTING`、`POSTROUTING`。\n\n**方向判断**：访问本机服务走 `INPUT`；本机转发流量走 `FORWARD`。\n\n## 排查「防火墙挡住」的完整流程\n\n```bash\n# 1. 先确认规则\nfirewall-cmd --list-all\niptables -L -n -v --line-numbers\n\n# 2. 看这条规则命中计数（关键技巧！）\niptables -L INPUT -n -v | grep 8080\n#   pkts 列的数值在涨 → 这条规则真的被命中了\n\n# 3. 临时插入一条日志规则（最强的定位手段）\niptables -I INPUT -p tcp --dport 8080 -j LOG --log-prefix \"TEST8080: \"\ndmesg | grep TEST8080     # 或 journalctl -k\n\n# 4. 确认是 DROP 还是 REJECT\niptables -A INPUT -p tcp --dport 8080 -j REJECT   # 会回 RST（客户端看到 refused）\niptables -A INPUT -p tcp --dport 8080 -j DROP     # 静默丢弃（客户端看到 timed out）\n```\n\n**「DROP 还是 REJECT」这个区分非常关键**：\n\n| 客户端现象 | 说明 |\n|---|---|\n| `Connection refused` | REJECT（收到 RST）→ 可能防火墙，也可能服务没起 |\n| `Connection timed out` | **DROP（无响应）→ 极可能是防火墙** |\n\n## 一个必须知道的坑\n\n**云服务器还有「安全组」**：即使本机 iptables 全放行，云平台的安全组仍会拦截。**排查时不要只看本机防火墙**。\n\n## 一个实用技巧\n\n**先清空再测，确认是防火墙问题**：\n\n```bash\niptables -I INPUT -p tcp --dport 8080 -j ACCEPT   # 在最前面插入放行\n# 如果立刻通了 → 确定是防火墙顺序/规则问题\n```\n\n说明原规则里有更前面的 DROP。**规则是自上而下顺序匹配的**，位置比内容更重要。",
+    "tags": [
+      "iptables",
+      "firewalld",
+      "防火墙",
+      "nftables"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4148,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中如何做系统安全加固？列出关键检查项。",
+    "answer": "**按「访问入口 → 账户权限 → 内核参数 → 审计监控」四层加固。**\n\n## 一、访问入口（最优先）\n\n| 项 | 做法 |\n|---|---|\n| **SSH 禁 root 直连** | `PermitRootLogin no` |\n| **改默认端口** | 降噪（防扫描），不是真安全措施 |\n| **禁密码登录，用密钥** | `PasswordAuthentication no` |\n| **限制来源 IP** | 安全组 + `AllowUsers` |\n| 关闭不用的服务 | `systemctl disable --now telnet.socket` |\n\n## 二、账户与权限\n\n| 项 | 检查 |\n|---|---|\n| 空口令账户 | `awk -F: '($2==\"\"){print $1}' /etc/shadow` |\n| UID 为 0 的非 root | `awk -F: '($3==0){print $1}' /etc/passwd` |\n| 过期账户 | 定期审计 |\n| sudo 授权 | `visudo` 检查是否过宽 |\n| 关键文件权限 | `/etc/passwd` 644、`/etc/shadow` 600 |\n\n**「UID 为 0 的非 root 账户」是隐蔽后门**，必须查。\n\n## 三、内核与网络加固\n\n```conf\n# /etc/sysctl.conf\nnet.ipv4.conf.all.rp_filter = 1          # 防 IP 欺骗\nnet.ipv4.tcp_syncookies = 1              # 防 SYN Flood\nnet.ipv4.conf.all.accept_redirects = 0   # 拒 ICMP 重定向\nnet.ipv4.icmp_echo_ignore_broadcasts = 1 # 忽略广播 ping\nkernel.randomize_va_space = 2            # ASLR 全开\n```\n\n## 四、审计与监控\n\n| 项 | 工具 |\n|---|---|\n| 命令审计 | `auditd`（记录谁执行了什么） |\n| 登录记录 | `/var/log/secure`、`last`、`lastb`（失败登录） |\n| 文件完整性 | `aide`、`tripwire` |\n| 漏洞扫描 | `lynis`（一键安全审计工具） |\n\n```bash\n# lynis 是很好的入门工具\nlynis audit system\n```\n\n## 五、补丁管理\n\n**这是最重要的一条，却常被忽略**：\n\n```bash\nyum update --security       # 只装安全补丁\nyum history                 # 审计已装补丁\n```\n\n**未打补丁是入侵最常见的入口**（如 Log4j、Struts2）。\n\n## 一个必须强调的观念\n\n**加固 ≠ 一劳永逸**。要配：\n\n1. **基线**：明确「应该是什么状态」（配置管理工具如 Ansible 保证一致性）\n2. **告警**：偏离基线时能发现（如新增 UID 0 账户）\n3. **定期复核**：季度跑一次基线检查\n\n## 一个高频追问\n\n「如何判断服务器被入侵？」\n\n| 迹象 | 命令 |\n|---|---|\n| 异常外联 | `ss -tnp` 看陌生 IP、`netstat` |\n| 异常进程 | `ps -ef`、CPU 持续高但无业务 |\n| 被替换的命令 | `rpm -V coreutils`（校验文件完整性） |\n| cron 被改 | 检查 `crontab -l` 与 `/etc/cron*` |\n| 新增账户 | 对比 `/etc/passwd` 基线 |\n| 历史被清 | `cat ~/.bash_history` 为空/异常 |\n\n**`rpm -V` 特别好用**：能发现系统二进制被替换（rookit 常见手段）。",
+    "tags": [
+      "安全加固",
+      "SSH",
+      "auditd",
+      "基线"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4149,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的 LVM 是什么？有什么优势？如何在线扩容？",
+    "answer": "**LVM 在物理盘与文件系统之间加了一层抽象，核心优势是「在线扩容与灵活管理」。**\n\n## 三层结构\n\n```\n物理卷 PV（Physical Volume）    ← 磁盘或分区\n   ↓\n卷组 VG（Volume Group）         ← 池子，把多个 PV 聚合\n   ↓\n逻辑卷 LV（Logical Volume）     ← 实际使用的「虚拟分区」\n```\n\n**关键价值：LV 的大小不再受物理盘限制** —— 可以从 VG 池里取，池子能随时加新盘。\n\n## 相比传统分区的优势\n\n| 能力 | 传统分区 | LVM |\n|---|---|---|\n| 扩容 | **难**（要相邻空间，常需停机） | ✅ **在线**（`lvextend` 即可） |\n| 跨多盘 | ❌ | ✅ 拼成一个池 |\n| 缩容 | 很难 | ext4 支持（xfs **不支持缩容**） |\n| 快照 | ❌ | ✅ LVM snapshot |\n| 迁移 | 需停机 | ✅ `pvmove` 在线迁移 |\n\n## 扩容标准流程（这是必会操作）\n\n```bash\n# ① 加新盘并创建 PV\npvcreate /dev/sdb\n\n# ② 加入现有 VG\nvgextend myvg /dev/sdb\n\n# ③ 扩容 LV（+10G 表示增加 10G，不是扩到 10G）\nlvextend -L +10G /dev/myvg/data\n\n# ④ 扩容文件系统（关键！必须做，否则 df 看不到增长）\n#   ext4:\nresize2fs /dev/myvg/data\n#   xfs（只能扩，用挂载点）：\nxfs_growfs /data\n```\n\n**第 ④ 步是最容易漏的**：LV 大了但文件系统没扩，`df` 依然显示原大小。\n\n## 查看命令\n\n```bash\npvs / vgs / lvs        # 三层各看一遍\npvdisplay / lvdisplay\ndf -h /data\n```\n\n## 三个关键注意点\n\n**1. XFS 不能缩容**\n\n`xfs_growfs` 只能扩。要缩容必须备份 → 重建 → 恢复。**选文件系统时要考虑这点。**\n\n**2. 快照需要预留空间**\n\n```bash\nlvcreate -L 5G -s -n snap /dev/myvg/data\n```\n\n快照空间被写满后会失效（`lvs` 显示 `%`）。**做备份时要估足够大小**。\n\n**3. `lvextend -L +10G` 与 `-L 10G` 完全不同**\n\n| 写法 | 含义 |\n|---|---|\n| `-L +10G` | **增加** 10G（推荐） |\n| `-L 10G` | **设为** 10G（可能变成缩小！） |\n\n**这个符号漏写会造成严重误操作。**\n\n## 一个高频追问\n\n「LVM 会不会影响性能？」→ **影响很小**（靠内核 device-mapper，是块设备映射，不涉及数据拷贝）。但如果 LV 跨多个物理盘做条带（`lvcreate -i`），性能取决于盘数。",
+    "tags": [
+      "LVM",
+      "扩容",
+      "xfs_growfs",
+      "卷组"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4150,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的三剑客 grep、sed、awk 各适合什么场景？举出运维中常用的组合用法。",
+    "answer": "**grep 找行、sed 改行、awk 取字段算统计。**\n\n## 三者定位\n\n| 工具 | 擅长 | 不适合 |\n|---|---|---|\n| **grep** | **按模式筛选行** | 复杂处理 |\n| **sed** | **按行做替换/删除/插入**（流式编辑） | 多字段计算 |\n| **awk** | **按列处理 + 计算 + 统计** | 纯文本替换 |\n\n**一句话记忆**：**grep 是「筛」，sed 是「改」，awk 是「算」。**\n\n## 运维高频用法\n\n### grep\n\n```bash\ngrep -v '^#' file              # 排除注释行\ngrep -c 'ERROR' app.log        # 计数\ngrep -A 5 -B 5 'Exception' log # 上下文 5 行（排错必备）\ngrep -r 'keyword' /etc         # 递归搜索\ngrep -E 'error|fail' log       # 扩展正则\n```\n\n### sed\n\n```bash\nsed -i 's/old/new/g' file              # 全局替换（-i 直接改文件）\nsed -i '/^#PermitRootLogin/c\\PermitRootLogin no' sshd_config   # 整行替换\nsed -n '100,200p' file                 # 打印指定行（-n 不自动输出）\nsed -i '3d' file                       # 删第 3 行\nsed -i '/pattern/d' file               # 删匹配行\n```\n\n**`-i` 建议先备份**：`sed -i.bak 's/a/b/g' file`。\n\n### awk\n\n```bash\nawk '{print $1, $9}' access.log        # 取第 1、9 列\nawk -F: '{print $1}' /etc/passwd       # 指定分隔符\nawk '{sum+=$10} END {print sum}' log   # 求和（统计流量）\nawk '$9>=400 {print}' access.log       # 条件过滤\n```\n\n## 经典组合（这几个最实用）\n\n**1. 统计访问日志 Top 10 IP**\n\n```bash\nawk '{print $1}' access.log | sort | uniq -c | sort -rn | head -10\n```\n\n**2. 统计 HTTP 状态码分布**\n\n```bash\nawk '{print $9}' access.log | sort | uniq -c | sort -rn\n```\n\n**3. 找最耗时的请求**\n\n```bash\nawk '{print $NF, $7}' access.log | sort -rn | head -5\n```\n\n**4. 统计某接口平均耗时**\n\n```bash\nawk '$7 ~ /\\/api\\/user/ {sum+=$NF; n++} END {printf \"%.3f\\n\", sum/n}' access.log\n```\n\n**5. 批量替换配置文件**\n\n```bash\ngrep -rl 'old.com' /etc/nginx | xargs sed -i 's/old.com/new.com/g'\n```\n\n## 一个进阶要点\n\n**大文件优先用 awk 一遍遍历**，避免 `grep | grep | grep` 的多次管道 —— 后者每层都要重新读文件。\n\n## 一个常见坑\n\n**`sort | uniq -c` 顺序不能反**：`uniq` 只能合并**相邻**重复行，必须先 `sort`。\n\n反过来写 `uniq -c | sort` 会得到错误结果 —— 这是新手最常犯错误之一。",
+    "tags": [
+      "grep",
+      "sed",
+      "awk",
+      "文本处理"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4151,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中如何排查 CPU 使用率高的问题？用户态和内核态高分别意味着什么？",
+    "answer": "**先分「用户态高」还是「内核态高」，两者根因完全不同。**\n\n## 第一步：区分方向\n\n```bash\ntop            # 看 %us 与 %sy\nmpstat -P ALL 1  # 看是否单核打满（多核不均匀是重要线索）\n```\n\n| 指标 | 含义 | 方向 |\n|---|---|---|\n| **%us**（用户态） | 应用代码在跑 | 死循环、正则回溯、GC、计算密集 |\n| **%sy**（内核态） | 内核在跑 | **系统调用过多**、锁竞争、网络/磁盘 IO |\n| %wa | 等 IO | 不是 CPU 问题 |\n| **%st**（steal） | 被宿主机抢占 | **虚拟机超卖**，找运维/云商 |\n\n## 第二步：定位进程与线程\n\n```bash\n# 进程级\ntop -o %CPU\nps -eo pid,ppid,pcpu,cmd --sort=-pcpu | head\n\n# 线程级（关键！Java/多线程程序必须看）\ntop -H -p <pid>\nps -eLf | grep <pid>\n```\n\n**为什么要看线程**：一个进程 CPU 高，实际可能是其中**某一个线程**在死循环，其余线程都闲着。\n\n## 第三步：分语言深入\n\n**Java**：\n\n```bash\ntop -H -p <pid>              # 找到高 CPU 的线程 id（十进制）\nprintf '%x\\n' <线程id>       # 转成十六进制\njstack <pid> | grep -A 20 <十六进制id>   # 找到对应堆栈\n```\n\n**C/C++/Go**：\n\n```bash\nperf top -p <pid>            # 实时热点函数\nperf record -g -p <pid>      # 采样后生成火焰图\n```\n\n## 第三步补充：用户态高的五种常见根因\n\n| 根因 | 特征 | 怎么确认 |\n|---|---|---|\n| **死循环** | 单核 100% 且不波动 | perf 显示同一函数 |\n| **正则回溯** | 处理特定输入时骤升 | 检查近期新增的正则（尤其嵌套量词） |\n| **GC 频繁** | 周期性锯齿 | `jstat -gcutil` |\n| 计算密集（无缓存） | 稳定高 | 压测验证 |\n| 频繁序列化/反序列化 | 高且与流量相关 | 火焰图看 JSON/序列化函数 |\n\n## 内核态高的三种根因\n\n| 根因 | 特征 | 怎么确认 |\n|---|---|---|\n| **系统调用过多** | sys 高，进程上下文切换多 | `vmstat` 看 cs 列、`strace -c` |\n| **锁竞争** | sys 高、吞吐低、线程多 | `perf` 看 spinlock、Java 看 `safepoint` |\n| **网络处理重**（大量小包） | sys 高且与流量相关 | `sar -n DEV` 看 PPS |\n\n**`strace -c -p <pid>` 统计系统调用分布**，能快速看出是不是 syscall 过多（如频繁 `read` 小文件）。\n\n## 一个易被忽略的方向\n\n**「CPU 高但服务正常」可能是正常现象** —— 要先确认「是不是真的有问题」，结合延迟/吞吐看。空转的定时任务、忙轮询也可能长期高 CPU。\n\n## 一个高频追问\n\n「4 核机器，一个进程显示 400% CPU，是什么情况？」\n\n**top 的 CPU% 是按单核 100% 累加的**，400% = 用满了 4 个核。要看是否达到 `核数 × 100%`，不能只看 100%。",
+    "tags": [
+      "CPU",
+      "性能",
+      "jstack",
+      "perf"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4152,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中进程之间有哪些通信方式？各自适用什么场景？",
+    "answer": "**六种主流 IPC：管道、消息队列、共享内存、信号、信号量、Socket。**\n\n| 方式 | 特点 | 场景 |\n|---|---|---|\n| **匿名管道（pipe）** | 单向、只能父子/兄弟进程 | `ps aux \\| grep` |\n| **命名管道（FIFO）** | 单向、有文件名、任意进程 | 简单进程间传数据 |\n| **消息队列** | 按消息边界、可多对多 | 解耦（但现在多用 MQ 中间件） |\n| **共享内存** | **最快**（无需拷贝） | 大数据量、高性能（配合信号量做同步） |\n| **信号（signal）** | 单一通知、不能传数据 | `kill -9`、`reload` |\n| **信号量** | 计数器，用于同步互斥 | 配合共享内存 |\n| **Socket** | **可跨主机** | 网络通信、跨进程服务 |\n\n## 逐个要点\n\n**1. 管道**\n\n```bash\nls | grep xxx          # 匿名管道，shell 帮你建\nmkfifo /tmp/myfifo     # 命名管道\n```\n\n**容量有限（通常 64KB）**，写满会阻塞。\n\n**2. 共享内存（最快的原因）**\n\n普通 IPC 要「内核拷贝两次」（写进内核、读出来），共享内存**直接把同一块物理内存映射到两个进程**，零拷贝。\n\n```bash\nipcs -m        # 查看共享内存\n```\n\n**必须配信号量或锁做同步**，否则读写竞争会导致数据错乱。\n\n**3. 信号（最常用但也最受限）**\n\n```bash\nkill -HUP <pid>    # 平滑重载（Nginx reload 就用它）\nkill -9 <pid>      # 强杀（无法被捕获）\nkill -15 <pid>     # 优雅终止（可被捕获处理）\n```\n\n**`SIGKILL(9)` 与 `SIGTERM(15)` 的区别是必考点**：9 不能被捕获，进程无法做清理；15 可以捕获，让程序优雅退出。\n\n**4. Socket（唯一可跨主机的）**\n\n| 类型 | 说明 |\n|---|---|\n| Unix Domain Socket | 同一主机，性能比 TCP 好（不走协议栈） |\n| TCP/UDP Socket | 可跨主机 |\n\n**Nginx 与后端用 `unix:/tmp/backend.sock` 比 `127.0.0.1:8080` 更快** —— 省去协议栈开销。\n\n## 选择逻辑\n\n| 需求 | 选 |\n|---|---|\n| 父子进程简单传数据 | 管道 |\n| 大数据量高速 | **共享内存 + 信号量** |\n| 通知（重载/退出） | 信号 |\n| 跨主机 | Socket |\n| 解耦、异步 | 消息队列中间件（RabbitMQ/Kafka） |\n\n## 一个高频追问\n\n「为什么共享内存最快，但实际项目很少直接用？」\n\n因为**同步复杂**（要自己做锁、处理竞争、防越界），而 Socket 虽然慢一点，但接口成熟、可跨主机、有现成框架。**除非性能真的是瓶颈，一般不会为它增加复杂度。**\n\n## 一个实操建议\n\n**排查 IPC 泄漏**：\n\n```bash\nipcs -m    # 共享内存残留\nipcs -q    # 消息队列残留\n```\n\n程序异常退出没清理的 IPC 对象会一直占着资源（尤其共享内存会占实际内存），**是长期运行机器的隐蔽泄漏源**。",
+    "tags": [
+      "IPC",
+      "共享内存",
+      "信号",
+      "Socket"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4153,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的内核参数调优有哪些常见项？sysctl 怎么用？哪些参数最常被调？",
+    "answer": "**调优按四类：网络、文件句柄、内存、连接跟踪。**\n\n## 使用方式\n\n```bash\n# 临时（重启失效）\nsysctl -w net.core.somaxconn=65535\n\n# 永久（写配置文件）\nvi /etc/sysctl.conf        # 或 /etc/sysctl.d/*.conf\nsysctl -p                  # 加载\nsysctl -a                  # 查看所有\n```\n\n## 一、文件句柄（最先要调的）\n\n```conf\nfs.file-max = 655350                # 系统级上限\nfs.nr_open = 655350\n```\n\n**注意：`sysctl` 只是系统上限，进程还要 `ulimit -n` 才生效** —— 两者都要改，这是最经典的漏配。\n\n```bash\nulimit -n 65535                     # 当前 shell\n# systemd 服务要在 unit 里设 LimitNOFILE\n```\n\n## 二、网络（调优重点）\n\n```conf\n# 连接队列\nnet.core.somaxconn = 65535          # accept 队列上限\nnet.ipv4.tcp_max_syn_backlog = 65535 # 半连接队列\nnet.core.netdev_max_backlog = 65535  # 网卡收包队列\n\n# 端口与 TIME_WAIT\nnet.ipv4.ip_local_port_range = 1024 65000   # 可用端口范围\nnet.ipv4.tcp_tw_reuse = 1                    # 复用 TIME_WAIT（服务端效果有限）\nnet.ipv4.tcp_fin_timeout = 30                # FIN 等待时间\n\n# 防攻击\nnet.ipv4.tcp_syncookies = 1                  # SYN Flood 防护\n\n# 缓冲区\nnet.ipv4.tcp_rmem = 4096 87380 6291456\nnet.ipv4.tcp_wmem = 4096 16384 4194304\n```\n\n**`ip_local_port_range` 是代理型服务的关键**：Nginx 代理时每连后端占一个本地端口，默认范围只有 2.8 万个，高并发会耗尽（报 `Cannot assign requested address`）。\n\n## 三、连接跟踪（防火墙相关）\n\n```conf\nnet.netfilter.nf_conntrack_max = 1048576\nnet.netfilter.nf_conntrack_tcp_timeout_established = 3600\n```\n\n**`nf_conntrack: table full, dropping packet` 是非常常见的事故**：开了 iptables 后每个连接都要记一条，默认上限往往只有几万。\n\n## 四、内存\n\n```conf\nvm.swappiness = 10                  # 降低 swap 使用倾向\nvm.overcommit_memory = 0            # 或 1（Redis 官方建议 1）\nvm.dirty_ratio = 10\nvm.dirty_background_ratio = 5\n```\n\n**Redis 必须设 `overcommit_memory=1`**：否则后台 bgsave fork 时可能因内存预留失败而失败。\n\n## 三条重要提醒\n\n**1. 每一层都要配套改**\n\n网络：`somaxconn`（内核）+ `listen(backlog)`（应用）\n句柄：`file-max`（系统）+ `ulimit`（进程）\n\n**只改一半等于没改**，这是最常见的调优失效原因。\n\n**2. 调参数要有基线**\n\n先压测拿数据，再调，再验证。**盲目照搬网上的参数往往无收益甚至变慢**。\n\n**3. 记录与回滚**\n\n用配置管理工具落地（Ansible），避免「这台机器调过、那台没调」的不一致 —— 这种不一致是最难排查的问题。\n\n## 一个高频追问\n\n「为什么调了 sysctl 没效果？」→ 检查三件事：`sysctl -p` 是否加载、应用层是否配套、**是否只是老连接不生效**（网络参数对已建立的连接通常无效，要重启连接或重启进程）。",
+    "tags": [
+      "sysctl",
+      "内核调优",
+      "somaxconn",
+      "conntrack"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4154,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的软中断（softirq）和硬中断有什么区别？系统负载高但 CPU 不高可能是什么原因？",
+    "answer": "**硬中断是硬件立即响应，软中断是内核延后处理的「下半部」；高负载低 CPU 常见于 IO/网络瓶颈。**\n\n## 中断的两半\n\n| | 硬中断（hardirq） | 软中断（softirq） |\n|---|---|---|\n| 触发 | **硬件产生** | 内核在硬中断后调起 |\n| 时机 | **立即执行**（打断一切） | **延后执行**（可被打断） |\n| 时长 | 极短（只做最必要的） | 较长（可做实际处理） |\n| 场景 | 网卡收到包、磁盘完成 | 网络协议栈处理、块设备处理 |\n\n**为什么分成两半**：硬中断期间不能被打断，时间过长会让系统响应变差，所以「紧急的部分」在硬中断里做，「耗时的部分」推迟到软中断。\n\n## 常见软中断类型\n\n```\nNET_RX_SOFTIRQ   → 网络收包（最常见的软中断压力源）\nNET_TX_SOFTIRQ   → 网络发包\nBLOCK_SOFTIRQ    → 块设备处理\nTASKLET_SOFTIRQ\n```\n\n## 排查软中断\n\n```bash\ncat /proc/softirqs          # 各 CPU 的软中断计数\nmpstat -P ALL 1             # %soft 列\n\n# 看中断分布\ncat /proc/interrupts\n\n# 详细看软中断\ncat /proc/net/softnet_stat   # 第二列是 drop，非 0 说明丢包\n```\n\n**关键观察点**：\n\n| 现象 | 含义 |\n|---|---|\n| 某个 CPU 的 NET_RX 特别高 | 单队列网卡，网卡中断全落在一个核 |\n| `%soft` 高 | 网络/存储压力大 |\n| `softnet_stat` 第二列非 0 | **软中断丢包**（traffic 太快处理不过来） |\n\n**「单核软中断打满」的经典解法**：开 **RPS/RSS**（多队列网卡 + 中断亲和性分散）。\n\n## 负载高但 CPU 不高的四种原因\n\n| 原因 | 特征 | 确认方法 |\n|---|---|---|\n| **IO 等待**（D 状态） | load 高、%wa 高、CPU 闲 | `ps -eo state,pid,cmd \\| awk '$1==\"D\"'` |\n| **NFS/存储卡住** | 大量 D 状态、`df` 都可能卡 | `mount \\| grep nfs`、`strace` 挂住的进程 |\n| **内存不足导致换页** | si/so 非 0 | `vmstat 1` |\n| **锁竞争** | 线程多但吞吐低 | `perf` 看 lock、应用层监控 |\n\n**load average 包含 D 状态进程**，这是理解「高负载低 CPU」的关键 —— 它在排队等 IO，而不是在算。\n\n## 一个高频追问\n\n「`%st`（steal）高说明什么？」\n\n虚拟机被宿主机抢占的时间。**持续高于 5% 说明宿主机超卖严重**，要找云厂商或运维换宿主机 —— 这不是客户机能解决的。\n\n## 一个实用判断\n\n**如果一台机器 CPU 静但负载高**，先跑这一条：\n\n```bash\nps -eo state,pid,ppid,wchan,cmd | awk '$1 ~ /D/'\n```\n\n**`wchan` 列能看到进程卡在哪个内核函数**（如 `nfs_wait`），直接指向根因。",
+    "tags": [
+      "软中断",
+      "硬中断",
+      "负载",
+      "D状态"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4155,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中如何排查内存泄漏？有哪些工具和方法？",
+    "answer": "**核心逻辑：持续采样对比，看谁的 RSS 只涨不降。**\n\n## 第一步：确认是「真的泄漏」\n\n**泄漏的特征**：内存**持续单调增长**，不随流量回落。\n\n| 现象 | 是否泄漏 |\n|---|---|\n| 内存高但稳定（流量高峰后回落） | ❌ 正常缓存 |\n| **内存阶梯式上升，不回落** | ✅ 疑似泄漏 |\n| buff/cache 高、available 充足 | ❌ 正常 |\n\n```bash\n# 关键：看 available，不是 free\nfree -h\n\n# 持续观察趋势\nvmstat 1 10\n```\n\n## 第二步：定位到进程\n\n```bash\ntop -o %MEM\nps -eo pid,rss,pmem,cmd --sort=-rss | head -10\n```\n\n**盯 `RSS`（实际物理内存占用）**，不是 `VIRT`（虚拟内存，包含未分配的地址空间）。\n\n## 第三步：进程内定位\n\n**分语言**：\n\n| 语言 | 工具 |\n|---|---|\n| **Java** | `jmap -histo <pid>`、`jmap -dump:live,format=b,file=x.hprof <pid>`，再用 MAT 分析 |\n| **C/C++** | `valgrind --leak-check`、`heaptrack` |\n| **Go** | `pprof`（`go tool pprof http://ip:port/debug/pprof/heap`） |\n| **Python** | `tracemalloc`、`objgraph` |\n| 通用 | **`pmap -x <pid>`** 看内存段分布 |\n\n**`pmap -x <pid>`** 能区分：\n- `anon`（堆上分配，泄漏常在这）\n- 共享库、栈、映射文件\n\n## 第四步：常见泄漏类型（最实用的一段）\n\n| 类型 | 说明 | 看哪里 |\n|---|---|---|\n| **堆内存泄漏** | 对象被引用未释放 | jmap -histo 增长 |\n| **堆外内存泄漏** | DirectByteBuffer、NIO、JNI | pmap 的 anon 增长但堆正常 |\n| **线程泄漏** | 线程创建后不销毁 | `jstack` 线程数持续增加 |\n| **连接泄漏** | 连接不关闭 | `ss -s` 连接数增长 |\n| **缓存无上限** | 本地缓存不限制大小 | 代码里 Map 无上限 |\n\n**「堆正常但 RSS 涨」是经典难题** —— 一定是堆外（DirectMemory、Metaspace 或 JNI）。\n\n## 一个必杀技：多次 dump 对比\n\n```bash\n# 间隔 30 分钟 dump 两次\njmap -dump:live,format=b,file=/tmp/1.hprof <pid>\njmap -dump:live,format=b,file=/tmp/2.hprof <pid>\n```\n\n用 MAT 对比两次 dump 的**对象新增数量** —— 只涨不降的对象就是泄漏源。\n\n**这是定位 Java 泄漏最可靠的方法。**\n\n## 几个注意点\n\n1. **`jmap -dump` 会 STW（暂停应用）**，大堆可能停顿数秒，生产要低峰操作\n2. **`live` 参数会先触发 Full GC**，正因如此能过滤掉可回收对象\n3. 探针类指标要看 **RSS 而非容器内存使用率**（后者含 cache，容易误判）\n\n## 一个高频追问\n\n「容器内存一直涨，但 OOM 才被杀，怎么查？」\n\n先确认是否真泄漏（看是否随流量回落），再在容器内 `pmap`/`jmap`（需容器内有工具，或用 `kubectl exec`），或用 **`kubectl top pod`** 结合 business 指标看趋势。",
+    "tags": [
+      "内存泄漏",
+      "jmap",
+      "pmap",
+      "RSS"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4156,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中如何做远程批量执行与配置管理？Ansible 的工作原理和优势是什么？",
+    "answer": "**Ansible 用「SSH + 被控端无需安装 agent」实现批量执行，幂等是其核心优势。**\n\n## 工作原理\n\n```\n控制机（Ansible）→ 读取 inventory（主机清单）\n  → 生成临时 Python 脚本 → 通过 SSH 推到被控机执行\n  → 收集返回结果 → 汇总\n```\n\n**被控端只需要有 Python 和 SSH**，不需要常驻 agent（agentless）。\n\n## 与其他工具对比\n\n| | Ansible | SaltStack | Puppet | Shell 脚本 |\n|---|---|---|---|---|\n| 被控端 agent | **无需** | 需要 | 需要 | 无需 |\n| 入门门槛 | **低**（YAML） | 中 | 较高 | 低 |\n| 幂等性 | ✅ | ✅ | ✅ | ❌ **需自己实现** |\n| 性能（大规模） | 较慢（SSH 串行） | **快**（消息队列） | 中 | 快 |\n\n## 幂等性为什么关键（这是最重要的概念）\n\n**幂等 = 执行一次和执行多次结果相同。**\n\n```yaml\n# 幂等：已装则不装，不会报错\n- name: 安装 nginx\n  yum: name=nginx state=present\n```\n\n对比 shell：\n\n```bash\nyum install -y nginx     # 第二次执行也会跑一遍（慢，且可能报错）\n```\n\n**价值**：可以**随时重跑**来做状态收敛，不用关心「当前是什么状态」。这是配置管理相对脚本的根本优势。\n\n## 核心概念\n\n| 概念 | 作用 |\n|---|---|\n| **inventory** | 主机清单（`hosts` 文件，可分组） |\n| **module** | 内置功能单元（yum、copy、template、service） |\n| **task** | 一条执行单元 |\n| **playbook** | 一组 task 的编排（YAML） |\n| **role** | 可复用的组织单元（目录结构约定） |\n\n## 常用命令\n\n```bash\n# 临时批量执行（不用写 playbook）\nansible all -i hosts -m shell -a 'uptime'\nansible web -m ping\n\n# 跑 playbook\nansible-playbook -i hosts site.yml --check    # --check 试运行（强烈建议）\nansible-playbook -i hosts site.yml -t nginx   # 只跑指定 tag\n```\n\n**`--check` 是 dry-run**，能先看会改什么。**生产要养成先 check 的习惯。**\n\n## 一个 playbook 示例\n\n```yaml\n- hosts: web\n  become: yes                    # 提权（相当于 sudo）\n  tasks:\n    - name: 安装 nginx\n      yum: name=nginx state=present\n    - name: 推送配置\n      template: src=nginx.conf.j2 dest=/etc/nginx/nginx.conf\n      notify: reload nginx        # 配置变了才 reload（关键）\n  handlers:\n    - name: reload nginx\n      service: name=nginx state=reloaded\n```\n\n**`notify` + `handler` 是精髓**：只有配置真的变了才触发重启/重载，避免每次都无谓重启。\n\n## 三个实践要点\n\n1. **大集群用 `serial` 分批**（避免一次全改导致全挂）\n2. 敏感信息用 **vault** 加密\n3. 用 **tag** 拆分执行范围，便于局部修复\n\n## 一个高频追问\n\n「Ansible 慢怎么办？」\n\n- 开 **pipelining**（减少 SSH 传输）\n- 用 `forks` 提高并发\n- 大规模场景可考虑 **SaltStack**（走消息队列，快得多）",
+    "tags": [
+      "Ansible",
+      "幂等",
+      "批量执行",
+      "playbook"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4157,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "什么是「三剑客之外」的进阶排查手段？比如如何排查一个进程卡住不动（卡死）？",
+    "answer": "**进程卡死的排查四步：看状态 → 看堆栈 → 看系统调用 → 看等待点。**\n\n## 第一步：确认卡在哪一层\n\n```bash\nps -eo pid,stat,wchan:30,cmd | grep <pid>\n```\n\n**`wchan` 是关键字段** —— 它显示进程正卡在哪个内核函数里：\n\n| wchan | 含义 |\n|---|---|\n| `futex_wait` | 在等锁（最常见） |\n| `nfs_...` | 卡在 NFS |\n| `wait_for_completion` | 等 IO 完成 |\n| `0` | 在用户态，不是内核卡住 |\n\n## 第二步：看调用堆栈\n\n| 语言 | 命令 |\n|---|---|\n| Java | **`jstack <pid>`**（多打几次对比，看是否停在同一处） |\n| C/C++ | `gdb -p <pid>` 然后 `bt` / `pstack <pid>` |\n| Go | `kill -QUIT <pid>`（会打印全部 goroutine 堆栈） |\n| 通用 | `cat /proc/<pid>/stack`（内核态堆栈） |\n\n**「连打三次 jstack 看是否停在同一个位置」**是判断死锁/卡死的关键技巧 —— 如果三次都停在同一个函数，就是真的卡住了。\n\n## 第三步：看它在哪里等\n\n```bash\n# 内核态堆栈\ncat /proc/<pid>/stack\n\n# 它在等什么文件锁 / 网络\nlsof -p <pid>\n\n# 所有线程\nls /proc/<pid>/task/\n```\n\n## 第四步：常见卡死原因\n\n| 原因 | 特征 | 处理 |\n|---|---|---|\n| **死锁** | 多个线程互相等锁 | jstack 找 `deadlock` 关键字 |\n| **D 状态（IO 卡住）** | `stat` 是 D，`kill -9` 无效 | 找 IO 源（NFS/磁盘） |\n| **锁等待超长** | futex_wait | 找持锁的线程 |\n| **无限重试** | CPU 高但无进展 | 看网络/DB 连接是否全失败 |\n| **Full GC 卡住** | Java 特有 | `jstat -gcutil`、看 GC 日志 |\n\n## 一个必杀技巧：看它在干什么系统调用\n\n```bash\nstrace -p <pid> -f      # 实时看它在调什么\n```\n\n**如果输出停在某一行不动**，那就是卡住的位置（如卡在 `read()` 等一个永远不来的数据）。\n\n**注意 `strace` 开销大**，只用于排查，不要长期挂。\n\n## 一个经典场景：Java 进程「假死」\n\n现象：进程还在、端口在、但不响应请求、CPU 不高。\n\n**大概率是**：\n1. 线程池被耗尽（全在等某个慢操作）\n2. **Full GC 长时间 STW**（看 `jstat`，老年代反复满）\n3. 死锁\n\n```bash\njstat -gcutil <pid> 1000    # 看 GC 频率与耗时\njstack <pid> | grep -B2 -A20 'BLOCKED\\|deadlock'\n```\n\n## 一个高频追问\n\n「`kill -9` 杀不掉进程怎么办？」\n\n**只有 D 状态杀不掉**（信号无法送达用户态）。此时只能：\n- 等 IO 超时（可能几分钟到永久）\n- 解决底层问题（如 umount 卡住的 NFS）\n- **重启机器**（最后手段）\n\n**这是运维里的经典难题**，根因通常是 NFS/存储层，不是 Linux 本身。",
+    "tags": [
+      "卡死",
+      "jstack",
+      "wchan",
+      "D状态"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 4158,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 中如何做内核升级与打补丁？升级前要考虑什么？",
+    "answer": "**内核升级影响面极大：要评估兼容性、准备回滚、安排窗口。**\n\n## 为什么升级内核\n\n| 原因 | 说明 |\n|---|---|\n| **安全漏洞**（最重要） | 提权漏洞、远程代码执行（如 Dirty COW、Dirty Pipe） |\n| 硬件支持 | 新网卡/新 CPU 特性 | 性能改进 |\n| 新特性 | eBPF、新文件系统 |\n\n## 升级方式\n\n**1. 包管理器升级（推荐）**\n\n```bash\n# CentOS/RHEL\nyum update kernel\n\n# Ubuntu\napt install --install-recommends linux-generic\n```\n\n**重要：内核升级后需要重启才生效**，且**旧内核默认保留**（`/boot` 里会有多个版本），这就是回滚的路径。\n\n**2. 编译安装（少用）**\n\n只有需要定制（裁剪模块、特定补丁）时才做。风险在于与发行版的模块/驱动不兼容。\n\n## 升级前的五件必查\n\n| 项 | 怎么做 |\n|---|---|\n| **`/boot` 空间够吗** | `df -h /boot`，要能容纳新内核 + initramfs |\n| **是否有闭源驱动** | 如 NVIDIA 驱动需重新编译（可能直接起不来） |\n| **业务是否依赖内核特性** | 如特定文件系统、eBPF 工具 |\n| **回滚路径是否可用** | **旧内核条目还在不在 GRUB 里** |\n| **是否有冗余节点** | 集群要先在非关键节点验证 |\n\n**`/boot` 空间不足导致更新失败是最常见的事故**，因为要写新的 vmlinuz + initramfs。\n\n## 升级后的验证\n\n```bash\nuname -r                    # 确认新版本生效\nrpm -qa | grep kernel       # 看已装版本\ndmesg -T | grep -i 'error\\|warn'  # 驱动是否加载正常\n```\n\n**要重点验证**：网络、存储、监控 agent、业务是否正常 —— 内核升级最常影响的是驱动层（网卡、RAID 卡）。\n\n## 回滚方法\n\n**开机时在 GRUB 菜单选旧内核**（临时）。\n\n**永久回滚**：\n\n```bash\n# 改默认启动内核\ngrubby --list\ngrubby --set-default /boot/vmlinuz-<旧版本>\ngrub2-mkconfig -o /boot/grub2/grub.cfg\n```\n\n**注意：一定要在升级前确认旧内核仍在 GRUB 里**，否则无从回滚。\n\n## 一个常被忽略的细节\n\n**内核升级 + 重启，与「重启」本身的窗口要分开考虑**：重启带来的业务中断时间，往往大于内核安装时间。要做：\n\n- 先在备机/灰度节点验证\n- 准备负载均衡摘流\n- 确认重启后服务能自动拉起（`systemctl enable`）\n\n## 一个高频追问\n\n「能不重启就生效吗？」\n\n可以但复杂：**`kpatch`/`livepatch`**（内核热补丁）能在不重启的情况下修补部分函数。**限制很多**（只支持特定类型补丁），绝大多数情况仍要重启。",
+    "tags": [
+      "内核升级",
+      "补丁",
+      "回滚",
+      "GRUB"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4159,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "Linux 的时间是如何管理的？UTC、CST、NTP、时间同步异常会造成什么后果？",
+    "answer": "**系统有两套时间（系统时钟 + 硬件时钟），集群必须靠 NTP 对齐，否则分布式系统会出诡异故障。**\n\n## 两套时钟\n\n| | 系统时钟（System Clock） | 硬件时钟（RTC / CMOS） |\n|---|---|---|\n| 谁维护 | 内核 | 主板电池 |\n| 是否受 NTP | ✅ 会被校准 | 需显式同步 |\n| 查看 | `date` | `hwclock --show` |\n| 启动时 | 从 RTC 读入 | —— |\n\n```bash\nhwclock --systohc   # 把系统时间写入 RTC\nhwclock --hctosys   # 把 RTC 时间读入系统\n```\n\n## 时区与 UTC\n\n```bash\ntimedatectl                          # 现代方式（推荐）\ntimedatectl set-timezone Asia/Shanghai\nls -l /etc/localtime                 # 指向哪个时区文件\n```\n\n**最佳实践：服务器统一用 UTC，只在展示层转本地时区。**\n\n- 日志跨时区排查时，UTC 最不容易混乱\n- 数据库存 UTC 避免夏令时问题\n\n**CST 有歧义**（可指 China Standard Time 或 Central Standard Time），运维沟通中**建议直接写 UTC+8**。\n\n## NTP 同步\n\n```bash\nntpq -p                 # 查看上游服务器状态（* 表示当前使用的）\nchronyc sources         # chrony（新系统推荐）\n```\n\n配置（chrony）：\n\n```conf\nserver ntp1.aliyun.com iburst\nserver ntp2.aliyun.com iburst\n```\n\n**`iburst` 让首次同步更快**（连发多个包，而不是慢慢等）。\n\n## 时间不同步的后果（这部分最有价值）\n\n| 组件 | 后果 |\n|---|---|\n| **Kerberos 认证** | 偏差超 5 分钟**直接认证失败** |\n| **集群（K8s/Pacemaker）** | 选主、心跳判断异常 |\n| **证书校验** | 证书被判定「未生效/已过期」 |\n| **分布式事务** | 时间戳排序错乱 |\n| **日志排查** | 跨机日志时序混乱，无法对齐 |\n| **TOTP/双因素认证** | 验证码失效 |\n| 数据库主从 | 时间戳字段错乱 |\n\n**最典型的是「证书突然报过期」**：实际是服务器时间被跳到了半年后。\n\n## 两个必须注意的操作风险\n\n**1. 时间「向后跳」会冻结定时器**\n\n系统时间往回调整时，依赖 `jiffies` 的定时器可能挂起（例如 `sleep` 时间变长）。\n\n**2. 大幅调整会导致日志与监控异常**\n\n监控系统可能认为「数据丢失了 3 小时」或「时间倒流」。\n\n**正确做法**：用 **`chronyc makestep`** 平滑调整，避免直接 `date -s` 粗暴跳跃。\n\n## 一个排查命令\n\n```bash\ntimedatectl status      # 一次看时区、是否同步、NTP 服务状态\nchronyc tracking        # 看当前偏差（System time offset）\n```\n\n**偏差在几十毫秒内正常；秒级要查，分钟级必须处理。**",
+    "tags": [
+      "时间",
+      "NTP",
+      "chrony",
+      "UTC"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 4160,
+    "type": "short",
+    "category": "Linux基础",
+    "difficulty": "中等",
+    "question": "生产环境做一次系统变更（如配置修改、软件升级）的完整规范是什么？",
+    "answer": "**标准流程：评估 → 灰度 → 回滚预案 → 执行 → 验证 → 记录。**\n\n## 变更前：必须想清楚的五件事\n\n| 项 | 问题 |\n|---|---|\n| **影响范围** | 会影响哪些服务/节点/用户 |\n| **时间窗口** | 什么时段做（低峰 + 有值守） |\n| **回滚方案** | **怎么做，要多久**（这一步最常被省略） |\n| **验证方式** | 怎么确认成功 |\n| **通知相关方** | 谁要知道这次变更 |\n\n**「回滚方案」是分水岭** —— 没有回滚方案就不能称为「可执行变更」，只能叫「赌一把」。\n\n## 变更中：灰度原则\n\n```\n① 先在 1 台验证（非核心）\n② 观察 10~30 分钟\n③ 扩到 10%（同机房内）\n④ 再扩到全量\n⑤ 每一步都有明确的「继续/回滚」判断点\n```\n\n**关键：每一步之间要有观察期，不要「一路推行到底再回头看」。**\n\n## 三类典型变更的要点\n\n**1. 配置修改**\n\n```bash\n# 先备份\ncp nginx.conf nginx.conf.$(date +%F_%H%M)\n# 先语法检查\nnginx -t\n# 平滑重载（不中断）\nnginx -s reload\n```\n\n**`nginx -t` 是必须的**：配置语法错会导致 reload 失败（老进程继续跑，但新配置没生效，容易误判「已生效」）。\n\n**2. 软件升级**\n\n- 记录当前版本（回滚依据）\n- 确认新版本的依赖与不兼容变更（changelog）\n- **优先在灰度/备机验证**\n\n**3. 内核/系统级**\n\n- 需要重启的变更要单独排窗口\n- 确认服务能自动拉起（`systemctl enable` + 探针）\n\n## 变更后：验证不能只看「没报错」\n\n| 验证项 | 怎么验 |\n|---|---|\n| 服务状态 | `systemctl status`、进程存活 |\n| **业务功能** | **实际走一遍核心链路**（不只是看健康检查） |\n| 错误率 | 日志无新异常、监控指标正常 |\n| 性能 | 延迟/吞吐没恶化 |\n| **观察期** | 至少 30 分钟，别做完就走 |\n\n**「健康检查通过但业务不通」的情况很常见**（检查接口只返回 200，不代表真实流程能走通）。\n\n## 变更记录的模板（这是被追问的加分点）\n\n```\n变更编号：\n变更内容：\n变更原因：\n影响范围：\n执行时间 / 执行人：\n回滚步骤：\n验证结果：\n遗留问题：\n```\n\n**尤其「回滚步骤」要写成别人能照着执行的**，而不是「有问题就回滚」。\n\n## 一个高频追问\n\n「变更后才发现问题，但观察期已过，怎么办？」\n\n先**判断是否还能回滚**（有些变更（如数据迁移）一旦执行就不可回滚），能回滚就立即回滚，不能回滚就止损 + 修复。**这也是为什么要优先做「可回滚的变更」。**\n\n## 一条经验\n\n**宁可做 10 次小变更，不要做 1 次大变更。** 大变更的失败概率和恢复难度都是指数级的。",
+    "tags": [
+      "变更管理",
+      "灰度",
+      "回滚",
+      "验证"
+    ],
+    "frequency": "高频"
   },
   {
     "id": 4200,
@@ -69998,6 +70448,441 @@
     "frequency": "高频"
   },
   {
+    "id": 5471,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "线上服务变慢（不是宕机），你的排查思路是什么？如何区分是系统问题还是业务问题？",
+    "answer": "**变慢比宕机难查：没有明确报错，要从「指标」倒推瓶颈。**\n\n## 第一步：确认范围（先画边界）\n\n| 问题 | 意义 |\n|---|---|\n| **全部接口慢还是某几个** | 全部 → 系统/依赖；个别 → 代码/数据 |\n| **所有实例都慢还是一个** | 一个 → 单机问题；全部 → 全局依赖 |\n| **什么时候开始的** | 对齐变更时间线（发布？数据量？） |\n| **稳定慢还是间歇** | 间歇 → 资源争抢/GC；稳定 → 结构性 |\n\n**「全部实例都慢」几乎一定不是应用代码问题**，要往依赖（DB/Redis/网络）查。\n\n## 第二步：分层测时间去哪了\n\n```\n客户端总耗时 = 网络 + 负载均衡 + 应用处理 + 下游依赖\n```\n\n| 层 | 怎么测 |\n|---|---|\n| 网络 | `curl -w \"%{time_connect} %{time_starttransfer}\"` |\n| 应用 | 看应用日志里的耗时、APM 数据 |\n| **下游** | 对比「应用外部耗时」与「内部耗时」 |\n\n**最有效的一招：看 Nginx 日志的两个字段**\n\n```\n$request_time            总耗时（含 Nginx）\n$upstream_response_time  后端耗时\n```\n\n- 两者都大 → 后端慢\n- **`request_time` 大但 `upstream_response_time` 小** → 慢在 Nginx 或客户端网络（如传输大文件、慢客户端）\n\n**这个区分能立刻把范围缩小一半。**\n\n## 第三步：系统指标（排除系统层）\n\n```bash\nvmstat 1 5      # CPU/内存/IO 全览\nmpstat -P ALL 1 # 是否单核打满\nfree -h         # available 是否不足\niostat -x 1     # await 是否变高\n```\n\n**「四个指标都正常但业务慢」** 时，往这些方向：\n\n| 可能 | 确认 |\n|---|---|\n| **连接池耗尽**（都在等） | 连接数指标、`ss -s` |\n| 锁等待 | 应用监控、`jstack` |\n| **GC 停顿** | `jstat -gcutil` |\n| DNS 解析慢 | `dig` 多次测 |\n| 依赖超时重试 | 下游耗时分布 |\n\n## 第四步：区分系统 vs 业务（这是题目的核心）\n\n| 判据 | 系统问题 | 业务问题 |\n|---|---|---|\n| 资源指标 | CPU/IO/内存异常 | 通常正常 |\n| 影响面 | 该机器上**所有**服务 | 只有特定接口/特定数据 |\n| 与数据相关性 | 无关 | **特定用户/大账户/大数据量时慢** |\n| 可复现性 | 随时慢 | 可定向复现（同一请求） |\n\n**最有力的判断**：**同一个请求，换一台机器、换一份小数据，还慢不慢？**\n\n- 换机器也慢 → 业务/依赖问题\n- 换机器就正常 → 系统问题（这台机器有问题）\n\n## 第五步：常见根因速查\n\n| 现象 | 常见根因 |\n|---|---|\n| P99 变差但平均正常 | GC、锁竞争、偶发慢查询 |\n| 平均和 P99 都变差 | 依赖变慢、流量变大 |\n| 只有高峰期慢 | 容量不足、缓存穿透 |\n| 只有特定接口慢 | 慢 SQL、N+1 查询 |\n| **逐渐变慢且不回** | 内存泄漏、连接泄漏、数据量增长 |\n\n**最后一条特别常见**：重启后恢复、跑几天又慢 → 一定是泄漏类问题。\n\n## 一个容易忽略的点\n\n**先确认「是不是真的变慢」** —— 用户的「慢」可能来自客户端网络、也可能是期望值变了。要用客观数据（P99、耗时分布）确认，而不是凭感觉。",
+    "tags": [
+      "服务变慢",
+      "性能排查",
+      "request_time",
+      "瓶颈"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5472,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "数据库 CPU 突然 100%，怎么排查？如何快速止损？",
+    "answer": "**四步：确认性质 → 找出「谁在跑」 → 拿执行计划 → 止损。**\n\n## 第一步：确认是「正常压力」还是「异常问题」\n\n```sql\nSHOW GLOBAL STATUS LIKE 'Threads_running';   -- 并发执行数\nSHOW PROCESSLIST;                            -- 正在跑什么\nSHOW GLOBAL STATUS LIKE 'Questions';         -- 总请求速率\n```\n\n| 现象 | 判断 |\n|---|---|\n| Threads_running 不高但 CPU 高 | **单条 SQL 在狂算**（最典型） |\n| Threads_running 很高 | 流量突增或连接泄漏 |\n| Questions 突增 | 上游刷请求 |\n\n**「低并发 + 高 CPU」= 少量 SQL 在做大量计算**，这是最常见的「CPU 打满」场景（如无索引的大表全扫、笛卡尔积）。\n\n## 第二步：找出正在跑的 SQL\n\n```sql\n-- 最有用的一条：按执行时间排序\nSELECT id, user, host, db, command, time, state, info\nFROM information_schema.processlist\nWHERE command != 'Sleep'\nORDER BY time DESC LIMIT 10;\n```\n\n**判读要点**：\n\n| 字段 | 含义 |\n|---|---|\n| `time` | 已执行秒数（越大越可疑） |\n| `state` | **Sending data**（在查数据）、**Copying to tmp table**、**Waiting for lock** |\n| `info` | 具体 SQL |\n\n## 第三步：拿执行计划\n\n```sql\nEXPLAIN <该 SQL>;\n-- 或 8.0+\nEXPLAIN ANALYZE <该 SQL>;\n```\n\n**重点看**：\n\n| 项 | 危险信号 |\n|---|---|\n| `type` | **ALL（全表扫）** |\n| `rows` | 估算几百万行 |\n| `Extra` | `Using filesort`、`Using temporary` |\n| `key` | **NULL（没走索引）** |\n\n**常见「CPU 100%」SQL 特征**：\n\n- `WHERE` 用了函数（`WHERE DATE(create_time)=...`）\n- `LIKE '%xx'`\n- **隐式类型转换**（字符串列与数字比）\n- 大表 JOIN 无索引\n- `ORDER BY` 无索引导致 filesort\n\n## 第四步：止损（按优先级）\n\n**1. 杀掉最凶的（最快见效）**\n\n```sql\nKILL <id>;        -- 杀单条\n-- 批量（慎用，先确认是哪些）\nSELECT CONCAT('KILL ', id, ';') FROM information_schema.processlist\nWHERE time > 300 AND command != 'Sleep';\n```\n\n**注意**：`KILL` 需要等 SQL 完成当前阶段才能终止（大事务可能要等），不是立刻。\n\n**2. 降低流量**\n\n- 上层限流（Nginx `limit_req`）\n- 暂停非核心任务（备份、报表、定时任务）\n\n**3. 兜底保护**\n\n```sql\nSET GLOBAL max_connections = 200;    -- 防止连接打满\n```\n\n**4. 紧急时读降级**\n\n- 缓存层顶住读请求\n- 非核心查询临时关闭\n\n## 第五步：事后根治\n\n| 根因 | 对策 |\n|---|---|\n| 缺索引 | 加索引（**注意在业务低峰、用 `ALGORITHM=INPLACE`**） |\n| 慢 SQL 上线 | 从 SQL 审计/发布流程拦截 |\n| 数据量暴涨 | 归档历史数据、分表 |\n| 定时任务冲突 | 调整执行时间 |\n\n## 一个高频追问\n\n「加索引会不会更糟？」\n\n**加索引用 `ALGORITHM=INPLACE, LOCK=NONE`** 可不锁表；但**执行期间仍消耗 CPU/IO**，在 CPU 100% 的机器上加索引会雪上加霜。**正确顺序是先止损（限流/杀 SQL、降流量），再加索引。**",
+    "tags": [
+      "数据库CPU",
+      "慢SQL",
+      "KILL",
+      "止损"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5473,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "磁盘 IO 突然飙升，业务响应变慢，如何定位和解决？",
+    "answer": "**先确认是「我们的程序在读」还是「别人在写」；再决定削峰还是换硬件。**\n\n## 第一步：确认 IO 压力来源\n\n```bash\niostat -x 1          # %util、await、IOPS\niotop -oP            # 哪个进程在读写\npidstat -d 1         # 进程级读写速率\n```\n\n**关键判断**：\n\n| 现象 | 方向 |\n|---|---|\n| `await` 高（>20ms）、`%util` 接近 100% | 设备饱和 |\n| IOPS 很高但吞吐低 | **随机小 IO**（数据库典型） |\n| 吞吐很高但 IOPS 不高 | **顺序大 IO**（备份、日志） |\n\n## 第二步：分类根因（决定对策）\n\n### 类型一：日志/备份类写入\n\n**特征**：顺序写、`wkB/s` 很高、`iotop` 显示大量写。\n\n解决：\n\n```bash\n# 降低影响（不换硬件）\nionice -c2 -n7 <pid>        # 降低 IO 优先级\nrsync --bwlimit=50          # 限速\n```\n\n**把备份/压缩挪到低峰**是最经济的方案。\n\n### 类型二：数据库随机读（最常见）\n\n**特征**：IOPS 高、`r/s` 大、读为主。\n\n| 根因 | 对策 |\n|---|---|\n| 缓存不足（buffer pool 太小） | 加大 innodb_buffer_pool_size |\n| **慢查询扫描大量行** | 加索引、优化 SQL |\n| 数据量超出内存 | 归档冷数据、分表 |\n\n**「IO 高但 CPU 低」典型是数据库在等磁盘**，先看 buffer pool 命中率：\n\n```sql\nSHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_read%';\n-- 物理读/逻辑读 比值高 → 缓存不足\n```\n\n### 类型三：Swap 换页\n\n**特征**：`si/so` 非 0，IO 高、CPU 低、响应极慢。\n\n```bash\nvmstat 1 | awk '{print $7, $8}'\n```\n\n**这是最危险的一类**：换页会让响应时间涨几个数量级。对策是加内存或关 swap。\n\n### 类型四：NFS/共享存储卡住\n\n**特征**：大量 D 状态进程、`df` 都可能卡住。\n\n## 第三步：止损顺序\n\n```\n① 限速/降优先级（ionice、rsync --bwlimit）\n② 暂停非核心任务\n③ 扩容共享内存/缓存（数据库）\n④ 加 SSD / 加磁盘做条带\n```\n\n**前三步都不用停机**，优先做。\n\n## 一个高级技巧：判断是「一次读多少」\n\n```bash\niostat -x 1 | awk '{print $1, $4, $5, $6}'\n# 设备 r/s w/s rkB/s\n# 平均请求大小 = rkB/s ÷ r/s（sectors 单位换算）\n```\n\n- 平均请求 < 16KB → **随机小 IO**，优化方向是「减少次数」（缓存、索引）\n- 平均请求 > 128KB → **顺序大 IO**，优化方向是「限速/挪时间」\n\n**这个判断决定了优化方向，很多人跳过它就直接「换 SSD」，结果浪费钱。**\n\n## 一个高频追问\n\n「`%util` 100% 一定是瓶颈吗？」\n\n**不一定**（尤其 SSD/NVMe）。看 `await` 与 `aqu-sz`：**延迟升高 + 队列变长才是真饱和**。机械盘上 `%util` 更可信。",
+    "tags": [
+      "磁盘IO",
+      "iostat",
+      "iotop",
+      "buffer pool"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5474,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "线上出现大量 502 错误，如何排查？可能的原因有哪些？",
+    "answer": "**502 = 网关从上游收到了无效响应；根因必在「网关→后端」这一段。**\n\n## 第一步：确认 502 是谁产生的\n\n```nginx\nlog_format main '... upstream_status=$upstream_status ...';\n```\n\n**`$upstream_status` 是关键**：\n\n| upstream_status | 含义 |\n|---|---|\n| `-` | **没连上后端**（连接失败） |\n| `502` | 后端真的返回了 502 |\n| `其他码` | 后端返回了别的（被网关改写？） |\n\n这一步能立刻区分「连不上」还是「后端自己坏了」。\n\n## 第二步：六大原因（按概率排序）\n\n| 原因 | 特征 | 排查 |\n|---|---|---|\n| **后端进程挂了/oom** | 端口不通 | `ss -tlnp`、看后端日志 |\n| **后端端口配错** | 全部 502 且持续 | 核对 `proxy_pass` |\n| **后端过载** | 高峰期、部分 502 | 后端 CPU/连接数 |\n| **后端超时后断开** | error.log 有 `upstream prematurely closed` | 对齐超时配置 |\n| **网关到后端网络抖动** | 间歇性 | dmesg 看丢包、`tcpdump` |\n| **后端返回非法 HTTP** | 后端有写裸 TCP 的代码 | 直连测 |\n\n## 第三步：验证（直连法，最有效）\n\n```bash\n# 绕过网关直接测后端\ncurl -v http://10.0.0.11:8080/health\n```\n\n| 结果 | 结论 |\n|---|---|\n| 直连通、经网关 502 | 问题在网关到后端（网络/配置/超时） |\n| 直连也不通 | 后端本身有问题 |\n\n**这一步能砍掉一半的排查范围。**\n\n## 第四步：看 Nginx error.log 的具体报错\n\n| 报错 | 根因 |\n|---|---|\n| `connect() failed (111: Connection refused)` | 后端没监听 |\n| **`upstream prematurely closed connection`** | 后端处理中被杀/超时主动断 |\n| `no live upstreams` | **健康检查把所有后端摘了** |\n| `recv() failed (104: Connection reset)` | 后端进程崩溃或 RST |\n\n**`no live upstreams` 是最常见的「突发大量 502」原因**：`max_fails` 触发后所有后端被标记 down。\n\n```nginx\nupstream backend {\n    server 10.0.0.11:8080 max_fails=3 fail_timeout=10s;\n    # 若后端短暂抖动，fail_timeout 太长会导致长时间不可用\n}\n```\n\n## 第五步：止损\n\n| 情况 | 手段 |\n|---|---|\n| 后端单实例挂 | 摘除节点 |\n| 后端整体过载 | **限流**、降级非核心 |\n| 是刚发版引起 | **回滚** |\n| 健康检查误杀 | 临时调大 `fail_timeout` 或去掉 `max_fails` |\n\n## 一个特别隐蔽的场景\n\n**502 但后端日志完全正常**：说明请求根本没到后端 —— 要么连接建立后就断了（负载均衡/防火墙），要么后端的一个中间层（如 sidecar）拒绝了连接。**必须用 `tcpdump` 抓包确认。**\n\n## 一个高频追问\n\n「502 和 504 怎么区分」\n\n- **502**：连上了但响应不合法，或**连不上**\n- **504**：连上了、后端在算，**但超过了 `proxy_read_timeout`**\n\n所以「后端慢」是 504，「后端挂/不可达」是 502。这条区分决定了你去看连接还是看耗时。",
+    "tags": [
+      "502",
+      "网关",
+      "upstream",
+      "排查"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5475,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "数据库连接池被打满，服务不可用，怎么排查和解决？",
+    "answer": "**连接池打满的本质：连接「借出去没还」，或「还得太慢」。**\n\n## 第一步：确认是不是真打满\n\n```bash\n# 数据库侧看连接数\nSHOW PROCESSLIST;\nSHOW GLOBAL STATUS LIKE 'Threads_connected';\nSHOW VARIABLES LIKE 'max_connections';\n```\n\n| 现象 | 判断 |\n|---|---|\n| Threads_connected 接近 max_connections | 确实打满 |\n| **大量连接处于 Sleep** | **泄漏**（借了没还） |\n| 大量连接在 **Sending data / Locked** | 慢查询占用 |\n\n**「大量 Sleep 连接」是泄漏的铁证** —— 连接还在，但没人用。\n\n## 第二步：分两类根因\n\n### 类型一：连接泄漏（借了不还）\n\n| 原因 | 例子 |\n|---|---|\n| 异常路径没 close | `try` 里抛异常，`finally` 没关 |\n| 流式查询没读完 | 读取中途放弃，连接未释放 |\n| 异步代码忘了归还 | 回调没走完 |\n\n**特征**：连接数**只增不减**，重启后恢复，跑一段时间又满。\n\n### 类型二：连接被长时间占用（还得太慢）\n\n| 原因 | 特征 |\n|---|---|\n| **慢 SQL** | 连接在 `Sending data` |\n| **锁等待** | 连接在 `Waiting for table metadata lock` |\n| 外部调用在事务里 | 事务开着做 HTTP 调用 |\n| 大事务 | 一次操作几万行 |\n\n**特征**：与流量或特定操作相关，平时正常、某时段爆。\n\n## 第三步：定位到具体代码\n\n```sql\n-- 按执行时间找占用连接最久的\nSELECT id, time, state, LEFT(info, 80)\nFROM information_schema.processlist\nWHERE command != 'Sleep'\nORDER BY time DESC LIMIT 10;\n```\n\n**Java 侧**：\n\n```bash\njstack <pid> | grep -A 5 'WHILE|BLOCKED'\n# 看线程是否都在等连接（Druid/HikariCP 的 getConnection）\n```\n\n**如果有线程堆栈大量停在 `getConnection`，说明在等连接池** —— 池子耗尽，所有请求在排队。\n\n## 第四步：止损\n\n| 手段 | 效果 |\n|---|---|\n| **杀慢 SQL**（`KILL <id>`） | 立刻释放连接 |\n| 重启应用 | 泄漏时最快见效（但会复发） |\n| 临时调大 `max_connections` | 争取时间（有上限，危险） |\n| 限流 | 控制进入的请求量 |\n\n**注意：`max_connections` 调太大反而更糟** —— 数据库线程数暴涨会争抢 CPU，整体更慢。\n\n## 第五步：根治\n\n| 根因 | 对策 |\n|---|---|\n| 泄漏 | **修代码**（`try-with-resources`、确保 finally 关闭） |\n| 慢 SQL | 加索引（这是最常见的真因） |\n| 事务内做远程调用 | **把远程调用挪到事务外** |\n| 池子太小 | 按「(QPS×平均耗时)」估算合适大小 |\n\n## 一个实用的池子大小估算\n\n```\n需要的连接数 ≈ QPS × 平均查询耗时（秒）\n例：QPS 500，查询 10ms → 5 个连接够用\n```\n\n**很多人把池子设成 100 却只用到 10**，造成数据库连接资源浪费。**「池子大」不等于「吞吐高」**，反而常因为并发过多导致数据库锁竞争。\n\n## 一个高频追问\n\n「为什么 Sleep 连接不自动释放？」\n\nMySQL 有 `wait_timeout`（默认 8 小时）会清理空闲连接，但**如果连接池没配 `testWhileIdle`/心跳**，池会一直认为连接有效，导致：\n\n- 拿到一个已被服务端断开的连接 → 报 `Communications link failure`\n- 这一步要配 **连接有效性检测**（`validationQuery`）",
+    "tags": [
+      "连接池",
+      "泄漏",
+      "慢SQL",
+      "max_connections"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5476,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "服务突然大量超时，你怎么判断是网络问题、依赖问题还是自身问题？",
+    "answer": "**超时的排查本质是「定位时间花在哪」：用分段计时把链路切开。**\n\n## 第一步：区分三种超时形态\n\n| 形态 | 特征 | 方向 |\n|---|---|---|\n| **全部超时** | 所有请求都失败 | 网络中断/依赖全挂 |\n| **部分超时** | 只有部分请求慢 | 后端实例差异/流量谷 |\n| **间歇超时** | 时好时坏 | 连接池、GC、网络抖动 |\n\n## 第二步：分段计时（核心方法）\n\n```bash\ncurl -w \"\n  dns:      %{time_namelookup}\n  connect:  %{time_connect}\n  ssl:      %{time_appconnect}\n  ttfb:     %{time_starttransfer}\n  total:    %{time_total}\n\" -o /dev/null -s https://api.example.com/x\n```\n\n**这个输出能直接定位到哪一段慢**：\n\n| 慢在哪 | 结论 |\n|---|---|\n| `time_namelookup` 大 | **DNS 解析慢** |\n| `time_connect` 大 | 网络连接慢（TCP 握手失败/丢包） |\n| `time_appconnect` 大 | TLS 握手慢 |\n| `time_starttransfer` 大 | **服务端处理慢** |\n\n**一段一段排，不要整体猜。**\n\n## 第三步：三种可能性的判据\n\n### 网络问题\n\n| 判据 | 怎么验 |\n|---|---|\n| 多台机器同时异常 | 是链路/运营商问题 |\n| `tcpdump` 看到重传 | 丢包 |\n| ping 延迟稳定但 TCP 连不上 | 中间设备拦（防火墙/安全组） |\n| 只有某个机房访问慢 | 区域网络问题 |\n\n```bash\n# 看重传\ntcpdump -i eth0 -nn 'tcp and (host 10.0.0.11)'\n# 或\nnetstat -s | grep -i retrans\n```\n\n### 依赖问题\n\n| 判据 | 怎么验 |\n|---|---|\n| 应用 CPU 低、线程都在等 | `jstack` 看到大量 WAITING |\n| 下游监控指标正常但耗时高 | 下游内部慢 |\n| 只有调某依赖的接口慢 | 定向验证 |\n\n**最有用的方法：日志里打「调用下游耗时」**，与「应用内部耗时」对比。\n\n### 自身问题\n\n| 判据 | 怎么验 |\n|---|---|\n| GC 停顿 | `jstat -gcutil` 看 FGC 时间 |\n| 连接池/线程池打满 | 池监控、`jstack` |\n| 本地锁竞争 | `jstack` 的 BLOCKED |\n| CPU 打满 | `top`、`mpstat` |\n\n## 第四步：一个高效的交叉验证\n\n**同一个请求，从不同位置发起**：\n\n| 从哪发起 | 结果含义 |\n|---|---|\n| 外部客户端 | 全链路视角 |\n| 网关机器上 | 排除客户端网络 |\n| **应用机器上直连后端** | 排除网关 |\n| 直接跑 SQL | 排除应用层 |\n\n**每往内一层，就排除一段链路。** 这是最系统的方法。\n\n## 第五步：超时的三类处理\n\n| 策略 | 说明 |\n|---|---|\n| 快速失败 | 缩短超时，避免线程堆积 |\n| 重试（要加退避） | 防重试风暴 |\n| 熔断/降级 | 依赖挂了给兜底响应 |\n\n**关键原则**：**超时设置要「小于上游超时」**（Nginx 60s，应用就该 30s），否则上游已经超时断开，应用还在占线程 —— 会造成「雪崩」。\n\n## 一个高频追问\n\n「超时该设多少？」\n\n**P99 耗时的 1.5~2 倍**，且逐层递减（上游 > 下游）。不能拍脑袋设 30s，也不能设 100ms（正常请求都被杀）。",
+    "tags": [
+      "超时",
+      "curl计时",
+      "网络",
+      "依赖"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5477,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何排查「间歇性」故障（时好时坏）？这类问题为什么特别难查？",
+    "answer": "**间歇性故障难，因为「发生时抓不到现场，不发生时没法复现」。核心是「先加观测，再等它发生」。**\n\n## 为什么特别难\n\n| 难点 | 说明 |\n|---|---|\n| **无法复现** | 手动测不出来 |\n| **现场即逝** | 排查工具还没连上，现象已消失 |\n| **指标被平均掩盖** | 看分钟级平均值，偶发的异常被磨平 |\n| 多因素叠加 | 容量 + 偶发慢查询，单看都正常 |\n\n**所以思路必须是「持续观测」而不是「现场突击」。**\n\n## 第一步：先量化「间歇」的规律\n\n| 维度 | 问题 |\n|---|---|\n| 时间 | 每天固定时段？（整点/凌晨） |\n| 频率 | 每小时几次？ |\n| 影响面 | 部分用户/全部？ |\n| 相关性 | 与大促、批处理、备份时间重合？ |\n\n**「固定时间出现」几乎一定与定时任务/日志切割/缓存过期有关。**\n\n## 第二步：加观测（关键）\n\n**1. 记录异常样本（最重要）**\n\n```bash\n# 用脚本持续抓，异常出现时立即记录快照\nwhile true; do\n  if [ 指标异常 ]; then\n    date; ps -eo pid,pcpu,pmem,stat,cmd > /tmp/snap-$(date +%s).txt\n    ss -tn > /tmp/net-$(date +%s).txt\n  fi\n  sleep 5\ndone\n```\n\n**2. 拉长指标粒度**\n\n**默认分钟级/5分钟级监控会漏掉秒级尖刺。** 要：\n\n- 改成 10 秒级采样\n- 看 **P99/P999** 而不是平均值（平均值会把尖刺磨平）\n\n**3. 全链路追踪（trace）**\n\n如果有 APM/链路追踪，把 trace 抽样率调高，抓长尾请求的完整链路。\n\n## 第三步：常见间歇性根因（按概率）\n\n| 根因 | 特征 |\n|---|---|\n| **缓存批量失效**（同时过期） | 某时刻请求 Z 字形上升 |\n| **GC 停顿** | 周期性、秒级 |\n| **定时任务**（备份/统计） | 固定时刻 |\n| **连接池偶发耗尽** | 高峰期 |\n| **DNS 缓存过期后重新解析慢** | 周期性 |\n| **网络丢包** | 随机 |\n| 主从延迟导致的读到旧数据 | 写后立刻读 |\n\n**「缓存雪崩（同时过期）」是最典型的间歇性故障**：给缓存设了同样的 TTL，整点一起失效。\n\n## 第四步：监控告警的正确做法\n\n```\n不要只看「平均值超过阈值」\n要看「P99 是否异常」「错误数是否突增」\n```\n\n**: 关键是把「异常样本」保存下来**，而不是只记一个数字。\n\n## 第五步：缩小复现条件\n\n如果能在测试环境构造：\n\n| 参数 | 尝试 |\n|---|---|\n| 并发 | 调到生产峰值甚至更高 |\n| 数据量 | 用真实规模数据（**小数据测不出**） |\n| 持续时间 | 跑够久（泄漏类要数小时） |\n\n**「小数据集压测正常、生产数据量下就慢」非常常见** —— 因为执行计划在大数据量下会变。\n\n## 一个高频追问\n\n「怎么判断是 GC 导致的间歇？」\n\n```bash\njstat -gcutil <pid> 1000     # 每秒输出\ngrep 'Full GC' gc.log          # 看停顿时长\n```\n\n**若每次故障时间点都能对齐一次 FGC，就是它。** 这条「对齐时间点」的方法适用于所有间歇性问题。",
+    "tags": [
+      "间歇故障",
+      "观测",
+      "P99",
+      "间歇性"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5478,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "线上内存溢出（OOM）导致服务重启，如何排查根因？",
+    "answer": "**OOM 排查分两层：容器/系统层 OOM vs 应用层 OOM，根因方向完全不同。**\n\n## 第一步：确认是哪一层 OOM\n\n| 层 | 迹象 | 查看 |\n|---|---|---|\n| **容器/系统 OOM** | Pod 被 OOMKilled、进程被杀 | `kubectl describe pod`（Reason: OOMKilled）、`dmesg` |\n| **应用 OOM**（如 Java Heap） | 有 `OutOfMemoryError` 堆栈 | 应用日志 |\n\n**这两者的处理完全不同**：系统 OOM 是「内存超了物理/limit」，应用 OOM 是「堆内对象太多」。\n\n## 第二步：容器/系统 OOM\n\n```bash\nkubectl describe pod <pod> | grep -A5 'Last State'\n# Reason: OOMKilled  退出码 137\ndmesg -T | grep -i 'killed process'\n```\n\n**要判断**：\n\n| 现象 | 根因 |\n|---|---|\n| 内存**持续上升**直到被杀 | 真泄漏 |\n| 内存**平稳但突然超限** | 突发流量/大对象/数据加载 |\n| 容器 limit 很小但应用堆设置更大 | **配置不匹配**（最常见） |\n\n**「limit 小于 -Xmx」是经典配置错误**：JVM 以为能用 4G，容器只给 2G，必然被杀。\n\n## 第三步：应用 OOM（Java 为例）\n\n**关键：必须有 dump**\n\n```bash\n-XX:+HeapDumpOnOutOfMemoryError\n-XX:HeapDumpPath=/data/dump/\n```\n\n**没开这个就没有现场**，只能靠猜。\n\n分析 dump：\n\n```bash\njmap -histo <pid> | head -20          # 存活对象统计\njmap -dump:live,format=b,file=a.hprof <pid>\n# 用 MAT / VisualVM 打开，看「谁持有」引用链\n```\n\n## 第四步：常见根因\n\n| 类型 | 特征 | 对策 |\n|---|---|---|\n| **对象泄漏**（静态集合、监听器未注销） | 老年代持续增长，FGC 后不降 | 修代码 |\n| **一次性加载大对象** | 启动/定时任务时爆 | 分页/流式处理 |\n| **堆外内存**（DirectByteBuffer） | 堆正常但 RSS 涨 | 调 `MaxDirectMemorySize` |\n| 缓存无上限 | 本地 Map/Guava 无限制 | 设上限或换 Redis |\n| 元空间溢出 | `Metaspace` 满（频繁生成类） | 调大并排查动态代理 |\n\n**「FGC 后老年代不降」是泄漏的铁证**；「FGC 后能降回去」则只是「用量大」，不是泄漏。\n\n## 第五步：止损与恢复\n\n```\n① 重启（恢复服务，最快）\n② 调大 limit/堆（争取时间）\n③ 降级非核心功能（减少内存需求）\n④ 限流（控制并发带来的内存放大）\n```\n\n**注意：调大内存只是「拖时间」**，泄漏类问题迟早还会爆，必须同时安排修复。\n\n## 一个高频追问\n\n「OOM 前有什么征兆？」\n\n**老年代使用率持续爬升**是最有效的预警。监控要：\n\n```\n堆使用率 > 85% 持续 N 分钟 → 告警\nFGC 频率升高 → 告警\n```\n\n**不要等 OOM 才告警**，那时已经在重启了。",
+    "tags": [
+      "OOM",
+      "内存溢出",
+      "heap dump",
+      "OOMKilled"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5479,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "某接口 P99 延迟很高但平均值正常，可能是什么原因？怎么优化？",
+    "answer": "**「平均值正常、P99 很高」是典型的「长尾问题」，根因几乎都在「偶发的停顿或排队」。**\n\n## 为什么平均值会「骗人」\n\n```\n1000 个请求：995 个 10ms，5 个 2000ms\n平均值 ≈ 20ms（看着很好）\nP99 = 2000ms（实际有 1% 用户体验极差）\n```\n\n**平均值会把尖刺磨平**，这也是为什么要看 P99/P999 而不是平均。\n\n## 六种典型根因\n\n| 根因 | 特征 | 确认方法 |\n|---|---|---|\n| **GC 停顿** | 周期性与 FGC 时间对齐 | `jstat`、GC 日志 |\n| **连接池/线程池排队** | 高峰期出现 | 池等待时间指标 |\n| **锁竞争** | 偶发、并发量高时 | `jstack` 的 BLOCKED |\n| **缓存击穿/过期** | 定期出现 | 缓存命中率曲线 |\n| **慢查询偶发** | 特定参数/数据量触发 | 慢查询日志 |\n| **网络抖动/丢包** | 随机分布 | `tcpdump`、重传率 |\n| 大对象分配 | 与请求大小相关 | 火焰图 |\n\n**「周期性与 FGC 对齐」是最好判断的一类**：把所有慢请求的时间点，与 GC 日志时间点对比。\n\n## 第一步：先拿到 P99 的分布\n\n```\n不要只看 P99 一个数\n要看「最慢的 1% 请求」有什么共同点\n```\n\n**关键分析角度**：\n\n| 维度 | 看什么 |\n|---|---|\n| 时间分布 | 是否集中在某几分钟 |\n| 参数 | 慢请求是否有特定参数（大 ID、大分页） |\n| 机器 | 是否集中在某台实例 |\n| **链路** | trace 里哪一段占了大部分耗时 |\n\n**必须有「慢请求采样」**（如日志记录 > 500ms 的请求完整信息），否则只能猜。\n\n## 第二步：分场景优化\n\n| 根因 | 优化 |\n|---|---|\n| **GC** | 调堆大小/换收集器（G1/ZGC）、减少对象创建 |\n| 池排队 | **加大池**、缩短单次耗时、设合理超时 |\n| 锁竞争 | 减小锁粒度、改无锁结构、分段锁 |\n| 缓存击穿 | 加互斥锁、热点数据永不过期、预热 |\n| 慢查询 | 索引、避免大分页、**拆分大请求** |\n| 网络 | 排查丢包、调 TCP 参数 |\n\n## 第三步：一个最容易见效的优化\n\n**给慢请求加超时与降级**：\n\n```\nP99 高的本质是「少数请求拖很久」\n如果这些请求实际可降级（如返回部分数据），\n直接设超时 + 兜底，P99 立刻降下来\n```\n\n**这比优化慢查询见效快得多**，尤其当长尾来自下游依赖时。\n\n## 一个进阶思路：区分「资源型」与「请求型」长尾\n\n| 类型 | 特征 | 优化方向 |\n|---|---|---|\n| **资源型**（GC/锁/池） | 与请求无关，谁赶上谁慢 | 消除停顿 |\n| **请求型**（大分页/大 ID） | 与特定请求相关 | 限制请求规模 |\n\n**判断方法**：看慢请求是否有共同参数。有 → 请求型；没有（随机）→ 资源型。\n\n## 一个高频追问\n\n「P99 和 P999 为什么要一起看？」\n\nP99 反映 1% 的体验，P999 反映 0.1%。**有些系统 P99 正常但 P999 极差**，说明有极少数请求遇到了极端情况（如 GC 卡了 10 秒）。**只看 P99 会漏掉这类。**",
+    "tags": [
+      "P99",
+      "长尾延迟",
+      "GC",
+      "池排队"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5480,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何判断一次线上故障是「容量不足」还是「代码 bug」？",
+    "answer": "**容量问题是「压力落在临界点」，代码问题是「与压力无关的必现失败」。**\n\n## 四个判据\n\n| 判据 | 容量不足 | 代码 bug |\n|---|---|---|\n| **与流量相关** | ✅ 压力大时出现 | ❌ 与流量无关 |\n| **可复现性** | 降流量后自动恢复 | 特定输入/操作就必现 |\n| 资源指标 | CPU/内存/连接数接近上限 | 通常资源正常 |\n| 时间相关性 | 高峰时段 | 与时段无关 |\n\n**最有力的判断：把量降下来还出不出现？**\n\n- 降流量后恢复正常 → **容量问题**\n- 降流量后照样报错 → **代码 bug**\n\n## 典型场景对照\n\n| 现象 | 判断 |\n|---|---|\n| 大促时 500 激增，结束后恢复 | **容量** |\n| 某个特定用户每次下单都失败 | **代码**（数据边界） |\n| 每秒超过 500 请求就超时 | **容量** |\n| 一重启就 OOM（重启后流量很低） | **代码**（泄漏） |\n| 凌晨批处理时数据库 CPU 满 | **容量**（任务与业务争资源） |\n| 特定参数（长字符串）导致报错 | **代码** |\n\n## 容易误判的三种情况\n\n**1. 代码 bug 只是在容量上暴露**\n\n如「连接池配置 10，QPS 高了之后『复用已失效连接』的 bug 才暴露」。**表面是容量，根因是代码没做连接有效性检查。**\n\n**2. 容量不足伪装成 bug**\n\n如「超时后重试」导致「重复下单」—— 表面是数据 bug，根因是超时设置不合理（容量问题引发的连锁）。\n\n**3. 两者叠加**\n\n最常见：**容量不足触发超时 → 重试 → 雪上加霜 → 看起来像「雪崩 bug」**。\n\n## 排查纵深\n\n```\n① 量级对比：当前 QPS vs 历史峰值 vs 压测值\n② 资源上限：CPU/连接/内存 距离上限多远\n③ 单机复现：单机跑同样量级是否也出问题\n④ 逻辑验证：构造同样的输入是否必现\n```\n\n## 一个关键指标\n\n**「系统在故障时的实际负载」**：\n\n- 负载达到设计容量的 90%+ → 容量问题\n- 负载只有 10% 时就挂了 → **代码/依赖问题**\n\n**看故障时的 QPS 数字，这是最快的判据。**\n\n## 处置差异\n\n| | 容量问题 | 代码 bug |\n|---|---|---|\n| 短期 | 限流/扩容/降级 | 回滚/热修复 |\n| 中期 | 容量规划、压测常态化 | 加测试、修代码 |\n| 长期 | 架构扩展（水平扩） | 代码质量、评审 |\n\n**容量问题不能靠「改代码」解决**，代码 bug 也不能靠「加机器」解决 —— **判错方向会浪费大量时间**。\n\n## 一个高频追问\n\n「怎么确认容量够不够？」\n\n**压测到崩溃点，找出拐点**（延迟开始急剧上升的 QPS）。但要注意：**压测环境的瓶颈可能不同**（测试库数据量小、缓存没预热），所以压测结果要打折使用。",
+    "tags": [
+      "容量不足",
+      "代码bug",
+      "判据",
+      "压测"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5481,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "设计一个支持高并发秒杀的系统，你会从哪些方面考虑？",
+    "answer": "**秒杀的本质是「读多、写少、瞬时流量极高、不允许超卖」，核心是「层层过滤 + 库存收敛」。**\n\n## 三个核心矛盾\n\n| 矛盾 | 说明 |\n|---|---|\n| 瞬时流量 vs 系统容量 | 平时 100 QPS，峰值 10 万 |\n| 高并发 vs 库存准确 | 不能超卖，也不能少卖 |\n| 用户体验 vs 系统保护 | 全放进来会崩 |\n\n## 分层设计（从上到下逐层削减流量）\n\n```\n① 前端：按钮置灰、验证码、答题（削掉脚本）\n② 网关/CDN：静态资源走 CDN、页面静态化\n③ 负载均衡：限流（超过阈值直接拒绝）\n④ 应用层：库存校验（Redis 预扣）\n⑤ 存储层：异步落库（MQ 缓冲）\n```\n\n## 关键设计点\n\n**1. 库存预热（必须先做）**\n\n活动开始前把库存写入 **Redis**，而不是每请求查数据库。\n\n```\nDECR 库存 → 返回 >=0 则继续，<0 则失败（并回补）\n```\n\n**Redis 的原子自减天然防超卖**，这是最关键的收敛点。\n\n**2. 异步下单（削峰）**\n\n```\nRedis 扣减成功 → 发消息到 MQ → 消费者真正创建订单\n→ 用户看到「排队中」\n```\n\n**为什么**：数据库写是瓶颈，MQ 能缓冲瞬时洪峰。\n\n**3. 限流（保护自己）**\n\n| 层 | 手段 |\n|---|---|\n| Nginx | `limit_req` 按 IP 限速 |\n| 应用 | 令牌桶、按用户维度限（防单用户狂刷） |\n\n**注意：限流要「早拒绝」**，请求进到深层才拒绝等于没限流（已经消耗了资源）。\n\n**4. 库存准确性**\n\n| 方案 | 说明 |\n|---|---|\n| Redis 扣减 | 快，但 Redis 挂了会不一致 |\n| **Redis + 数据库对账** | 稳妥做法：Redis 预扣，异步落库，定时对账 |\n| 数据库乐观锁 | `WHERE stock >= n`，但扛不住高并发 |\n\n## 防超卖的三种方案对比\n\n| 方案 | 一致性 | 性能 | 适用 |\n|---|---|---|---|\n| 数据库行锁（`SELECT FOR UPDATE`） | 强 | **差**（扛不住） |\n| 数据库乐观锁 | 强 | 中（冲突多时重试率升） |\n| **Redis 原子扣减** | 强（单机） | **好** |\n\n**实际主流是 Redis 扣减（因为快），数据库兜底对账。**\n\n## 必须处理的四个边界\n\n1. **Redis 扣了但消息发失败** → 库存永久少了（要补偿）\n2. **重复消费** → 同一用户生成两个订单（要幂等）\n3. **超时未支付** → 库存要回滚（定时任务）\n4. **限流误杀正常用户** → 要识别（验证码、排队）\n\n## 完整架构图（回答时可以画）\n\n```\n用户 → CDN（静态页）→ 网关（限流）→ 应用\n    → Redis（扣库存）→ MQ → 订单服务 → DB\n    ↑ 早失败：库存不足直接返回\n```\n\n## 一个高频追问\n\n「为什么不用数据库直接扣？」\n\n因为**数据库行锁无法支撑 10 万 QPS**：每个事务都要拿锁、写日志、刷盘，直接被打死。**Redis 是内存操作 + 单线程原子性，能撑住峰值。**",
+    "tags": [
+      "秒杀",
+      "高并发",
+      "超卖",
+      "Redis"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5482,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何设计一个高可用架构？需要考虑哪些层面？",
+    "answer": "**高可用 = 每一层都没有单点 + 故障能自动切换 + 缩减故障影响。**\n\n## 三个基本原则\n\n| 原则 | 说明 |\n|---|---|\n| **消除单点** | 任何一层都不能只有一台 |\n| **自动故障转移** | 靠人工恢复太慢 |\n| **限制故障范围**（隔离） | 一个组件挂不能拖垮全局 |\n\n## 分层设计\n\n| 层 | 高可用手段 |\n|---|---|\n| **入口** | 多 IP/多线路 DNS、CDN |\n| **负载均衡** | 主备 / 双活（Keepalived + VIP） |\n| **应用** | 无状态 + 多实例 + 健康检查 |\n| **缓存** | 主从/哨兵/集群 |\n| **数据库** | 主从 + 自动切换 + 读写分离 |\n| **存储** | 副本/多可用区 |\n| **中间件** | 消息队列集群 |\n\n## 关键机制\n\n**1. 健康检查**\n\n必须区分：\n\n| 探针 | 检查什么 | 通不过的后果 |\n|---|---|---|\n| **liveness**（存活） | 进程是否活着 | **重启容器** |\n| **readiness**（就绪） | 能否处理请求 | **摘除流量** |\n\n**混淆两者是最常见的错误**：把「依赖挂了」写进 liveness，会导致容器反复被重启（雪崩）。\n\n**2. 熔断与降级**\n\n| 手段 | 作用 |\n|---|---|\n| 熔断 | 依赖失败超阈值就**快速失败**，不再请求 |\n| 降级 | 给兜底响应（缓存数据、默认值） |\n| 限流 | 保护自己不被压垮 |\n\n**降级要有预案**，不能临时想：用户看到什么、哪些功能关掉。\n\n**3. 隔离**\n\n| 方法 | 说明 |\n|---|---|\n| 资源隔离 | 按业务分集群，避免互相影响 |\n| 线程池隔离 | 不同依赖用不同池（一个慢不拖垮全部） |\n| 数据隔离 | 分库分表 |\n\n**「线程池隔离」是很有价值的细节**：共用池时一个慢依赖会占满所有线程。\n\n## 故障域与「多活」\n\n| 级别 | 说明 | 成本 |\n|---|---|---|\n| 单机房多机 | 只能防单机 | 低 |\n| **同城双机房** | 防机房级故障 | 中 |\n| 异地多活 | 防城市级 | **高**（数据同步是难题） |\n\n**异地多活的瓶颈不在应用，在「数据怎么同步」** —— 强一致基本做不到，通常是「单元化 + 最终一致」。\n\n## 一个务实的排序\n\n**高可用要按「影响面 × 概率」投入**，不是所有层都做到极致：\n\n```\n先消除关键单点（数据库、负载均衡）\n再做自动切换（否则故障恢复靠人）\n最后做多活（成本高，非必须）\n```\n\n## 必须验证：演练\n\n**没演练过高可用等于没有高可用。**\n\n| 演练 | 目的 |\n|---|---|\n| 杀主库进程 | 验证切换是否真的自动 |\n| 关掉一个实例 | 验证摘流与恢复 |\n| 模拟依赖超时 | 验证熔断降级 |\n| 单机房断网 | 验证流量切走 |\n\n## 一个高频追问\n\n「双活最大的难点是什么？」\n\n**数据一致性**。两边都能写，如何避免冲突、如何保证不会「两边都成功但数据不同」—— 这是订单/账务类系统最难的部分。**很多所谓「双活」实际是「一写多读」。**",
+    "tags": [
+      "高可用",
+      "单点",
+      "熔断",
+      "双活"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5483,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "缓存穿透、缓存击穿、缓存雪崩有什么区别？分别怎么解决？",
+    "answer": "**三个问题：查不存在的数据、热点击穿、大面积同时失效 —— 解法完全不同。**\n\n## 三者对比（这是最容易被混淆的一组概念）\n\n| | **穿透** | **击穿** | **雪崩** |\n|---|---|---|---|\n| 问题 | **查不存在的数据** | **一个热点 key 失效** | **大量 key 同时失效** |\n| 规模 | 单个请求 | **单个 key** | **大量 key** |\n| 后果 | 每次都查库 | 瞬间全压到库 | 库被打挂 |\n| 特征 | 大量无效请求 | 单一热点 | 时间点集中 |\n\n**记忆法**：\n- 穿透 = 「穿过了缓存直接打到库」（数据不存在）\n- 击穿 = 「击穿了这一层」（一个 key 挂了）\n- 雪崩 = 「整片塌了」（大量 key 挂了）\n\n## 一、缓存穿透\n\n**场景**：请求查一个数据库里也不存在的 ID（如攻击者用随机 ID）。\n\n**缓存存不了 null**（若不处理），每次都要查库。\n\n**解法**：\n\n| 方案 | 说明 |\n|---|---|\n| **缓存空值** | 查不到也缓存（设短 TTL，如 60 秒） |\n| **布隆过滤器** | 请求前先判断「可能存在」，不存在直接拒 |\n| 参数校验（如 ID 格式） | 挡掉明显非法请求 |\n\n**布隆过滤器的关键特性（必考点）**：\n\n> **说不存在的一定不存在，说存在的可能不存在**（有误判率，约 1%）。\n\n所以它适合**前置拦截**，不能作为唯一保证。\n\n## 二、缓存击穿\n\n**场景**：某个**热点 key**（如首页配置）过期瞬间，大量请求同时穿到数据库。\n\n**解法**：\n\n| 方案 | 说明 |\n|---|---|\n| **互斥锁（最常用）** | 只允许一个请求重建缓存，其他等待/读旧值 |\n| **逻辑过期** | 缓存不设 TTL，value 里带过期时间，异步更新 |\n| **热点数据永不过期** | 靠后台更新 |\n\n**「互斥锁」的实现要点**：\n\n```\nSET lock:key 1 NX EX 3     → 抢到锁的查库并回填\n其余请求：短暂 sleep 后重读缓存\n```\n\n**「逻辑过期」的优势**：不会有请求等待，都返回旧数据，体验更好（代价是可能读到稍旧的值）。\n\n## 三、缓存雪崩\n\n**场景**：大量 key **同一时间失效**（如批量预热时设了相同 TTL），或 Redis 整个挂了。\n\n**解法**：\n\n| 方案 | 说明 |\n|---|---|\n| **TTL 加随机值** | `ttl = base + random(0, 60)`，把失效点打散 |\n| **多级缓存** | 本地缓存 + Redis，一级挂了还有一级 |\n| **Redis 高可用** | 主从/集群，避免整体挂 |\n| **限流 + 降级** | 兜底保护数据库 |\n| 预热 | 启动时先加载热点数据 |\n\n**「TTL 加随机值」是最简单有效的**，几乎零成本。\n\n## 一个高频追问\n\n「布隆过滤器能删除元素吗？」\n\n**不能**（标准布隆过滤器）。因为一个元素对应多个位，把它置 0 会影响其他元素的判断。\n\n替代方案：**计数布隆过滤器**（Counting Bloom Filter）支持删除，或定期重建。\n\n## 一个实践提醒\n\n**这三个问题经常同时出现**：\n\n```\n雪崩（大量失效）→ 请求全打到库 → 库慢了 →\n热点 key 重建也超时 → 看起来又像击穿\n```\n\n所以排查时要看：**是所有 key 都异常，还是某个 key**。范围决定了是哪个问题。",
+    "tags": [
+      "缓存穿透",
+      "击穿",
+      "雪崩",
+      "布隆过滤器"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5484,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何设计一个分布式 ID 生成方案？各方案有什么优劣？",
+    "answer": "**五个方案：UUID、自增、号段、雪花、Redis —— 核心权衡是「全局唯一 vs 趋势递增 vs 性能」。**\n\n| 方案 | 唯一性 | 有序性 | 性能 | 依赖 |\n|---|---|---|---|---|\n| **UUID** | 本地唯一 | ❌ 完全无序 | 高 | 无 |\n| 数据库自增 | ✅ | ✅ 严格递增 | 低（单点） | DB |\n| **号段模式** | ✅ | ✅ 递增 | 高 | DB（批量取） |\n| **雪花算法** | ✅（需处理时钟） | ✅ 趋势递增 | 很高 | 无（依赖机器号） |\n| Redis INCR | ✅ | ✅ 递增 | 高 | Redis |\n\n## 逐个说明\n\n### UUID\n\n**优点**：本地生成、无依赖、绝对唯一。\n**致命缺点**：\n\n1. **无序** → 作为主键会导致 InnoDB **频繁页分裂**（性能灾难）\n2. 占空间大（36 字符）\n\n**只适合「非主键」的唯一标识**（如 traceId、消息 ID）。\n\n### 数据库自增\n\n简单，但**单点瓶颈**（所有请求都打一台库），且扩容（分库分表）后冲突。\n\n### 号段模式（主流方案之一）\n\n```\n服务启动 → 从 DB 取一段（如 1000 个）→ 内存里递增发放\n用完再取下一个号段\n```\n\n**优点**：一次 DB 交互发 1000 个 ID，性能极高。\n**缺点**：服务重启会丢弃未用的号段（可接受，ID 不连续而已）。\n\n**这是「美团 Leaf」的基础方案。**\n\n### 雪花算法（Snowflake，最常用）\n\n```\n64 bit = 1(符号) + 41(时间戳 ms) + 10(机器ID) + 12(序列号)\n```\n\n| 部分 | 作用 |\n|---|---|\n| 时间戳（41位） | **趋势递增**（每秒 41 位可用 69 年） |\n| 机器 ID（10位） | 区分 1024 台机器 |\n| 序列号（12位） | 同一毫秒内 4096 个 |\n\n**优点**：本地生成、高性能、趋势递增（利于索引）。\n\n**两个致命问题**：\n\n**1. 时钟回拨**\n\n如果机器时间往回跳，会生成**重复 ID**。\n\n**处理方式**：\n- 检测回拨后**等待**（小幅回拨）\n- 大幅回拨直接**拒绝服务并告警**\n- 或改用「备用机器号」\n\n**2. 机器 ID 分配**\n\n1000 台机器如何不重复分配？要靠配置中心/ZooKeeper 统一分配，**这是部署复杂度所在**。\n\n### Redis INCR\n\n简单，但强依赖 Redis（挂了就没法发号），且 Redis 单点有性能上限。\n\n## 选型建议\n\n| 场景 | 方案 |\n|---|---|\n| 主键 ID | **号段模式 或 雪花**（趋势递增对索引友好） |\n| 需要绝对递增 | 号段模式 |\n| 无中心依赖、高性能 | 雪花（需解决时钟问题） |\n| 非主键唯一标识 | UUID |\n\n## 一个关键认知\n\n**「趋势递增」比「严格递增」重要得多**。\n\n因为 InnoDB 的 B+Tree 按主键排序存储：\n\n- **递增** → 新数据总在末尾插入（顺序写）\n- **无序** → 随机插入，**频繁页分裂** + 随机 IO\n\n**这是「为什么不能用 UUID 做主键」的根本原因。**",
+    "tags": [
+      "分布式ID",
+      "雪花算法",
+      "号段",
+      "UUID"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5485,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "分布式锁有哪些实现方式？如何保证锁的可靠性与安全性？",
+    "answer": "**三种主流：Redis、ZooKeeper、数据库；核心是「防死锁、防误删、防脑裂」。**\n\n## 三个必备特性\n\n| 特性 | 含义 | 不做会怎样 |\n|---|---|---|\n| **互斥** | 同时只有一人持锁 | 数据错乱 |\n| **防死锁** | 持锁者崩溃后锁能释放 | **锁永久不释放** |\n| **防误删** | 只删自己的锁 | 删掉别人的锁 |\n\n## 一、Redis 实现（最常用）\n\n**加锁（必须原子）**\n\n```\nSET lock:key <唯一值> NX EX 10\n# NX=不存在才设（互斥），EX=过期（防死锁），唯一值=防误删\n```\n\n**为什么必须一条命令**：分两步（先 SETNX 再 EXPIRE）中间崩溃就会**永久死锁**。\n\n**解锁（必须用 Lua 保证原子）**\n\n```lua\nif redis.call(\"get\", KEYS[1]) == ARGV[1] then\n    return redis.call(\"del\", KEYS[1])\nelse return 0 end\n```\n\n**为什么**：先 GET 比较再 DEL，两步之间锁可能过期并被别人拿走，直接 DEL 会**删掉别人的锁**。\n\n## 二、ZooKeeper 实现\n\n**原理**：利用**临时顺序节点** —— 客户端创建节点，谁序号最小谁持锁；客户端断开时临时节点自动删除（**天然防死锁**）。\n\n| 优点 | 缺点 |\n|---|---|\n| 天然防死锁 | 性能不如 Redis |\n| 有 watch 机制，等待公平 | 依赖 ZK 集群 |\n| 可靠性高 | 运维复杂 |\n\n## 三、数据库实现\n\n```sql\n-- 唯一索引 + 插入成功=持锁\nINSERT INTO locks (name, owner) VALUES ('job', 'uuid');\n-- 或 SELECT ... FOR UPDATE（行锁）\n```\n\n**优点**：简单、无需额外组件。\n**缺点**：性能差、`FOR UPDATE` 会占连接（易把连接池打满）。\n\n## 三个关键难题（这部分是深度的体现）\n\n### 难题一：锁过期但业务没做完\n\n**场景**：锁设 10 秒，业务跑了 15 秒——锁过期被他人获取，**两个进程同时在跑**。\n\n**解决**：\n\n| 方案 | 说明 |\n|---|---|\n| **看门狗（Watch Dog）** | 后台线程定期续期（Redisson 已内置） |\n| 预估足够长的 TTL | 但可能太长影响故障恢复 |\n\n**Redisson 的看门狗**：默认 30 秒 TTL，每 10 秒续一次，直到业务结束。\n\n### 难题二：Redis 主从切换导致锁失效\n\n**场景**：客户端 A 在 master 加锁成功 → master 还没同步到 slave 就宕机 → slave 升主 → 客户端 B 也加锁成功 → **两人同时持锁**。\n\n**解决**：**Redlock 算法**（向多个独立 Redis 实例加锁，多数成功才算成功）。\n\n**但 Redlock 有争议**（Martin Kleppmann 批评其安全性不足），实际生产中**更稳的做法是：\n\n> 不单纯依赖锁，业务层再加一层幂等/唯一约束兜底。\n\n### 难题三：等待与公平\n\nRedis 方案通常是「自旋重试」，高并发下会**耗 CPU 且不公平**。ZooKeeper 的顺序节点天然公平（排队）。\n\n## 一个务实的结论\n\n**分布式锁不是「绝对安全」的**，它降低冲突概率，但不能替代：\n\n- 数据库唯一索引\n- 业务幂等\n\n**「锁 + 幂等兜底」才是可靠方案。**\n\n## 一个高频追问\n\n「为什么不直接用 `SETNX` 不用 Lua 解锁？」\n\n因为**锁过期后可能已被别人持有**，此时直接 `DEL` 会删掉别人的锁 —— 必须「先比对唯一值再删」，且这两步要原子（Lua）。",
+    "tags": [
+      "分布式锁",
+      "Redis",
+      "Redlock",
+      "看门狗"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5486,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "微服务架构下如何保证「最终一致」？有哪些典型方案？",
+    "answer": "**核心思路：不做强一致，用「可靠消息 + 补偿」达到最终一致。**\n\n## 为什么做不到强一致\n\n跨服务的数据库事务无法用本地事务保证（两阶段提交性能差、可用性差）。**所以主流选择是最终一致。**\n\n## 四种典型方案\n\n| 方案 | 一致性 | 复杂度 | 适用 |\n|---|---|---|---|\n| **本地消息表** | 强（最终一致） | 低 | 最多用 |\n| **事务消息**（RocketMQ） | 强 | 中 | 有 MQ 支持时 |\n| **TCC** | 强 | **高** | 资金类 |\n| **Saga** | 最终一致 | 中 | 长流程 |\n\n### 一、本地消息表（推荐入门）\n\n```\n① 业务操作 + 写消息表 在同一个本地事务\n② 事务提交后，异步投递消息（MQ）\n③ 失败则扫描消息表重试\n④ 消费方处理（需幂等）\n```\n\n**精髓在于「业务数据和消息在同一个本地事务里」** —— 保证「要么都成功、要么都不做」，不会出现「业务成功但消息没发」。\n\n### 二、事务消息（RocketMQ）\n\n```\nProducer 发「半消息」→ 本地事务 → 提交/回滚消息\nBroker 没收到确认时会「回查」本地事务状态\n```\n\n**本质是把「本地消息表」的保证交给 MQ 实现**，省了自建表。\n\n### 三、TCC（Try-Confirm-Cancel）\n\n| 阶段 | 做什么 |\n|---|---|\n| **Try** | 预留资源（冻结余额，不实际扣） |\n| **Confirm** | 确认扣减（幂等） |\n| **Cancel** | 释放预留 |\n\n**优点**：不依赖数据库事务，跨服务也能保证。\n**缺点**：**业务侵入极强**（每个操作要写三个方法）、要把「预留」逻辑做对，很重。\n\n**只有资金/库存这类强一致要求才用 TCC。**\n\n### 四、Saga\n\n**长流程拆成多个步骤 + 每个步骤有补偿操作**（失败时按相反顺序补偿）。\n\n**与 TCC 的区别**：Saga 是「先做、失败再补」，TCC 是「先预留、再确认」。**Saga 更适合业务流程长（如旅行预订）的场景。**\n\n## 关键前提：幂等（怎么强调都不为过）\n\n**所有方案都依赖消费幂等**，否则重试会重复执行。\n\n| 幂等方式 | 说明 |\n|---|---|\n| 唯一索引 | 数据库层兜底（最可靠） |\n| 状态机 | 只允许合法状态转移 |\n| Redis 去重表 | 快，但要考虑可靠性 |\n\n## 一个必须面对的：补偿与对账\n\n**最终一致一定有「暂时不一致」的窗口**，必须：\n\n1. **补偿机制**（某个步骤长期失败要有重试上限 + 告警）\n2. **对账机制**（定时比对两侧数据，发现差异修复）\n\n**「对账」是最后一道保险**，也是财务类系统的必备。\n\n## 一个高频追问\n\n「怎么保证消息不丢？」\n\n| 环节 | 手段 |\n|---|---|\n| 生产 | 本地消息表 或 事务消息 |\n| 传输 | MQ 持久化 + 副本 |\n| 消费 | **先处理再 ack**（不要先 ack） |\n\n**特别注意「先处理再 ack」**：先 ack 再处理，消费者崩溃就丢消息了。",
+    "tags": [
+      "最终一致",
+      "本地消息表",
+      "TCC",
+      "幂等"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5487,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "一个服务上线后发现「偶发的数据不一致」，你会怎么排查？",
+    "answer": "**数据不一致的排查核心是「找到不一致的那一笔，倒推它的执行路径」。**\n\n## 第一步：先定义「不一致」\n\n| 问题 | 意义 |\n|---|---|\n| 哪两个数据源不一致 | DB 与缓存？主库与从库？两个服务？ |\n| 不一致的方向 | A 有 B 无？数值差？ |\n| 频率与规模 | 每天几笔？（决定是并发问题还是逻辑问题） |\n\n**「偶发」这个描述本身说明是并发或时序问题** —— 逻辑错误会稳定复现。\n\n## 第二步：拿到具体样本（最关键）\n\n**必须有「能复现不一致的具体数据」**，否则无从下手。\n\n```sql\n-- 对账：找出不一致的记录\nSELECT a.id, a.value AS a_val, b.value AS b_val\nFROM db_a a LEFT JOIN db_b b ON a.id = b.id\nWHERE a.value != b.value;\n```\n\n**拿到 ID 后，查这个 ID 的所有操作日志**：\n\n- 什么时候写、由谁写的\n- 是否有重试、重复执行\n- 状态流转是否完整\n\n## 第三步：按五类模式对照\n\n| 模式 | 特征 | 典型根因 |\n|---|---|---|\n| **A 写成功、B 没写** | 单向缺失 | 消息丢了、事务未提交 |\n| **A 与 B 都写了但值不同** | 数值对不上 | 并发覆盖（**读-改-写丢失**） |\n| **A、B 都写了两次** | 重复 | 重试、重复消费（**缺幂等**） |\n| **顺序颠倒** | 最终值错 | 异步乱序（后发的先到） |\n| **只在不该有时有** | 多出来了 | 补偿逻辑重复执行 |\n\n**「并发覆盖」是最常见的一种**：两个请求同时 `UPDATE t SET v = v + 1`，如果用「先读再算再写」就会丢更新。\n\n## 第四步：排查并发与时序\n\n| 检查 | 方法 |\n|---|---|\n| 是否有并发写同一行 | 查日志时间戳是否重叠 |\n| 是否用了「先查再改」 | **代码审查**（应改为原子操作或加锁） |\n| 是否异步且无序 | 看消息队列的分区/顺序 |\n| 重试是否幂等 | 看有无唯一约束、去重表 |\n\n**关键判断**：如果两个操作的时间戳落在同一毫秒内 → 并发问题。\n\n## 第五步：修复的三层保障\n\n| 层 | 手段 |\n|---|---|\n| **预防** | 唯一约束（数据库兜底）、幂等（消费端去重）、原子操作（`SET v = v + 1` 而非读改写） |\n| **检测** | **对账任务**（定期扫描不一致）、指标（数量差） |\n| **修复** | 对账后的修复脚本（注意要幂等，可重跑） |\n\n**对账启用是第一步，不能只靠「发现一笔修一笔」**。\n\n## 一个容易忽略的方向\n\n**缓存与数据库不一致不要急着「加缓存」，先看「更新顺序」**：\n\n| 顺序 | 问题 |\n|---|---|\n| 先删缓存再更新 DB | 并发下会读到旧值并回填 |\n| **先更新 DB 再删缓存** | 相对安全（推荐） |\n| 双写 | 并发下会不一致 |\n\n**推荐「先更新 DB，再删缓存」+ 延迟双删**，这是实践中的标准做法。\n\n## 一个高频追问\n\n「为什么不能先删缓存再更新数据库？」\n\n因为：删缓存后、更新 DB 前，有请求读缓存 → 未命中 → 读 DB（**旧值**）→ 回填缓存 → 之后 DB 才更新 → **缓存里是旧数据，会一直错下去**。",
+    "tags": [
+      "数据不一致",
+      "对账",
+      "并发",
+      "幂等"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5488,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "发布上线后发现严重 bug，但不知道问题在哪，你怎么办？",
+    "answer": "**第一原则：先回滚。不要在线上边排查边修。**\n\n## 为什么回滚优先\n\n| 对比 | 回滚 | 在线修 |\n|---|---|---|\n| 耗时 | **分钟级** | 不确定（可能几小时） |\n| 风险 | 低（回到已知状态） | **高**（可能引入新问题） |\n| 影响 | 立即停止扩散 | 期间持续影响用户 |\n\n**回滚不需要理解根因**，只需把时间倒回去 —— 这是它最大的价值。\n\n## 回滚后才能做的排查\n\n**1. 对比新旧版本**\n\n```bash\ngit diff <旧版本> <新版本>          # 代码\nkubectl diff -f deploy.yaml       # 配置\n```\n\n**先看「配置差异」**，很多问题是配置而非代码（如连接池变小、超时改了）。\n\n**2. 差异倒推法**\n\n把变更按「风险等级」排序：\n\n| 变更类型 | 风险 |\n|---|---|\n| **依赖升级** | 高（行为变化） |\n| **配置变更** | 高（不易被 code review 发现） |\n| 数据库 schema 变更 | 高（可能不兼容） |\n| 新增功能代码 | 中 |\n| 重构（不改行为） | 中 |\n| 文案/样式 | 低 |\n\n**逐项排查，优先怀疑依赖升级与配置。**\n\n**3. 二分法定位**\n\n如果版本之间有很多提交，用 `git bisect` 或「逐步缩小发布范围」定位。\n\n## 一个关键思路：先判断「是否是新版本独有」\n\n| 现象 | 结论 |\n|---|---|\n| 回滚后问题消失 | **确定是新版本引入** |\n| 回滚后问题仍在 | **不是本次发布**（是别的变更/外部因素） |\n\n**第二点非常重要**：很多人一有问题就怀疑「刚发的版本」，但可能是 DNS、证书、依赖服务、网络。**回滚验证能快速证伪。**\n\n## 如果回滚不了（如数据库变更）\n\n这时候才是最难的，要做：\n\n| 情况 | 处理 |\n|---|---|\n| schema 变更不兼容 | 前向兼容设计（新字段可空、新表并存） |\n| 数据已写脏 | 停写 → 修复数据 → 恢复写 |\n| 不可逆操作 | 从备份恢复（最后手段） |\n\n**这也是为什么「发布前要设计成可回滚」** —— 迁移类变更应拆成「先兼容、再切换、最后清理」三步。\n\n## 发布流程的改进（事后）\n\n| 措施 | 作用 |\n|---|---|\n| **灰度发布**（1%→10%→全量） | 把影响限制在部分用户 |\n| 自动回滚（健康指标触发） | 缩短人工判断时间 |\n| 功能开关（feature flag） | 不发版就能关掉功能 |\n| 快速回滚演练 | 确保回滚方案真的可用 |\n\n**「功能开关」是很好的方案**：新功能用开关包住，出问题直接关掉，不用回滚整个版本。\n\n## 一个高频追问\n\n「回滚会不会有数据问题？」\n\n**会**。要提前考虑：\n\n- 新版本写入的数据老版本能否识别（前向兼容）\n- 数据库 schema 是否兼容（新字段老版本忽略即可）\n\n**这正是「可回滚」的设计要求**：任何版本都要能处理「其他版本写入的数据」。",
+    "tags": [
+      "发布回滚",
+      "灰度",
+      "排查",
+      "功能开关"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5489,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何做线上监控体系的设计？有哪些关键指标？",
+    "answer": "**监控分四层：基础资源 → 应用 → 业务 → 用户体验；每层都要有「黄金指标」。**\n\n## 四层监控\n\n| 层 | 监控什么 | 典型指标 |\n|---|---|---|\n| **基础设施** | CPU/内存/磁盘/网络 | 使用率、IO、连接数 |\n| **应用** | 服务的健康与性能 | QPS、延迟、错误率、饱和度 |\n| **业务** | 业务是否正常 | 订单量、支付成功率、注册数 |\n| **用户体验** | 用户真实感知 | 端到端耗时、可用性、埋点 |\n\n**业务监控最重要也最容易漏**：技术指标全绿但订单量掉了一半，说明有业务问题。\n\n## 黄金四指标（Google SRE 提出，应答可提）\n\n| 指标 | 含义 |\n|---|---|\n| **延迟（Latency）** | 请求耗时（要分成功/失败的） |\n| **流量（Traffic）** | QPS、并发 |\n| **错误（Errors）** | 错误率、特定错误码 |\n| **饱和度（Saturation）** | 资源使用率（越满性能越差） |\n\n## 关键的指标选择（这部分体现深度）\n\n**1. 用分位数而不是平均值**\n\n| 指标 | 问题 |\n|---|---|\n| 平均延迟 | **掩盖长尾**（一两个慢请求看不出来） |\n| **P99 / P999** | 反映真实体验 |\n\n**「平均值 10ms 但 P99 是 2 秒」是典型的长尾问题。**\n\n**2. 错误率要分类**\n\n不要只看「总错误率」，要区分：\n\n- 4xx（客户端问题）vs 5xx（服务端问题）\n- **不同错误码的原因完全不同**\n\n**3. 饱和度要看「距离上限多远」**\n\n不只是「CPU 60%」，要看「线程池用了 90%」「连接池剩余 10 个」—— **接近上限才危险**。\n\n## 告警设计的三个原则\n\n| 原则 | 说明 |\n|---|---|\n| **少而准** | 告警太多 = 没人看（告警疲劳） |\n| **分级** | P1（叫醒人）/ P2（明天处理）/ P3（看板即可） |\n| **可行动** | 收到告警知道该做什么，否则不该告警 |\n\n**「可行动」这条最重要**：如果收到告警后的动作是「再查查」，那它就不该是告警。\n\n## 一个实用的告警阈值思路\n\n```\n多级阈值：\n  80%  → 记录（不告警）\n  90%  → P3 告警（看板）\n  95%  → P2（值班群）\n  100% → P1（电话）\n```\n\n**并且要「持续 N 分钟」才告警**，避免瞬间毛刺误报。\n\n## 必须有的两个能力\n\n**1. 历史回溯**\n\n问题发生后能查「一小时前什么样」。用 `sar` 或 Prometheus 的长周期数据。\n\n**2. 全链路追踪**\n\n一个请求经过哪些服务、每段耗时 —— **这是排查慢请求的核心工具**。\n\n## 一个高频追问\n\n「怎么避免告警风暴？」\n\n| 手段 | 说明 |\n|---|---|\n| **聚合** | 同类告警合并成一条 |\n| **抑制** | A 挂了导致 B 也告警时，只报 A |\n| 静默 | 变更期间临时关告警 |\n\n**「抑制」特别重要**：数据库挂了会让 50 个应用全部告警，真正的原因只有一个。",
+    "tags": [
+      "监控",
+      "黄金指标",
+      "告警",
+      "分位数"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5490,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "异地多活的架构有哪些难点？一般怎么做？",
+    "answer": "**三大难点：数据同步、写冲突、流量路由；绝大多数「多活」实际是「一写多读」。**\n\n## 为什么难（三个核心问题）\n\n| 问题 | 说明 |\n|---|---|\n| **数据同步延迟** | 跨地域延迟（几十毫秒），同步本身就是瓶颈 |\n| **写冲突** | 两边都能写，同一记录被同时改，谁赢？ |\n| **流量路由** | 用户该去哪个机房？切换时怎么保证不断 |\n\n## 四种典型模式\n\n| 模式 | 说明 | 一致性 |\n|---|---|---|\n| **主备（热备）** | 主机房承载所有写，备机房只读/待命 | 强 |\n| **双活（一写多读）** | 一个机房写，另一个机房只读 | 中（有延迟） |\n| **双活双写** | 两边都能写 | **难（需解决冲突）** |\n| **单元化（Set 化）** | 按用户分片，每片一个机房 | 强（片内单写） |\n\n**「单元化」是最务实的方案**：把用户按规则分片，每片的写只在一个机房。**片内是单写，天然无冲突。**\n\n## 数据同步的三档\n\n| 方式 | 延迟 | 一致性 |\n|---|---|---|\n| 同步复制 | 高（要等对方确认） | 强 |\n| **异步复制** | 低 | 最终一致 |\n| 半同步 | 中 | 折中 |\n\n**跨地域做同步复制基本不可行**（延迟会被拉高到几十毫秒以上）。\n\n## 写冲突怎么解\n\n| 方案 | 说明 |\n|---|---|\n| **避免冲突**（单元化） | 每个数据只有一处能写（**最优**） |\n| 时间戳/LWW | 后写的赢（可能丢数据） |\n| 版本号 + 冲突检测 | 冲突时报错，人工/业务处理 |\n| CRDT | 特殊数据结构，自动合并（适用有限场景） |\n\n**「避免冲突」优于「解决冲突」** —— 这是单元化方案的核心理由。\n\n## 流量路由的难点\n\n| 问题 | 说明 |\n|---|---|\n| 用户归哪个机房 | 按 UID/地域分片，要有稳定的映射 |\n| 机房故障怎么切 | DNS 切换慢（TTL）、GSLB |\n| 切换期间的一致性 | 已写的数据在同机房，切换后读不到 |\n\n**「切换后读不到」是单元化最麻烦的地方**：需要「数据回源」或「双读」。\n\n## 一个务实的建议\n\n**不要为了「多活」而多活**。先评估：\n\n| 目标 | 需要什么 |\n|---|---|\n| 防单机/单实例 | 集群 + 副本即可 |\n| 防机房故障 | 同城双机房（**成本可控**） |\n| 防城市级灾难 | 异地多活（成本极高） |\n\n**大多数业务「同城双活」就够了**，异地多活只在金融/超大规模场景才值得。\n\n## 一个高频追问\n\n「异地多活最难的是什么？」\n\n**不是技术，是「数据一致性业务语义」**：到底允许不允许「两个机房数据不同」？在订单/账务场景，这意味着能不能接受「用户看到两笔订单」。**这是业务决策，不是技术决策。**",
+    "tags": [
+      "异地多活",
+      "单元化",
+      "数据同步",
+      "写冲突"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 5491,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何设计一套日志与链路追踪体系？怎么用它排查问题？",
+    "answer": "**三个支柱：日志（发生了什么）、指标（趋势如何）、追踪（耗时在哪一段）。**\n\n## 三者的分工\n\n| | 日志 | 指标 | 追踪 |\n|---|---|---|---|\n| 回答 | **为什么失败** | **整体健康度** | **慢在哪一步** |\n| 粒度 | 单次事件 | 聚合值 | 单次请求的完整链路 |\n| 存储 | 文件/ES | 时序库 | 追踪系统 |\n\n**排查顺序：指标发现异常 → 追踪定位环节 → 日志找到原因。**\n\n## 日志的关键设计\n\n**1. 结构化日志**\n\n```json\n{\"ts\":\"...\",\"level\":\"error\",\"traceId\":\"abc123\",\"userId\":\"1001\",\"msg\":\"支付失败\",\"cost\":320}\n```\n\n**用 JSON 而不是纯文本**，才能按字段查询。纯文本日志查起来极其痛苦。\n\n**2. traceId 贯穿全链路（最关键）**\n\n```\n入口生成 traceId → 通过 HTTP header 传递 → 每个服务都记录\n→ 排查时用 traceId 搜出所有相关日志\n```\n\n**没有 traceId 就无法把一个请求的日志串起来** —— 这是链路追踪的基础。\n\n标准传递头：`traceparent`（W3C）或自定义 `X-Trace-Id`。\n\n**3. 日志分级与采样**\n\n| 级别 | 用途 |\n|---|---|\n| ERROR | 需要人处理（**每一条都应告警或修复**） |\n| WARN | 异常但可自愈 |\n| INFO | 关键流程节点 |\n| DEBUG | 排查时临时开（**生产默认关**） |\n\n**高流量系统必须采样**：正常请求 1% 采样，**错误请求 100% 记录**。\n\n## 链路追踪的实现\n\n| 方式 | 说明 |\n|---|---|\n| 手动埋点 | 侵入代码 |\n| **AOP/拦截器自动埋点** | 推荐（无侵入） |\n| OpenTelemetry | 标准化方案 |\n\n**必须记录的关键信息**：\n\n- 每一段的耗时（span）\n- 调用的服务/接口\n- 是否失败、失败原因\n\n## 用它排查问题的三个实战路径\n\n**路径一：慢请求**\n\n```\n① 从指标看到 P99 升高\n② 用追踪找一条慢请求的 trace\n③ 看哪个 span 耗时最长\n```\n\n**「看 span 耗时」能精确到具体调用**，比看整体耗时高效得多。\n\n**路径二：错误排查**\n\n```\n① 从错误率指标/告警拿到 traceId\n② 搜 traceId 得到全链路日志\n③ 找到最早报错的那个服务\n```\n\n**「最早报错」是关键**：后面的报错往往是前一个失败的连锁反应。\n\n**路径三：跨服务问题**\n\n```\nA 调 B 调 C，C 挂了\n→ trace 显示 A 正常、B 正常、C 报错\n→ 定位到 C\n```\n\n## 两个容易踩的坑\n\n**1. traceId 没传递到异步线程**\n\n异步任务里 traceId 丢了，日志串不起来。要用 MDC/上下文透传。\n\n**2. 日志量爆炸**\n\nDEBUG 级忘关、循环里打日志 → **磁盘瞬间写满**，还可能拖慢服务。**要监控日志速率**。\n\n## 一个高频追问\n\n「日志要存多久？」\n\n| 用途 | 周期 |\n|---|---|\n| 实时排查 | 7~15 天（热存，可查询） |\n| 审计/合规 | 6 个月~1 年（冷存） |\n| 业务分析 | 按需 |\n\n**关键是「分级存储」**：热数据放 ES 方便查，冷数据压缩归档。",
+    "tags": [
+      "日志",
+      "链路追踪",
+      "traceId",
+      "结构化"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5492,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "如何设计一个灰度发布方案？需要哪些能力支撑？",
+    "answer": "**灰度 = 让新版本只影响一部分用户，按指标决定放量还是回滚。**\n\n## 四个必备能力\n\n| 能力 | 说明 |\n|---|---|\n| **分流** | 把部分流量导到新版本 |\n| **观测** | 对比新老版本的指标 |\n| **决策** | 什么条件继续放大/回滚 |\n| 回滚 | 快速切回老版本 |\n\n**缺任何一个，「灰度」就只是「分批发布」，起不到保护作用。**\n\n## 分流的六个维度\n\n| 维度 | 适用 |\n|---|---|\n| 按实例（百分比机器） | 通用，最简单 |\n| **按用户 ID 哈希** | 同一用户体验一致 |\n| 按地域/机房 | 逐步扩区域 |\n| 按白名单 | 内部先验证 |\n| 按请求比例 | 流量层面随机 |\n| 按客户端版本 | APP 场景 |\n\n**「按用户 ID 哈希」很重要**：同一用户始终走同一版本，避免「刷新一下变了」的体验割裂。\n\n## 观测：必须对比什么\n\n| 指标 | 说明 |\n|---|---|\n| **错误率** | 最优先（新版本报错是否变多） |\n| **延迟 P99** | 性能是否退化 |\n| 业务指标 | 转化率、下单成功率（**可能偷偷下降**） |\n| 资源 | CPU/内存是否异常 |\n| **关键日志** | 是否有新出现的异常 |\n\n**业务指标最容易被忽略**：「技术指标全好，但下单量掉了 10%」—— 这种问题只有看业务指标才发现。\n\n## 放量节奏\n\n```\n1% → 5% → 10% → 30% → 50% → 100%\n```\n\n**每一步都要「观察足够时间」**：\n\n| 比例 | 观察时长 |\n|---|---|\n| 1% | 至少 30 分钟 |\n| 10% | 1 小时 |\n| 50% | 数小时（跨业务高峰） |\n\n**关键：要覆盖业务高峰期**，只在低峰放量等于没验证。\n\n## 决策条件（要提前定）\n\n| 条件 | 动作 |\n|---|---|\n| 错误率上升 > 1% | **立即回滚** |\n| P99 上升 > 20% | 暂停观察 |\n| 业务指标下降 > 5% | 回滚 |\n| 无异常 | 按计划放量 |\n\n**阈值必须提前定**，否则会「再看看」而错过窗口。\n\n## 技术实现方式\n\n| 方式 | 说明 |\n|---|---|\n| **Nginx 权重分流** | `upstream` 按权重、或按 header 分流 |\n| **负载均衡器** | 支持按规则分流 |\n| **服务网格/网关** | 按标签路由 |\n| **功能开关（feature flag）** | 代码内判断，**粒度最细** |\n\n**功能开关的价值**：不需要重新发版就能关闭功能，出问题是「改配置」而不是「回滚版本」。\n\n## 一个高频追问\n\n「数据库 schema 变更怎么灰度？」\n\n**不能直接灰度**（新老版本共用同一个库）。要分三步：\n\n```\n① 扩展：新增字段/表（老版本忽略它）→ 兼容\n② 双写：新老版本都写，验证正确性\n③ 收缩：确认稳定后再删旧字段\n```\n\n**这是「可回滚发布」的核心要求** —— 任何时刻回滚，数据库都要能兼容两个版本。",
+    "tags": [
+      "灰度发布",
+      "分流",
+      "指标对比",
+      "功能开关"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5493,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如果让你负责一套系统的容量规划，你会怎么做？",
+    "answer": "**容量规划 = 用数据回答「需要多少资源」与「什么时候该扩容」。**\n\n## 四步法\n\n```\n① 已知：当前容量与水位\n② 未知：业务增长预期\n③ 计算：需要多少资源\n④ 触发：什么时候扩容\n```\n\n## 第一步：摸清当前水位（最关键）\n\n| 指标 | 意义 |\n|---|---|\n| **单实例承载 QPS** | 基础数据 |\n| 资源使用率 | 距离上限多远（**要看峰值不是平均**） |\n| **瓶颈在哪** | CPU? 内存? 连接数? IO? |\n| 压测拐点 | QPS 到多少时延迟开始飙升 |\n\n**「瓶颈在哪」决定扩容时加什么** —— 盲目加机器可能无效（如瓶颈在数据库连接数）。\n\n## 第二步：算出需要多少\n\n```\n实例数 = 峰值 QPS × 冗余系数 ÷ 单实例承载\n```\n\n| 参数 | 取值建议 |\n|---|---|\n| 峰值 QPS | 历史峰值 × 增长预期（或大促预估） |\n| **冗余系数** | **2（至少 1.5）**，留出故障转移余量 |\n| 单实例承载 | 压测值的 70%（不要用极限值） |\n\n**「冗余系数 2」的原因**：一台挂了，另一台要能承担全部流量。\n\n## 第三步：分层的容量视角\n\n**容量规划最怕「只扩应用层」**：\n\n| 层 | 扩容方式 | 注意 |\n|---|---|---|\n| 应用 | 加实例 | 无状态才能水平扩 |\n| 数据库 | 纵向/分库分表 | **最难，是真正的瓶颈** |\n| 连接数 | 改 max_connections | 应用连接池也要配套 |\n| 带宽 | 扩带宽 | 大文件/图片场景常是瓶颈 |\n\n**数据库通常是瓶颈**：应用能靠加机器线性扩，数据库不行。所以容量规划要先看数据库。\n\n## 第四步：什么时候扩（触发条件）\n\n| 条件 | 说明 |\n|---|---|\n| 资源使用率 > 70% 持续 N 分钟 | 提前扩容（不要等 90%） |\n| 高峰 QPS 连续上涨 | 趋势判断 |\n| 排在业务事件前（大促、推广） | 提前准备 |\n\n**「提前扩容」比「接近上限再扩」安全得多**（扩容也需要时间）。\n\n## 几个必须考虑的边界\n\n| 边界 | 说明 |\n|---|---|\n| **单点故障** | 挂一台后剩余能否承载（这就是冗余系数的意义） |\n| **突发流量** | 热点事件可能瞬时翻倍 |\n| 数据库连接上限 | 加实例反而可能打满数据库 |\n| 依赖服务 | 自己的容量够，但下游不够 |\n\n**「应用扩了但数据库连不上」是很常见的事故**：只扩了应用层，反而把数据库压死了。\n\n## 一个高频追问\n\n「如何预估未来的容量增长？」\n\n| 方法 | 说明 |\n|---|---|\n| 历史趋势外推 | 简单但可能突变 |\n| 业务输入 | 市场计划、产品规划 |\n| **压测** | 最可靠，能找出真实拐点 |\n\n**压测的坑**：测试环境数据量小、缓存没预热，结果会「偏乐观」。**要按真实数据规模压。**\n\n## 一个实践建议\n\n**容量规划要定期做（季度）**，不是一次性：业务在变、代码在变、数据量在增长。",
+    "tags": [
+      "容量规划",
+      "压测",
+      "冗余系数",
+      "瓶颈"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5494,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "什么是「雪崩效应」？在微服务中如何防止？",
+    "answer": "**雪崩 = 一个组件变慢，导致调用方线程耗尽，最终整条链都挂。**\n\n## 雪崩的传导过程（理解这个最关键）\n\n```\n① 服务 D 变慢（如 DB 慢查询）\n② C 调用 D 的线程全部阻塞等待\n③ C 线程池耗尽 → C 无法处理任何请求\n④ B 调用 C 也阻塞 → B 线程池耗尽\n⑤ ...一直传到入口 → 整个系统不可用\n```\n\n**关键点：不是因为「计算不过来」而挂，而是因为「线程都在等」而挂。**\n\n## 为什么「等」会致命\n\n| 资源 | 说明 |\n|---|---|\n| 线程池 | 有限（通常几百），全占满就没法接新请求 |\n| 连接池 | 同上 |\n| 内存 | 排队请求会堆积占内存 |\n\n**一个慢依赖能瞬间拖垮所有依赖它的服务。**\n\n## 五道防线\n\n**1. 超时（最基础）**\n\n**每个远程调用都必须设超时**，且：\n\n```\n上游超时 > 下游超时\n（Nginx 60s，应用调下游 30s，下游调更下游 10s）\n```\n\n**不设超时是最常见的原因** —— 默认可能等几分钟甚至无限。\n\n**2. 熔断**\n\n依赖错误率/慢请求超阈值 → **直接快速失败**，不再调用。\n\n```\n连续 20 次失败 / 50% 请求超时 → 熔断 30 秒\n期间所有请求立即返回失败（不消耗线程）\n```\n\n**熔断的价值是「止损」**：不再往已经挂的服务上堆请求，给它恢复的机会。\n\n**3. 隔离（线程池/信号量）**\n\n| 方式 | 说明 |\n|---|---|\n| **按依赖分配独立线程池** | 一个慢依赖不占满全局池 |\n| 信号量限流 | 限制并发调用某依赖的数量（如最多 50） |\n\n**「信号量」特别有效**：下游慢时，最多只有 50 个线程在等，其余请求快速失败。\n\n**4. 降级**\n\n依赖不可用时给兜底：\n\n| 降级方式 | 例子 |\n|---|---|\n| 返回缓存数据 | 商品详情用缓存 |\n| 返回默认值 | 推荐位返回热门 |\n| 关闭非核心功能 | 隐藏评论、评分 |\n\n**降级必须有预案**，临时想不出来。\n\n**5. 限流**\n\n入口限流，控制进入的请求总量 —— **这是最后一道闸门**。\n\n## 一个关键顺序\n\n**防线是按「成本从低到高」生效的**：\n\n```\n限流（最外层，成本最低）\n  → 熔断（依赖级）\n  → 降级（保核心功能）\n```\n\n**别指望「加机器」解决雪崩** —— 雪崩时线程都在等，加机器只是多几百个在等的线程。\n\n## 一个高频追问\n\n「熔断后怎么恢复？」\n\n**半开状态**：熔断一段时间后，放少量请求试探；成功则恢复，失败则继续熔断。\n\n**不能直接全开** —— 如果下游还没恢复，全开会导致二次雪崩。\n\n## 一个实践提醒\n\n**重试会加剧雪崩**：下游已经慢，重试会让请求量翻倍。\n\n必须：\n- 重试次数限制（1~2 次）\n- **指数退避**（1s → 2s → 4s）\n- 只对「幂等且可重试」的错误重试（**不要对超时重试写操作**）",
+    "tags": [
+      "雪崩",
+      "熔断",
+      "超时",
+      "降级"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5495,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何排查「明明是高峰期，但流量比预期少很多」的问题？",
+    "answer": "**「流量变少」通常不是故障，而是「请求在到达业务前就被拦了」。**\n\n## 第一步：确认流量在哪一层减少\n\n```\n用户 → DNS → CDN → 负载均衡 → Nginx → 应用 → 业务逻辑\n```\n\n**逐层看 QPS**，找出「从哪里开始掉的」：\n\n| 层 | 看什么 |\n|---|---|\n| CDN | CDN 回源量 |\n| 负载均衡 | 入向流量 |\n| **Nginx** | `access.log` 的请求数 |\n| 应用 | 收到的请求数、业务接口 QPS |\n\n**对比「Nginx 收到 vs 应用处理」** —— 如果 Nginx 收到很多但应用只处理了少量，说明被 Nginx 拦了。\n\n## 第二步：五类可能原因\n\n### 一、被限流/拒绝\n\n**最可能的原因**。检查：\n\n```bash\ngrep ' 503 ' access.log | wc -l      # 限流返回\nawk '{print $9}' access.log | sort | uniq -c   # 状态码分布\n```\n\n| 状态码 | 含义 |\n|---|---|\n| **503** | 限流（`limit_req`）或被摘除 |\n| **429** | 限流（如果配了 `limit_req_status 429`） |\n| 403 | 访问控制拦了 |\n\n### 二、上游没把流量导过来\n\n| 原因 | 检查 |\n|---|---|\n| 负载均衡权重配错 | 看 LB 配置 |\n| 健康检查把节点摘了 | 看 upstream 状态 |\n| DNS 或 CDN 缓存了旧配置 | 生效时间问题 |\n\n### 三、客户端/网络问题\n\n| 原因 | 检查 |\n|---|---|\n| 某地区网络故障 | 分地域看流量 |\n| 客户端缓存了旧版本 | 埋点/版本号 |\n| 证书过期导致客户端拒绝连接 | 证书有效期 |\n\n### 四、性能问题导致的「伪低流量」\n\n**服务变慢 → 客户端超时放弃 → 流量看起来变少**。\n\n检查：\n\n```bash\n# 看超时请求数\nawk '$NF > 5' access.log | wc -l\n```\n\n**「流量少 + 延迟高」通常是这个原因**，不是真的流量少。\n\n### 五、业务侧变化\n\n| 原因 | 例子 |\n|---|---|\n| 入口页面改版 | 用户没找到入口 |\n| 上游依赖变了 | 上游限流 |\n| **前端报错** | 页面加载失败，请求根本没发出 |\n\n**第 5 类最难查**：请求根本没到后端，后端日志里什么都看不到。要看前端监控/埋点。\n\n## 第三步：数据对比法（很有效）\n\n| 对比 | 结论 |\n|---|---|\n| 今天 vs 昨天同一时刻 | 是「突变」还是「渐变」 |\n| 各实例流量分布 | 是否某台异常低（配置/健康检查） |\n| **各接口流量分布** | 是全部低还是某个接口低 |\n| 前端 PV vs 后端 QPS | 比值变了说明中间有拦截 |\n\n**「前端 PV 正常但后端 QPS 低」= 中间被拦或前端报错。**\n\n## 一个高频追问\n\n「怎么区分『被限流』和『服务挂了』？」\n\n- **被限流**：返回 503/429，服务本身健康，错误率**集中在特定 IP/用户**\n- **服务挂了**：连接被拒或超时，错误率**广泛分布**\n\n**看状态码分布是最快的区分方法。**",
+    "tags": [
+      "流量下降",
+      "限流",
+      "排查",
+      "状态码"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 5496,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "一次系统性能优化，你会按什么顺序推进？如何证明优化有效？",
+    "answer": "**顺序：先度量 → 再定位 → 只改一处 → 再度量。绝不一次改多个。**\n\n## 第一步：建立基线（最容易被跳过，但最关键）\n\n**没有基线就没有优化**，因为你无法证明「变快了」。\n\n要采集：\n\n| 指标 | 采集方式 |\n|---|---|\n| QPS / 吞吐 | 压测或监控 |\n| 延迟 P50/P99 | 同上 |\n| 资源使用（CPU/内存/IO） | 监控 |\n| 错误率 | 监控 |\n\n**并且要固定测试条件**：同一套压测脚本、同一批数据、同样的并发。\n\n## 第二步：定位瓶颈（不要靠猜）\n\n| 现象 | 工具 |\n|---|---|\n| CPU 高 | `perf top`、火焰图 |\n| 内存瓶颈 | `jstat`、GC 日志 |\n| IO 瓶颈 | `iostat`、`iotop` |\n| 网络瓶颈 | `sar -n DEV`、`ss -s` |\n| 代码级热点 | **火焰图**（最直观） |\n\n**「先用工具看到瓶颈在哪，再想优化方案」** —— 反过来（先想方案再验证）是最大的浪费。\n\n## 第三步：判定「优化空间」\n\n| 瓶颈 | 常见优化手段 | 预期收益 |\n|---|---|---|\n| **算法/复杂度** | 改算法 | 可能几十倍 |\n| **减少 IO 次数** | 批量、缓存 | 数量级 |\n| 加缓存 | 减少重复计算 | 数倍 |\n| 并发/并行 | 多线程、异步 | 2~N 倍（受核数限） |\n| 换硬件/调参 | 有限 | 10~50% |\n\n**「算法级优化」收益最大，调参最小** —— 优化要有优先级。\n\n## 第四步：只改一处，再测\n\n```\n改 A → 测 → 提升 20% ✅\n改 B → 测 → 无变化 ❌ 回退 B\n改 C → 测 → 提升 40% ✅\n```\n\n**一次改多个的问题**：无法归因，不知道哪个有效、哪个可能反而有害。\n\n## 第五步：验证（三个层次）\n\n| 层次 | 验证什么 |\n|---|---|\n| **压测** | 同条件对比数字 |\n| **灰度/生产** | 真实流量下 P99 是否改善 |\n| 长跑 | 有无副作用（内存泄漏、稳定性） |\n\n**生产验证比压测更重要**：压测环境往往「数据量小、缓存冷」，结果会偏乐观。\n\n## 六个常见误区（这部分体现经验）\n\n1. **只看平均值** → 掩盖长尾（要看 P99）\n2. **优化了不慢的地方** → 白费功夫（80% 时间花在 20% 的代码上，要先找那 20%）\n3. **压测数据不真实** → 结论无效\n4. **忽略缓存预热** → 冷启动时很差\n5. **只优化单机** → 整体瓶颈可能在数据库\n6. **优化后没做长跑** → 内存泄漏几小时后才暴露\n\n## 一个高频追问\n\n「怎么证明优化有效？」\n\n**必须给出「优化前 vs 优化后的量化对比」**：\n\n```\n优化前：P99 800ms，QPS 3000\n优化后：P99 300ms，QPS 5500\n（同条件压测，数据量 5000 万）\n```\n\n**没有数字的「优化」不算优化** —— 只是「改动了代码」。\n\n## 一个实用的工具推荐\n\n**火焰图**（`perf record -g` + FlameGraph）能一眼看出「CPU 时间花在哪」，是性能优化的首选工具。**生成一次只需几分钟，收益远大于凭经验猜。**",
+    "tags": [
+      "性能优化",
+      "基线",
+      "火焰图",
+      "验证"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5497,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "数据库数据量增长到千万级、亿级，性能急剧下降，怎么处理？",
+    "answer": "**五个阶段：索引优化 → 冷热分离 → 分区表 → 分库分表 → 换架构。按成本递增。**\n\n## 第一阶段：索引与 SQL（成本最低，先做）\n\n| 问题 | 处理 |\n|---|---|\n| 缺索引 | 补索引 |\n| 索引失效 | 修 SQL（避免函数、隐式转换） |\n| 大分页 | 改 `WHERE id > ?` 或延迟关联 |\n| 多表 JOIN | 拆查询、加冗余字段 |\n\n**大分页是典型的「数据量大了才暴露」的问题**：\n\n```sql\n-- 坏：要扫 100 万行再丢 99 万行\nSELECT * FROM t ORDER BY id LIMIT 999000, 100;\n-- 好：用游标\nSELECT * FROM t WHERE id > 999000 ORDER BY id LIMIT 100;\n```\n\n## 第二阶段：架构层面（读写分离、缓存）\n\n| 手段 | 收益 |\n|---|---|\n| 加缓存（Redis） | 减少读压力（最高收益） |\n| 读写分离 | 分摊读流量 |\n| 异步化 | 把非核心写异步化 |\n\n**缓存是性价比最高的**，命中率 90% 就等于数据库压力降 10 倍。\n\n## 第三阶段：冷热数据分离\n\n**核心洞察：不是所有数据都需要在线**。\n\n| 数据 | 处理 |\n|---|---|\n| 热数据（近 3 个月） | 留主表 |\n| 冷数据 | **归档到历史表/其他存储** |\n\n**效果**：主表从 1 亿降到 1000 万，性能立刻恢复。\n\n**这是很多场景的最佳解法** —— 比重构分库分表简单得多。\n\n## 第四阶段：分区表\n\n```sql\nCREATE TABLE orders (...) PARTITION BY RANGE (YEAR(create_time));\n```\n\n**优点**：查询能裁剪分区、删除历史分区很快（`DROP PARTITION` 秒级）。\n**限制**：分区键必须在主键里、跨分区查询效率不理想。\n\n## 第五阶段：分库分表（成本最高）\n\n| 方案 | 说明 |\n|---|---|\n| 垂直分库 | 按业务拆（用户库、订单库） |\n| 水平分表 | 同表按 ID 拆分 |\n\n**引入的问题**：跨表 JOIN、分布式事务、跨分片分页、全局 ID。\n\n**这是「不可逆」的重构**，要慎重。\n\n## 关键判断：瓶颈在哪\n\n| 瓶颈 | 解法 |\n|---|---|\n| **读慢** | 缓存、索引、读副本 |\n| **写慢** | 分库分表、异步化 |\n| **单表太大** | 归档、分区表 |\n| **并发连接多** | 连接池优化、读写分离 |\n\n**「读慢」和「写慢」的解法完全不同** —— 必须先判断。\n\n## 一个高频追问\n\n「1 亿行的表，查询单个用户的数据很快，查询『统计总和』很慢，怎么办？」\n\n这是典型的「**单点查 vs 范围聚合**」差异：\n\n- 单点查：走索引，几毫秒\n- **范围聚合：要扫全表**，无论多大索引\"]\n\n解法：**预聚合**（定时算好存到汇总表）或走 OLAP（ClickHouse/ES）。**不要指望 MySQL 做全表聚合。**",
+    "tags": [
+      "数据量增长",
+      "冷热分离",
+      "分区表",
+      "分库分表"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5498,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "什么是「降级」？降级的方案有哪些？怎么设计才不影响用户体验？",
+    "answer": "**降级 = 牺牲非核心功能，保核心功能可用。核心是「提前设计好，出问题时才不慌」。**\n\n## 降级与限流的区别\n\n| | 限流 | 降级 |\n|---|---|---|\n| 做法 | 拒绝部分请求 | **关闭/简化功能** |\n| 目的 | 保护系统 | 保核心可用 |\n| 影响 | 部分用户不可用 | 功能减弱 |\n\n**两者常配合用**：先限流，还不行再降级。\n\n## 分级：什么必须保\n\n**这是降级设计的第一步（也是最关键的）**：\n\n| 级别 | 例子 | 可否降级 |\n|---|---|---|\n| **核心（P0）** | 下单、支付、登录 | ❌ **不能降** |\n| 重要（P1） | 商品详情、搜索 | 简化（返回较少数据） |\n| 一般（P2） | 推荐、评论 | 可关闭 |\n| 装饰（P3） | 广告、动画 | 直接去掉 |\n\n**没有分级就无法优雅降级** —— 会变成「要么全保要么全砍」。\n\n## 四种降级方式\n\n| 方式 | 说明 | 例子 |\n|---|---|---|\n| **功能开关** | 直接关掉某功能 | 关掉推荐位 |\n| **读降级** | 不查数据库，返回缓存/默认值 | 商品详情用缓存 |\n| **写降级** | 异步化，不实时写入 | 日志先写本地队列 |\n| 兜底数据 | 返回静态/降级数据 | 返回热门榜单 |\n\n## 触发方式\n\n| 方式 | 说明 |\n|---|---|\n| **手动** | 运维/开发看到问题后开关（最可控） |\n| 自动 | 指标超阈值自动触发（快，但可能误判） |\n\n**推荐「手动为主 + 自动为辅」**：自动降级容易误判（短暂抖动就降级，用户体验反而变差）。\n\n## 用户体验的三个要点（这是本题重点）\n\n**1. 让用户知道「这是暂时的」**\n\n```\n不要把功能「神秘消失」\n要提示「该功能正在维护，请稍后再试」\n```\n\n**静默降级会让用户以为「坏了」，明确提示反而能接受。**\n\n**2. 降级要有视觉兜底**\n\n| 场景 | 兜底 |\n|---|---|\n| 数据加载失败 | 骨架屏/占位图（而不是空白） |\n| 列表为空 | 提示「暂时没有数据」 |\n| 推荐失败 | 显示默认推荐 |\n\n**3. 降级要能自动恢复**\n\n降级开关要有明确恢复条件（如「指标正常 10 分钟后自动恢复」），否则会「降级后忘了恢复」，功能长期缺失。\n\n## 设计降级的三个前提\n\n| 前提 | 说明 |\n|---|---|\n| **开关要配置化** | 不改代码就能开关（配置中心/环境变量） |\n| **有预案文档** | 谁能开、什么条件开、开了影响什么 |\n| **演练过** | 至少演练一次，确认开关真的有效 |\n\n**「演练」最容易被忽略** —— 真出事时发现开关不生效，那就白设计了。\n\n## 一个高频追问\n\n「降级和熔断有什么区别？」\n\n| | 熔断 | 降级 |\n|---|---|---|\n| 范围 | **针对某个依赖** | 针对功能 |\n| 触发 | 依赖错误率高 | 资源/容量问题 |\n| 做法 | 快速失败 | 返回兜底内容 |\n\n**熔断是「不调了」，降级是「调不了就给别的」** —— 熔断后往往要配降级来给用户一个好的响应。",
+    "tags": [
+      "降级",
+      "分级",
+      "功能开关",
+      "兜底"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5499,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何做服务依赖治理？「依赖太多」会带来什么问题？",
+    "answer": "**依赖治理的核心：明确依赖关系、控制扇出、防单点拖累。**\n\n## 依赖太多的四个问题\n\n| 问题 | 说明 |\n|---|---|\n| **可用性相乘** | 5 个依赖各 99.9%，串联后仅 99.5% |\n| 故障扩散 | 一个下游挂，上游全挂 |\n| 排查困难 | 出问题不知道找谁 |\n| 发布耦合 | 一方变更影响多方 |\n\n**「可用性相乘」是最容易被忽视的数学事实**：\n\n```\n0.999 × 0.999 × 0.999 × 0.999 × 0.999 ≈ 0.995\n```\n\n依赖越多，整体可用性越低。\n\n## 治理的四个方向\n\n**1. 明确依赖关系（先画出来）**\n\n必须清楚：\n\n| 信息 | 用途 |\n|---|---|\n| 调用方与被调方 | 影响面分析 |\n| 强弱依赖 | **强依赖要重点保护** |\n| 调用频次与量级 | 决定优先级 |\n| 是否有兜底 | 能否降级 |\n\n**「强弱依赖」是关键分类**：\n\n| 类型 | 定义 | 处理 |\n|---|---|---|\n| **强依赖** | 它挂了我就不可用 | 必须有熔断+降级预案 |\n| 弱依赖 | 挂了可以降级 | 设独立线程池 + 超时 |\n\n**2. 控制扇出（防止「一拖多」）**\n\n一个服务同时调用 20 个下游 → 任何一个是瓶颈都会拖慢它。\n\n**做法**：合并调用、异步化、缓存。\n\n**3. 隔离**\n\n| 隔离方式 | 说明 |\n|---|---|\n| **线程池隔离** | 每个依赖独立池（一个慢不拖累全部） |\n| 集群隔离 | 不同业务用不同下游集群 |\n| 机房隔离 | 就近调用 |\n\n**线程池隔离是微服务里最有价值的手段之一。**\n\n**4. 减少不必要的依赖**\n\n| 手段 | 说明 |\n|---|---|\n| 本地缓存 | 减少远程调用 |\n| 数据冗余 | 用冗余字段避免查别的服务 |\n| **合并服务** | 过度拆分反而增加依赖 |\n\n**「过度拆分」是常见误区**：拆成 30 个微服务，每个请求要走 10 个服务，性能与稳定性都变差。\n\n## 一个实用工具：依赖拓扑\n\n输出「谁依赖谁」的图，用于：\n\n- 评估变更影响面\n- 故障时快速定位影响范围\n- 识别「超级节点」（被所有服务依赖的那个）\n\n**「超级节点」是最大的风险点**：一个基础服务被 50 个服务依赖，它挂就是全站挂。\n\n## 一个高频追问\n\n「如何识别强依赖？」\n\n**方法：把它关掉（或在测试环境让它失败），看主流程是否受影响。**\n\n- 主流程无法继续 → 强依赖\n- 有兜底能继续 → 弱依赖\n\n**这个「故障注入测试」比看代码更准确。**\n\n## 一个实践建议\n\n**依赖治理要定期做（尤其新接入服务时）**，否则依赖会「只增不减」，最终无法维护。",
+    "tags": [
+      "依赖治理",
+      "扇出",
+      "强依赖",
+      "隔离"
+    ],
+    "frequency": "中频"
+  },
+  {
     "id": 5500,
     "type": "single",
     "category": "综合场景题",
@@ -71568,6 +72453,321 @@
       "K8s",
       "迁移",
       "上云"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5552,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "线上事故复盘该怎么做？如何避免「复盘变成甩锅」？",
+    "answer": "**复盘的目标是「改进系统」，不是「追责个人」；关键是可行动项而非「下次注意」。**\n\n## 复盘的四个环节\n\n| 环节 | 内容 |\n|---|---|\n| **时间线** | 何时发生、何时发现、何时止损、何时恢复 |\n| **根因** | 直接原因 + 根本原因 |\n| **影响** | 影响用户数、时长、损失 |\n| **改进项** | 可执行、有负责人、有期限 |\n\n**「时间线」最重要**：它能暴露「为什么 20 分钟才发现」「为什么 1 小时才止损」。\n\n## 区分「直接原因」与「根本原因」\n\n| | 例子 |\n|---|---|\n| **直接原因** | 磁盘写满 |\n| **根本原因** | 没有磁盘监控告警、日志未配切割 |\n\n**只解决直接原因会反复发生** —— 加了磁盘容量但不加监控，几个月后还会再来一次。\n\n## 避免「甩锅」的三个做法\n\n**1. 用「系统视角」而不是「人的失误」**\n\n```\n坏：「某人执行了错误的命令」\n好：「为什么一条命令能造成这么大的影响？为什么没有审批/回滚/演练？」\n```\n\n**这是复盘的核心思想** —— 人一定会犯错，要靠系统设计来限制错误的影响。\n\n**2. 承认「没有单一责任人」**\n\n| 角度 | 问题 |\n|---|---|\n| 设计 | 为什么这个操作风险这么高？ |\n| 流程 | 为什么没有审批？ |\n| 监控 | 为什么没及时发现？ |\n| **测试** | 为什么测试没覆盖？ |\n\n**3. 用「如果…就…」句式**\n\n```\n如果当时有 X 监控，就能在 5 分钟发现\n如果当时有 Y 演练，就不会手忙脚乱\n```\n\n这种表述指向改进，而不是评价人。\n\n## 改进项的质量（这部分最关键）\n\n| 差 | 好 |\n|---|---|\n| 「加强意识」 | 「为 MySQL 增加连接数告警，阈值 80%」 |\n| 「下次注意」 | 「脚本执行前强制 dry-run，加 -n 检查」 |\n| 「优化流程」 | 「变更需两人审批，工作日 10:00-16:00 禁高危操作」 |\n\n**原则：改进项必须「可验证是否完成」且有负责人与期限。**\n\n**「加强意识」这类改进项看似正确，实际无法执行和验证，是最常见的「假改进」。**\n\n## 复盘后的跟踪\n\n**大多数复盘失败在「没有跟踪」**：\n\n```\n改进项 → 记入系统（Jira/表格）\n→ 每周检查进度\n→ 下次复盘时回顾「上次的改进是否真的落地」\n```\n\n**「回顾上次改进项」是让复盘真正闭环的关键环节。**\n\n## 一个高频追问\n\n「复盘会该不该公开？」\n\n**应该公开（除敏感细节）**：\n\n- 让所有人知道「这类问题会发生」\n- 避免其他团队踩同样的坑\n- 建立「报故障是好事」的文化\n\n**如果复盘变成追责，大家会藏问题，长期来看事故更多。**",
+    "tags": [
+      "事故复盘",
+      "根因",
+      "改进项",
+      "时间线"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5553,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "数据库主从切换时，业务可能出现什么问题？如何保证切换顺畅？",
+    "answer": "**切换期间最怕两件事：「丢数据」与「写入失败」；必须考虑读写分离的感知问题。**\n\n## 四类典型问题\n\n| 问题 | 原因 |\n|---|---|\n| **写入失败** | 应用还连着旧主库（已挂） |\n| **数据丢失** | 主库未同步部分数据，切换后丢 |\n| **短暂不可写** | 切换过程有几分钟的空窗 |\n| **读到旧数据** | 读写分离下，读还指向旧库 |\n\n## 关键顺序（这是核心）\n\n```\n① 确认从库数据完整（延迟为 0 或接近 0）\n② 让旧主库「只读」（防止继续写入）\n③ 应用停写（或切到待命）\n④ 提升从库为主（reset slave, read_only=0）\n⑤ 切换应用连接（DNS/VIP/配置中心）\n⑥ 验证写入正常\n⑦ 恢复读流量\n```\n\n**「先让旧主只读」是最容易被跳过但最关键的一步** —— 否则切换瞬间两边都在写，产生不一致。\n\n## 如何保证不丢数据\n\n| 手段 | 说明 |\n|---|---|\n| **半同步复制** | 主库至少等一个从库确认才算提交 |\n| 检查 `Seconds_Behind_Master` | 切换前确认延迟为 0 |\n| 切换前停写并等待同步 | 最稳妥 |\n\n**「半同步」能大幅降低丢数据概率**，但有性能代价（写入延迟增加）。\n\n## 业务侧要做的事\n\n**1. 连接重试与重连**\n\n```\n应用要能感知「连接断开」并重连到新主库\n（不要长期缓存旧连接）\n```\n\n**2. 写入要能重试**\n\n切换期间写入失败 → **重试机制**（要有退避）。\n\n**3. 幂等**\n\n重试不能产生重复数据 —— **必须有幂等保证**。\n\n## 读写分离的特殊问题\n\n**切换后，读流量也要跟着改指向**，否则：\n\n- 还在读旧库 → 读到旧数据\n- 或读不到（旧库已停）\n\n**「读写分离的切换复杂度是单主库的两倍」** —— 这是很多系统不用读写分离的原因。\n\n## 演练（必须做）\n\n| 演练 | 验证 |\n|---|---|\n| 手工切换 | 流程是否顺畅，耗时多久 |\n| 模拟主库宕机 | 自动切换是否生效 |\n| 切换中持续压测 | 期间失败率多高 |\n\n**没有演练过的「自动切换」在真实故障时往往不生效**（因为平时没验证过判断逻辑）。\n\n## 一个高频追问\n\n「切换后原来的主库恢复了，会不会有问题？」\n\n**有风险**：\n\n- 它可能认为自己还是主库（脑裂）\n- 需要**明确把它降级为从库**（设置 `read_only` 并 `change master`）\n- **必须先确认它是从库身份，再启动**，否则会出现双主写入\n\n**这是「自动切换」的经典后遗症，必须有处理预案。**",
+    "tags": [
+      "主从切换",
+      "半同步",
+      "读写分离",
+      "演练"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5554,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何做线上数据的安全防护？数据泄露的常见途径有哪些？",
+    "answer": "**数据防护的三个层次：入口控制、内部最小权限、外发审计。**\n\n## 常见泄露途径（先认识风险）\n\n| 途径 | 说明 |\n|---|---|\n| **越权访问** | 改个 ID 就能查别人数据（最常见） |\n| SQL 注入 | 直接拖库 |\n| **接口返回过多字段** | 把手机号/身份证一起返回 |\n| 日志打敏感信息 | 日志文件被拿到 |\n| 备份文件泄露 | 备份未加密/存储不当 |\n| 内部人员导出 | 无审计、无限制 |\n| 第三方 SDK | 上报了不该上报的数据 |\n\n**「越权」是最常见的真实漏洞**，比 SQL 注入更普遍（因为它是业务逻辑问题，扫描器发现不了）。\n\n## 三个防护层次\n\n### 一、入口控制\n\n| 措施 | 说明 |\n|---|---|\n| **鉴权** | 每次请求都要校验「这个用户能访问这条数据」 |\n| 参数化查询 | 防注入 |\n| 输入校验 | 长度、格式、范围 |\n| 限流 | 防批量爬取 |\n\n**「横向越权」（改 ID 查别人）与「纵向越权」（普通用户做管理员操作）都要防。**\n\n**鉴权必须在服务端做**，前端隐藏按钮不算防护。\n\n### 二、内部最小权限\n\n| 措施 | 说明 |\n|---|---|\n| **数据分级** | 明确哪些是敏感数据 |\n| **最小权限** | 只有需要的角色能看 |\n| **脱敏展示** | 手机号显示 `138****1234` |\n| 数据库权限 | 应用账户只给必要表/字段 |\n\n**「脱敏」要区分场景**：\n\n| 场景 | 处理 |\n|---|---|\n| 列表展示 | 脱敏 |\n| **详情页（本人查看）** | 可显示完整 |\n| 导出/客服查询 | **必须脱敏 + 审计** |\n\n### 三、外发与审计\n\n| 措施 | 说明 |\n|---|---|\n| **操作审计** | 谁在什么时候查了谁的数据 |\n| 导出审批 | 批量导出要审批 |\n| 日志脱敏 | 日志里不能有明文敏感信息 |\n| 备份加密 | 备份文件加密存储 |\n\n**「审计」不仅能追责，更能形成威慑** —— 知道「有人在看」会显著减少内部泄露。\n\n## 一个必须做的：数据分级\n\n**没有分级就无法保护** —— 不知道哪些是敏感数据，就不知道保护什么。\n\n| 级别 | 例子 | 措施 |\n|---|---|---|\n| L1 公开 | 商品名 | 无 |\n| L2 内部 | 订单号 | 登录可访问 |\n| **L3 敏感** | 手机号、地址 | 脱敏 + 审计 |\n| **L4 高度敏感** | 身份证、银行卡、密码 | 加密存储 + 严格授权 |\n\n## 一个高频追问\n\n「密码该怎么存？」\n\n| 做法 | 说明 |\n|---|---|\n| ❌ 明文 | 绝对不行 |\n| ❌ MD5 | 已可被彩虹表破解 |\n| ✅ **bcrypt / scrypt / argon2** | 自带盐 + 慢哈希（推荐） |\n\n**「慢哈希」是关键**：故意让计算变慢（几百毫秒），大幅提高暴力破解成本。\n\n**注意：MD5 用于「校验」可以，用于「密码」不行。**\n\n## 一个实践建议\n\n**定期做「接口返回字段审计」**：很多泄露是「返回了不该返回的字段」，这类问题靠代码 review 很难发现，要系统性扫描。",
+    "tags": [
+      "数据安全",
+      "越权",
+      "脱敏",
+      "审计"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5555,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何排查「某台机器上服务频繁重启」？",
+    "answer": "**重启必然有原因，先看「谁杀了它」，再看「它自己为什么死」。**\n\n## 第一步：确认重启是谁触发的\n\n| 触发者 | 线索 |\n|---|---|\n| **OOM Killer** | `dmesg` 有 killed process，退出码 137 |\n| **K8s 探针失败** | `kubectl describe pod` 的 Events |\n| systemd 重启策略 | `journalctl -u xxx` |\n| 人为操作/部署 | 发布记录 |\n| 程序自己退出 | 日志里有 exit |\n\n**关键：看退出码**\n\n| 码 | 含义 |\n|---|---|\n| **137** | **被杀**（OOM 或 SIGKILL） |\n| 143 | SIGTERM（优雅终止） |\n| 1 | 程序自身报错退出 |\n| 0 | 正常结束（**不该重启却重启，说明配置错**） |\n\n## 第二步：OOM 的判断\n\n```bash\ndmesg -T | grep -i 'killed process'\n# 或\nkubectl describe pod <pod> | grep -A3 'Last State'\n```\n\n**要区分**：\n\n| 现象 | 根因 |\n|---|---|\n| 内存**持续上涨**直到被杀 | 泄漏 |\n| 内存平稳但偶尔超限 | 突发大对象 |\n| **limit 小于实际需求** | 配置太低（最常见） |\n\n## 第三步：探针失败的判断（K8s 特有）\n\n```bash\nkubectl describe pod <pod> | grep -E 'Liveness|Readiness'\n```\n\n| 探针 | 失败后果 | 常见原因 |\n|---|---|---|\n| **liveness** | **重启容器** | 检查逻辑太重、超时太短 |\n| readiness | 摘除流量 | 依赖未就绪 |\n\n**最常见的坑**：liveness 探针做「查数据库」这类重操作，数据库一慢就判失败 → **容器反复重启**。\n\n**liveness 探针应该只检查「进程本身是否健康」**，不要检查依赖。\n\n## 第四步：程序自身退出的判断\n\n```bash\n# 看退出前的日志尾部\ntail -100 app.log\njournalctl -u app --since '1 hour ago'\n```\n\n| 现象 | 可能原因 |\n|---|---|\n| 有异常堆栈 | 代码 bug（启动/处理时报错） |\n| 无任何日志 | **被信号杀掉**（不是自己退出） |\n| 启动后立即退出 | 配置错误、端口占用 |\n\n**「无日志突然消失」几乎都是被信号杀掉**，要去看 dmesg / K8s events。\n\n## 第五步：防止「重启循环」放大问题\n\n**服务重启后立刻又挂，会形成循环**：\n\n```\n重启 → 流量涌入 → 缓存未预热 → 超时 → 探针失败 → 重启...\n```\n\n**对策**：\n\n| 手段 | 说明 |\n|---|---|\n| **重启退避** | `RestartSec` 逐步加大 |\n| 启动探针（startupProbe） | 给冷启动留足时间 |\n| 预热后再接流量 | readiness 判断「真正就绪」 |\n\n**`startupProbe` 是 K8s 的重要手段**：它能让「启动慢」与「运行正常」两个阶段分开判断。\n\n## 一个高频追问\n\n「如何确认是内存不足导致的？」\n\n**看「被杀时的内存」与「limit/物理内存」的关系**：\n\n```bash\nkubectl top pod <pod>          # 当前使用\nkubectl get pod -o yaml | grep -A2 limits\n```\n\n**如果使用量接近 limit，就是被限杀；如果差很远，则是别的信号（如探针）。**",
+    "tags": [
+      "频繁重启",
+      "退出码",
+      "探针",
+      "OOM"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5556,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何设计一个可靠的备份方案？怎么验证备份是可用的？",
+    "answer": "**核心：3-2-1 原则 + 定期恢复演练。没验证过的备份等于没有备份。**\n\n## 3-2-1 原则\n\n| 数字 | 含义 |\n|---|---|\n| **3** | 至少 3 份数据（1 份原始 + 2 份备份） |\n| **2** | 至少 2 种介质（如本地磁盘 + 对象存储） |\n| **1** | 至少 1 份异地 |\n\n**为什么必须异地**：机房火灾、水灾、勒索病毒会同时毁掉同机房的所有副本。\n\n## 备份的四类\n\n| 类型 | 说明 | 恢复速度 | 空间 |\n|---|---|---|---|\n| **全量** | 全部数据 | 快 | 大 |\n| 增量 | 上次备份后的变化 | **慢**（要重放多个） | 小 |\n| **差异** | 上次**全量**后的变化 | 中 | 中 |\n| 快照 | 存储层级别 | 很快 | 取决于实现 |\n\n**实践通常是「全量 + 增量」组合**：每周全量、每天增量。\n\n## 备份的三个关键参数\n\n| 参数 | 说明 |\n|---|---|\n| **RPO**（恢复点目标） | 能接受丢多少数据（决定备份频率） |\n| **RTO**（恢复时间目标） | 能接受多久恢复（决定备份方式） |\n| 保留周期 | 保留多久（合规/成本权衡） |\n\n**RPO 决定「多久备一次」**：要求丢不超过 1 小时，就要每小时备份（或持续同步）。\n\n## 数据库备份的特殊要点\n\n| 方式 | 说明 |\n|---|---|\n| 物理备份 | 拷数据文件（快，但需一致性） |\n| **逻辑备份**（mysqldump） | 导出 SQL（可跨版本，但慢、锁表） |\n| **binlog 备份** | 用于「恢复到任意时间点」（PITR） |\n\n**「全量 + binlog」才能做到时间点恢复**，只备全量只能恢复到备份时刻。\n\n## 验证备份（这是本题重点）\n\n**光「备份成功」不够，要验证「能恢复」**：\n\n| 层次 | 做法 |\n|---|---|\n| **基本** | 备份文件能正常解压/加载 |\n| **中级** | 恢复到测试实例，检查数据完整（行数、关键记录） |\n| **高级** | **定期做完整恢复演练**（含业务验证） |\n\n**「恢复演练」要至少每月一次**，且要：\n\n1. 记录恢复耗时（验证 RTO 能否达标）\n2. 验证数据一致性（不能只表能起）\n3. 让不同的人做（防止「只有某个人会」）\n\n## 五个常见失败原因\n\n| 问题 | 说明 |\n|---|---|\n| **备份没跑成功** | 监控缺失，以为一直在备 |\n| 备份文件损坏 | 没有校验（要定期 `test` 恢复） |\n| **备份在同机房** | 机房故障一起丢 |\n| 备份没加密 | 泄露敏感数据 |\n| **没人知道怎么恢复** | 恢复文档缺失/过时 |\n\n**「备份监控」最容易被忽略**：备份任务失败不会像服务故障那样立刻被发现，往往几个月后才发现「从来没备成功过」。\n\n## 一个高频追问\n\n「勒索病毒把数据加密了，备份还有用吗？」\n\n**有用，前提是**：\n\n1. 备份**不是实时同步**（否则加密的数据也被同步）\n2. 备份**存储不可写**（防勒索病毒横向感染）\n3. 有**多个时间点**（能回到被加密前）\n\n**「备份存储设成只读/离线」是防勒索的关键**（WORM 特性）。\n\n## 一个实践提醒\n\n**备份和「高可用」是两回事**：\n\n- 高可用解决「服务不中断」（副本、主从）\n- **备份解决「数据不丢」**（误删、病毒、逻辑错误）\n\n**RAID 和主从都救不了 `rm -rf`**，只有备份能。",
+    "tags": [
+      "备份",
+      "3-2-1",
+      "RPO",
+      "恢复演练"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5557,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "系统要上大促，作为运维你会做哪些准备？",
+    "answer": "**大促准备分四段：评估 → 加固 → 演练 → 值守。**\n\n## 一、容量评估（T-N 周）\n\n| 项 | 做法 |\n|---|---|\n| **预估峰值** | 历史数据 × 增长系数（或市场预估） |\n| **压测** | 按预估峰值 × 1.5 压测 |\n| **找瓶颈** | 哪一层先到上限 |\n| 扩容 | 按瓶颈扩（**不是全扩**） |\n\n**压测要「全链路」**：只压应用不压数据库，等于没压。\n\n## 二、系统加固\n\n| 层 | 措施 |\n|---|---|\n| **数据库** | 加连接数、优化慢查询、加只读副本 |\n| 缓存 | 预热热点数据、加大容量 |\n| 应用 | 扩实例、调线程池/连接池 |\n| 中间件 | MQ 加大堆积容量 |\n| **网络/带宽** | 扩带宽（图片/视频场景常是瓶颈） |\n\n**「缓存预热」是关键**：冷缓存时峰值会把数据库打穿。\n\n## 三、演练（T-1 周，最重要）\n\n| 演练 | 目的 |\n|---|---|\n| **全链路压测** | 确认容量够 |\n| 故障演练 | 杀掉一个实例/主库，验证切换 |\n| **降级开关演练** | 确认开关真的有效 |\n| 回滚演练 | 确认能快速回滚 |\n\n**「降级开关演练」最容易被跳过** —— 真出事时发现开关不生效，就来不及了。\n\n## 四、值守（T 日）\n\n| 项 | 做法 |\n|---|---|\n| **封网** | 大促期间禁止变更（**这条最重要**） |\n| 值班表 | 明确谁负责什么 |\n| 监控看板 | 关键指标一屏可见 |\n| 预案文档 | 出现问题谁决策、怎么做 |\n\n**「封网」是硬性要求**：大促期间一个新变更就能毁掉所有准备。\n\n## 关键预案清单\n\n| 场景 | 预案 |\n|---|---|\n| 流量超预期 | 限流阈值上调？还是降级？ |\n| 数据库扛不住 | 读写分离？降级？ |\n| 某服务挂 | 摘除 + 熔断 |\n| 缓存失效 | 限流保护数据库 |\n\n**预案要写清「谁有权决策」**，否则出问题时大家等一个人拍板。\n\n## 五个常见踩坑\n\n| 坑 | 说明 |\n|---|---|\n| **只扩应用不扩数据库** | 应用扩了反而把库压死 |\n| 缓存未预热 | 峰值时全部穿透到库 |\n| **限流阈值没调** | 平时设的阈值把大促流量全拒了 |\n| 监控粒度太粗 | 5 分钟粒度看不到瞬时尖峰 |\n| **降级开关没人会开** | 演练过才知道怎么操作 |\n\n**「限流阈值」特别容易忘**：大促流量大，平时的限流配置会把正常用户拒掉。\n\n## 一个高频追问\n\n「大促后要做什么？」\n\n**复盘**：\n\n1. 峰值数据（实际 vs 预估）\n2. 哪里最先到瓶颈\n3. 预案哪些生效、哪些没用\n4. **容量水位更新**（为下次做准备）\n\n**「实际峰值」是最宝贵的资产**，下次评估有依据。",
+    "tags": [
+      "大促",
+      "压测",
+      "封网",
+      "预案"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5558,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何做「故障演练」？为什么没演练过的高可用等于没有？",
+    "answer": "**演练是为了「发现预案不可用」，而不是证明「我们很稳」。**\n\n## 为什么必须演练\n\n| 不演练的后果 | 例子 |\n|---|---|\n| **自动切换不生效** | 主库挂了，VIP 没漂移 |\n| 切换耗时远超预期 | 以为 1 分钟，实际 20 分钟 |\n| 没人知道怎么操作 | 都在等「懂的那个人」 |\n| 备用实例不可用 | 备机半年没启动过，起不来 |\n\n**核心认知**：**「配置了高可用」和「高可用真的能用」是两件事。**\n\n## 演练的四个层次\n\n| 层次 | 内容 | 风险 |\n|---|---|---|\n| **L1 单实例** | 杀掉一台应用实例 | 低 |\n| **L2 依赖故障** | 让 Redis/DB 不可用 | 中 |\n| **L3 机房级** | 模拟整个机房不可用 | 高 |\n| L4 全链路 | 生产真流量演练 | 很高 |\n\n**从 L1 开始，逐步深入。**\n\n## 演练的标准流程\n\n```\n① 定义目标（这次要验证什么）\n② 评估影响（会影响哪些用户）\n③ 准备回滚（出问题怎么恢复）\n④ 执行（小范围开始）\n⑤ 观察（切换是否生效、耗时多少）\n⑥ 记录（时间线、问题点）\n⑦ 修复发现的问题\n```\n\n**`② 评估影响`与`③ 准备回滚`是安全的前提**，否则演练会变成事故。\n\n## 常见演练项目\n\n| 演练 | 验证什么 |\n|---|---|\n| 杀主库 | 自动切换是否生效 |\n| 杀应用实例 | 摘流是否及时、剩余能否承担 |\n| **断开 Redis** | 降级是否生效 |\n| 磁盘写满 | 监控告警是否触发 |\n| 依赖超时 | 熔断是否触发 |\n\n**「杀主库」是最有价值的演练**：绝大多数人没真正验证过数据库自动切换。\n\n## 演练中的关键观测\n\n**不要只看「最终恢复了没有」，要看**：\n\n| 观测点 | 意义 |\n|---|---|\n| **发现时间** | 多久告警（MTTD） |\n| **响应时间** | 多久开始处理 |\n| **恢复时间** | 多久恢复（MTTR） |\n| 期间错误率 | 用户影响多大 |\n| **人工介入次数** | 是否真的「自动」 |\n\n**「人工介入次数」是关键** —— 如果文档说自动切换，实际需要人手动操作，那这个「自动」就是假的。\n\n## 生产演练的安全措施\n\n| 措施 | 说明 |\n|---|---|\n| **低峰期** | 减少影响 |\n| 灰度（先小规模） | 限制爆炸半径 |\n| 一键回滚 | 随时能停 |\n| 通知相关方 | 避免误判为真故障 |\n\n**「通知」很重要** —— 否则演练会触发真实告警，让值班人员误以为出事了。\n\n## 一个高频追问\n\n「演练会不会引发真实故障？」\n\n**会的，所以要有边界**：\n\n- 宁可「演练中发现」，不要「真实故障时才发现」\n- 但要在**可控范围内**（低峰、小范围、有回滚）\n\n**结论：演练的风险远小于「从不演练」的风险。**",
+    "tags": [
+      "故障演练",
+      "高可用",
+      "MTTD",
+      "预案"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 5559,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "如果要你把一个老系统（单体架构）改造成微服务，你会怎么做？有哪些坑？",
+    "answer": "**核心原则：不要「一次性重构」，要「逐步演进」；先拆「边缘功能」，不碰核心交易。**\n\n## 为什么不能一次性重构\n\n| 问题 | 说明 |\n|---|---|\n| 周期长 | 几个月看不到产出，业务等不了 |\n| **无法回滚** | 大爆炸式重写，出问题只能全回 |\n| 需求并行冲突 | 重构期间业务还在变 |\n| 团队不熟 | 新架构需要学习期 |\n\n**历史上「大重构」失败率很高**（包括著名的「绞杀者模式」出现的原因）。\n\n## 三种演进方式\n\n| 方式 | 说明 | 适用 |\n|---|---|---|\n| **绞杀者（Strangler）** | 新功能用新服务做，老功能逐步迁移 | **最推荐** |\n| 分支抽象 | 抽一层适配，逐步替换实现 | 中等 |\n| 大爆炸重写 | 全量重写后切换 | 不推荐 |\n\n**绞杀者的精髓**：在入口放一个路由层，新请求走新服务、老请求走老系统，**逐步把流量迁移过去**。\n\n## 实施步骤\n\n```\n① 先加「路由网关」在原系统前面（不改业务）\n② 挑一个边缘、低风险的功能迁到新服务\n③ 验证稳定后，把它的流量全切到新服务\n④ 一个月后删除老代码\n⑤ 挑下一个\n```\n\n**关键：每一步都可回滚**（切回老路由即可）。\n\n## 拆分的依据（不要按技术拆）\n\n| 错误依据 | 正确依据 |\n|---|---|\n| 按代码模块拆 | **按业务边界拆** |\n| 按团队拆 | 按**数据所有权**拆 |\n| 拆得越细越好 | **平衡粒度**（过细反而增加依赖） |\n\n**「服务太细」的问题**：一个请求要走 10 个服务，延迟与故障点都增加。**宁可少拆，不要过度拆。**\n\n## 必须解决的四个问题\n\n| 问题 | 解决 |\n|---|---|\n| **数据拆分** | 最难！按业务划分数据所有权 |\n| 分布式事务 | 尽量用最终一致（消息 + 补偿） |\n| 跨服务查询 | 冗余字段、API 聚合 |\n| 调用链变长 | 缓存、批量化 |\n\n**「数据拆分」是真正的难点**：老系统通常共用一张大表，拆开后 JOIN 做不了。\n\n## 五个真实的坑\n\n| 坑 | 说明 |\n|---|---|\n| **先拆代码不拆数据** | 拆完发现还在共用一个库，白拆 |\n| 过度拆分 | 30 个服务，运维与排查都变难 |\n| **忽略运维成本** | 服务多了，部署/监控/日志都要升级 |\n| 没有统一治理 | 每人都用不同框架/通信方式 |\n| **低估数据迁移** | 迁移脚本可能跑几小时，且不可回滚 |\n\n## 一个务实建议\n\n**先问「一定要拆吗？」**\n\n| 情况 | 建议 |\n|---|---|\n| 单体还能维护、团队小 | **不拆**（模块化改造足够） |\n| 团队大、发布冲突频繁 | 拆 |\n| 某功能要独立扩缩容 | 拆那个特定功能 |\n\n**「微服务」不是先进，而是「有代价的选择」** —— 它解决「大团队协作」，但也带来运维复杂度。**小团队拆微服务往往是负收益。**\n\n## 一个高频追问\n\n「怎么保证迁移期间数据一致？」\n\n**双写 + 对账**：\n\n```\n切换期间：新老两处都写 → 定期对账 → 发现差异修复\n确认稳定后 → 停掉老写入\n```",
+    "tags": [
+      "微服务",
+      "重构",
+      "绞杀者",
+      "数据拆分"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5560,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何做「日志与数据的归档」？归档策略该怎么定？",
+    "answer": "**归档的核心是「用可接受的恢复成本，换取在线系统的性能与空间」。**\n\n## 为什么要归档\n\n| 问题 | 说明 |\n|---|---|\n| **在线数据量大** | 查询变慢、索引膨胀 |\n| 磁盘成本 | 在线存储贵 |\n| 备份时间 | 数据越大，备份越慢 |\n\n**归档不是「删除」，而是「移到更便宜的存储」。**\n\n## 归档策略的三要素\n\n| 要素 | 确定依据 |\n|---|---|\n| **时间边界** | 业务上「多久以前的数据基本不用」 |\n| **存储介质** | 冷存储（对象存储、压缩表、历史库） |\n| 访问方式 | 归档后还能查吗？（需不需要查询接口） |\n\n**「多久以前」要按业务判断**：\n\n| 业务 | 常见边界 |\n|---|---|\n| 订单查询 | 3~6 个月（用户很少查更久） |\n| 日志 | 7~30 天（排查够用） |\n| 审计 | 1~2 年（合规要求） |\n\n## 三种归档方式\n\n| 方式 | 说明 |\n|---|---|\n| **历史表**（同库不同表） | 最简单，查询要切表 |\n| 历史库（不同实例） | 隔离性好，可用低成本存储 |\n| 对象存储（文件） | 最便宜，但查询不便 |\n\n## 归档的关键设计\n\n**1. 归档要是「可恢复」的**\n\n**归档不是删除**，要保留能查/能恢复的能力：\n\n- 压缩存储（省空间）\n- 保留索引或元数据（便于定位）\n- 有明确的恢复流程\n\n**2. 归档要分批做**\n\n```sql\n-- 坏：一次删 1000 万行（长事务、锁表）\nDELETE FROM t WHERE create_time < '2025-01-01';\n-- 好：分批\nDELETE FROM t WHERE create_time < '2025-01-01' LIMIT 1000;  -- 循环\n```\n\n**大事务会造成主从延迟、锁表、undo 膨胀**，必须分批。\n\n**3. 归档窗口\n\n**在业务低峰执行**，并监控：\n\n- 主从延迟\n- 数据库负载\n\n## 五个常见的坑\n\n| 坑 | 说明 |\n|---|---|\n| **归档后业务查不到** | 用户要查半年前的订单，没有查询入口 |\n| 归档不可恢复 | 直接 `DELETE` 没有导出 |\n| **归档任务影响线上** | 没限速、跑在高峰 |\n| 归档后索引没重建 | 表小了但空间没释放（需 `OPTIMIZE`） |\n| 忘记归档日志 | 日志目录满了才发现 |\n\n**「归档后业务查不到」是产品问题**，要和业务方确认清楚需求。\n\n## 日志归档的特殊点\n\n| 项 | 做法 |\n|---|---|\n| 切割 | `logrotate`（按天/按大小） |\n| 压缩 | gzip（压缩比高） |\n| 转冷存 | 上传对象存储 |\n| **保留期** | 按排查需求定（7~30 天在线） |\n\n**「日志在线只留 7 天」是常见实践**：更早的压缩上传，需要时再拉回来。\n\n## 一个高频追问\n\n「归档会不会影响备份？」\n\n**会，而且是正面的影响**：归档后在线数据量小，**备份更快、更省空间**。\n\n**但要确保「归档的数据也在备份范围内」**，否则等于「归档后就没有备份了」。",
+    "tags": [
+      "归档",
+      "冷热分离",
+      "分批",
+      "日志"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 5561,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何判断一个线上问题「该不该立刻回滚」？",
+    "answer": "**判断依据：影响面 × 可承受性 × 回滚成本。三者决定「回滚」还是「在线修」。**\n\n## 立刻回滚的四个信号\n\n| 信号 | 说明 |\n|---|---|\n| **核心功能不可用** | 支付/下单/登录挂了，影响收入 |\n| **影响面持续扩大** | 每分钟更多用户受影响 |\n| **根因不明** | 不知道问题在哪，无从在线修 |\n| **回滚成本低** | 一键回滚，几分钟 |\n\n**「根因不明 + 影响扩大」是最典型的回滚场景。**\n\n## 可以先不回滚的情况\n\n| 情况 | 理由 |\n|---|---|\n| **影响面很小** | 只有少数用户，且有降级 |\n| **根因明确且修复简单** | 如配置项写错，改配置即可 |\n| **有功能开关** | 直接关掉新功能，不用回滚 |\n| 回滚成本比问题更大（如已迁移数据） | 谨慎 |\n\n**「有功能开关」是最好的情况** —— 关开关比回滚更快、影响更小。\n\n## 决策的三步\n\n```\n① 影响面多大（多少用户、多核心）\n② 能否快速定位并修复（< 15 分钟？）\n③ 回滚成本多少（几分钟？会不会有数据问题？）\n```\n\n| 组合 | 决策 |\n|---|---|\n| 影响大 + 根因不明 | **立刻回滚** |\n| 影响大 + 能快速修 | 可以边修边准备回滚 |\n| 影响小 + 根因不明 | 观察，同时排查 |\n| 影响小 + 已知问题 | **在线修**（回滚成本可能更高） |\n\n## 回滚的判断误区\n\n**误区一：先排查清楚再决定**\n\n**影响面大时，排查的每一分钟都在扩大损失。** 要并行：**先回滚 + 同时排查**（回滚不影响排查，环境可以复现）。\n\n**误区二：回滚会「丢面子」**\n\n回滚是标准操作，不是失败。**拖延回滚才是真正的失败。**\n\n**误区三：回滚一定安全**\n\n**回滚也有风险**：\n\n| 风险 | 说明 |\n|---|---|\n| 数据兼容 | 新版本写入的数据老版本读不了 |\n| schema 变更 | 已加字段/表，老版本不认 |\n| **回滚本身的时间** | 大集群回滚可能要 20 分钟 |\n\n**所以「可回滚」要在发布前就设计好**（前向兼容）。\n\n## 一个实用工具：决策时间盒\n\n**给自己设一个时间限制**：\n\n```\n「15 分钟内如果定位不到根因，就回滚」\n```\n\n**避免陷入「再查一会就好了」的陷阱** —— 这是事故扩大的常见原因。\n\n## 一个高频追问\n\n「回滚后怎么处理已经写入的新数据？」\n\n| 情况 | 处理 |\n|---|---|\n| 数据格式兼容 | 无需处理 |\n| 新增字段 | 老版本忽略即可（前向兼容） |\n| **数据逻辑已变更** | 需要修复脚本（最麻烦） |\n\n**这就是为什么「发布要设计成可回滚」** —— 否则「回滚」会带来新的数据问题。",
+    "tags": [
+      "回滚决策",
+      "影响面",
+      "时间盒",
+      "可回滚"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5562,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何保障「数据库变更」的安全性？有哪些规范和流程？",
+    "answer": "**数据库变更是最危险的变更类型：它往往「不可回滚」，而且影响是持久的。**\n\n## 为什么危险\n\n| 特点 | 说明 |\n|---|---|\n| **多数不可回滚** | `DROP COLUMN` 后数据没了 |\n| 影响持久 | 代码回滚了，数据变了也回不去 |\n| 影响面广 | 所有依赖这张表的服务 |\n| 锁表风险 | 大表 DDL 可能锁表数分钟 |\n\n## 规范一：所有 DDL 都要走流程\n\n**不能允许开发直接连生产改表**。\n\n| 环节 | 内容 |\n|---|---|\n| 提交脚本 | SQL 文件 + 变更说明 |\n| **评审** | 至少一人 review（看锁表风险、语法） |\n| 测试环境验证 | 先在测试库跑一遍 |\n| 执行窗口 | 业务低峰 |\n| 执行人 | 有权限的人执行 + 记录 |\n\n## 规范二：DDL 必须「在线」执行\n\n**大表 DDL 的锁表风险**：\n\n```sql\n-- MySQL 5.6+ 支持 Online DDL\nALTER TABLE t ADD COLUMN c INT, ALGORITHM=INPLACE, LOCK=NONE;\n```\n\n| 操作 | 是否可在线 |\n|---|---|\n| 加索引（INPLACE） | ✅ 不锁写 |\n| 加列 | ✅ |\n| **改列类型** | ⚠️ 可能锁表（要重建） |\n| **加主键** | ❌ 需重建表 |\n\n**对于不支持在线 DDL 的变更，要用 `gh-ost` / `pt-online-schema-change`**。\n\n## 规范三：变更要「向后兼容」\n\n**这是最核心的原则**：让新旧代码都能处理变更后的数据结构。\n\n| 变更 | 兼容做法 |\n|---|---|\n| **加列** | 先加「可空」列（老代码不写它，不影响） |\n| **改列名** | 加新列 + 双写 + 迁移 + 删旧列 |\n| **删列** | **先停止使用代码，等一个发布周期再删** |\n| 改类型 | 加新列（新类型）+ 迁移数据 |\n\n**「先删列」是最常见的错误**：代码还在用，删了就立刻报错。\n\n## 规范四：分三次发布\n\n**这是「可回滚」的核心做法**：\n\n```\n发布 1：加新列/新表（代码同时兼容）\n发布 2：代码切换使用新列（双写验证）\n发布 3：确认稳定后，删旧列\n```\n\n**每一步都能回滚**，因为数据结构始终兼容两个版本。\n\n## 规范五：数据变更要有备份\n\n| 变更类型 | 备份要求 |\n|---|---|\n| 结构变更（加列） | 无数据丢失风险 |\n| **删列/改类型** | **必须先备份该表** |\n| 数据更新/删除 | 先查 WHERE 条件影响多少行 |\n\n**执行前必须「先看影响行数」**：\n\n```sql\nSELECT COUNT(*) FROM t WHERE <同样的条件>;\n```\n\n**「本来想改 1 行，结果改了 100 万行」是经典事故**（`WHERE` 写错）。\n\n## 五个常见事故\n\n| 事故 | 原因 |\n|---|---|\n| **WHERE 条件漏写** | `UPDATE t SET x=1` 改全表 |\n| 大表 DDL 锁表 | 业务被阻塞数分钟 |\n| 删列后代码报错 | 没走「三步发布」 |\n| 数据类型改窄 | 溢出（如 INT → SMALLINT） |\n| **生产测试库执行错** | 连错环境（最常见也最尴尬） |\n\n**「连错环境」要靠「执行前确认连接串」+ 「生产库名特殊标记」来防**。\n\n## 一个高频追问\n\n「如何处理需要回滚的数据库变更？」\n\n**事前准备回滚脚本**（如加列的反向是删列，但要考虑数据），并在变更前记录「变更前状态」。\n\n**但更可靠的是「设计成不需要回滚」（向后兼容）**。",
+    "tags": [
+      "数据库变更",
+      "DDL",
+      "向后兼容",
+      "gh-ost"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5563,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何排查「数据库连接数缓慢增长」的问题？",
+    "answer": "**「缓慢增长」通常不是突发流量，而是「泄漏」或「连接未复用」。**\n\n## 第一步：确认增长性质\n\n```sql\nSHOW GLOBAL STATUS LIKE 'Threads_connected';\n-- 间隔采样，看是否持续单调增长\nSHOW PROCESSLIST;\n```\n\n| 模式 | 结论 |\n|---|---|\n| **持续单调增长** | 泄漏（借了没还） |\n| 随流量波动 | 正常 |\n| 阶梯式增长 | 每次某操作后增加 |\n| 周期性 | 定时任务/连接池扩容 |\n\n**「重启后归零、再缓慢涨回去」是泄漏的铁证。**\n\n## 第二步：看连接在干什么\n\n```sql\nSELECT command, state, COUNT(*) \nFROM information_schema.processlist\nGROUP BY command, state;\n```\n\n| 状态 | 含义 |\n|---|---|\n| **Sleep** | **空闲但占着**（泄漏） |\n| Query | 在跑 |\n| Locked | 等锁 |\n\n**「大量 Sleep 连接」= 连接还在但没人用**，这是泄漏的典型特征。\n\n## 第三步：找出「谁」开的连接\n\n```sql\nSELECT user, host, db, COUNT(*) \nFROM information_schema.processlist\nGROUP BY user, host, db\nORDER BY 4 DESC;\n```\n\n**看是否某个应用/某台机器异常多** —— 可以定位到具体服务。\n\n## 四类根因\n\n| 根因 | 特征 |\n|---|---|\n| **连接池泄漏** | Sleep 连接多、代码未 release |\n| **连接池配置错** | 每次都新建连接（没用池） |\n| 定时任务 | 固定时间增加 |\n| 多实例叠加 | 每个实例各有池，总量超预期 |\n\n**「多实例叠加」最容易被忽略**：单个实例池 20 个连接，10 个实例 = 200 个连接，很容易达到 `max_connections`。\n\n## 第四步：代码层面的排查\n\n| 检查 | 说明 |\n|---|---|\n| **是否有 try-finally** | 异常路径也可能没释放 |\n| 连接是否复用 | 有无在循环里 getConnection |\n| **是否有连接池配置** | `maxActive`、`testOnBorrow` |\n| 流式查询 | 未读完的 ResultSet 会占连接 |\n\n**「循环里创建连接」是常见代码 bug**：\n\n```java\n// 错：每次循环新建\nfor (x : list) { Connection c = getConn(); ... }\n// 对：循环外用同一个\nConnection c = getConn();\nfor (x : list) { ... }\n```\n\n## 第五步：运维层面的确认\n\n```sql\nSHOW VARIABLES LIKE 'max_connections';\nSHOW VARIABLES LIKE 'wait_timeout';\n```\n\n**`wait_timeout` 太大会导致「空闲连接长期不释放」** —— 服务端不主动清理，客户端的泄漏连接就永远在。\n\n## 止损与根治\n\n| 手段 | 说明 |\n|---|---|\n| 重启应用 | 立刻见效（治标） |\n| **调小 wait_timeout** | 服务端主动清理空闲连接 |\n| 修代码 | 治理泄漏（治本） |\n| 限制每实例池大小 | 防叠加超限 |\n\n**注意：不要只靠「调大 max_connections」** —— 那只是推迟问题，而且连接数太多会拖慢数据库。\n\n## 一个高频追问\n\n「怎么判断是泄漏还是池子太小？」\n\n| 判据 | 结论 |\n|---|---|\n| **连接数持续增长不回落** | 泄漏 |\n| 连接数稳定在上限、请求在排队 | 池子太小 |\n\n**「稳定在上限」= 池子满了但没泄漏；「持续增长」= 泄漏。**",
+    "tags": [
+      "连接数",
+      "泄漏",
+      "连接池",
+      "Sleep"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5564,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何设计一套「健康检查」机制？做错了会有什么后果？",
+    "answer": "**健康检查分「存活」与「就绪」两类，混淆它们会放大故障。**\n\n## 两类探针的本质区别\n\n| | **liveness（存活）** | **readiness（就绪）** |\n|---|---|---|\n| 回答 | 进程**还活着吗** | 能**接流量**吗 |\n| 失败动作 | **重启容器** | **摘除流量** |\n| 检查内容 | 进程自身健康 | 依赖是否就绪、能否处理请求 |\n\n**混淆的后果极其严重**（见下）。\n\n## 三种检查方式\n\n| 方式 | 说明 | 注意 |\n|---|---|---|\n| HTTP 探针 | 请求一个接口 | 接口要轻量 |\n| TCP 探针 | 端口能连 | 不代表能服务 |\n| **命令探针** | 执行脚本 | 开销要小 |\n\n## 最常见的错误：liveness 检查依赖\n\n**错误做法**：liveness 探针里检查数据库连接。\n\n**后果**：数据库一慢 → liveness 失败 → **所有容器同时被重启** → 重启后还要预热 → **雪崩**。\n\n```\n数据库慢 → 探针失败 → 重启全部 Pod\n→ 冷启动 + 缓存未预热 → 更慢\n→ 又失败 → 再重启 …（无限循环）\n```\n\n**正确做法**：\n\n| 探针 | 该检查什么 |\n|---|---|\n| **liveness** | **只检查进程自身**（能否响应 HTTP、是否死锁） |\n| **readiness** | 检查依赖（DB/Redis 可用） |\n\n**关键原则：liveness 失败要「重启能解决」，否则不该用 liveness。**\n\n## 参数设置的要点\n\n| 参数 | 建议 |\n|---|---|\n| `initialDelaySeconds` | 覆盖冷启动时间 |\n| `periodSeconds` | 10~30 秒 |\n| **`failureThreshold`** | **2~3 次**（防偶发抖动误判） |\n| `timeoutSeconds` | 1~5 秒（要短） |\n\n**`failureThreshold` 太小会因一次偶发慢就判失败**，这在大促期间非常危险。\n\n## 启动探针（startupProbe）\n\n**解决「启动慢」与「运行中」的矛盾**：\n\n```yaml\nstartupProbe:\n  failureThreshold: 30      # 最多等 30 × 10s = 5 分钟启动\n  periodSeconds: 10\nlivenessProbe:\n  periodSeconds: 10         # 启动成功后才开始检查\n```\n\n**没有 startupProbe 时，只能把 liveness 的 initialDelay 设很大**，那会导致「运行中真卡死也要等很久才重启」。\n\n## 负载均衡层的健康检查\n\nNginx upstream 的检查：\n\n```nginx\nupstream backend {\n    server 10.0.0.11:8080 max_fails=3 fail_timeout=10s;\n}\n```\n\n**「被动检查」的坑**：`fail_timeout` 太长会导致「后端恢复了但还被标记为 down」；太短会导致「偶尔失败就被摘」。\n\n**更好的做法是「主动健康检查」**（Nginx Plus / 或自己实现）。\n\n## 一个高频追问\n\n「健康检查接口该检查什么？」\n\n| 该检查 | 不该检查 |\n|---|---|\n| 进程能否响应 | **重依赖（DB 查询）** |\n| 关键内部状态（如死锁检测） | 外部服务可用性 |\n\n**「检查太重」会让探针本身成为负担**（每 10 秒查一次数据库，几百个 Pod 就是灾难）。",
+    "tags": [
+      "健康检查",
+      "liveness",
+      "readiness",
+      "探针"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5565,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "线上服务「间歇性返回 500」，如何定位？",
+    "answer": "**「间歇 500」说明不是稳定逻辑错误，而是「偶发条件触发」，必须靠采样与统计。**\n\n## 第一步：统计 500 的分布（最重要）\n\n```bash\n# 按时间分布（是否集中在某几分钟）\nawk '$9==500 {print $4}' access.log | cut -c1-16 | sort | uniq -c\n\n# 按接口分布\nawk '$9==500 {print $7}' access.log | sort | uniq -c | sort -rn\n\n# 按实例分布（是否只有某台）\n```\n\n| 分布特征 | 方向 |\n|---|---|\n| 集中在某时段 | 定时任务、缓存过期、GC |\n| **集中在某接口** | 该接口的特定逻辑 |\n| 集中在某实例 | 该机器的问题 |\n| **集中在特定参数** | 数据边界/长字符串 |\n| 随机分布 | 资源竞争、网络 |\n\n**「集中在某实例」是最容易解决的** —— 对比该实例与其他实例的差异（版本、配置、负载）。\n\n## 第二步：拿到错误现场\n\n**必须记录下来，否则 500 一闪而过就没了**：\n\n```\n① 应用日志记录完整堆栈（含参数，注意脱敏）\n② 记录 traceId，能回溯整条链路\n③ 500 时打一条 ERROR（不要只看访问日志）\n```\n\n**「日志没记堆栈」是最常见的问题** —— 事后只能靠猜。\n\n## 三类根因\n\n| 类型 | 例子 | 特征 |\n|---|---|---|\n| **数据边界** | 超长字符串、空值、特殊字符 | 与特定参数相关 |\n| **资源耗尽** | 连接池、线程池、内存 | 高并发时 |\n| **依赖抖动** | 下游超时/RST | 随机 |\n\n## 第三步：按类型排查\n\n**类型一：数据边界**\n\n**最常见也最难找**。做法：\n\n1. 从日志抓出失败的请求参数\n2. **构造同样的参数**在测试环境复现\n3. 检查：长度、编码、null、emoji、SQL 特殊字符\n\n**「用户上传了带特殊字符的昵称导致 SQL 报错」很常见。**\n\n**类型二：资源耗尽**\n\n```bash\ngrep -i 'timeout\\|pool\\|cannot' app.log | tail -50\n```\n\n看是否：\n\n- 连接池获取超时（`Cannot get connection`）\n- 线程池满（`RejectedExecutionException`）\n\n**类型三：依赖抖动**\n\n排查下游的错误日志与耗时。\n\n## 第四步：加观测（根治间歇问题）\n\n**间歇问题的解决方案是「先加观测，等它发生」**：\n\n```\n① 500 时记录完整上下文（参数、堆栈、traceId）\n② 加指标（按接口/实例的错误计数）\n③ 拉长告警粒度（秒级而非分钟级）\n```\n\n## 一个高频追问\n\n「500 和 502/504 的区别？」\n\n| 码 | 谁产生 |\n|---|---|\n| **500** | **应用本身**（代码异常） |\n| 502 | 网关（连不上/非法响应） |\n| 504 | 网关（等超时） |\n\n**500 要去应用日志找堆栈；502/504 要看网关与网络。**\n\n## 一个实用技巧\n\n**如果间歇性与某个「变更」时间对齐**（如某次发布、配置修改），优先回滚验证。",
+    "tags": [
+      "间歇500",
+      "分布",
+      "堆栈",
+      "数据边界"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5566,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何做「线上问题的时间线还原」？为什么时间线很重要？",
+    "answer": "**时间线是复盘的基础，它揭示「发现慢」「止损慢」的真实原因。**\n\n## 为什么要还原时间线\n\n| 目的 | 说明 |\n|---|---|\n| **量化 MTTD**（发现耗时） | 从发生到告警用了多久 |\n| **量化 MTTR**（恢复耗时） | 从发现到恢复用了多久 |\n| 找出流程瓶颈 | 是告警慢？还是决策慢？ |\n| 还原决策依据 | 为什么当时选了那个方案 |\n\n**没有时间线的复盘，只会得出「加强监控」这类无效结论。**\n\n## 时间线的关键节点\n\n| 节点 | 数据来源 |\n|---|---|\n| **故障开始** | 日志错误、监控曲线拐点 |\n| **首次告警** | 告警系统记录 |\n| 人工确认 | 聊天记录 |\n| **首次止损动作** | 操作日志/变更记录 |\n| 恢复 | 指标恢复正常 |\n| 影响结束 | 用户侧恢复 |\n\n**「故障开始」与「首次告警」之间的差值就是 MTTD** —— 这个数字最能反映监控的有效性。\n\n## 时间线的正确画法\n\n```\n10:03  数据库 CPU 开始上升（事后从监控看到）\n10:15  首次告警发出（12 分钟延迟）\n10:18  值班确认\n10:25  决定限流\n10:30  执行限流\n10:45  恢复\n```\n\n**关键：标注「事后才知道」的信息**（如 10:03 的曲线拐点），它能暴露「当时为什么没发现」。\n\n## 时间线的三个价值\n\n**1. 暴露监控盲区**\n\n```\n如果 10:03 到 10:15 没有任何告警 →\n说明「CPU 高」这个指标没配告警\n```\n\n**2. 暴露决策瓶颈**\n\n```\n10:18 确认 → 10:25 决定 → 7 分钟在犹豫 →\n说明「不知道谁有权决定」或「预案不清晰」\n```\n\n**3. 暴露流程问题**\n\n```\n10:30 执行限流但要审批 → 15 分钟才能生效 →\n说明「应急操作不应走审批」\n```\n\n## 时间线的数据来源\n\n| 数据 | 从哪来 |\n|---|---|\n| 监控曲线 | Prometheus/Zabbix 历史 |\n| 日志 | 应用与系统日志 |\n| **告警记录** | 告警平台 |\n| 操作记录 | 变更系统、堡垒机审计 |\n| 沟通记录 | 值班群 |\n\n**「操作记录」常被忽略** —— 不知道自己当时做了什么，就说不清「为什么恢复慢」。\n\n## 一个高频追问\n\n「如果日志不全，时间线怎么画？」\n\n**按可得的证据画，标注「未知」**：\n\n```\n10:00  最后一次正常日志\n[未知] 问题发生（估计 10:00~10:10）\n10:20  首次错误日志\n```\n\n**「标注未知」比「编造时间」重要** —— 它会推动「下次要把日志补上」。\n\n## 一个实践建议\n\n**重大故障时，当场就要有人记录时间线**（不要等复盘时才回忆）。指派一个「记录人」，边处理边记。",
+    "tags": [
+      "时间线",
+      "MTTD",
+      "MTTR",
+      "复盘"
+    ],
+    "frequency": "中频"
+  },
+  {
+    "id": 5567,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何设计一个「可观测」的系统？日志、指标、追踪分别怎么用？",
+    "answer": "**可观测 = 不预先知道问题，也能通过数据推断出「发生了什么」。**\n\n## 与「监控」的区别\n\n| | 监控（Monitoring） | 可观测（Observability） |\n|---|---|---|\n| 回答 | 「有没有问题」（预设指标） | 「**为什么**有问题」（任意查询） |\n| 预设 | 已知的指标 | 未知的问题也能查 |\n\n**「监控告诉你服务器挂了，可观测告诉你是哪个请求、哪一行代码导致的。」**\n\n## 三大支柱\n\n| 支柱 | 回答 | 关键要求 |\n|---|---|---|\n| **指标（Metrics）** | 整体趋势如何 | 低成本、可聚合 |\n| **日志（Logs）** | 具体发生了什么 | **结构化**、带上下文 |\n| **追踪（Traces）** | 一次请求走了哪 | **贯穿全链路** |\n\n## 指标：要有「高基数」能力\n\n传统监控只能按「机器/接口」聚合。**可观测要求能按「任意维度」切片**：\n\n| 维度 | 例子 |\n|---|---|\n| 用户 ID | 某用户是否受影响 |\n| 版本 | 新版本是否更差 |\n| 地域 | 是否某地区问题 |\n\n**「按用户/版本切片」是排查发布问题的关键**，而传统聚合指标做不到。\n\n## 日志：结构化 + 关联\n\n**必须有 traceId**，否则无法把一次请求的日志串起来。\n\n**关键字段**：\n\n```\ntime, level, traceId, userId, service, latency, error\n```\n\n**「latency」这个字段很有价值**：能直接从日志统计慢请求分布，不依赖 APM。\n\n## 追踪：采样策略\n\n| 策略 | 说明 |\n|---|---|\n| 全量 | 成本高（大流量不可行） |\n| **按比例采样** | 1~10% |\n| **尾部采样（tail-based）** | **只保留慢/错的请求（最有价值）** |\n\n**「尾部采样」是精髓**：正常情况下不采样，但「慢或错」的请求 100% 记录 —— 排查时现场全在。\n\n## 排查的三个实战路径\n\n```\n① 指标异常（某接口错误率升）\n② 按维度切片（哪个版本/地域）\n③ 追踪 → 找一条失败请求 → 看哪个 span 耗时/报错\n④ 日志 → 用 traceId 找具体原因\n```\n\n## 两个常见失败\n\n| 失败 | 说明 |\n|---|---|\n| **日志没有关联 ID** | 无法串起链路 |\n| 指标维度太少 | 只能看到「整体」，无法定位 |\n\n**「日志没 traceId」是最常见的可观测缺陷。**\n\n## 一个高频追问\n\n「可观测的成本怎么控制？」\n\n| 手段 | 说明 |\n|---|---|\n| **采样** | 追踪只留异常（尾部采样） |\n| 分级存储 | 热数据（最近 7 天）查得快；冷数据压缩 |\n| 指标聚合 | 指标本身成本低（预聚合） |\n\n**「全量日志 + 全量追踪」成本极高**，大多数团队负担不起。要先做「采样 + 关键字段」。",
+    "tags": [
+      "可观测",
+      "指标",
+      "追踪",
+      "采样"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5568,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "困难",
+    "question": "线上发现「定时任务重复执行」，导致数据被重复处理，怎么排查和修复？",
+    "answer": "**根因几乎都是「多实例 + 任务没有分布式锁」，修复要靠「锁 + 幂等」双保险。**\n\n## 常见原因\n\n| 原因 | 说明 |\n|---|---|\n| **多实例部署** | 每台机器都跑了定时任务（最常见） |\n| 任务重叠 | 上次没跑完，下次又启动 |\n| 重试机制 | 失败重试时其实是「已经成功了」 |\n| **故障切换** | 主从切换后两边都执行 |\n| 手动触发 + 自动触发 | 同时跑了两次 |\n\n**「多实例」是最常见的**：本地开发时只有一个实例没问题，上了集群就重复了。\n\n## 第一步：确认重复的形态\n\n| 现象 | 判断 |\n|---|---|\n| 数据成倍出现（2 倍、3 倍） | 多实例并行 |\n| 偶发重复 | 任务重叠/重试 |\n| **固定时间点重复** | 手动+自动同时 |\n\n**「2 倍」几乎一定是有 2 个实例在跑**。\n\n## 第二步：排查确认\n\n```bash\n# 看有几台在跑同一个任务\nps -ef | grep cron\n# 检查日志里执行时间是否重叠\ngrep 'job started' app.log | tail -20\n```\n\n**关键：看「执行开始时间」是否有重叠** —— 重叠说明并发执行了。\n\n## 三种修复方案\n\n**1. 分布式锁（最常用）**\n\n```\n任务启动 → 抢锁（Redis SET NX EX）→ 抢到才执行 →\n执行完释放\n```\n\n**要点**：\n\n- 锁要**有过期时间**（防死锁）\n- **释放要校验持有者**（防误删别人的锁）\n- 执行时间长要**续期**（看门狗）\n\n**2. 单点调度（架构层面）**\n\n用调度平台（XXL-Job、K8s CronJob with leader election），**只有一个调度者**。\n\n**3. 幂等（兜底）**\n\n**即使重复执行，结果也只应用一次**：\n\n```sql\nINSERT INTO processed (biz_key) VALUES ('xx');  -- 唯一索引\n-- 重复时插入失败 → 跳过处理\n```\n\n## 为什么「锁 + 幂等」都要\n\n| 只加锁 | 只加幂等 |\n|---|---|\n| 锁失效（如 Redis 主从切换）仍会重复 | 重复执行了（浪费资源，可能有副作用） |\n\n**锁防「并发」，幂等防「重复」，两者互补。**\n\n## 数据修复\n\n已经重复的数据要修复：\n\n```sql\n-- 找出重复的\nSELECT biz_key, COUNT(*) FROM t GROUP BY biz_key HAVING COUNT(*) > 1;\n-- 保留一条，删除其余（要谨慎，先备份）\n```\n\n**修复脚本要「可重跑」**（幂等），并在测试环境验证。\n\n## 一个高频追问\n\n「K8s 里跑定时任务怎么防重复？」\n\n| 方式 | 说明 |\n|---|---|\n| CronJob + `concurrencyPolicy: Forbid` | 禁止并发（同一 CronJob 内） |\n| **多副本时仍有问题** | 需要「leader 选举」或外部锁 |\n\n**`concurrencyPolicy` 只防「同一 CronJob 的多次触发」，不防「多副本」。多副本场景必须用分布式锁。**",
+    "tags": [
+      "定时任务",
+      "重复执行",
+      "分布式锁",
+      "幂等"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5569,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何排查「内存占用持续上升但没到 OOM」的情况？",
+    "answer": "**「缓慢上升但没爆」比 OOM 更难：它不会崩，但会持续劣化直到某天爆掉。**\n\n## 第一步：确认是哪种内存\n\n| 类型 | 说明 |\n|---|---|\n| **堆内存**（JVM Heap） | 对象占用，GC 可回收 |\n| **堆外内存**（Direct/Native） | `-Xmx` 管不到 |\n| 元空间（Metaspace） | 类元数据 |\n| **缓存**（本地缓存） | 无上限的 Map |\n\n**「堆正常但 RSS 涨」= 堆外或本地缓存**，这是最常见的困惑。\n\n## 第二步：区分「缓存增长」与「泄漏」\n\n| 判据 | 缓存 | 泄漏 |\n|---|---|---|\n| 增长曲线 | 前期快、**后期趋平** | **持续线性增长** |\n| 是否可回收 | 内存压力时能清 | **清不掉** |\n| 重启后 | 重新涨回 | 重新涨回 |\n\n**「趋平」是缓存的特征**（缓存有上限或趋于稳定）；**「一直涨」才是泄漏。**\n\n## 第三步：工具排查\n\n**JVM**：\n\n```bash\njstat -gcutil <pid> 1000      # 看老年代占比趋势\njmap -histo <pid> | head      # 对象分布\njcmd <pid> VM.native_memory summary   # 堆外内存（需开启 NMT）\n```\n\n**通用**：\n\n```bash\npmap -x <pid> | sort -k3 -rn | head    # 内存段分布\n```\n\n**「anon 段持续增长」= 堆上或堆外分配在涨。**\n\n## 第四步：按类型定位\n\n| 类型 | 排查 |\n|---|---|\n| **堆泄漏** | dump 对比（间隔 30 分钟两次） |\n| **堆外泄漏** | NMT、`pmap` 看 anon |\n| **本地缓存无上限** | 代码审查（`HashMap` 作为缓存） |\n| 线程泄漏 | `jstack` 看线程数增长 |\n| 连接未关闭 | `lsof` 看 fd 数 |\n\n**「dump 对比」是最可靠的方法**：两次 dump 之间新增且未被回收的对象就是泄漏源。\n\n## 第五步：止血\n\n| 手段 | 说明 |\n|---|---|\n| 重启 | 立刻恢复（治标） |\n| **加监控** | 设置「内存增长率」告警 |\n| 加 limit | 让它在可控范围内被杀（而不是拖垮整机） |\n\n**「加 limit」很关键**：没有 limit 的话，它会一直涨到把宿主机拖垮。\n\n## 一个高频追问\n\n「为什么容器内存涨但 JVM 堆没涨？」\n\n三处可能：\n\n1. **Metaspace**（动态生成类，如大量动态代理）\n2. **DirectByteBuffer**（NIO、Netty）\n3. **Native 内存**（JNI、线程栈）\n\n**排查命令**：`jcmd VM.native_memory`（需 NMT）、`pmap -x`。\n\n## 一个实践提醒\n\n**「慢涨」必须加「增长率告警」，不能只看绝对值**：\n\n```\n内存从 60% → 70% 用了 7 天 →\n如果只看阈值（80%），等告警时只剩 3 天\n```\n\n**监控「增长斜率」才能提前发现。**",
+    "tags": [
+      "内存上升",
+      "堆外",
+      "dump对比",
+      "泄漏"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5570,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "什么时候该选择「加机器」而不是「优化代码」？怎么判断？",
+    "answer": "**判据：优化的「投入产出比」 vs 加机器的「成本」。多数情况先优化，但有四种情况直接加机器。**\n\n## 优先优化的三种情况\n\n| 情况 | 理由 |\n|---|---|\n| **瓶颈在数据库** | 加机器对 DB 效果有限（除非分库） |\n| 存在明显低效代码（N+1、无索引） | 优化收益巨大（10 倍以上） |\n| **资源利用率很低** | 说明不是容量问题，是效率问题 |\n\n**「优化收益 10 倍」明显优于「加 3 台机器（3 倍）」** —— 而且是长期收益。\n\n## 直接加机器的四种情况\n\n| 情况 | 理由 |\n|---|---|\n| **流量突增（临时）** | 大促、活动，来不及优化 |\n| 代码已充分优化 | 没有明显优化空间 |\n| **优化成本很高** | 重构需要数月，但加机器马上生效 |\n| 业务在快速增长 | 先保可用，优化排后面 |\n\n**「临时活动（大促）」是最典型** —— 只为了 3 天的高峰重构代码不值得。\n\n## 一个量化判断框架\n\n```\n优化收益 = (优化后 QPS ÷ 优化前 QPS) - 1\n优化成本 = 人力 × 周期\n\n加机器成本 = 台数 × 单价 × 时长\n```\n\n**用「节省的机器成本」对比「人力成本」**：\n\n```\n例：优化让 QPS 从 1000→3000，\n  原来需要 30 台 → 现在 10 台，\n  每月省 20 台成本 → 若大于优化投入，值得\n```\n\n## 一个非常实用的判断指标\n\n**看「单核 QPS」**：\n\n| 单核 QPS | 判断 |\n|---|---|\n| 很高（如 5000+） | 已经优化得不错，加机器合理 |\n| **很低（如 100）** | **一定有优化空间**（先优化） |\n\n**「单核 QPS 很低还靠加机器」是典型的无效投入** —— 说明代码效率差，加机器只是延续低效。\n\n## 但要注意「加机器的天花板」\n\n| 层 | 能否水平扩 |\n|---|---|\n| 应用（无状态） | ✅ 几乎无限 |\n| 数据库（单主库） | ❌ **不能** |\n| 缓存（集群） | ✅ 有限 |\n| 有状态服务 | ❌ 难 |\n\n**「加机器能解决应用层，但解决不了数据库」** —— 如果是 DB 瓶颈，加应用机器反而更糟（更多连接打到 DB）。\n\n## 一个高频追问\n\n「怎么快速判断瓶颈在哪一层？」\n\n**压测 + 看资源**：\n\n| 现象 | 瓶颈 |\n|---|---|\n| 应用 CPU 满 | 加应用机器 或 优化代码 |\n| **应用 CPU 低但慢** | 等依赖（DB/Redis）→ **加应用无用** |\n| 数据库 CPU 满 | 优化 SQL/加索引 或 分库 |\n\n**「应用 CPU 低但响应慢」是最常见的误判** —— 加机器完全没用，要查下游。\n\n## 一个实践建议\n\n**先优化到「单核 QPS 合理」，再考虑加机器**。顺序反了会浪费：低效代码 + 大量机器 = 持续烧钱。",
+    "tags": [
+      "加机器",
+      "优化",
+      "投入产出",
+      "瓶颈"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5571,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "如何排查「服务在特定时间点变慢」的规律性问题？",
+    "answer": "**「固定时间点变慢」几乎都是「定时任务/周期性机制」与业务争抢资源。**\n\n## 第一步：确认规律\n\n| 规律 | 方向 |\n|---|---|\n| **整点/半点** | 定时任务、统计、报表 |\n| 每天固定（如凌晨 2 点） | 备份、日志切割、批处理 |\n| **每小时/每 5 分钟** | 监控采集、缓存刷新 |\n| 每周固定 | 周报、清理任务 |\n| **不规律但重复** | 缓存过期、GC |\n\n**「整点」是最典型的定时任务特征。**\n\n## 第二步：列出该时段的定时任务\n\n```bash\ncrontab -l                    # 用户级\ncat /etc/crontab             # 系统级\nls /etc/cron.*               # 各周期目录\nsystemctl list-timers        # systemd timer\n```\n\n**别忘第三方任务**：数据库备份脚本、监控 agent、应用的定时任务。\n\n## 三类常见原因\n\n**1. 定时任务抢资源**\n\n| 任务 | 影响 |\n|---|---|\n| **数据库备份** | IO 飙升、CPU 高 |\n| 日志切割 | 磁盘 IO |\n| 统计/报表 | 大量 SQL 查询 |\n| 缓存预热 | CPU/网络 |\n\n**「数据库备份」是最常见的元凶**：mysqldump 会锁表/大量读，直接拖慢业务查询。\n\n**2. 缓存机制**\n\n| 机制 | 影响 |\n|---|---|\n| **批量过期** | 大量请求穿透到 DB |\n| 定时刷新 | 刷新时性能下降 |\n\n**3. 周期性机制**\n\n| 机制 | 影响 |\n|---|---|\n| **GC** | STW 停顿 |\n| 连接池检测 | 批量心跳 |\n| 日志滚动 | IO 突增 |\n\n## 第三步：验证对齐\n\n**把「慢的时间点」与「任务执行时间」列表对比**：\n\n```\n慢的时间点：02:00, 02:01, 02:02 ...\n任务列表：02:00 备份任务\n→ 高度吻合\n```\n\n**「对齐时间点」是这类问题最有效的方法。**\n\n## 第四步：处理\n\n| 手段 | 说明 |\n|---|---|\n| **挪时间** | 任务改到真正低峰（不是理论低峰） |\n| **限速** | `ionice`、`rsync --bwlimit`、控制并发 |\n| **降优先级** | 任务跑在低优先级 |\n| 拆分 | 大任务拆成小批 |\n\n**「挪时间」是最简单有效的**，但要注意「真正的低峰」可能是凌晨 4 点而不是 2 点。\n\n## 一个高频追问\n\n「怎么确认是备份任务导致的？」\n\n**在同环境手动跑备份，观察业务指标是否同步变化。**\n\n或者：\n\n- 临时停掉备份 → 看慢现象是否消失（最直接）\n- 看 `iostat` 在慢的时间点是否有 IO 峰值\n\n## 一个实践提醒\n\n**监控要能「按时段分析」**：\n\n```\n把指标按「一天中的小时」聚合，\n就能看出「哪个时间段固定变慢」\n```\n\n**大多数监控默认按时间序列展示，不按时段聚合**，导致规律性被掩盖。",
+    "tags": [
+      "规律性变慢",
+      "定时任务",
+      "缓存过期",
+      "备份"
+    ],
+    "frequency": "高频"
+  },
+  {
+    "id": 5572,
+    "type": "short",
+    "category": "综合场景题",
+    "difficulty": "中等",
+    "question": "作为运维，如何评估一个新服务「能不能上线」？你会检查什么？",
+    "answer": "**上线评审的本质：把「隐性风险」变成「显式检查项」。**\n\n## 六个检查维度\n\n| 维度 | 检查什么 |\n|---|---|\n| **容量** | 单机能扛多少？扩容是否方便？ |\n| **可观测** | 有日志吗？有指标吗？能追踪吗？ |\n| **依赖** | 依赖哪些服务？挂了会怎样？有兜底吗？ |\n| **安全** | 鉴权？敏感数据？越权风险？ |\n| **可用性** | 无状态吗？能多实例吗？重启快吗？ |\n| **运维性** | 配置怎么改？怎么发版？怎么回滚？ |\n\n## 逐项展开\n\n**1. 容量与扩展**\n\n```\n单实例承载多少 QPS？\n有没有压测数据？\n扩容是「加实例」还是「改架构」？\n```\n\n**「压测数据」是硬要求** —— 没有压测就无法做容量规划。\n\n**2. 可观测性（最容易偷懒）**\n\n| 必须有 | 说明 |\n|---|---|\n| **日志** | 结构化、有 traceId |\n| **指标** | QPS、延迟、错误率 |\n| 关键业务指标 | 成功率、处理量 |\n| **健康检查接口** | 给负载均衡用 |\n\n**「没有监控的服务不能上线」** —— 出事时无从下手。\n\n**3. 依赖与容错**\n\n| 检查 | 问题 |\n|---|---|\n| 依赖清单 | 依赖谁、强还是弱 |\n| 超时设置 | 每个调用有超时吗 |\n| **降级方案** | 依赖挂了怎么办 |\n| 重试策略 | 幂等吗？退避了吗 |\n\n**「没设超时」是最常见的问题** —— 默认可能等几分钟。\n\n**4. 安全**\n\n| 检查 | 说明 |\n|---|---|\n| 鉴权 | 每个接口都校验身份与权限 |\n| **越权防护** | 改 ID 能不能查到别人的数据 |\n| 敏感数据 | 是否脱敏、是否入日志 |\n| 限流 | 防刷 |\n\n**「越权」是业务服务最常见的漏洞**，必须逐接口检查。\n\n**5. 可用性**\n\n| 检查 | 要求 |\n|---|---|\n| **无状态** | 才能多实例 |\n| 启动时间 | 多久能就绪（影响恢复速度） |\n| 优雅停机 | 收到 SIGTERM 要能处理完再退 |\n\n**「有状态」会严重限制扩展与故障恢复**。\n\n**6. 运维性**\n\n| 检查 | 要求 |\n|---|---|\n| 配置方式 | 环境变量/配置中心，**不要硬编码** |\n| 部署方式 | 有 Dockerfile/脚本吗 |\n| **回滚方式** | 怎么快速回滚 |\n| 依赖的中间件 | 是否已准备好 |\n\n## 一个通用检查清单\n\n```\n□ 有压测数据与容量结论\n□ 有日志（结构化 + traceId）\n□ 有核心指标与告警\n□ 有健康检查接口\n□ 所有外部调用有超时\n□ 依赖有降级方案\n□ 鉴权 + 越权检查\n□ 敏感数据脱敏\n□ 无状态、可多实例\n□ 支持优雅停机\n□ 配置外置（不硬编码）\n□ 有回滚方案且演练过\n```\n\n## 一个高频追问\n\n「必须全部满足才能上线吗？」\n\n**不。要按「风险分级」**：\n\n| 级别 | 项 |\n|---|---|\n| **必须有**（否则不能上） | 日志、健康检查、超时、回滚方案 |\n| 应该做（可排期） | 压测、指标告警、降级 |\n| 锦上添花 | 追踪、细粒度监控 |\n\n**「必须有」这几项缺了，出问题时会完全抓瞎。**",
+    "tags": [
+      "上线评审",
+      "可观测",
+      "容量",
+      "检查清单"
     ],
     "frequency": "高频"
   },

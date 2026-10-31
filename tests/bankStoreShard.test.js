@@ -69,7 +69,8 @@ describe('bankStore · 分片加载', () => {
 
   it('分片里的答案字段命名与源码一致（a/e/o 短名映射）', () => {
     const manifest = JSON.parse(read('public/data/answers/manifest.json'))
-    const slug = manifest['Linux基础'].slug
+    // Linux基础 题量大，会被拆成多个分片，取第一片即可
+    const slug = manifest['Linux基础'].slugs[0]
     const rows = JSON.parse(read(`public/data/answers/${slug}.json`))
     const sample = rows.find((r) => r.e) // 找一条带解析的
     expect(sample).toBeTruthy()
