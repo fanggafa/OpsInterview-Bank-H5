@@ -1355,29 +1355,42 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
 **体积收益**：首屏最坏情况（索引 + 最大分片）约 **gzip 206 KB**，
 相比原来的 1455 KB 减少约 **86%**。
 
-### 当前状态：产物已就位，但**尚未切换**
+### 已切换：列表页走索引，详情/刷题按分类补答案
 
-`dataService.js` 已经提供了三个接口：
+**已生效**。加载策略分两条路径：
 
-```js
-fetchIndex()             // 列表页索引（短字段名会还原成完整字段名）
-fetchAnswerShard(slug)   // 按分类取答案分片
-fetchAnswersManifest()   // 取分类 → slug 映射
+| 场景 | 走哪个 | 拉多少 |
+|---|---|---|
+| 首页 / 题库列表 / 收藏 / 错题 / 统计 | `bank.loadIndex()` | 只有索引（gzip 121 KB） |
+| 题目详情 | `loadIndex()` + `hydrateCategory(该题分类)` | 索引 + 1 个分片 |
+| 刷题 / 复习（指定分类） | 同上 | 索引 + 1 个分片 |
+| 刷题（全部分类） | `hydrateCategory('')` | 索引 + 全部 25 个分片 |
+
+**实测首屏数据体积**（dev server 不压缩，取原始字节）：
+
+```
+questions-index.json      459 KB   ← 首屏只拉这个
+answers/manifest.json       1 KB
+────────────────────────────────
+首屏合计                  ~460 KB   （旧方案 questions.json 是 4297 KB，减少 89%）
 ```
 
-但 `fetchQuestions()` 与 `bankStore` **仍在用单文件**，因为切换要动的地方较多
-（`bankStore` 的 `questions` 变成「索引 + 按需答案」，`getById()` 需要处理未加载状态，
-详情页要处理加载中的短暂空态）。所以先落地产物 + 接口，切换单独做。
+线上开启 gzip 后索引约 **121 KB**，相比原来的 **1455 KB** 减少 **92%**。
 
-**切换前请注意**：`dist/data` 会同时包含 `questions.json`（4.2 MB）和分片（约 1.8 MB）。
-体积翻倍是这一阶段的预期代价，切换完成后再删 `questions.json`。
+### 实现要点（改动这几处）
 
-### 为什么分片文件要提交进 git
+- `bankStore` 新增 `loadIndex()` / `hydrateCategory(category)` / `retryIndex()`
+  - `loadIndex()` 有个守卫：**内存里已有题目时直接复用，不重复请求**
+  - `hydrateCategory()` 同理：题目已带 `answer` 字段时不再请求分片
+    （这条守卫让原有测试直接注入 FIXTURE 的模式继续有效）
+- `main.js` 的预热从 `load()` 改为 `loadIndex()`
+- 4 个列表页（`BankView` / `FavoritesView` / `HomeView` / `WrongView`）改 `loadIndex()`
+- `QuestionView` 先取索引，再按该题分类补答案；**左右滑动切题时也会补**（切到的题可能属于别的分类）
+- `PracticeView` 按当前分类补；`category` 为空（全部分类）时才拉全部分片
 
-GitHub Pages 直接发布构建产物，而构建不会自动跑 `split:data`。
-所以分片必须以「已生成」的状态存在于仓库。
+`fetchQuestions()` 与 `questions.json` **暂时保留** —— 作为兜底，等新路径稳定后再删。
 
-**修改题库后必须重新生成**，否则会脱节（列表能看到题、点进去没答案）：
+**修改题库后必须重新生成分片**，否则会脱节（列表能看到题、点进去没答案）：
 
 ```bash
 npm run split:data
@@ -1385,6 +1398,11 @@ npm run split:data
 
 `tests/splitData.test.js` 会校验索引与分片能否还原出 `questions.json` 的全部内容，
 包括答案一致性、分类覆盖、slug 的 URL 安全性，以及 gzip 体积预算 —— 脱节会被测试拦住。
+
+### 为什么分片文件要提交进 git
+
+GitHub Pages 直接发布构建产物，而构建不会自动跑 `split:data`，
+所以分片必须以「已生成」的状态存在于仓库（不是构建产物）。
 
 ---
 

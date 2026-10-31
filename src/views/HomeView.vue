@@ -25,7 +25,7 @@ function toggleTheme() {
 }
 
 onMounted(() => {
-  bank.load().catch(() => {})
+  bank.loadIndex().catch(() => {})
 })
 
 /** 今日是否有刷题记录 */

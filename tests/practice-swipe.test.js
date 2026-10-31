@@ -86,6 +86,17 @@ async function mountWithAsyncLoad(query = {}) {
       return FIXTURE
     })
   }
+  // 视图现在走「索引 + 按分类补答案」两条路径，两者都要走同一个 gate，
+  // 才能保证「先骨架屏、后数据到达」这个时序被测到
+  bank.loadIndex = () => {
+    bank.loading = true
+    return gate.then(() => {
+      bank.questions = FIXTURE
+      bank.loading = false
+      return FIXTURE
+    })
+  }
+  bank.hydrateCategory = () => gate.then(() => FIXTURE)
 
   const router = makeRouter()
   await router.push({ path: '/practice', query })

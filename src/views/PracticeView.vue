@@ -227,8 +227,11 @@ function resetChoice() {
 }
 
 onMounted(() => {
+  // 刷题要用答案：先取索引，再按当前分类补答案分片。
+  // category 为空表示「全部分类」，此时需要全量（用户要跨分类抽题）。
   bank
-    .load()
+    .loadIndex()
+    .then(() => bank.hydrateCategory(category.value || ''))
     .then(() => build())
     .catch(() => {
       ready.value = true
@@ -236,7 +239,12 @@ onMounted(() => {
 })
 
 watch([mode, studyMode, category, reviewKind], () => {
-  if (bank.questions.length) build()
+  if (!bank.questions.length) return
+  // 换分类时要补该分类的答案，否则新队列里的题没有 answer/explanation
+  bank
+    .hydrateCategory(category.value || '')
+    .then(() => build())
+    .catch(() => build())
 })
 
 // ---------- 定时器管理 ----------

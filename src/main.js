@@ -22,9 +22,12 @@ bindFlushOnHide()
 const settings = useSettingsStore()
 settings.init()
 
-// 预热题库：失败不阻塞渲染，页面会显示错误态
+// 预热题库：失败不阻塞渲染，页面会显示错误态。
+//
+// 这里只预热**索引**（gzip 约 121 KB），不是全量 1455 KB —— 首屏的列表/统计/筛选
+// 只需要摘要字段。需要答案的页面（详情/刷题）会调 load() 或 hydrateCategory() 补齐。
 const bank = useBankStore()
-bank.load().catch(() => {})
+bank.loadIndex().catch(() => {})
 
 // 早期题目 id 迁移（1–119 → 各分类编号段）：必须在 studyStore 读记录之前执行，
 // 否则老用户在这些题上的进度会因 id 失效而退出统计。幂等，只跑一次。

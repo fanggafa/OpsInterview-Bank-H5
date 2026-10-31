@@ -87,14 +87,24 @@ watch(stageRef, (el) => {
 
 onBeforeUnmount(() => detachSwipe())
 
-onMounted(() => {
-  bank.load().catch(() => {})
+onMounted(async () => {
+  // 详情页需要答案，但不必拉全量：先取索引（含分类），再只补这道题所属的分类分片。
+  try {
+    await bank.loadIndex()
+    const cat = bank.getById(id.value)?.category
+    await bank.hydrateCategory(cat || '')
+  } catch {
+    // 错误态由 bankStore 的 error 渲染
+  }
 })
 
 /** 切题时重置作答态与折叠态 */
 watch(id, () => {
   expanded.value = false
   resetChoice()
+  // 切到的题可能属于别的分类 —— 补一次，避免答案字段缺失
+  const cat = bank.getById(id.value)?.category
+  if (cat) bank.hydrateCategory(cat).catch(() => {})
 })
 
 function resetChoice() {
