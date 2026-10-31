@@ -8,7 +8,7 @@ import { readJSON, writeJSON } from '@/utils/storage'
  * 通过 <html data-theme> + CSS 变量驱动，切换时同步 theme-color。
  */
 
-const META_THEME_COLOR = { light: '#4F7CFF', dark: '#121212' }
+const META_THEME_COLOR = { light: '#0E8298', dark: '#121212' }
 
 const isValidSettings = (v) =>
   v !== null && typeof v === 'object' && THEMES.includes(v.theme)
