@@ -1,0 +1,155 @@
+[
+  {
+    "id": 5840,
+    "type": "single",
+    "category": "AI与大模型",
+    "difficulty": "简单",
+    "question": "大模型的上下文窗口（Context Window）指的是什么？",
+    "options": [
+      { "key": "A", "text": "模型训练时使用的语料总大小" },
+      { "key": "B", "text": "模型一次推理能处理的最大 token 数（输入 + 输出）" },
+      { "key": "C", "text": "模型权重大小占用的显存" },
+      { "key": "D", "text": "模型能同时服务的并发用户数" }
+    ],
+    "answer": ["B"],
+    "explanation": "上下文窗口是**输入与输出共用的 token 上限**，不是语料大小，也不是显存或并发数。\n\n- 超了会报「超出上下文长度」，而且 **system prompt 每次都算在内**；\n- 窗口大 ≠ 用得好：塞太多内容会**贵、慢，且中间的信息容易被忽略**（lost in the middle）；\n- 实践上应用 RAG 只检索相关片段，而不是无脑堆满窗口。",
+    "tags": ["上下文窗口", "token"],
+    "frequency": "高频"
+  },
+  {
+    "id": 5841,
+    "type": "single",
+    "category": "AI与大模型",
+    "difficulty": "简单",
+    "question": "关于 Token 计费，以下哪项说法是**正确**的？",
+    "options": [
+      { "key": "A", "text": "输入与输出的单价相同" },
+      { "key": "B", "text": "输出 token 通常比输入 token 更贵" },
+      { "key": "C", "text": "中文与英文消耗的 token 数完全一致" },
+      { "key": "D", "text": "system prompt 不计入费用" }
+    ],
+    "answer": ["B"],
+    "explanation": "**输出更贵**，因为输出是逐 token 串行生成的，无法并行；输入可以并行计算，所以便宜（常见差 2~4 倍）。\n\n其余三项都错：\n- 中文往往比英文消耗更多 token（1 个汉字约 1~2 token）；\n- **system prompt 每次请求都算输入 token**，长提示词成本会持续累积；\n- 计费按 token 数，因为计算量与显存占用都随 token 增长。",
+    "tags": ["Token", "计费", "成本"],
+    "frequency": "高频"
+  },
+  {
+    "id": 5842,
+    "type": "single",
+    "category": "AI与大模型",
+    "difficulty": "简单",
+    "question": "RAG（检索增强生成）主要解决什么问题？",
+    "options": [
+      { "key": "A", "text": "降低模型推理的显存占用" },
+      { "key": "B", "text": "让模型能使用外部/私有知识，并减少幻觉" },
+      { "key": "C", "text": "提升模型的生成速度" },
+      { "key": "D", "text": "减少模型的训练成本" }
+    ],
+    "answer": ["B"],
+    "explanation": "RAG 的核心是**把外部知识放进上下文**，让模型「看着材料回答」，从而：\n\n1. 能回答私有/最新知识（模型本身不知道）；\n2. **降低幻觉**（有依据可循），还能给出处。\n\n它**不改变**模型的显存、速度与训练成本 —— 那是量化、推理框架、微调要解决的事。\n\n容易混淆的是「RAG vs 微调」：要**注入知识**用 RAG，要**改变风格/格式**才用微调。",
+    "tags": ["RAG", "幻觉", "知识注入"],
+    "frequency": "高频"
+  },
+  {
+    "id": 5843,
+    "type": "single",
+    "category": "AI与大模型",
+    "difficulty": "简单",
+    "question": "关于 Temperature 参数，以下说法正确的是？",
+    "options": [
+      { "key": "A", "text": "temperature 越高，模型能力越强" },
+      { "key": "B", "text": "temperature=0 适合需要可复现结果的场景" },
+      { "key": "C", "text": "temperature 会改变模型的参数量" },
+      { "key": "D", "text": "temperature 只影响输出长度" }
+    ],
+    "answer": ["B"],
+    "explanation": "Temperature 是**采样随机性**的调节：\n\n- **≈0**：几乎只选概率最高的 token → 稳定、可复现，适合事实问答、代码、结构化抽取；\n- **高**：更分散 → 适合创意与头脑风暴。\n\n其余都错：它**不改变模型能力上限**、不改变参数量、也不控制长度（长度用 `max_tokens`）。\n\n排查「AI 输出时好时坏」时，**温度过高是第一检查项**。另外实践建议 temperature 与 top_p **只调一个**，避免互相抵消。",
+    "tags": ["Temperature", "可复现"],
+    "frequency": "高频"
+  },
+  {
+    "id": 5844,
+    "type": "single",
+    "category": "AI与大模型",
+    "difficulty": "简单",
+    "question": "部署大模型推理服务时，显存里占用最大、且随并发增长最快的是哪一项？",
+    "options": [
+      { "key": "A", "text": "模型权重" },
+      { "key": "B", "text": "KV Cache" },
+      { "key": "C", "text": "CUDA 驱动本身" },
+      { "key": "D", "text": "操作系统内存" }
+    ],
+    "answer": ["B"],
+    "explanation": "**权重是固定开销，KV Cache 是变量开销。**\n\n| 项 | 特性 |\n|---|---|\n| 模型权重 | 加载后固定（7B/FP16 ≈ 14GB） |\n| **KV Cache** | **随「上下文长度 × 并发数」线性增长** |\n| CUDA/框架 | 固定几 GB |\n\n所以「7B 模型用 16GB 卡」运行时常常吃紧 —— 很多 OOM 不是权重大，而是**并发上来后 KV Cache 撑爆**。\n\n运维启示：**压测必须测并发，不能只测单请求**；`max-model-len`、`max-num-seqs` 是控制 KV Cache 的关键参数。",
+    "tags": ["显存", "KV Cache", "并发"],
+    "frequency": "高频"
+  },
+  {
+    "id": 5845,
+    "type": "single",
+    "category": "AI与大模型",
+    "difficulty": "简单",
+    "question": "模型量化（Quantization）的主要目的是什么？",
+    "options": [
+      { "key": "A", "text": "提升模型的准确率" },
+      { "key": "B", "text": "降低模型权重的显存占用，让更小的卡也能跑" },
+      { "key": "C", "text": "增加模型的参数量" },
+      { "key": "D", "text": "缩短训练数据的准备时间" }
+    ],
+    "answer": ["B"],
+    "explanation": "量化是把权重用更少的比特表示（FP16 → INT8/INT4）：\n\n| 精度 | 7B 模型权重 |\n|---|---|\n| FP16 | ~14 GB |\n| INT8 | ~7 GB |\n| INT4 | ~3.5 GB |\n\n所以 INT4 后单张 8GB 消费卡也能跑。\n\n**代价是精度损失** —— 量化后必须在自己的评测集上做**质量回归**，不能只看「能跑起来」。它不提升准确率，也不改变参数量。",
+    "tags": ["量化", "显存"],
+    "frequency": "高频"
+  },
+  {
+    "id": 5846,
+    "type": "single",
+    "category": "AI与大模型",
+    "difficulty": "简单",
+    "question": "vLLM 相比朴素推理实现，主要的性能优势来自哪两项技术？",
+    "options": [
+      { "key": "A", "text": "模型剪枝与知识蒸馏" },
+      { "key": "B", "text": "PagedAttention 与连续批处理（continuous batching）" },
+      { "key": "C", "text": "多线程 Python 与 GIL 优化" },
+      { "key": "D", "text": "将模型编译成 C++ 代码" }
+    ],
+    "answer": ["B"],
+    "explanation": "vLLM 的两个核心贡献：\n\n| 技术 | 解决什么 |\n|---|---|\n| **PagedAttention** | KV Cache 像虚拟内存一样**分页管理**，减少显存碎片浪费 |\n| **连续批处理** | 动态拼批，**新请求可插入正在跑的批次**；短请求先返回 |\n\n效果叠加后，同样 GPU 能服务**数倍并发**。\n\n另外它内置 **OpenAI 兼容 API**（改 base_url 即可切换），并提供 Prometheus 指标，对运维很实用。\n\n注意：它不是靠剪枝/蒸馏/编译提速，那些是别的路线。",
+    "tags": ["vLLM", "PagedAttention", "批处理"],
+    "frequency": "高频"
+  },
+  {
+    "id": 5847,
+    "type": "single",
+    "category": "AI与大模型",
+    "difficulty": "简单",
+    "question": "LLM 推理的 decode（生成）阶段，性能瓶颈通常是？",
+    "options": [
+      { "key": "A", "text": "GPU 算力（FLOPS）不足" },
+      { "key": "B", "text": "显存带宽（每生成一个 token 都要读权重与 KV Cache）" },
+      { "key": "C", "text": "CPU 单核性能" },
+      { "key": "D", "text": "网络带宽" }
+    ],
+    "answer": ["B"],
+    "explanation": "推理分两阶段，瓶颈不同：\n\n| 阶段 | 做什么 | 瓶颈 |\n|---|---|---|\n| **prefill** | 一次性处理整个 prompt | **算力（FLOPS）** |\n| **decode** | 逐个 token 生成 | **显存带宽** |\n\ndecode 时每生成一个 token 都要把权重/KV 从显存搬过来，所以是 **memory-bound**。\n\n**反直觉但重要**：此时 GPU 利用率看起来不高，但已经是带宽极限 —— 优化要靠**量化（减少要读的字节数）**，而不是加算力。",
+    "tags": ["推理瓶颈", "decode", "带宽"],
+    "frequency": "中频"
+  },
+  {
+    "id": 5848,
+    "type": "single",
+    "category": "AI与大模型",
+    "difficulty": "简单",
+    "question": "关于 AI 网关（AI Gateway），以下哪项描述是**错误**的？",
+    "options": [
+      { "key": "A", "text": "可以统一多模型/多厂商的调用接口" },
+      { "key": "B", "text": "可以按应用或团队统计 token 成本" },
+      { "key": "C", "text": "引入网关后不再需要关注高可用问题" },
+      { "key": "D", "text": "可以在某模型故障时切换到备用模型" }
+    ],
+    "answer": ["C"],
+    "explanation": "C 是错的，而且恰好说反了 —— **网关是新增的单点**：它挂了所有 AI 功能都不可用。\n\n所以引入网关后反而**更要注意高可用**：\n1. 网关本身要多副本；\n2. 关键应用要能配置「直连兜底」的降级路径。\n\n其余三项都是网关的价值：统一接口（OpenAI 兼容）、成本归因、故障自动切换与灰度路由。\n\n核心认知：**网关的价值不在「转发」，而在「治理」** —— 把分散在各应用里的密钥、配额、监控、降级统一收上来。",
+    "tags": ["AI Gateway", "高可用", "治理"],
+    "frequency": "中频"
+  }
+]
