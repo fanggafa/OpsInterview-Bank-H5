@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2547 题**（835 简答 + 1540 单选 + 172 多选），25 个分类；含 **316 张内联 SVG 图解**（316 题带图）
+- 题库：**2547 题**（835 简答 + 1540 单选 + 172 多选），25 个分类；含 **340 张内联 SVG 图解**（340 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1140,7 +1140,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（316 张，25 个分类全覆盖）
+### 已注册的插图（340 张，25 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1448,6 +1448,30 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `pv-lifecycle` | PV 四状态与回收策略 | 题 4742 |
 | `flannel-vs-calico` | flannel 与 calico 对比 | 题 4753 |
 | `pod-scheduling-methods` | 五种调度到指定节点的方法 | 题 4755 |
+| `llm-vs-ml` | LLM 与传统 ML 四维度对比 | 题 5800 |
+| `token-billing` | Token 计费与输入/输出价差 | 题 5801 |
+| `rag-pipeline` | RAG 离线建库与在线检索链路 | 题 5802 |
+| `agent-loop` | Agent 的 ReAct 循环 | 题 5803 |
+| `hallucination-mitigation` | 幻觉成因与五级缓解 | 题 5805 |
+| `prompt-principles` | 结构化提示词骨架与原则 | 题 5806 |
+| `temperature-effect` | Temperature 对概率分布的影响 | 题 5809 |
+| `context-window-limits` | 上下文窗口的共享预算与四限制 | 题 5810 |
+| `finetune-vs-rag` | 提示词/RAG/微调的分工 | 题 5811 |
+| `sft-vs-rlhf` | 训练三阶段与 SFT/RLHF 对照 | 题 5812 |
+| `lora-structure` | LoRA 冻结 W + 旁路 ΔW | 题 5813 |
+| `vector-embedding` | 语义聚簇到向量与余弦相似度 | 题 5814 |
+| `gpu-vs-cpu` | CPU 与 GPU 的架构差异 | 题 5818 |
+| `vram-composition` | 显存构成与六种解法 | 题 5819 |
+| `vllm-architecture` | PagedAttention 与连续批处理 | 题 5820 |
+| `llm-api-monitoring` | LLM 服务的三层监控指标 | 题 5821 |
+| `ai-data-security-layers` | 私有化 AI 的四层数据安全 | 题 5822 |
+| `ai-gateway-roles` | AI 网关的六项治理能力 | 题 5825 |
+| `log-ai-analysis-flow` | 日志喂给 AI 前的四步处理 | 题 5827 |
+| `ai-slow-triage` | AI 变慢的三段耗时与两指标 | 题 5832 |
+| `token-cost-breakdown` | 成本公式与降本三条路 | 题 5834 |
+| `llm-observability-gap` | LLM 可观测性相对 APM 的缺口 | 题 5835 |
+| `prompt-injection-defense` | 直接/间接注入与防御层次 | 题 5836 |
+| `data-masking-flow` | 脱敏四方式与四个插入位置 | 题 5838 |
 | `five-xx-triage` | 5xx 分层定位与来源判断 | 题 4757 |
 | `hpa-mechanism` | HPA 原理与五个常见问题 | 题 4759 |
 | `docker-monitoring` | Docker 监控与 cgroup 读 limit | 题 4768 |

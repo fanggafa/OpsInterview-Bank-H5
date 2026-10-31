@@ -66,8 +66,15 @@ function attr(attrs, name) {
 
 const failures = []
 
+/**
+ * 可选单文件过滤：`node scripts/check-figure-text.mjs Foo.vue`
+ * 用途：多个子任务并行写图时，各自只看自己那几张，互不干扰。
+ */
+const ONLY = process.argv.slice(2).filter((a) => !a.startsWith('--'))
+
 for (const file of readdirSync(DIR)) {
   if (!file.endsWith('.vue')) continue
+  if (ONLY.length && !ONLY.some((o) => o === file || o === file.replace(/\.vue$/, ''))) continue
   const src = readFileSync(join(DIR, file), 'utf8')
 
   const viewBox = src.match(/<svg[^>]*viewBox="([^"]+)"/)
