@@ -8,7 +8,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 236" role="img" aria-label="生产访问应该收敛到堡垒机，以及直连生产的三类风险">
+    <svg viewBox="0 0 340 244" role="img" aria-label="生产访问应该收敛到堡垒机，以及直连生产的三类风险">
       <defs>
         <marker id="arrSec" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="var(--fig-node-c)" />
@@ -67,7 +67,7 @@
       <text x="16" y="194" font-size="8" fill="var(--fig-text)">① PasswordAuthentication no —— 禁密码，只留密钥</text>
       <text x="16" y="206" font-size="8" fill="var(--fig-text)">② PermitRootLogin no —— 禁 root 直接登录</text>
       <text x="16" y="218" font-size="8" fill="var(--fig-text)">③ 安全组禁止 0.0.0.0/0 访问 22/3306/6379 —— 端口暴露即被扫爆</text>
-      <text x="184" y="218" font-size="8" fill="var(--fig-node-c)">④ sudo 白名单，不是 NOPASSWD:ALL</text>
+      <text x="16" y="231" font-size="8" fill="var(--fig-node-c)">④ sudo 白名单，不是 NOPASSWD:ALL</text>
     </svg>
     <figcaption>「最小权限 + 全量审计」是安全的两块基石；改端口只是减少扫描噪音，不是安全措施</figcaption>
   </figure>

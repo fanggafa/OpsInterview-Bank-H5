@@ -9,7 +9,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 240" role="img" aria-label="Ansible UNREACHABLE 排查：网络与端口、认证、Python 解释器、权限提权">
+    <svg viewBox="0 0 340 248" role="img" aria-label="Ansible UNREACHABLE 排查：网络与端口、认证、Python 解释器、权限提权">
       <text x="6" y="12" font-size="9.5" fill="var(--fig-muted)">UNREACHABLE =「连不上」或「连上但跑不了 Python」，不是任务逻辑错</text>
 
       <rect x="6" y="20" width="328" height="28" rx="4" fill="var(--fig-node-a)" opacity=".12" />
@@ -34,7 +34,7 @@
       <text x="14" y="211" font-size="8" font-weight="700" fill="var(--fig-node-a)">最快的定位方式</text>
       <text x="14" y="223" font-size="7.5" fill="var(--fig-text)">ansible -i 主机 -m ping -vvv：-vvv 会打印实际执行的 SSH 命令与错误</text>
 
-      <text x="6" y="230" font-size="7.5" fill="var(--fig-muted)">常见解法：装 python3 或用 raw 模块先引导、ansible_python_interpreter 指定路径</text>
+      <text x="6" y="236" font-size="7.5" fill="var(--fig-muted)">常见解法：装 python3 或用 raw 模块先引导、ansible_python_interpreter 指定路径</text>
     </svg>
     <figcaption>UNREACHABLE 是连接/解释器层问题，区别于任务 FAILED；顺序查网络端口、认证、Python 缺失、become 提权，用 -vvv 看真实命令</figcaption>
   </figure>

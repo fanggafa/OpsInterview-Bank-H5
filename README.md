@@ -28,6 +28,7 @@ npm run dev          # http://127.0.0.1:5273
 | `npm run validate:data` | 校验题库结构（枚举 / id / 题数 / 字段） |
 | `npm run check:encoding` | 编码守卫（防中文被写坏，见[编码守卫](#编码守卫)） |
 | `npm run check:figures` | 插图文字溢出检查（防被 SVG 裁掉半句，见[画图注意事项](#画图注意事项踩过的坑)） |
+| `npm run check:figure-sfc` | 插图结构检查：SFC 完整性 + **文字压字 / 行距过紧**（连同名文件过滤可用） |
 | `npm run verify` | **提交前跑这个**：编码 + 题库 + 插图 + 测试 + 构建 全流程 |
 
 环境要求：Node.js ≥ 18。
@@ -1539,6 +1540,23 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
    估算每条 `<text>` 的实际占用并报出超界位置，已接入 `npm run verify`。
    修法见 [`docs/figure-text-rules.md`](docs/figure-text-rules.md)：拆行、加高画布，
    **不要缩小字号**（字号偏小正是要解决的问题）。
+6. **文字不能互相压住、行距不能过紧**：这是第 5 条管不到的盲区 ——
+   每行都没超边界，但两行挤在一起照样看不清。`check:figure-sfc` 现在会报两类：
+   - **压字**：两个 `<text>` 横向重叠 >6px 且纵向重叠 >3px（同一行写了两段）；
+   - **行距过紧**：同列相邻行间距 < 字号的 1.05 倍。
+
+   阈值来自对现有 340 张图的实测分布（比值 ≤1.0 的 6 处全是真贴边，≤1.2 开始出现
+   正常的两行说明），所以取 1.05 只抓真问题、不误伤。
+
+   修法：把行距拉开（改 `y`）并同步加高 `viewBox`，或把长句拆成两条 `<text>`。
+   注意 **左右分栏**（一列 `x=14`、另一列 `x=184`）里两列的 `y` 常常完全相同，
+   规则已用「横向重叠 >6px」把它们排除掉。
+
+   并行写图时可用文件名过滤，只看自己那几张：
+   ```bash
+   node scripts/check-figure-sfc.mjs MyFigure.vue
+   node scripts/check-figure-text.mjs MyFigure.vue
+   ```
 
 ### 答案正文的可读性
 

@@ -9,7 +9,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 240" role="img" aria-label="DNS 解析五级链路与各自的故障症状：本地缓存、递归服务器、根、顶级、权威">
+    <svg viewBox="0 0 340 249" role="img" aria-label="DNS 解析五级链路与各自的故障症状：本地缓存、递归服务器、根、顶级、权威">
       <text x="6" y="12" font-size="9.5" fill="var(--fig-muted)">五级链路：每一级出故障，症状都不一样</text>
 
       <rect x="6" y="20" width="328" height="26" rx="4" fill="var(--fig-node-a)" opacity=".12" />
@@ -34,7 +34,7 @@
       <text x="14" y="212" font-size="7.5" fill="var(--fig-text)">错误地址：缓存旧值、CNAME 配错、或解析到异常节点</text>
       <text x="14" y="224" font-size="7" fill="var(--fig-node-c)">SERVFAIL：上游故障、DNSSEC 验证失败、或权威返回异常</text>
 
-      <text x="6" y="230" font-size="7.5" fill="var(--fig-muted)">工具：dig +trace 逐步看链路；dig @上游 直连测试；清缓存（ndc/flush）</text>
+      <text x="6" y="237" font-size="7.5" fill="var(--fig-muted)">工具：dig +trace 逐步看链路；dig @上游 直连测试；清缓存（ndc/flush）</text>
     </svg>
     <figcaption>解析五级：本地缓存→递归服务器→根→顶级→权威；超时/NXDOMAIN/错地址/SERVFAIL 各自指向不同层级</figcaption>
   </figure>

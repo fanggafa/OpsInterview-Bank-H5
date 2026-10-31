@@ -18,13 +18,13 @@
       <rect x="6" y="20" width="328" height="34" rx="5" fill="var(--fig-node-a)" opacity=".1" />
       <text x="14" y="33" font-size="9" font-weight="700" fill="var(--fig-node-a)">Step 1：确认「穷的规律」</text>
       <text x="14" y="44" font-size="8" fill="var(--fig-text)">每个整点都这样？还是只在业务高峰的整点？持续 2 分钟还是 20 分钟？</text>
-      <text x="14" y="51" font-size="7.5" fill="var(--fig-node-c)">「每小时都有」与「只有特定整点」的成因完全不同</text>
+      <text x="14" y="55" font-size="7.5" fill="var(--fig-node-c)">「每小时都有」与「只有特定整点」的成因完全不同</text>
 
       <!-- Step 2 -->
       <rect x="6" y="60" width="328" height="34" rx="5" fill="var(--fig-node-b)" opacity=".1" />
       <text x="14" y="73" font-size="9" font-weight="700" fill="var(--fig-node-b)">Step 2：列出所有「整点任务」</text>
       <text x="14" y="84" font-size="8" fill="var(--fig-text)">crontab -l、/etc/cron.d/*、systemd timer、K8s CronJob</text>
-      <text x="14" y="91" font-size="7.5" fill="var(--fig-node-c)">重点看 0 * * * * 与 @hourly，别只看当前用户</text>
+      <text x="14" y="95" font-size="7.5" fill="var(--fig-node-c)">重点看 0 * * * * 与 @hourly，别只看当前用户</text>
 
       <!-- Step 3: 嫌疑清单 -->
       <text x="6" y="110" font-size="9.5" font-weight="700" fill="var(--fig-text)">Step 3：按「影响面」逐个排除</text>

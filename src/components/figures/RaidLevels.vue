@@ -24,7 +24,7 @@
       <!-- RAID 1 -->
       <g>
         <text x="6" y="80" font-size="10" font-weight="700" fill="var(--fig-node-c)">RAID 1 · 镜像</text>
-        <text x="104" y="80" font-size="9" fill="var(--fig-muted)">利用率50% · 容错1 · 最少2盘</text>
+        <text x="104" y="80" font-size="9" fill="var(--fig-muted)">利用率50% · 容错1</text>
         <rect x="6" y="86" width="42" height="14" rx="3" fill="var(--fig-node-c)" opacity=".75" />
         <rect x="52" y="86" width="42" height="14" rx="3" fill="none" stroke="var(--fig-node-c)" stroke-width="1.4" stroke-dasharray="3 2" />
         <rect x="98" y="86" width="42" height="14" rx="3" fill="var(--fig-node-c)" opacity=".75" />
@@ -35,19 +35,19 @@
       <!-- RAID 5 -->
       <g>
         <text x="6" y="130" font-size="10" font-weight="700" fill="var(--fig-node-b)">RAID 5 · 单校验</text>
-        <text x="104" y="130" font-size="9" fill="var(--fig-muted)">利用率(N-1)/N · 容错1 · 最少3盘</text>
+        <text x="104" y="130" font-size="9" fill="var(--fig-muted)">利用率(N-1)/N · 容1</text>
         <rect x="6" y="136" width="34" height="14" rx="3" fill="var(--fig-node-b)" opacity=".75" />
         <rect x="44" y="136" width="34" height="14" rx="3" fill="var(--fig-node-b)" opacity=".75" />
         <rect x="82" y="136" width="34" height="14" rx="3" fill="var(--fig-node-d)" opacity=".9" />
         <rect x="120" y="136" width="34" height="14" rx="3" fill="var(--fig-node-b)" opacity=".75" />
-        <text x="160" y="147" font-size="8.5" fill="var(--fig-node-d)">← 校验块轮转</text>
+        <text x="140" y="147" font-size="8.5" fill="var(--fig-node-d)">← 校验轮转</text>
         <text x="6" y="162" font-size="8.5" fill="var(--fig-muted)">重建期再坏一块就全丢（高风险窗口）</text>
       </g>
 
       <!-- RAID 6 -->
       <g>
         <text x="6" y="180" font-size="10" font-weight="700" fill="var(--fig-node-d)">RAID 6 · 双校验</text>
-        <text x="104" y="180" font-size="9" fill="var(--fig-muted)">利用率(N-2)/N · 容错2 · 最少4盘</text>
+        <text x="104" y="180" font-size="9" fill="var(--fig-muted)">利用率(N-2)/N · 容2</text>
         <rect x="6" y="186" width="30" height="14" rx="3" fill="var(--fig-node-d)" opacity=".75" />
         <rect x="40" y="186" width="30" height="14" rx="3" fill="var(--fig-node-d)" opacity=".75" />
         <rect x="74" y="186" width="30" height="14" rx="3" fill="var(--fig-node-a)" opacity=".9" />

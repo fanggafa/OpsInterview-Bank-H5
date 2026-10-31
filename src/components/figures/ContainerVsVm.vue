@@ -8,7 +8,7 @@
 
 <template>
   <figure class="fig">
-    <svg viewBox="0 0 340 230" role="img" aria-label="虚拟机与容器在隔离层次上的差异：VM 自带内核，容器共享宿主内核">
+    <svg viewBox="0 0 340 238" role="img" aria-label="虚拟机与容器在隔离层次上的差异：VM 自带内核，容器共享宿主内核">
       <text x="6" y="12" font-size="9.5" fill="var(--fig-muted)">两者的分界线在「有没有自己的内核」</text>
 
       <!-- VM 侧 -->
@@ -50,7 +50,7 @@
       <text x="16" y="186" font-size="9" font-weight="700" fill="var(--fig-node-b)">所以：不能简单说「容器更好」</text>
       <text x="16" y="200" font-size="8.5" fill="var(--fig-text)">无状态 Web 服务 → 容器（快、密度高、弹性好）</text>
       <text x="16" y="213" font-size="8.5" fill="var(--fig-text)">强隔离/多租户/不同内核/GPU 独占 → 虚拟机（甚至裸金属）</text>
-      <text x="16" y="220" font-size="7.5" fill="var(--fig-muted)">推理/数据库等重负载：越来越多用「容器编排 + 独占节点」折中</text>
+      <text x="16" y="227" font-size="7.5" fill="var(--fig-muted)">推理/数据库等重负载：越来越多用「容器编排 + 独占节点」折中</text>
     </svg>
     <figcaption>容器不是「更轻的虚拟机」，而是「共享内核的进程隔离」——安全边界不同</figcaption>
   </figure>

@@ -30,6 +30,140 @@ const files = readdirSync(DIR)
 
 const problems = []
 
+/**
+ * 单字符宽度估算（与 check-figure-text.mjs 保持一致，宁严勿松）。
+ */
+function charWidth(ch) {
+  if (/[\u3000-\u9fff\u3001-\u303f\uff00-\uffef\u2190-\u21ff\u2500-\u257f\u25a0-\u25ff]/.test(ch)) return 1
+  if (ch === ' ') return 0.32
+  if (/[ilj.,:;'!|`]/.test(ch)) return 0.32
+  if (/[mwMW@%]/.test(ch)) return 0.82
+  if (/[A-Z0-9#&$]/.test(ch)) return 0.62
+  if (/[a-z]/.test(ch)) return 0.55
+  return 0.6
+}
+function textWidth(str, size, bold) {
+  let w = 0
+  for (const ch of str) w += charWidth(ch) * size
+  return bold ? w * 1.04 : w
+}
+/** 取属性值（支持单/双引号） */
+function attrVal(attrs, name) {
+  const m = attrs.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`))
+  return m ? m[1] : null
+}
+
+/**
+ * SVG 内静态文字的「压字」检测。
+ *
+ * 为什么需要：check-figure-text 只判「文字是否超出画布被裁掉」，
+ * 但如果两行文字在画布内互相重叠，它完全发现不了 —— 因为每行都没超边界。
+ * 实际上这正是子任务反馈里最难自查的问题（「相邻行只有 6~8px，实际已重叠」）。
+ *
+ * 判定方法：估算每个 <text> 的包围盒（用字符宽度表 + 基线上下沿），
+ * 两两比较，纵向重叠超过 THRESH_Y 且横向重叠超过 THRESH_X 就报。
+ *
+ * 为什么要 THRESH_X：插图里大量「左右分栏」排版（x=14 与 x=184 各写一列），
+ * 它们的 y 经常完全相同，但横向只沾几个像素。若只看纵向重叠会全部误报。
+ *
+ * 跳过的情况（静态无法确定）：
+ *  - 文本含 Vue 插值 {{ }}（渲染后才定宽）
+ *  - 位置是动态绑定（:x / :y）
+ *  - 属性里没有 x 或 y（无法定位）
+ */
+const OVERLAP_Y = 3 // 纵向重叠超过 3px：估算误差（约 1~2px）不会触发
+const OVERLAP_X = 6 // 横向重叠超过 6px：滤掉左右分栏的贴边情形
+
+/**
+ * 行距/字号 的最小比值。
+ *
+ * 依据：扫描现有 340 张图后，同列相邻行的 dy/字号 比值分布为
+ *   <=1.0 → 6 处（都是真贴边，如 6px 行距配 8px 字号）
+ *   <=1.1 → 6 处（同上）
+ *   <=1.2 → 13 处（开始出现正常的两行说明）
+ * 所以取 1.05：刚好落在「真问题」与「正常排版」之间，不误伤。
+ */
+const ROW_GAP_RATIO = 1.05
+
+function findTextOverlaps(src) {
+  const out = []
+  const texts = []
+  const textRe = /<text\b([^>]*)>([\s\S]*?)<\/text>/g
+  let m
+  while ((m = textRe.exec(src))) {
+    const attrs = m[1]
+    const inner = m[2]
+    // 去掉内部标签（tspan 等）与实体，按 SVG 规则折叠空白
+    const raw = inner
+      .replace(/<[^>]*>/g, '')
+      .replace(/&[a-z]+;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!raw) continue
+    if (raw.includes('{{')) continue
+    if (/\b:[xy]\s*=/.test(attrs)) continue
+
+    const x = attrVal(attrs, 'x')
+    const y = attrVal(attrs, 'y')
+    if (x === null || y === null) continue
+    const nx = Number(x)
+    const ny = Number(y)
+    if (!Number.isFinite(nx) || !Number.isFinite(ny)) continue
+
+    const size = Number(attrVal(attrs, 'font-size') || 9)
+    if (!Number.isFinite(size)) continue
+    const bold = /font-weight\s*=\s*["'](bold|[6-9]00)["']/.test(attrs)
+    const anchor = attrVal(attrs, 'text-anchor') || 'start'
+    const w = textWidth(raw, size, bold)
+    const x1 = anchor === 'middle' ? nx - w / 2 : anchor === 'end' ? nx - w : nx
+    const lineNo = src.slice(0, m.index).split('\n').length
+    texts.push({
+      raw,
+      lineNo,
+      x1,
+      x2: x1 + w,
+      y: ny,
+      size,
+      top: ny - size * 0.82,
+      bottom: ny + size * 0.3,
+    })
+  }
+
+  for (let i = 0; i < texts.length; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      const a = texts[i]
+      const b = texts[j]
+      const xOv = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)
+      if (xOv <= OVERLAP_X) continue
+      const yOv = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
+      if (yOv <= OVERLAP_Y) continue
+      const short = (s) => (s.length > 22 ? `${s.slice(0, 22)}…` : s)
+      out.push(
+        `第 ${a.lineNo}/${b.lineNo} 行文字重叠：纵向 ${yOv.toFixed(1)}px、横向 ${xOv.toFixed(1)}px` +
+          `　「${short(a.raw)}」×「${short(b.raw)}」`,
+      )
+    }
+  }
+
+  // 行距过紧：同一列相邻两行（上下顺序）的间距 < 字号的 1.05 倍 → 视觉上几乎贴在一起
+  const cols = texts.slice().sort((p, q) => p.y - q.y || p.x1 - q.x1)
+  for (let i = 1; i < cols.length; i++) {
+    const prev = cols[i - 1]
+    const cur = cols[i]
+    if (Math.abs(cur.x1 - prev.x1) >= 12) continue // 不同列，不算相邻行
+    const dy = cur.y - prev.y
+    if (dy <= 0 || dy > 16) continue // 同 y 由重叠规则管；>16px 是大间隔
+    const size = Math.max(prev.size, cur.size)
+    if (dy >= size * ROW_GAP_RATIO) continue
+    const short = (s) => (s.length > 22 ? `${s.slice(0, 22)}…` : s)
+    out.push(
+      `第 ${prev.lineNo}/${cur.lineNo} 行距过紧：${dy}px < 字号 ${size}px 的 ${ROW_GAP_RATIO} 倍` +
+        `　「${short(prev.raw)}」↕「${short(cur.raw)}」`,
+    )
+  }
+  return out
+}
+
 /** 统计某个标签出现次数（不算自闭合） */
 function countOpen(src, tag) {
   const re = new RegExp(`<${tag}(?![a-zA-Z0-9-])`, 'g')
@@ -93,6 +227,9 @@ for (const f of files) {
     const tail = src.slice(styleClose + '</style>'.length).trim()
     if (tail) errs.push(`</style> 之后还有内容：${tail.slice(0, 50).replace(/\n/g, ' ')}`)
   }
+
+  // 6) SVG 文字互相压字（check-figure-text 只管「超出画布」，管不到这个）
+  for (const o of findTextOverlaps(src)) errs.push(o)
 
   if (errs.length) problems.push({ file: f, errs })
 }
