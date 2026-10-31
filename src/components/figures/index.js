@@ -246,6 +246,16 @@ import CpuSpikeIncident from './CpuSpikeIncident.vue'
 import CloudMigrationPlan from './CloudMigrationPlan.vue'
 import ArchEvolutionPlan from './ArchEvolutionPlan.vue'
 import PromotionLoadTest from './PromotionLoadTest.vue'
+import K8sWorkflow from './K8sWorkflow.vue'
+import PodCreateFlow from './PodCreateFlow.vue'
+import PodDeleteFlow from './PodDeleteFlow.vue'
+import K8sComponentHa from './K8sComponentHa.vue'
+import PodTypes from './PodTypes.vue'
+import KubeadmVsBinary from './KubeadmVsBinary.vue'
+import SentinelVsCluster from './SentinelVsCluster.vue'
+import RedisSlot from './RedisSlot.vue'
+import RabbitMessageLoss from './RabbitMessageLoss.vue'
+import UndeletePrinciple from './UndeletePrinciple.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -554,6 +564,16 @@ export const FIGURES = {
   'cloud-migration-plan': CloudMigrationPlan,
   'arch-evolution-plan': ArchEvolutionPlan,
   'promotion-load-test': PromotionLoadTest,
+  'k8s-workflow': K8sWorkflow,
+  'pod-create-flow': PodCreateFlow,
+  'pod-delete-flow': PodDeleteFlow,
+  'k8s-component-ha': K8sComponentHa,
+  'pod-types': PodTypes,
+  'kubeadm-vs-binary': KubeadmVsBinary,
+  'sentinel-vs-cluster': SentinelVsCluster,
+  'redis-slot': RedisSlot,
+  'rabbit-message-loss': RabbitMessageLoss,
+  'undelete-principle': UndeletePrinciple,
 }
 
 /**

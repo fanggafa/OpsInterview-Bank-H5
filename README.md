@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2489 题**（795 简答 + 1527 单选 + 167 多选），24 个分类；含 **271 张内联 SVG 图解**（271 题带图）
+- 题库：**2489 题**（795 简答 + 1527 单选 + 167 多选），24 个分类；含 **281 张内联 SVG 图解**（281 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1139,7 +1139,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（271 张，24 个分类全覆盖）
+### 已注册的插图（281 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1410,6 +1410,16 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `opsdev-vs-ops` | 运维开发与传统运维 | 题 3240 |
 | `dns-resolution-chain` | DNS 解析五级与故障症状 | 题 4519 |
 | `copy-vs-add` | COPY 与 ADD | 题 4636 |
+| `k8s-workflow` | K8s 基本工作流程（声明式调谐） | 题 4726 |
+| `pod-create-flow` | Pod 创建六步与两种卡点 | 题 4729 |
+| `pod-delete-flow` | Pod 删除的优雅终止时序 | 题 4730 |
+| `k8s-component-ha` | 组件高可用：并行 vs 选主 | 题 4728 |
+| `pod-types` | 静态 Pod / 自主式 / 动态 | 题 4733 |
+| `kubeadm-vs-binary` | kubeadm 与二进制安装 | 题 4735 |
+| `sentinel-vs-cluster` | Redis 哨兵与集群 | 题 3928 |
+| `redis-slot` | slot 分片与 hash tag | 题 3929 |
+| `rabbit-message-loss` | RabbitMQ 消息丢失三段 | 题 2316 |
+| `undelete-principle` | 误删文件恢复原理 | 题 4127 |
 | `cpu-spike-incident` | CPU 异常高的应急顺序 | 题 5204 |
 | `cloud-migration-plan` | 自建机房上云迁移 | 题 5411 |
 | `arch-evolution-plan` | 3 年架构演进规划 | 题 5421 |
