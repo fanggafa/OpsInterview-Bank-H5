@@ -29,6 +29,7 @@ import {
 import {
   isShort,
   isMultiple,
+  correctKeys,
   answerSingle,
   toggleOption,
   judgeChoice,
@@ -103,6 +104,18 @@ const current = computed(() => queue.value[cursor.value] || null)
 const total = computed(() => queue.value.length)
 const short = computed(() => (current.value ? isShort(current.value) : true))
 const multiple = computed(() => (current.value ? isMultiple(current.value) : false))
+
+/**
+ * 选择题的「正确答案」文本：只给选项键（如 `B`，多选为 `A、C`）。
+ *
+ * 为什么不再拼选项原文：选项本身就在上面（做题模式刚选过，屏幕上就是原文），
+ * 答案区再抄一遍既重复又占垂直空间 —— 用户要的只是「哪个是对的」。
+ */
+const choiceAnswerText = computed(() => {
+  const q = current.value
+  if (!q) return ''
+  return correctKeys(q).join('、')
+})
 const status = computed(() => (current.value ? study.statusOf(current.value.id) : null))
 const favorite = computed(() => (current.value ? study.isFavorite(current.value.id) : false))
 
@@ -805,9 +818,8 @@ const emptyDesc = computed(() => {
               <ul v-if="current.tags?.length" class="qcard-p__tags">
                 <li v-for="tag in current.tags" :key="tag" class="qcard-p__tag">#{{ tag }}</li>
               </ul>
-              <!-- 简答题：看答案按钮与标签同一行，靠最右 -->
+              <!-- 看答案按钮与标签同一行，靠最右；两种题型都有（做题模式默认收起） -->
               <button
-                v-if="short"
                 class="qcard-p__toggle"
                 :aria-expanded="expanded"
                 @click="toggleAnswer"
@@ -845,9 +857,27 @@ const emptyDesc = computed(() => {
                 <span>{{ passed ? '回答正确' : '回答错误' }}</span>
               </div>
 
-              <div v-if="submitted && current.explanation" class="explain">
+              <!-- 判定后：解析自动显示（选择题的价值就在解析里，不用再点一次） -->
+              <div v-if="submitted && current.explanation && !expanded" class="explain">
                 <p class="explain__label">解析</p>
                 <AnswerText :answer="current.explanation" />
+              </div>
+
+              <!-- 点「看答案」展开：正确答案 + 解析（未作答时也能看，做题模式默认收起） -->
+              <div class="answer" :class="{ 'answer--open': expanded }">
+                <div class="answer__inner">
+                  <div class="answer__body">
+                    <!-- 标签与答案同行：答案只是一个字母，单独占一行太浪费 -->
+                    <p class="answer__key">
+                      <span class="explain__label answer__key-label">正确答案</span>
+                      <span class="answer__key-value">{{ choiceAnswerText }}</span>
+                    </p>
+                    <div v-if="current.explanation" class="explain">
+                      <p class="explain__label">解析</p>
+                      <AnswerText :answer="current.explanation" />
+                    </div>
+                  </div>
+                </div>
               </div>
             </template>
 
@@ -1499,6 +1529,24 @@ const emptyDesc = computed(() => {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--c-text-2);
+}
+
+/* 选择题答案：标签与字母同一行，尽量少占垂直空间 */
+.answer__key {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+}
+.answer__key-label {
+  margin: 0;
+}
+.answer__key-value {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--c-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 吸底操作区 */
