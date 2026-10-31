@@ -371,7 +371,7 @@ const resultText = computed(() => {
       v-else-if="bank.isEmpty"
       variant="search"
       title="题库为空"
-      desc="请检查 data/questions.json 是否有题目。"
+      desc="题库数据为空，请运行 npm run split:data 后重试。"
     />
 
     <EmptyState

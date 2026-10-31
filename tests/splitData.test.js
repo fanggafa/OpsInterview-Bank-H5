@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { gzipSync } from 'node:zlib'
 
 /**
  * 分片数据（索引 + 按分类答案分片）的一致性测试。
@@ -76,7 +77,6 @@ describe('分片数据一致性', () => {
 
   it('分片体积不超过「索引 + 最大分片」的首屏预算（gzip 220 KB）', () => {
     // 用 Node 的 zlib 实测，确保拆分真的带来了体积收益
-    const { gzipSync } = require('node:zlib')
     const idxGz = gzipSync(readFileSync(resolve(process.cwd(), 'public/data/questions-index.json'))).length
     let maxShardGz = 0
     for (const meta of Object.values(manifest)) {

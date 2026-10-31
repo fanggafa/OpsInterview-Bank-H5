@@ -1399,6 +1399,26 @@ npm run split:data
 `tests/splitData.test.js` 会校验索引与分片能否还原出 `questions.json` 的全部内容，
 包括答案一致性、分类覆盖、slug 的 URL 安全性，以及 gzip 体积预算 —— 脱节会被测试拦住。
 
+### 构建时剔除源数据（`questions.json` 不再部署）
+
+`public/data/questions.json`（4.3 MB）**现在是编辑期数据源**：`merge-batch.mjs`、
+`fig.mjs`、`check-figure-placement.mjs`、`validate:data` 等都读它。运行时已完全不碰。
+
+所以构建时用 `scripts/vite-plugin-strip-data.mjs` 把它从 `dist` 里删掉
+（Vite 5 只能整体开关 `publicDir` 拷贝，没有「排除个别文件」的配置，所以用
+`closeBundle` 钩子事后删除）：
+
+```
+构建输出： stripped 1 source file(s) from dist (4300 KB)
+dist/data 从 7.83 MB 降到 3.63 MB
+```
+
+**为什么必须用插件而不是删文件**：删了仓库里的 `questions.json`，整套编辑工具链就没了。
+它必须留在仓库、但不出现在部署产物 —— 这是「源数据」与「运行时数据」的区别。
+
+`tests/distData.test.js` 守住这条：校验插件确实挂了、剔除目标正确，
+并扫描 `src` 确认没有 URL 常量再指向 `questions.json`（防止有人加了新的全量请求）。
+
 ### 为什么分片文件要提交进 git
 
 GitHub Pages 直接发布构建产物，而构建不会自动跑 `split:data`，
