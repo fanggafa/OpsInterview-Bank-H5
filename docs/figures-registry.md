@@ -1,6 +1,6 @@
 # 插图注册表（figures registry）
 
-> 共 **340 张**插图，按**实际挂载的题目分类**分组。
+> 共 **363 张**插图，按**实际挂载的题目分类**分组。
 > 新增插图后请在此表追加一行，并在题目的答案里用 `[[图:id]]` 引用。
 
 返回 [README](../README.md)。
@@ -35,7 +35,7 @@
 
 ---
 
-## Linux基础（14 张）
+## Linux基础（18 张）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -53,6 +53,11 @@
 | `systemd-failure` | systemd 启动失败与 Type/Restart | 题 4122 |
 | `undelete-principle` | 误删文件恢复原理 | 题 4127 |
 | `df-vs-lsblk` | df / lsblk / du 三视角 | 题 4129 |
+| `linux-boot-flow` | 开机 6 步流程；第 5 步是 6/7 唯一区别 | 题 8630 Linux 系统开机流程是怎样的？CentOS 6  |
+| `sudo-privilege` | SUID → sudoers → 执行的提权链路与授权陷阱 | 题 8646 Linux 中如何做权限提升与命令委托？sudo 的 |
+| `ansible-agentless` | 控制机经 SSH 推送临时脚本，被控端无需 agent | 题 8656 Linux 中如何做远程批量执行与配置管理？Ansi |
+| `link-inode` | 目录项→inode→数据块；软硬链接差异与跨分区限制 | 题 8639 Linux 文件系统中，软链接和硬链接的实现原理有什 |
+
 
 ## Shell脚本（12 张）
 
@@ -71,7 +76,7 @@
 | `positional-params` | 位置参数与 $@ vs $* | 题 4325 |
 | `grep-sed-awk` | grep/sed/awk 的分工 | 题 4328 |
 
-## 网络基础（19 张）
+## 网络基础（23 张）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -94,6 +99,11 @@
 | `cross-dc-network` | 跨机房组网方案对比 | 题 4417 |
 | `single-domain-slow` | 单域名慢的分段计时 | 题 4413 |
 | `dns-resolution-chain` | DNS 解析五级与故障症状 | 题 4519 |
+| `osi-seven-layers` | 七层自上而下堆叠，每层作用与典型协议 | 题 9631 OSI 七层模型分别是哪七层？各层的作用是什么？ |
+| `tcpip-vs-osi` | 七层与四层的合并关系连线（5~7→应用、1~2→接口） | 题 9632 TCP/IP 四层模型分别是哪四层？与 OSI 七层 |
+| `nat-workflow` | NAT 改写→映射表→公网→回包查表还原；SNAT/DNAT | 题 9629 什么是网络地址转换（NAT）？描述其工作原理。 |
+| `tcp-state-machine` | 左右两列状态时间线；TIME_WAIT vs CLOSE_WAIT | 题 9633 TCP 状态转换图中，有哪些关键状态？它们分别什么含 |
+
 
 ## DNS（7 张）
 
@@ -120,7 +130,7 @@
 | `security-group-vs-iptables` | 安全组与 iptables 的排查顺序 | 题 1220 |
 | `k8s-node-iptables` | K8s 节点上的 iptables 规则 | 题 1230 |
 
-## Nginx（10 张）
+## Nginx（11 张）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -134,8 +144,10 @@
 | `nginx-stream-vs-http` | stream（4 层）与 http（7 层） | 题 1433 |
 | `nginx-change-flow` | Nginx 改配置的标准流程 | 题 1409 |
 | `nginx-access-log` | access.log 关键字段与排查 | 题 1434 |
+| `nginx-modules` | 核心模块内嵌于 worker；并发上限公式 | 题 2118 Nginx 的核心模块有哪些？分别起什么作用？ |
 
-## LVS/HAProxy（8 张）
+
+## LVS/HAProxy（9 张）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -147,6 +159,8 @@
 | `lvs-real-ip` | 四层传递真实 IP | 题 1617 |
 | `lvs-active-vs-active-active` | 主备与主主模式 | 题 1627 |
 | `partial-users-fail` | 部分用户访问不了 | 题 1629 |
+| `lvs-three-modes` | DR/NAT/TUN 的回包路径差异（绕不绕 LB） | 题 2616 LVS 有哪三种模式？它们的工作过程有什么区别？ |
+
 
 ## Tomcat/JVM（8 张）
 
@@ -175,7 +189,7 @@
 | `mysql-repl-lag` | 主从复制延迟的排查 | 题 3719 |
 | `slow-sql-triage` | 慢 SQL 的定位流程 | 题 3720 |
 
-## Redis（11 张）
+## Redis（12 张）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -190,6 +204,8 @@
 | `sentinel-vs-cluster` | Redis 哨兵与集群 | 题 3928 |
 | `redis-slot` | slot 分片与 hash tag | 题 3929 |
 | `redis-data-types` | Redis 类型与场景对应 | 题 3927 |
+| `redis-replication` | 全量同步四步 + repl_backlog 命中/不命中的分叉 | 题 8132 Redis 主从复制的原理是什么？ |
+
 
 ## MongoDB（11 张）
 
@@ -207,7 +223,7 @@
 | `mongo-vs-mysql` | MongoDB 与 MySQL 的区别与选型 | 题 2000 |
 | `mongo-replset-setup` | MongoDB 副本集搭建六步 | 题 2033 |
 
-## 消息队列（12 张）
+## 消息队列（16 张）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -223,6 +239,11 @@
 | `rabbit-message-loss` | RabbitMQ 消息丢失三段 | 题 2316 |
 | `kafka-partition-consumer` | 分区与消费者三种关系 | 题 2315 |
 | `mq-delivery` | 消息在三段链路上的丢失与重复 | 题 2203、2215 |
+| `kafka-architecture` | Topic 拆 Partition（Leader+Follower）+ Consumer Group | 题 4126 Kafka 的基本架构是怎样的？ |
+| `rabbitmq-architecture` | Exchange 分层路由到多队列；四种交换机类型 | 题 4120 RabbitMQ 的基本架构是怎样的？ |
+| `kafka-components` | 三段链路各自的优化参数落点 | 题 4127 Kafka 各组件的工作机制是什么？有哪些常见优化点 |
+| `kafka-ordering` | 同 key→同分区→单消费者链路 + 三个破坏顺序的坑 | 题 4132 Kafka 如何保证消息顺序性？什么场景下顺序性是必 |
+
 
 ## 容器与K8s（52 张）
 
@@ -466,7 +487,7 @@
 | `prompt-injection-defense` | 直接/间接注入与防御层次 | 题 5836 |
 | `data-masking-flow` | 脱敏四方式与四个插入位置 | 题 5838 |
 
-## 综合场景题（29 张）
+## 综合场景题（37 张）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -499,3 +520,12 @@
 | `arch-evolution-plan` | 3 年架构演进规划 | 题 5421 |
 | `promotion-load-test` | 大促容量评估与压测 | 题 5542 |
 | `deploy-incident-triage` | 发布后故障按错误形态分诊 | 题 5502 |
+| `ha-architecture` | 五层架构与每层的高可用手段、残留单点 | 题 12082 如何设计一个高可用架构？需要考虑哪些层面？ |
+| `eventual-consistency` | 本地消息表/事务消息/TCC/Saga 四方案的保证点 | 题 12086 微服务架构下如何保证「最终一致」？有哪些典型方案？ |
+| `distributed-lock` | Redis/ZK/DB 三种实现的命令链与三个难题 | 题 12085 分布式锁有哪些实现方式？如何保证锁的可靠性与安全性？ |
+| `multiactive-multi-region` | 四模式对比：能写的地方有几处决定冲突难度 | 题 12090 异地多活的架构有哪些难点？一般怎么做？ |
+| `log-trace-system` | 写入链路 + 指标→追踪→日志的收敛查询路径 | 题 12091 如何设计一套日志与链路追踪体系？怎么用它排查问题？ |
+| `db-failover` | 切换七步时间轴；旧主恢复必须先降级为从 | 题 12153 数据库主从切换时，业务可能出现什么问题？如何保证切换 |
+| `db-change-safety` | 三步发布 + 新旧代码/表结构的 2×2 兼容矩阵 | 题 12162 如何保障「数据库变更」的安全性？有哪些规范和流程？ |
+| `health-check-design` | liveness vs readiness；检查依赖导致的雪崩重启循环 | 题 12164 如何设计一套「健康检查」机制？做错了会有什么后果？ |
+

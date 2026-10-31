@@ -349,6 +349,29 @@ import MysqlIndexLookup from './MysqlIndexLookup.vue'
 import DockerLayers from './DockerLayers.vue'
 import CacheProblems from './CacheProblems.vue'
 import AlertFunnel from './AlertFunnel.vue'
+import LinuxBootFlow from './LinuxBootFlow.vue'
+import SudoPrivilege from './SudoPrivilege.vue'
+import AnsibleAgentless from './AnsibleAgentless.vue'
+import LinkInode from './LinkInode.vue'
+import OsiSevenLayers from './OsiSevenLayers.vue'
+import TcpipVsOsi from './TcpipVsOsi.vue'
+import NatWorkflow from './NatWorkflow.vue'
+import TcpStateMachine from './TcpStateMachine.vue'
+import KafkaArchitecture from './KafkaArchitecture.vue'
+import RabbitmqArchitecture from './RabbitmqArchitecture.vue'
+import KafkaComponents from './KafkaComponents.vue'
+import KafkaOrdering from './KafkaOrdering.vue'
+import HaArchitecture from './HaArchitecture.vue'
+import EventualConsistency from './EventualConsistency.vue'
+import DistributedLock from './DistributedLock.vue'
+import MultiactiveMultiRegion from './MultiactiveMultiRegion.vue'
+import LogTraceSystem from './LogTraceSystem.vue'
+import DbFailover from './DbFailover.vue'
+import DbChangeSafety from './DbChangeSafety.vue'
+import HealthCheckDesign from './HealthCheckDesign.vue'
+import NginxModules from './NginxModules.vue'
+import LvsThreeModes from './LvsThreeModes.vue'
+import RedisReplication from './RedisReplication.vue'
 
 /** @type {Record<string, object>} */
 export const FIGURES = {
@@ -692,6 +715,29 @@ export const FIGURES = {
   'vllm-architecture': VllmArchitecture,
   'vram-composition': VramComposition,
   'gpu-vs-cpu': GpuVsCpu,
+  'linux-boot-flow': LinuxBootFlow,
+  'sudo-privilege': SudoPrivilege,
+  'ansible-agentless': AnsibleAgentless,
+  'link-inode': LinkInode,
+  'osi-seven-layers': OsiSevenLayers,
+  'tcpip-vs-osi': TcpipVsOsi,
+  'nat-workflow': NatWorkflow,
+  'tcp-state-machine': TcpStateMachine,
+  'kafka-architecture': KafkaArchitecture,
+  'rabbitmq-architecture': RabbitmqArchitecture,
+  'kafka-components': KafkaComponents,
+  'kafka-ordering': KafkaOrdering,
+  'ha-architecture': HaArchitecture,
+  'eventual-consistency': EventualConsistency,
+  'distributed-lock': DistributedLock,
+  'multiactive-multi-region': MultiactiveMultiRegion,
+  'log-trace-system': LogTraceSystem,
+  'db-failover': DbFailover,
+  'db-change-safety': DbChangeSafety,
+  'health-check-design': HealthCheckDesign,
+  'nginx-modules': NginxModules,
+  'lvs-three-modes': LvsThreeModes,
+  'redis-replication': RedisReplication,
 }
 
 /**
