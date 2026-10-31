@@ -1,0 +1,10 @@
+{
+  "figures": [
+    { "component": "PythonConcurrencyModes", "id": "python-concurrency-modes" },
+    { "component": "K8sSecurityLayers", "id": "k8s-security-layers" }
+  ],
+  "attach": [
+    { "question": 4765, "figure": "k8s-security-layers", "anchor": "安全最佳实践" },
+    { "question": 5610, "figure": "python-concurrency-modes", "anchor": "并发" }
+  ]
+}

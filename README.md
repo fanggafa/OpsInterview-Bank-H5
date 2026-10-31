@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2489 题**（795 简答 + 1527 单选 + 167 多选），24 个分类；含 **308 张内联 SVG 图解**（308 题带图）
+- 题库：**2489 题**（795 简答 + 1527 单选 + 167 多选），24 个分类；含 **316 张内联 SVG 图解**（316 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1139,7 +1139,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（308 张，24 个分类全覆盖）
+### 已注册的插图（316 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1447,6 +1447,14 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `pv-lifecycle` | PV 四状态与回收策略 | 题 4742 |
 | `flannel-vs-calico` | flannel 与 calico 对比 | 题 4753 |
 | `pod-scheduling-methods` | 五种调度到指定节点的方法 | 题 4755 |
+| `five-xx-triage` | 5xx 分层定位与来源判断 | 题 4757 |
+| `hpa-mechanism` | HPA 原理与五个常见问题 | 题 4759 |
+| `docker-monitoring` | Docker 监控与 cgroup 读 limit | 题 4768 |
+| `redis-data-types` | Redis 类型与场景对应 | 题 3927 |
+| `df-vs-lsblk` | df / lsblk / du 三视角 | 题 4129 |
+| `kafka-partition-consumer` | 分区与消费者三种关系 | 题 2315 |
+| `python-concurrency-modes` | 线程/进程/协程选型 | 题 5610 |
+| `k8s-security-layers` | K8s 安全五层收敛 | 题 4765 |
 | `cpu-spike-incident` | CPU 异常高的应急顺序 | 题 5204 |
 | `cloud-migration-plan` | 自建机房上云迁移 | 题 5411 |
 | `arch-evolution-plan` | 3 年架构演进规划 | 题 5421 |

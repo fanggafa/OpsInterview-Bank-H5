@@ -1,0 +1,12 @@
+{
+  "figures": [
+    { "component": "FiveXxTriage", "id": "five-xx-triage" },
+    { "component": "HpaMechanism", "id": "hpa-mechanism" },
+    { "component": "DockerMonitoring", "id": "docker-monitoring" }
+  ],
+  "attach": [
+    { "question": 4757, "figure": "five-xx-triage", "anchor": "5xx" },
+    { "question": 4759, "figure": "hpa-mechanism", "anchor": "HPA" },
+    { "question": 4768, "figure": "docker-monitoring", "anchor": "性能监控" }
+  ]
+}

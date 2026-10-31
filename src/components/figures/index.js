@@ -283,6 +283,14 @@ import ApiserverHa from './ApiserverHa.vue'
 import PvLifecycle from './PvLifecycle.vue'
 import FlannelVsCalico from './FlannelVsCalico.vue'
 import PodSchedulingMethods from './PodSchedulingMethods.vue'
+import FiveXxTriage from './FiveXxTriage.vue'
+import HpaMechanism from './HpaMechanism.vue'
+import DockerMonitoring from './DockerMonitoring.vue'
+import RedisDataTypes from './RedisDataTypes.vue'
+import DfVsLsblk from './DfVsLsblk.vue'
+import KafkaPartitionConsumer from './KafkaPartitionConsumer.vue'
+import PythonConcurrencyModes from './PythonConcurrencyModes.vue'
+import K8sSecurityLayers from './K8sSecurityLayers.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -628,6 +636,14 @@ export const FIGURES = {
   'pv-lifecycle': PvLifecycle,
   'flannel-vs-calico': FlannelVsCalico,
   'pod-scheduling-methods': PodSchedulingMethods,
+  'five-xx-triage': FiveXxTriage,
+  'hpa-mechanism': HpaMechanism,
+  'docker-monitoring': DockerMonitoring,
+  'redis-data-types': RedisDataTypes,
+  'df-vs-lsblk': DfVsLsblk,
+  'kafka-partition-consumer': KafkaPartitionConsumer,
+  'python-concurrency-modes': PythonConcurrencyModes,
+  'k8s-security-layers': K8sSecurityLayers,
 }
 
 /**
