@@ -8,6 +8,7 @@ import FrequencyBadge from '@/components/FrequencyBadge.vue'
 import ChoiceOptions from '@/components/ChoiceOptions.vue'
 import AnswerText from '@/components/AnswerText.vue'
 import { useBankStore } from '@/stores/bankStore'
+import { buildRetryHint } from '@/utils/retryHint'
 import { useStudyStore } from '@/stores/studyStore'
 import { STATUS, TYPE_LABEL } from '@/utils/constants'
 import { attachSwipe } from '@/utils/gestures'
@@ -26,6 +27,9 @@ const route = useRoute()
 const router = useRouter()
 const bank = useBankStore()
 const study = useStudyStore()
+
+/** 错误态文案（含重试退避冷却提示） */
+const retryHint = computed(() => buildRetryHint(bank))
 
 const expanded = ref(false)
 /** 选择题作答态 */
@@ -202,8 +206,9 @@ const statusText = computed(() => {
       v-else-if="bank.error"
       variant="error"
       title="题库加载失败"
-      :desc="bank.error"
+      :desc="retryHint"
       action="重试"
+      :action-disabled="bank.inCooldown"
       @action="retryLoad"
     />
 
