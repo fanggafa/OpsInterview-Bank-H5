@@ -84,7 +84,7 @@ describe('首页 · 薄弱环节入口卡', () => {
     study.records = { 1: rec({ inWrong: true }) } // 只刷 1 题
     const { wrapper } = await mountAt('/', HomeView)
     const texts = wrapper.findAll('.review__title').map((t) => t.text())
-    expect(texts).not.toContain('最需要补的分类')
+    expect(texts).not.toContain('薄弱分类')
   })
 
   it('有数据时显示入口卡，摘要显示最弱分类与错题数', async () => {
@@ -98,7 +98,7 @@ describe('首页 · 薄弱环节入口卡', () => {
     }
     const { wrapper } = await mountAt('/', HomeView)
     const cards = wrapper.findAll('.review')
-    const weakCard = cards.find((c) => c.text().includes('最需要补的分类'))
+    const weakCard = cards.find((c) => c.text().includes('薄弱分类'))
     expect(weakCard).toBeTruthy()
     expect(weakCard.text()).toContain('MySQL')
     expect(weakCard.text()).toContain('3/3 错')
@@ -111,7 +111,7 @@ describe('首页 · 薄弱环节入口卡', () => {
       3: rec({ inWrong: true }),
     }
     const { wrapper, router } = await mountAt('/', HomeView)
-    const weakCard = wrapper.findAll('.review').find((c) => c.text().includes('最需要补的分类'))
+    const weakCard = wrapper.findAll('.review').find((c) => c.text().includes('薄弱分类'))
     await weakCard.trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/weak')

@@ -257,7 +257,7 @@ function openWeak() {
           </svg>
         </span>
         <span class="review__text">
-          <span class="review__title">最需要补的分类</span>
+          <span class="review__title">薄弱分类</span>
           <span class="review__desc">
             {{ study.weakCategories[0].category }} ·
             {{ study.weakCategories[0].wrong }}/{{ study.weakCategories[0].reviewed }} 错

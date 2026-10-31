@@ -52,7 +52,7 @@ function browseCategory(category) {
 
 <template>
   <div class="page">
-    <AppHeader title="最需要补的分类" back-to="/" />
+    <AppHeader title="薄弱分类" back-to="/" />
 
     <div v-if="bank.loading" class="skeleton card" aria-busy="true" />
 
@@ -80,7 +80,7 @@ function browseCategory(category) {
         <!-- 顶部小结：先回答「总体情况怎么样」 -->
         <section class="summary">
           <p class="summary__main">
-            最需要补的是
+            最薄弱的分类是
             <strong :style="{ color: categoryColor(top.category) }">{{ top.category }}</strong>
           </p>
           <p class="summary__desc">

@@ -51,7 +51,7 @@ const routes = [
     path: '/weak',
     name: 'weak',
     component: () => import('@/views/WeakView.vue'),
-    meta: { title: '最需要补的分类', parent: '/' },
+    meta: { title: '薄弱分类', parent: '/' },
   },
   {
     path: '/me',
