@@ -46,21 +46,26 @@ describe('分片数据一致性', () => {
     const bad = []
 
     for (const [cat, meta] of Object.entries(manifest)) {
-      const rows = JSON.parse(read(`public/data/answers/${meta.slug}.json`))
-      expect(rows.length).toBe(meta.count)
-      for (const r of rows) {
-        seen.add(r.i)
-        const q = byId.get(r.i)
-        if (!q) {
-          bad.push(`id ${r.i} 在题库里不存在`)
-          continue
-        }
-        if (typeof r.a === 'string') {
-          if (r.a !== q.answer) bad.push(`id ${r.i} 答案不一致（${cat}）`)
-        } else if (JSON.stringify(r.a) !== JSON.stringify(q.answer)) {
-          bad.push(`id ${r.i} 答案数组不一致（${cat}）`)
+      // 大分类会被拆成多个分片，逐个读取并合并
+      let count = 0
+      for (const slug of meta.slugs) {
+        const rows = JSON.parse(read(`public/data/answers/${slug}.json`))
+        count += rows.length
+        for (const r of rows) {
+          seen.add(r.i)
+          const q = byId.get(r.i)
+          if (!q) {
+            bad.push(`id ${r.i} 在题库里不存在`)
+            continue
+          }
+          if (typeof r.a === 'string') {
+            if (r.a !== q.answer) bad.push(`id ${r.i} 答案不一致（${cat}）`)
+          } else if (JSON.stringify(r.a) !== JSON.stringify(q.answer)) {
+            bad.push(`id ${r.i} 答案数组不一致（${cat}）`)
+          }
         }
       }
+      expect(count).toBe(meta.count)
     }
 
     expect(bad).toEqual([])
@@ -68,10 +73,14 @@ describe('分片数据一致性', () => {
   })
 
   it('每个分类都有 slug，且文件名不含中文（URL 安全）', () => {
-    for (const [cat, meta] of Object.entries(manifest)) {
-      expect(meta.slug).toMatch(/^[a-z0-9-]+$/)
-      // 确认真实存在
-      expect(() => read(`public/data/answers/${meta.slug}.json`)).not.toThrow()
+    for (const meta of Object.values(manifest)) {
+      expect(Array.isArray(meta.slugs)).toBe(true)
+      expect(meta.slugs.length).toBeGreaterThan(0)
+      for (const slug of meta.slugs) {
+        expect(slug).toMatch(/^[a-z0-9-]+$/)
+        // 确认真实存在
+        expect(() => read(`public/data/answers/${slug}.json`)).not.toThrow()
+      }
     }
   })
 
@@ -80,8 +89,10 @@ describe('分片数据一致性', () => {
     const idxGz = gzipSync(readFileSync(resolve(process.cwd(), 'public/data/questions-index.json'))).length
     let maxShardGz = 0
     for (const meta of Object.values(manifest)) {
-      const buf = readFileSync(resolve(process.cwd(), `public/data/answers/${meta.slug}.json`))
-      maxShardGz = Math.max(maxShardGz, gzipSync(buf).length)
+      for (const slug of meta.slugs) {
+        const buf = readFileSync(resolve(process.cwd(), `public/data/answers/${slug}.json`))
+        maxShardGz = Math.max(maxShardGz, gzipSync(buf).length)
+      }
     }
     const worst = (idxGz + maxShardGz) / 1024
     console.log(`[体积] 索引 gzip ${(idxGz / 1024).toFixed(0)} KB，最大分片 gzip ${(maxShardGz / 1024).toFixed(0)} KB，最坏 ${worst.toFixed(0)} KB`)

@@ -178,7 +178,7 @@ export async function fetchAnswersManifest() {
 export async function hydrateAnswers(indexRows, category = '') {
   if (!manifestCache) manifestCache = await fetchAnswersManifest()
 
-  // 要加载哪些分类的 slug
+  // 要加载哪些分类的 slug（manifest 里是 slugs 数组，大分类会被拆成多片）
   const targets = category
     ? [[category, manifestCache[category]]]
     : Object.entries(manifestCache)
@@ -187,12 +187,17 @@ export async function hydrateAnswers(indexRows, category = '') {
     throw new DataError(`未知分类：${category}`)
   }
 
-  // 并行拉取所需分片
+  // 并行拉取所需分片（每个分类可能有多个份片）
   const shards = await Promise.all(
-    targets.filter(([, meta]) => meta).map(async ([cat, meta]) => {
-      const rows = await fetchAnswerShard(meta.slug)
-      return [cat, new Map(rows.map((r) => [r.id, r]))]
-    }),
+    targets
+      .filter(([, meta]) => meta)
+      .map(async ([cat, meta]) => {
+        const slugs = Array.isArray(meta.slugs) ? meta.slugs : [meta.slug]
+        const parts = await Promise.all(slugs.map((s) => fetchAnswerShard(s)))
+        const merged = new Map()
+        for (const rows of parts) for (const r of rows) merged.set(r.id, r)
+        return [cat, merged]
+      }),
   )
 
   const byCat = new Map(shards)

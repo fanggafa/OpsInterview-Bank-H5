@@ -77,6 +77,18 @@ const manifest = {}
 let maxGz = 0
 let maxSlug = ''
 
+/**
+ * 单个分片的 gzip 体积预算。
+ *
+ * 背景：题量增长后「综合场景题」「Linux基础」单分片过大，导致
+ * 「索引 + 最大分片」的首屏预算被突破（tests/splitData.test.js 会拦住）。
+ * 所以这里对超过阈值的分类**自动再拆分片**，前端按 slugs 数组依次拉取。
+ *
+ * 阈值取 180 KB（原始），对应 gzip 约 70 KB —— 留足余量，
+ * 避免题库继续增长时又要改这个数字。
+ */
+const SPLIT_THRESHOLD = 180 * 1024
+
 for (const [cat, list] of byCat) {
   const slug = CAT_SLUG[cat]
   if (!slug) {
@@ -89,16 +101,42 @@ for (const [cat, list] of byCat) {
     if (q.options) o.o = q.options
     return o
   })
-  const json = JSON.stringify(rows)
-  const file = join(ANS_DIR, `${slug}.json`)
-  writeFileSync(file, json, 'utf8')
 
-  const gz = gzipSync(Buffer.from(json), { level: 9 }).length
-  if (gz > maxGz) {
-    maxGz = gz
-    maxSlug = slug
+  const fullJson = JSON.stringify(rows)
+  const fullSize = Buffer.byteLength(fullJson)
+
+  // 小分类：单个分片
+  // 大分类：按条目数平均切成若干片（每片体积不超过阈值）
+  const parts = fullSize > SPLIT_THRESHOLD ? Math.ceil(fullSize / SPLIT_THRESHOLD) : 1
+  const slugs = []
+
+  if (parts === 1) {
+    const file = join(ANS_DIR, `${slug}.json`)
+    writeFileSync(file, fullJson, 'utf8')
+    slugs.push(slug)
+  } else {
+    const per = Math.ceil(rows.length / parts)
+    for (let i = 0; i < parts; i++) {
+      const slice = rows.slice(i * per, (i + 1) * per)
+      const s = `${slug}-${i + 1}`
+      const json = JSON.stringify(slice)
+      writeFileSync(join(ANS_DIR, `${s}.json`), json, 'utf8')
+      slugs.push(s)
+    }
   }
-  manifest[cat] = { slug, count: rows.length }
+
+  // 记录最大分片（用于报告）
+  for (const s of slugs) {
+    const raw = readFileSync(join(ANS_DIR, `${s}.json`))
+    const gz = gzipSync(raw, { level: 9 }).length
+    if (gz > maxGz) {
+      maxGz = gz
+      maxSlug = s
+    }
+  }
+
+  // manifest 用 slugs 数组（单分片时也保持数组，前端逻辑统一）
+  manifest[cat] = { slugs, count: rows.length }
 }
 
 writeFileSync(join(ANS_DIR, 'manifest.json'), JSON.stringify(manifest), 'utf8')
@@ -123,9 +161,11 @@ if (idx.length !== bank.length) {
   process.exit(1)
 }
 const allAns = new Map()
-for (const [cat, { slug }] of Object.entries(manifest)) {
-  const rows = JSON.parse(readFileSync(join(ANS_DIR, `${slug}.json`), 'utf8'))
-  for (const r of rows) allAns.set(r.i, r)
+for (const [, { slugs }] of Object.entries(manifest)) {
+  for (const slug of slugs) {
+    const rows = JSON.parse(readFileSync(join(ANS_DIR, `${slug}.json`), 'utf8'))
+    for (const r of rows) allAns.set(r.i, r)
+  }
 }
 let bad = 0
 for (const q of bank) {
