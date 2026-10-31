@@ -1,0 +1,28 @@
+{
+  "figures": [
+    { "component": "MongoReplSetSetup", "id": "mongo-replset-setup" },
+    { "component": "DataLifecycle", "id": "data-lifecycle" },
+    { "component": "VirtualizationCapacity", "id": "virtualization-capacity" },
+    { "component": "KibanaErrorSpike", "id": "kibana-error-spike" },
+    { "component": "OpsDevVsOps", "id": "opsdev-vs-ops" },
+    { "component": "DnsResolutionChain", "id": "dns-resolution-chain" },
+    { "component": "CopyVsAdd", "id": "copy-vs-add" },
+    { "component": "CpuSpikeIncident", "id": "cpu-spike-incident" },
+    { "component": "CloudMigrationPlan", "id": "cloud-migration-plan" },
+    { "component": "ArchEvolutionPlan", "id": "arch-evolution-plan" },
+    { "component": "PromotionLoadTest", "id": "promotion-load-test" }
+  ],
+  "attach": [
+    { "question": 2033, "figure": "mongo-replset-setup", "anchor": "副本集" },
+    { "question": 2433, "figure": "data-lifecycle", "anchor": "生命周期" },
+    { "question": 2621, "figure": "virtualization-capacity", "anchor": "容量规划" },
+    { "question": 3017, "figure": "kibana-error-spike", "anchor": "突增" },
+    { "question": 3240, "figure": "opsdev-vs-ops", "anchor": "运维开发" },
+    { "question": 4519, "figure": "dns-resolution-chain", "anchor": "解析" },
+    { "question": 4636, "figure": "copy-vs-add", "anchor": "ADD" },
+    { "question": 5204, "figure": "cpu-spike-incident", "anchor": "应急响应" },
+    { "question": 5411, "figure": "cloud-migration-plan", "anchor": "上云" },
+    { "question": 5421, "figure": "arch-evolution-plan", "anchor": "演进" },
+    { "question": 5542, "figure": "promotion-load-test", "anchor": "大促" }
+  ]
+}

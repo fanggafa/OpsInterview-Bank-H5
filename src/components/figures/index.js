@@ -235,6 +235,17 @@ import AnsibleUnreachable from './AnsibleUnreachable.vue'
 import CronjobVsJob from './CronjobVsJob.vue'
 import SingleDomainSlow from './SingleDomainSlow.vue'
 import VirtualizationPlan from './VirtualizationPlan.vue'
+import MongoReplSetSetup from './MongoReplSetSetup.vue'
+import DataLifecycle from './DataLifecycle.vue'
+import VirtualizationCapacity from './VirtualizationCapacity.vue'
+import KibanaErrorSpike from './KibanaErrorSpike.vue'
+import OpsDevVsOps from './OpsDevVsOps.vue'
+import DnsResolutionChain from './DnsResolutionChain.vue'
+import CopyVsAdd from './CopyVsAdd.vue'
+import CpuSpikeIncident from './CpuSpikeIncident.vue'
+import CloudMigrationPlan from './CloudMigrationPlan.vue'
+import ArchEvolutionPlan from './ArchEvolutionPlan.vue'
+import PromotionLoadTest from './PromotionLoadTest.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -532,6 +543,17 @@ export const FIGURES = {
   'cronjob-vs-job': CronjobVsJob,
   'single-domain-slow': SingleDomainSlow,
   'virtualization-plan': VirtualizationPlan,
+  'mongo-replset-setup': MongoReplSetSetup,
+  'data-lifecycle': DataLifecycle,
+  'virtualization-capacity': VirtualizationCapacity,
+  'kibana-error-spike': KibanaErrorSpike,
+  'opsdev-vs-ops': OpsDevVsOps,
+  'dns-resolution-chain': DnsResolutionChain,
+  'copy-vs-add': CopyVsAdd,
+  'cpu-spike-incident': CpuSpikeIncident,
+  'cloud-migration-plan': CloudMigrationPlan,
+  'arch-evolution-plan': ArchEvolutionPlan,
+  'promotion-load-test': PromotionLoadTest,
 }
 
 /**
