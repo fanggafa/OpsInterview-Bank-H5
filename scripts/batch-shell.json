@@ -1,0 +1,14 @@
+{
+  "figures": [
+    { "component": "ShellFileLock", "id": "shell-file-lock" },
+    { "component": "ShellDialects", "id": "shell-dialects" },
+    { "component": "PositionalParams", "id": "positional-params" },
+    { "component": "GrepSedAwk", "id": "grep-sed-awk" }
+  ],
+  "attach": [
+    { "question": 4224, "figure": "shell-file-lock", "anchor": "flock" },
+    { "question": 4226, "figure": "shell-dialects", "anchor": "dash" },
+    { "question": 4325, "figure": "positional-params", "anchor": "\\$@" },
+    { "question": 4328, "figure": "grep-sed-awk", "anchor": "grep" }
+  ]
+}

@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **222 张内联 SVG 图解**（222 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **248 张内联 SVG 图解**（248 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1139,7 +1139,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（222 张，24 个分类全覆盖）
+### 已注册的插图（248 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1365,6 +1365,32 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `test-layers-pipeline` | 测试分层与流水线顺序 | 题 4817 |
 | `artifact-registry-plan` | 制品仓库规划 | 题 4805 |
 | `zero-downtime-upgrade` | 零停机依赖升级四阶段 | 题 4832 |
+| `utf8-vs-utf8mb4` | MySQL 的 utf8 与 utf8mb4 | 题 3633 |
+| `mysql-repl-lag` | 主从复制延迟的排查 | 题 3719 |
+| `slow-sql-triage` | 慢 SQL 的定位流程 | 题 3720 |
+| `zset-structure` | ZSet 的哈希表 + 跳表 | 题 3801 |
+| `expire-vs-eviction` | 过期删除与内存淘汰 | 题 3918 |
+| `redis-perf-triage` | Redis 性能下降的排查优先级 | 题 3833 |
+| `conn-state-triage` | TIME_WAIT 与 ESTABLISHED 异常 | 题 4009 |
+| `limit-layers` | 资源限制的四层 | 题 4024 |
+| `logrotate-flow` | logrotate 的流程与配错后果 | 题 4025 |
+| `systemd-failure` | systemd 启动失败与 Type/Restart | 题 4122 |
+| `shell-file-lock` | flock 与手写锁 | 题 4224 |
+| `shell-dialects` | sh/bash/dash/zsh 与 shebang | 题 4226 |
+| `positional-params` | 位置参数与 $@ vs $* | 题 4325 |
+| `grep-sed-awk` | grep/sed/awk 的分工 | 题 4328 |
+| `rabbit-alarm` | RabbitMQ 内存/磁盘 alarm | 题 2218 |
+| `kafka-leader-election` | Kafka 频繁 Leader 选举 | 题 2224 |
+| `mq-capacity-planning` | MQ 容量规划与压测场景 | 题 2236 |
+| `git-clone-slow` | git clone 慢的两类原因 | 题 2812 |
+| `gitlab-ci-structure` | GitLab CI 的三要素 | 题 2828 |
+| `submodule-vs-subtree` | submodule 与 subtree | 题 2830 |
+| `prevent-accidental-delete` | 云上误删的四层防护 | 题 3409 |
+| `read-replica-and-ha` | 只读实例与多可用区高可用 | 题 3421 |
+| `dr-tiers` | 容灾四档与 RTO/RPO | 题 3405 |
+| `tracing-concepts` | Tracing 的 trace/span 与落地 | 题 5018 |
+| `capacity-planning` | 用监控数据做容量规划 | 题 5019 |
+| `monitor-triage-path` | 用监控定位故障的五步 | 题 5020 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。

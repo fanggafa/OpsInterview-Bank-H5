@@ -197,6 +197,32 @@ import GitopsVsCicd from './GitopsVsCicd.vue'
 import TestLayersPipeline from './TestLayersPipeline.vue'
 import ArtifactRegistryPlan from './ArtifactRegistryPlan.vue'
 import ZeroDowntimeUpgrade from './ZeroDowntimeUpgrade.vue'
+import Utf8VsUtf8mb4 from './Utf8VsUtf8mb4.vue'
+import MysqlReplLag from './MysqlReplLag.vue'
+import SlowSqlTriage from './SlowSqlTriage.vue'
+import ZsetStructure from './ZsetStructure.vue'
+import ExpireVsEviction from './ExpireVsEviction.vue'
+import RedisPerfTriage from './RedisPerfTriage.vue'
+import ConnStateTriage from './ConnStateTriage.vue'
+import LimitLayers from './LimitLayers.vue'
+import LogrotateFlow from './LogrotateFlow.vue'
+import SystemdFailure from './SystemdFailure.vue'
+import ShellFileLock from './ShellFileLock.vue'
+import ShellDialects from './ShellDialects.vue'
+import PositionalParams from './PositionalParams.vue'
+import GrepSedAwk from './GrepSedAwk.vue'
+import RabbitAlarm from './RabbitAlarm.vue'
+import KafkaLeaderElection from './KafkaLeaderElection.vue'
+import MqCapacityPlanning from './MqCapacityPlanning.vue'
+import GitCloneSlow from './GitCloneSlow.vue'
+import GitlabCiStructure from './GitlabCiStructure.vue'
+import SubmoduleVsSubtree from './SubmoduleVsSubtree.vue'
+import PreventAccidentalDelete from './PreventAccidentalDelete.vue'
+import ReadReplicaAndHa from './ReadReplicaAndHa.vue'
+import DrTiers from './DrTiers.vue'
+import TracingConcepts from './TracingConcepts.vue'
+import CapacityPlanning from './CapacityPlanning.vue'
+import MonitorTriagePath from './MonitorTriagePath.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -456,6 +482,32 @@ export const FIGURES = {
   'test-layers-pipeline': TestLayersPipeline,
   'artifact-registry-plan': ArtifactRegistryPlan,
   'zero-downtime-upgrade': ZeroDowntimeUpgrade,
+  'utf8-vs-utf8mb4': Utf8VsUtf8mb4,
+  'mysql-repl-lag': MysqlReplLag,
+  'slow-sql-triage': SlowSqlTriage,
+  'zset-structure': ZsetStructure,
+  'expire-vs-eviction': ExpireVsEviction,
+  'redis-perf-triage': RedisPerfTriage,
+  'conn-state-triage': ConnStateTriage,
+  'limit-layers': LimitLayers,
+  'logrotate-flow': LogrotateFlow,
+  'systemd-failure': SystemdFailure,
+  'shell-file-lock': ShellFileLock,
+  'shell-dialects': ShellDialects,
+  'positional-params': PositionalParams,
+  'grep-sed-awk': GrepSedAwk,
+  'rabbit-alarm': RabbitAlarm,
+  'kafka-leader-election': KafkaLeaderElection,
+  'mq-capacity-planning': MqCapacityPlanning,
+  'git-clone-slow': GitCloneSlow,
+  'gitlab-ci-structure': GitlabCiStructure,
+  'submodule-vs-subtree': SubmoduleVsSubtree,
+  'prevent-accidental-delete': PreventAccidentalDelete,
+  'read-replica-and-ha': ReadReplicaAndHa,
+  'dr-tiers': DrTiers,
+  'tracing-concepts': TracingConcepts,
+  'capacity-planning': CapacityPlanning,
+  'monitor-triage-path': MonitorTriagePath,
 }
 
 /**

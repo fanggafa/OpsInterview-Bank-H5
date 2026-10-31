@@ -1,0 +1,12 @@
+{
+  "figures": [
+    { "component": "PreventAccidentalDelete", "id": "prevent-accidental-delete" },
+    { "component": "ReadReplicaAndHa", "id": "read-replica-and-ha" },
+    { "component": "DrTiers", "id": "dr-tiers" }
+  ],
+  "attach": [
+    { "question": 3405, "figure": "dr-tiers", "anchor": "RTO" },
+    { "question": 3409, "figure": "prevent-accidental-delete", "anchor": "误删" },
+    { "question": 3421, "figure": "read-replica-and-ha", "anchor": "只读实例" }
+  ]
+}

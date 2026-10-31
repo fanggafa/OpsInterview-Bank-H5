@@ -1,0 +1,12 @@
+{
+  "figures": [
+    { "component": "RabbitAlarm", "id": "rabbit-alarm" },
+    { "component": "KafkaLeaderElection", "id": "kafka-leader-election" },
+    { "component": "MqCapacityPlanning", "id": "mq-capacity-planning" }
+  ],
+  "attach": [
+    { "question": 2218, "figure": "rabbit-alarm", "anchor": "alarm" },
+    { "question": 2224, "figure": "kafka-leader-election", "anchor": "Leader 选举" },
+    { "question": 2236, "figure": "mq-capacity-planning", "anchor": "容量规划" }
+  ]
+}

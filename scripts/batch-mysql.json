@@ -1,0 +1,12 @@
+{
+  "figures": [
+    { "component": "Utf8VsUtf8mb4", "id": "utf8-vs-utf8mb4" },
+    { "component": "MysqlReplLag", "id": "mysql-repl-lag" },
+    { "component": "SlowSqlTriage", "id": "slow-sql-triage" }
+  ],
+  "attach": [
+    { "question": 3633, "figure": "utf8-vs-utf8mb4", "anchor": "utf8mb4" },
+    { "question": 3719, "figure": "mysql-repl-lag", "anchor": "主从复制延迟" },
+    { "question": 3720, "figure": "slow-sql-triage", "anchor": "执行很慢" }
+  ]
+}
