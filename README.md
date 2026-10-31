@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **190 张内联 SVG 图解**（190 题带图）
+- 题库：**2420 题**（726 简答 + 1527 单选 + 167 多选），24 个分类；含 **198 张内联 SVG 图解**（198 题带图）
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 - 需求文档：[`docs/ops-interview-bank-PRD.md`](docs/ops-interview-bank-PRD.md)（v1.3）
 
@@ -1139,7 +1139,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 这两类错误在 JSON 里肉眼难发现，但页面上会表现为「文字挤成一条 / 竖线外露 / 顺序错乱」，所以交给校验脚本兜住。
 
-### 已注册的插图（190 张，24 个分类全覆盖）
+### 已注册的插图（198 张，24 个分类全覆盖）
 
 | id | 内容 | 用在哪 |
 |---|---|---|
@@ -1333,6 +1333,14 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 | `vm-network` | 虚拟网络三模式与排查 | 题 2615 |
 | `vm-host-slow` | 宿主不忙但 VM 卡的四因 | 题 2624 |
 | `vm-throttle` | 虚拟机被限速的识别 | 题 2631 |
+| `config-center-vs-ansible` | 配置中心与 Ansible 的区别 | 题 3226 |
+| `automation-architecture` | 500 台/20 服务的自动化架构 | 题 3220 |
+| `ansible-copy-vs-template` | copy 与 template | 题 3219 |
+| `ansible-import-vs-include` | import_tasks 与 include_tasks | 题 3229 |
+| `nginx-502-504` | 502 与 504 的区别与排查 | 题 1403 |
+| `nginx-reload-vs-restart` | reload 与 restart | 题 1408 |
+| `nginx-root-vs-alias` | root 与 alias | 题 1422 |
+| `nginx-stream-vs-http` | stream（4 层）与 http（7 层） | 题 1433 |
 
 > 图的实际数量以 `FIGURES` 为准，`tests/figures.test.js` 会双向校验：
 > **题库引用的 id 必须已注册**，**注册的 id 必须至少被一题用到**（防止死代码与拼错）。
