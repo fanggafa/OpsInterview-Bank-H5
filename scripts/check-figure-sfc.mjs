@@ -19,7 +19,14 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const DIR = resolve('src/components/figures')
-const files = readdirSync(DIR).filter((f) => f.endsWith('.vue'))
+/**
+ * 可选单文件过滤：`node scripts/check-figure-sfc.mjs Foo.vue`
+ * 用途：多个子任务并行写图时，各自只看自己那几张，互不干扰。
+ */
+const ONLY = process.argv.slice(2).filter((a) => !a.startsWith('--'))
+const files = readdirSync(DIR)
+  .filter((f) => f.endsWith('.vue'))
+  .filter((f) => !ONLY.length || ONLY.some((o) => o === f || o === f.replace(/\.vue$/, '')))
 
 const problems = []
 

@@ -291,6 +291,30 @@ import DfVsLsblk from './DfVsLsblk.vue'
 import KafkaPartitionConsumer from './KafkaPartitionConsumer.vue'
 import PythonConcurrencyModes from './PythonConcurrencyModes.vue'
 import K8sSecurityLayers from './K8sSecurityLayers.vue'
+import LlmVsMl from './LlmVsMl.vue'
+import TokenBilling from './TokenBilling.vue'
+import RagPipeline from './RagPipeline.vue'
+import AgentLoop from './AgentLoop.vue'
+import HallucinationMitigation from './HallucinationMitigation.vue'
+import PromptPrinciples from './PromptPrinciples.vue'
+import TemperatureEffect from './TemperatureEffect.vue'
+import ContextWindowLimits from './ContextWindowLimits.vue'
+import FinetuneVsRag from './FinetuneVsRag.vue'
+import SftVsRlhf from './SftVsRlhf.vue'
+import LoraStructure from './LoraStructure.vue'
+import VectorEmbedding from './VectorEmbedding.vue'
+import TokenCostBreakdown from './TokenCostBreakdown.vue'
+import PromptInjectionDefense from './PromptInjectionDefense.vue'
+import DataMaskingFlow from './DataMaskingFlow.vue'
+import AiGatewayRoles from './AiGatewayRoles.vue'
+import AiDataSecurityLayers from './AiDataSecurityLayers.vue'
+import LlmObservabilityGap from './LlmObservabilityGap.vue'
+import LogAiAnalysisFlow from './LogAiAnalysisFlow.vue'
+import AiSlowTriage from './AiSlowTriage.vue'
+import LlmApiMonitoring from './LlmApiMonitoring.vue'
+import VllmArchitecture from './VllmArchitecture.vue'
+import VramComposition from './VramComposition.vue'
+import GpuVsCpu from './GpuVsCpu.vue'
 import DnsResolve from './DnsResolve.vue'
 import DnsRecordTypes from './DnsRecordTypes.vue'
 import IptablesChainFlow from './IptablesChainFlow.vue'
@@ -644,6 +668,30 @@ export const FIGURES = {
   'kafka-partition-consumer': KafkaPartitionConsumer,
   'python-concurrency-modes': PythonConcurrencyModes,
   'k8s-security-layers': K8sSecurityLayers,
+  'llm-vs-ml': LlmVsMl,
+  'token-billing': TokenBilling,
+  'rag-pipeline': RagPipeline,
+  'agent-loop': AgentLoop,
+  'hallucination-mitigation': HallucinationMitigation,
+  'prompt-principles': PromptPrinciples,
+  'temperature-effect': TemperatureEffect,
+  'context-window-limits': ContextWindowLimits,
+  'finetune-vs-rag': FinetuneVsRag,
+  'sft-vs-rlhf': SftVsRlhf,
+  'lora-structure': LoraStructure,
+  'vector-embedding': VectorEmbedding,
+  'token-cost-breakdown': TokenCostBreakdown,
+  'prompt-injection-defense': PromptInjectionDefense,
+  'data-masking-flow': DataMaskingFlow,
+  'ai-gateway-roles': AiGatewayRoles,
+  'ai-data-security-layers': AiDataSecurityLayers,
+  'llm-observability-gap': LlmObservabilityGap,
+  'log-ai-analysis-flow': LogAiAnalysisFlow,
+  'ai-slow-triage': AiSlowTriage,
+  'llm-api-monitoring': LlmApiMonitoring,
+  'vllm-architecture': VllmArchitecture,
+  'vram-composition': VramComposition,
+  'gpu-vs-cpu': GpuVsCpu,
 }
 
 /**
