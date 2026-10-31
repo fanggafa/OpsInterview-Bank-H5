@@ -4,6 +4,8 @@ defineProps({
   desc: { type: String, default: '' },
   /** 行动按钮文案，为空则不显示 */
   action: { type: String, default: '' },
+  /** 按钮是否禁用（如重试退避冷却期内） */
+  actionDisabled: { type: Boolean, default: false },
   /** 插画类型：favorites | wrong | search | error */
   variant: { type: String, default: 'search' },
 })
@@ -50,7 +52,12 @@ defineEmits(['action'])
 
     <p class="empty__title">{{ title }}</p>
     <p v-if="desc" class="empty__desc">{{ desc }}</p>
-    <button v-if="action" class="btn btn--ghost empty__action" @click="$emit('action')">
+    <button
+      v-if="action"
+      class="btn btn--ghost empty__action"
+      :disabled="actionDisabled"
+      @click="$emit('action')"
+    >
       {{ action }}
     </button>
   </div>

@@ -22,6 +22,70 @@ const BASE = import.meta.env.BASE_URL
 const INDEX_URL = `${BASE}data/questions-index.json`
 const ANSWERS_DIR = `${BASE}data/answers`
 
+/**
+ * 单次请求的超时预算。
+ *
+ * 选 15 秒的依据：索引在 gzip 后只有 121 KB，4G 弱网（约 100 KB/s）约 1.2 秒，
+ * 2G/极弱网（约 20 KB/s）约 6 秒 —— 留一倍余量取 15 秒。
+ * 超过这个时间基本可以判定「网络卡死」而不是「慢」，继续等没有意义，
+ * 不如快速失败让用户看到重试入口。
+ */
+export const REQUEST_TIMEOUT_MS = 15000
+
+/**
+ * 带超时的 JSON 请求。
+ *
+ * 为什么要超时：浏览器原生 fetch **没有超时**（默认等到天荒地老）。
+ * 弱网或中间设备挂住时会一直转圈，用户既看不到错误也用不上重试按钮。
+ *
+ * 用 AbortController 主动中断，并把中断包装成可重试的错误。
+ *
+ * @param {string} url
+ * @param {string} label 用于错误文案（如「题库索引」）
+ * @param {number} timeoutMs
+ * @returns {Promise<any>} 解析后的 JSON
+ */
+async function fetchJSON(url, label, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timer = ctrl
+    ? setTimeout(() => ctrl.abort(), timeoutMs)
+    : null
+
+  let res
+  try {
+    res = await fetch(url, {
+      cache: 'no-cache',
+      ...(ctrl ? { signal: ctrl.signal } : {}),
+    })
+  } catch (err) {
+    // 中断 → 超时；其他 → 网络异常。两者都可重试
+    const aborted = err && (err.name === 'AbortError' || err.code === 20)
+    if (aborted) {
+      throw new DataError(
+        `${label}请求超时（超过 ${Math.round(timeoutMs / 1000)} 秒），请检查网络后重试`,
+        err,
+        { retryable: true, timeout: true },
+      )
+    }
+    throw new DataError(`网络异常，无法加载${label}`, err, { retryable: true })
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+
+  if (!res.ok) {
+    // 5xx / 429 通常是临时故障 → 可重试；4xx（除 408/429）重试无意义
+    const retryable = res.status >= 500 || res.status === 408 || res.status === 429
+    throw new DataError(`${label}加载失败（HTTP ${res.status}）`, undefined, { retryable })
+  }
+
+  try {
+    return await res.json()
+  } catch (err) {
+    // 解析失败说明拿到的不是预期数据，重试通常无效
+    throw new DataError(`${label}格式错误，无法解析`, err, { retryable: false })
+  }
+}
+
 /** 索引缓存（分片方案的列表数据） */
 let indexCache = null
 /** 分片缓存：slug -> 答案行数组 */
@@ -52,24 +116,11 @@ export function clearCache() {
 export async function fetchIndex({ force = false } = {}) {
   if (indexCache && !force) return indexCache
 
-  let res
-  try {
-    res = await fetch(INDEX_URL, { cache: 'no-cache' })
-  } catch (err) {
-    throw new DataError('网络异常，无法加载题库索引', err)
-  }
-  if (!res.ok) {
-    throw new DataError(`题库索引加载失败（HTTP ${res.status}）`)
-  }
-
-  let rows
-  try {
-    rows = await res.json()
-  } catch (err) {
-    throw new DataError('题库索引格式错误，无法解析', err)
-  }
+  const rows = await fetchJSON(INDEX_URL, '题库索引')
   if (!Array.isArray(rows) || rows.length === 0) {
-    throw new DataError('题库索引为空，请先运行 npm run split:data')
+    throw new DataError('题库索引为空，请先运行 npm run split:data', undefined, {
+      retryable: false,
+    })
   }
 
   indexCache = rows.map((r) => ({
@@ -93,22 +144,9 @@ export async function fetchIndex({ force = false } = {}) {
 export async function fetchAnswerShard(slug) {
   if (shardCache.has(slug)) return shardCache.get(slug)
 
-  const url = `${ANSWERS_DIR}/${slug}.json`
-  let res
-  try {
-    res = await fetch(url, { cache: 'no-cache' })
-  } catch (err) {
-    throw new DataError(`网络异常，无法加载「${slug}」的答案分片`, err)
-  }
-  if (!res.ok) {
-    throw new DataError(`答案分片加载失败（HTTP ${res.status}）：${slug}`)
-  }
-
-  let rows
-  try {
-    rows = await res.json()
-  } catch (err) {
-    throw new DataError(`答案分片格式错误：${slug}`, err)
+  const rows = await fetchJSON(`${ANSWERS_DIR}/${slug}.json`, `「${slug}」答案分片`)
+  if (!Array.isArray(rows)) {
+    throw new DataError(`答案分片格式错误：${slug}`, undefined, { retryable: false })
   }
 
   const out = rows.map((r) => ({
@@ -123,17 +161,9 @@ export async function fetchAnswerShard(slug) {
 
 /** 拉取分类 → slug 的映射表 */
 export async function fetchAnswersManifest() {
-  let res
-  try {
-    res = await fetch(`${ANSWERS_DIR}/manifest.json`, { cache: 'no-cache' })
-  } catch (err) {
-    throw new DataError('网络异常，无法加载分片清单', err)
-  }
-  if (!res.ok) throw new DataError(`分片清单加载失败（HTTP ${res.status}）`)
-  return res.json()
+  return fetchJSON(`${ANSWERS_DIR}/manifest.json`, '分片清单')
 }
 
-/**
 /**
  * 按分类加载答案，并把答案合并进索引行 —— 返回**完整的题目对象**。
  *
@@ -190,9 +220,18 @@ export async function fetchAllSharded({ force = false } = {}) {
 }
 
 export class DataError extends Error {
-  constructor(message, cause) {
+  /**
+   * @param {string} message 给用户看的文案
+   * @param {unknown} cause 原始错误
+   * @param {{retryable?: boolean, timeout?: boolean}} meta
+   *   retryable：重试是否可能有用（网络/超时/5xx 为 true，解析失败/4xx 为 false）
+   *   timeout：是否由超时中断导致（界面可据此提示「网络较慢」）
+   */
+  constructor(message, cause, meta = {}) {
     super(message)
     this.name = 'DataError'
     this.cause = cause
+    this.retryable = meta.retryable !== false
+    this.timeout = Boolean(meta.timeout)
   }
 }

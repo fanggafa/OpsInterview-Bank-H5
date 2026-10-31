@@ -47,10 +47,12 @@ export const useBankStore = defineStore('bank', () => {
         questions.value = data
         fullLoaded = true
         indexLoaded.value = true
+        noteSuccess()
         return data
       })
       .catch((err) => {
         error.value = err instanceof DataError ? err.message : '题库加载失败，请稍后重试'
+        noteFailure(err)
         throw err
       })
       .finally(() => {
@@ -89,10 +91,12 @@ export const useBankStore = defineStore('bank', () => {
       .then((rows) => {
         questions.value = rows
         indexLoaded.value = true
+        noteSuccess()
         return rows
       })
       .catch((err) => {
         error.value = err instanceof DataError ? err.message : '题库加载失败，请稍后重试'
+        noteFailure(err)
         throw err
       })
       .finally(() => {
@@ -129,7 +133,55 @@ export const useBankStore = defineStore('bank', () => {
     return merged
   }
 
-  /** 加载失败后的重试 */
+  /**
+   * 重试退避状态。
+   *
+   * 为什么要退避：错误态里有「重试」按钮，用户可能连点；若再接入自动重试，
+   * 一瞬间会打出几十个请求。退避让「连续失败」的间隔指数增长，
+   * 并把「下次可重试的时间」暴露给界面，按钮在冷却期内可置灰。
+   */
+  const retryAttempt = ref(0)
+  const retryAfterMs = ref(0)
+
+  /** 退避间隔：1s → 2s → 4s → 8s，封顶 15s（与请求超时同量级） */
+  const BACKOFF_BASE_MS = 1000
+  const BACKOFF_MAX_MS = 15000
+
+  function computeBackoff(n) {
+    return Math.min(BACKOFF_BASE_MS * 2 ** Math.max(0, n - 1), BACKOFF_MAX_MS)
+  }
+
+  /** 记一次失败，返回该错误是否可重试 */
+  function noteFailure(err) {
+    retryAttempt.value += 1
+    const retryable = err instanceof DataError ? err.retryable !== false : true
+    // 不可重试类错误（格式解析失败 / 4xx）不设冷却 —— 冷却也没用，不如直接告诉用户没法重试
+    retryAfterMs.value = retryable ? computeBackoff(retryAttempt.value) : 0
+    return retryable
+  }
+
+  /** 成功即清零退避 */
+  function noteSuccess() {
+    retryAttempt.value = 0
+    retryAfterMs.value = 0
+  }
+
+  /** 当前是否在退避冷却中 */
+  const inCooldown = computed(() => retryAfterMs.value > 0)
+
+  /**
+   * 是否还值得再点重试。
+   *
+   * 没有错误 → 无所谓（true）；有错误时，只有「可重试类错误」才返回 true ——
+   * 由 noteFailure 决定：不可重试的错误（数据格式坏了 / 4xx）不设冷却，
+   * 这时 retryAfterMs 为 0，说明点了也没用。
+   */
+  const canRetry = computed(() => {
+    if (!error.value) return true
+    return retryAfterMs.value > 0
+  })
+
+  /** 加载失败后的重试（全量含答案） */
   function retry() {
     return load(true)
   }
@@ -158,5 +210,10 @@ export const useBankStore = defineStore('bank', () => {
     retry,
     retryIndex,
     getById,
+    // 重试退避：界面据此在冷却期内置灰「重试」按钮
+    retryAttempt,
+    retryAfterMs,
+    inCooldown,
+    canRetry,
   }
 })

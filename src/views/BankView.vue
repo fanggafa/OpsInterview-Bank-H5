@@ -8,6 +8,7 @@ import { useBankStore } from '@/stores/bankStore'
 import { CATEGORIES, DIFFICULTIES, FREQUENCIES, PAGE_SIZE, SEARCH_DEBOUNCE_MS } from '@/utils/constants'
 import { applyFilters, parseQueryState, toQueryState } from '@/utils/filter'
 import { pageMeta, paginate } from '@/utils/paginate'
+import { buildRetryHint } from '@/utils/retryHint'
 import { scrollToTop } from '@/utils/scroll'
 
 const route = useRoute()
@@ -145,6 +146,12 @@ function restoreScroll() {
 // ---------- 派生数据 ----------
 
 const list = computed(() => applyFilters(bank.questions, state.value))
+
+/**
+ * 错误态文案：原始错误 + 退避冷却 / 不可重试的说明。
+ * 逻辑在 `@/utils/retryHint` 里统一实现（多个视图共用）。
+ */
+const retryHint = computed(() => buildRetryHint(bank))
 
 /** 当前页码（来自 URL，非法值会由 pageMeta 收敛） */
 const currentPage = computed(() => {
@@ -362,8 +369,9 @@ const resultText = computed(() => {
       v-else-if="bank.error"
       variant="error"
       title="题库加载失败"
-      :desc="bank.error"
-      action="重试"
+      :desc="retryHint"
+      :action="retryHint ? '重试' : ''"
+      :action-disabled="bank.inCooldown"
       @action="bank.retryIndex().catch(() => {})"
     />
 

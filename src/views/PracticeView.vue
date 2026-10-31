@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBankStore } from '@/stores/bankStore'
+import { buildRetryHint } from '@/utils/retryHint'
 import { useStudyStore } from '@/stores/studyStore'
 import {
   STATUS,
@@ -49,6 +50,9 @@ const route = useRoute()
 const router = useRouter()
 const bank = useBankStore()
 const study = useStudyStore()
+
+/** 错误态文案（含重试退避冷却提示） */
+const retryHint = computed(() => buildRetryHint(bank))
 
 const mode = computed(() => normalizeMode(route.query.mode))
 const studyMode = computed(() => normalizeStudyMode(route.query.studyMode || DEFAULT_STUDY_MODE))
@@ -751,8 +755,9 @@ const emptyDesc = computed(() => {
       v-else-if="bank.error"
       variant="error"
       title="题库加载失败"
-      :desc="bank.error"
+      :desc="retryHint"
       action="重试"
+      :action-disabled="bank.inCooldown"
       @action="retryLoad"
     />
 
