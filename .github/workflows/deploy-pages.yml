@@ -83,6 +83,9 @@ jobs:
           test -f dist/manifest.webmanifest       || { echo "缺少 PWA manifest"; exit 1; }
           test -f dist/icon-192.png               || { echo "缺少 192 图标"; exit 1; }
           test -f dist/icon-512.png               || { echo "缺少 512 图标"; exit 1; }
+          # iOS「添加到主屏幕」只认 apple-touch-icon，缺了 iOS 桌面图标会变成页面截图
+          test -f dist/apple-touch-icon.png        || { echo "缺少 apple-touch-icon（iOS 主屏图标会退化成截图）"; exit 1; }
+          grep -q 'apple-touch-icon' dist/index.html || { echo "index.html 未引用 apple-touch-icon"; exit 1; }
           # sw.js 必须预缓存题库数据，否则「离线能打开但点进去没答案」
           grep -q 'questions-index.json' dist/sw.js || { echo "sw.js 未预缓存题库索引"; exit 1; }
           grep -q 'answers' dist/sw.js            || { echo "sw.js 未预缓存答案分片"; exit 1; }
