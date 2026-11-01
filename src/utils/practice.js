@@ -13,9 +13,16 @@ import { PRACTICE_MODES, STUDY_MODES } from '@/utils/constants'
 import { shuffle } from '@/utils/format'
 import { isShort } from '@/utils/question'
 
-/** 归一化模式，非法值回退 sequential */
+/**
+ * 归一化模式，非法值回退 **random**。
+ *
+ * 默认用随机而不是顺序：
+ * 连续刷题时，固定的顺序会让「每天从同一批题开始」，
+ * 前面的题反复刷、后面的题永远刷不到；随机能让覆盖更均匀。
+ * 「顺序」仍保留为可选项（做题模式页顶部可切换），用于按分类系统过一遍。
+ */
 export function normalizeMode(mode) {
-  return PRACTICE_MODES.includes(mode) ? mode : 'sequential'
+  return PRACTICE_MODES.includes(mode) ? mode : 'random'
 }
 
 /** 归一化练习模式，非法值回退 practice */
@@ -66,7 +73,7 @@ export function byStudyMode(questions, studyMode) {
  */
 export function buildQueue(
   questions,
-  { mode = 'sequential', studyMode = 'practice', category = '', wrongIds = [], random } = {}
+  { mode = 'random', studyMode = 'practice', category = '', wrongIds = [], random } = {}
 ) {
   const normalized = normalizeMode(mode)
   // 先按练习模式收窄（背题模式只看简答），再按分类

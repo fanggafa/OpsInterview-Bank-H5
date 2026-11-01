@@ -63,37 +63,37 @@ describe('normalizeStudyMode', () => {
 
 describe('buildQueue · 练习模式（题型互斥）', () => {
   it('做题模式只含选择题（简答题留给背题模式）', () => {
-    const q = buildQueue(QUESTIONS, { studyMode: 'practice' })
+    const q = buildQueue(QUESTIONS, { studyMode: 'practice', mode: 'sequential' })
     expect(q.map((x) => x.id)).toEqual(CHOICE_IDS)
     expect(q.every((x) => x.type !== 'short')).toBe(true)
   })
 
   it('背题模式只保留简答题', () => {
-    const q = buildQueue(QUESTIONS, { studyMode: 'memorize' })
+    const q = buildQueue(QUESTIONS, { studyMode: 'memorize', mode: 'sequential' })
     expect(q.map((x) => x.id)).toEqual(SHORT_IDS)
     expect(q.every((x) => x.type === 'short')).toBe(true)
   })
 
   it('两个模式的题型不重叠，且并集等于全库', () => {
-    const practice = buildQueue(QUESTIONS, { studyMode: 'practice' }).map((x) => x.id)
-    const memorize = buildQueue(QUESTIONS, { studyMode: 'memorize' }).map((x) => x.id)
+    const practice = buildQueue(QUESTIONS, { studyMode: 'practice', mode: 'sequential' }).map((x) => x.id)
+    const memorize = buildQueue(QUESTIONS, { studyMode: 'memorize', mode: 'sequential' }).map((x) => x.id)
     const overlap = practice.filter((id) => memorize.includes(id))
     expect(overlap).toEqual([])
     expect([...practice, ...memorize].sort()).toEqual(QUESTIONS.map((x) => x.id).sort())
   })
 
   it('背题模式 + 分类：两个条件同时生效', () => {
-    const q = buildQueue(QUESTIONS, { studyMode: 'memorize', category: 'B' })
+    const q = buildQueue(QUESTIONS, { studyMode: 'memorize', category: 'B', mode: 'sequential' })
     expect(q.map((x) => x.id)).toEqual([5])
   })
 
   it('做题模式 + 分类：只留该分类的选择题', () => {
-    const q = buildQueue(QUESTIONS, { studyMode: 'practice', category: 'A' })
+    const q = buildQueue(QUESTIONS, { studyMode: 'practice', category: 'A', mode: 'sequential' })
     expect(q.map((x) => x.id)).toEqual([2])
   })
 
   it('背题模式 + 抽题：仍只含简答题', () => {
-    const q = buildQueue(QUESTIONS, { studyMode: 'memorize', category: 'A' })
+    const q = buildQueue(QUESTIONS, { studyMode: 'memorize', category: 'A', mode: 'sequential' })
     expect(q.map((x) => x.id)).toEqual([1, 3])
   })
 
@@ -110,12 +110,12 @@ describe('buildQueue · 练习模式（题型互斥）', () => {
   })
 
   it('缺省 studyMode 时按做题模式（只含选择题）', () => {
-    expect(buildQueue(QUESTIONS, {}).map((x) => x.id)).toEqual(CHOICE_IDS)
+    expect(buildQueue(QUESTIONS, { mode: 'sequential' }).map((x) => x.id)).toEqual(CHOICE_IDS)
   })
 
   it('不修改原数组', () => {
     const copy = QUESTIONS.slice()
-    buildQueue(QUESTIONS, { studyMode: 'memorize' })
+    buildQueue(QUESTIONS, { studyMode: 'memorize', mode: 'sequential' })
     expect(QUESTIONS).toEqual(copy)
   })
 })
@@ -139,7 +139,7 @@ describe('byStudyMode · 复习赛复用的题型过滤', () => {
   })
 
   it('与 buildQueue 的题型口径一致', () => {
-    const viaBuild = buildQueue(QUESTIONS, { studyMode: 'memorize' }).map((x) => x.id)
+    const viaBuild = buildQueue(QUESTIONS, { studyMode: 'memorize', mode: 'sequential' }).map((x) => x.id)
     const viaDirect = byStudyMode(QUESTIONS, 'memorize').map((x) => x.id)
     expect(viaBuild).toEqual(viaDirect)
   })

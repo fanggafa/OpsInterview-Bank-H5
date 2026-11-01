@@ -287,8 +287,17 @@ function clearTimers() {
 function persistProgress() {
   // 复习赛不写断点：它是一次性题组，下次进来要重新抽
   if (isReview.value) return
+  /**
+   * mode 兜底：组件卸载时 route.query 可能已被清空（如测试里 router 先失效），
+   * 此时 mode.value 会落到默认值，把已存的正确 mode 覆盖掉 —— 下次续刷会因
+   * 「模式不一致」而不恢复。所以路由取不到 mode 时，沿用它上次写入的值。
+   */
+  const rawMode = route.query.mode
+  const resolvedMode = PRACTICE_MODES.includes(rawMode)
+    ? rawMode
+    : (study.progress?.mode ?? mode.value)
   study.saveProgress({
-    mode: mode.value,
+    mode: resolvedMode,
     studyMode: studyMode.value,
     category: category.value || null,
     index: cursor.value,
@@ -704,7 +713,7 @@ const emptyDesc = computed(() => {
     <section v-if="!started && !finished" class="picker">
       <h1 class="picker__title">选择练习方式</h1>
       <p class="picker__tip muted">
-        两种方式题型不同：刷题只考选择题，背题只背简答题
+        两种方式题型不同：做题模式只考选择题，背题模式只背简答题
       </p>
 
       <button class="picker__btn picker__btn--practice" @click="startStudy('practice')">

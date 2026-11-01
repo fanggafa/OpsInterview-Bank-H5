@@ -29,11 +29,16 @@ describe('normalizeMode', () => {
     expect(normalizeMode('wrong')).toBe('wrong')
   })
 
-  it('非法/缺失回退 sequential', () => {
-    expect(normalizeMode('bogus')).toBe('sequential')
-    expect(normalizeMode('')).toBe('sequential')
-    expect(normalizeMode(undefined)).toBe('sequential')
-    expect(normalizeMode(null)).toBe('sequential')
+  it('非法/缺失回退 random（刷题默认随机）', () => {
+    expect(normalizeMode('bogus')).toBe('random')
+    expect(normalizeMode('')).toBe('random')
+    expect(normalizeMode(undefined)).toBe('random')
+    expect(normalizeMode(null)).toBe('random')
+  })
+
+  it('显式传 sequential 时仍是顺序（顺序保留为可选项）', () => {
+    expect(normalizeMode('sequential')).toBe('sequential')
+    expect(normalizeMode('wrong')).toBe('wrong')
   })
 })
 
@@ -155,9 +160,13 @@ describe('resolveStartIndex', () => {
     expect(resolveStartIndex({ mode: 'sequential', index: 1.5 }, current, 10).resumed).toBe(false)
   })
 
-  it('progress 中 mode 缺失时按 sequential 处理', () => {
+  it('progress 中 mode 缺失时归一化为 random：与 random 匹配则恢复，与 sequential 不匹配则不恢复', () => {
     const p = { category: '', index: 2 }
-    expect(resolveStartIndex(p, current, 10)).toEqual({ index: 2, resumed: true })
+    // 缺失 mode 视为 random → 当前也是 random 时能恢复
+    const randomCur = { mode: 'random', category: '' }
+    expect(resolveStartIndex(p, randomCur, 10)).toEqual({ index: 2, resumed: true })
+    // 当前是 sequential 时，模式不一致 → 不恢复（避免把随机队列的进度套到顺序队列上）
+    expect(resolveStartIndex(p, current, 10)).toEqual({ index: 0, resumed: false })
   })
 })
 
