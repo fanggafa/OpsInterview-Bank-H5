@@ -155,6 +155,18 @@ export function pickReviewSet(questions, { size = 15, random } = {}) {
 export function resolveStartIndex(progress, current, queueLength) {
   const none = { index: 0, resumed: false }
   if (!progress || !queueLength) return none
+
+  /**
+   * 随机模式不做断点续刷。
+   *
+   * 随机队列每次进入都重新打乱，同一个 index 指向的是**另一道题** ——
+   * 按位置恢复等于「打开一个和上次完全无关的题」，续刷语义不成立。
+   * 随机模式的价值就是「每次不一样」，所以从第 1 题重新开始才是对的。
+   *
+   * （顺序模式不受影响：队列稳定，同 index 就是同一道题。）
+   */
+  if (normalizeMode(current.mode) === 'random') return none
+
   if (normalizeMode(progress.mode) !== normalizeMode(current.mode)) return none
   if (normalizeStudyMode(progress.studyMode) !== normalizeStudyMode(current.studyMode)) return none
   if ((progress.category || '') !== (current.category || '')) return none

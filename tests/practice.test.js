@@ -160,13 +160,19 @@ describe('resolveStartIndex', () => {
     expect(resolveStartIndex({ mode: 'sequential', index: 1.5 }, current, 10).resumed).toBe(false)
   })
 
-  it('progress 中 mode 缺失时归一化为 random：与 random 匹配则恢复，与 sequential 不匹配则不恢复', () => {
+  it('随机模式一律不续刷（队列每次重排，index 指向的是另一道题）', () => {
     const p = { category: '', index: 2 }
-    // 缺失 mode 视为 random → 当前也是 random 时能恢复
+    // 缺失 mode 归一化为 random；当前也是 random → 仍不恢复
     const randomCur = { mode: 'random', category: '' }
-    expect(resolveStartIndex(p, randomCur, 10)).toEqual({ index: 2, resumed: true })
-    // 当前是 sequential 时，模式不一致 → 不恢复（避免把随机队列的进度套到顺序队列上）
+    expect(resolveStartIndex(p, randomCur, 10)).toEqual({ index: 0, resumed: false })
+    // 当前是 sequential，而 progress 是 random → 模式不一致，也不恢复
     expect(resolveStartIndex(p, current, 10)).toEqual({ index: 0, resumed: false })
+  })
+
+  it('顺序模式仍然正常续刷（队列稳定，index 指向同一道题）', () => {
+    const p = { mode: 'sequential', studyMode: 'practice', category: '', index: 3 }
+    const seqCur = { mode: 'sequential', category: '' }
+    expect(resolveStartIndex(p, seqCur, 10)).toEqual({ index: 3, resumed: true })
   })
 })
 

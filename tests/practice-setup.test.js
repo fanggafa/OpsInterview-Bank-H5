@@ -137,6 +137,13 @@ describe('刷题页 · 选择页（两个居中按钮）', () => {
     const { wrapper } = await mountPractice()
     expect(wrapper.find('.picker__resume').exists()).toBe(false)
   })
+
+  it('随机模式的进度不显示提示（按位置续刷会落到另一道题）', async () => {
+    // 兼容升级前遗留的 random 断点：新代码已不再写，但旧记录仍可能存在
+    study.saveProgress({ mode: 'random', studyMode: 'practice', category: null, index: 1 })
+    const { wrapper } = await mountPractice()
+    expect(wrapper.find('.picker__resume').exists()).toBe(false)
+  })
 })
 
 describe('刷题页 · 进入后的紧凑顶栏', () => {

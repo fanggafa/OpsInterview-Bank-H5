@@ -419,7 +419,7 @@ describe('刷题页 · 自评', () => {
 describe('刷题页 · 完成小结', () => {
   async function finishRound() {
     vi.useFakeTimers()
-    const { wrapper } = await mountPractice({ category: 'MySQL' })
+    const { wrapper } = await mountPractice({ category: 'MySQL', mode: 'sequential' })
     await wrapper.findAll('.actions__btn')[1].trigger('click')
     await vi.advanceTimersByTimeAsync(400)
     await wrapper.vm.$nextTick()
