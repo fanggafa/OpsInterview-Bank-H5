@@ -253,12 +253,17 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
     expect(wrapper.find('.qcard-p__meta .qcard-p__fav').exists()).toBe(true)
   })
 
-  it('顶栏点「随机」写入 mode=random', async () => {
+  it('顶栏在「随机 / 顺序」间切换会写入对应的 mode', async () => {
     const { wrapper, router } = await mountPractice()
     await pick(wrapper, '做题模式')
 
+    // 默认已是 random，所以先切到「顺序」再切回「随机」，两次都要写进 query
     const items = wrapper.findAll('.ptop__seg-item')
-    await items[1].trigger('click')
+    await items[0].trigger('click') // 顺序
+    await flushPromises()
+    expect(router.currentRoute.value.query.mode).toBe('sequential')
+
+    await items[1].trigger('click') // 随机
     await flushPromises()
     expect(router.currentRoute.value.query.mode).toBe('random')
   })

@@ -291,7 +291,7 @@ describe('详情页 · 简答题保持原行为', () => {
 
 describe('刷题页 · 选择题', () => {
   it('选择题按选项渲染，单选给出点击提示而非提交按钮', async () => {
-    const { wrapper } = await mountPractice({ category: 'Linux基础' })
+    const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
     expect(wrapper.findAll('.option').length).toBeGreaterThan(0)
     // 单选点选项即判定，操作区显示提示文案
     expect(wrapper.find('.actions__submit').exists()).toBe(false)
@@ -302,7 +302,7 @@ describe('刷题页 · 选择题', () => {
   it('单选点选项即判定并记录', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice({ category: 'Linux基础' })
+      const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
       await wrapper.findAll('.option')[1].trigger('click')
       await wrapper.vm.$nextTick()
 
@@ -325,7 +325,7 @@ describe('刷题页 · 选择题', () => {
   it('判定后停在本题，不自动进入下一题（才看得到解析）', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice({ category: 'Linux基础' })
+      const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
       await wrapper.findAll('.option')[1].trigger('click')
       await vi.advanceTimersByTimeAsync(3000)
       await wrapper.vm.$nextTick()
@@ -344,7 +344,7 @@ describe('刷题页 · 选择题', () => {
   it('判定后出现「下一题 →」按钮，点了才前进', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice({ category: 'Linux基础' })
+      const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
       await wrapper.findAll('.option')[1].trigger('click')
       await wrapper.vm.$nextTick()
 
@@ -385,7 +385,7 @@ describe('刷题页 · 选择题', () => {
 
   it('简答题操作区仍是「不会/会」两按钮（背题模式）', async () => {
     // 做题模式只含选择题 → 要看简答题的自评按钮，必须进背题模式
-    const { wrapper } = await mountPractice({ category: 'MySQL', studyMode: 'memorize' })
+    const { wrapper } = await mountPractice({ category: 'MySQL', studyMode: 'memorize', mode: 'sequential' })
     expect(wrapper.findAll('.actions__btn')).toHaveLength(2)
     expect(wrapper.find('.actions__submit').exists()).toBe(false)
   })
@@ -393,7 +393,7 @@ describe('刷题页 · 选择题', () => {
   it('键盘 A-D 可选择选项', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice({ category: 'Linux基础' })
+      const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b' }))
       await wrapper.vm.$nextTick()
 

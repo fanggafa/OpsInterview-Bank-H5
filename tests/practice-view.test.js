@@ -136,13 +136,14 @@ function pointerEvent(type, { x = 0, y = 0, pointerType = 'mouse' } = {}) {
 }
 
 describe('刷题页 · 默认行为（PRD §二.2）', () => {
-  it('无参数进入默认 sequential + 全部题目，从第 1 题开始', async () => {
+  it('无参数进入默认 random（刷题默认随机）+ 全部题目，从第 1 题开始', async () => {
     const { wrapper } = await mountPractice()
+    // 题序随机，但队列仍是全部题目、仍从第 1 题开始
     expect(wrapper.text()).toContain('第 1 / 3 题')
-    expect(wrapper.find('.qcard-p__q').text()).toBe('q1')
+    expect(wrapper.findAll('.qcard-p')).toHaveLength(1)
   })
 
-  it('非法 mode 回退 sequential', async () => {
+  it('非法 mode 回退 random（按随机处理）', async () => {
     const { wrapper } = await mountPractice({ mode: 'bogus' })
     expect(wrapper.text()).toContain('第 1 / 3 题')
   })
@@ -309,7 +310,7 @@ describe('刷题页 · 断点续刷', () => {
     useBankStore().questions = choiceBank
     study.saveProgress({ mode: 'sequential', studyMode: 'practice', category: null, index: 1 })
 
-    const { wrapper } = await mountPractice({ studyMode: 'practice' })
+    const { wrapper } = await mountPractice({ mode: 'sequential', studyMode: 'practice' })
     expect(wrapper.text()).toContain('第 2 / 3 题')
     expect(wrapper.find('.resume-toast').exists()).toBe(true)
     expect(wrapper.find('.resume-toast').text()).toContain('已从第 2 题继续')
@@ -325,27 +326,27 @@ describe('刷题页 · 断点续刷', () => {
   it('练习模式不一致时不续刷（做题 ↔ 背题不是同一批题）', async () => {
     // 进度是做题模式存的，进来却走背题模式 → 不续刷
     study.saveProgress({ mode: 'sequential', studyMode: 'practice', category: null, index: 1 })
-    const { wrapper } = await mountPractice({ studyMode: 'memorize' })
+    const { wrapper } = await mountPractice({ mode: 'sequential', studyMode: 'memorize' })
     expect(wrapper.text()).toContain('第 1 / 3 题')
     expect(wrapper.find('.resume-toast').exists()).toBe(false)
   })
 
   it('progress 模式不一致时不续刷', async () => {
     study.saveProgress({ mode: 'random', studyMode: 'memorize', category: null, index: 2 })
-    const { wrapper } = await mountPractice()
+    const { wrapper } = await mountPractice({ mode: 'sequential' })
     expect(wrapper.text()).toContain('第 1 / 3 题')
     expect(wrapper.find('.resume-toast').exists()).toBe(false)
   })
 
   it('progress 分类不一致时不续刷', async () => {
     study.saveProgress({ mode: 'sequential', studyMode: 'memorize', category: 'MySQL', index: 1 })
-    const { wrapper } = await mountPractice()
+    const { wrapper } = await mountPractice({ mode: 'sequential' })
     expect(wrapper.text()).toContain('第 1 / 3 题')
   })
 
   it('续刷后能正确显示对应题目', async () => {
     study.saveProgress({ mode: 'sequential', studyMode: 'memorize', category: null, index: 2 })
-    const { wrapper } = await mountPractice()
+    const { wrapper } = await mountPractice({ mode: 'sequential' })
     expect(wrapper.find('.qcard-p__q').text()).toBe('q3')
   })
 })
@@ -354,7 +355,7 @@ describe('刷题页 · 自评', () => {
   it('点「会」写入记录并前进到下一题', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice()
+      const { wrapper } = await mountPractice({ mode: 'sequential' })
       await wrapper.findAll('.actions__btn')[1].trigger('click')
       expect(study.recordOf(1).status).toBe(STATUS.KNOW)
 
@@ -370,7 +371,7 @@ describe('刷题页 · 自评', () => {
   it('点「不会」写入 unknown 并使错题本包含该题', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice()
+      const { wrapper } = await mountPractice({ mode: 'sequential' })
       await wrapper.findAll('.actions__btn')[0].trigger('click')
       expect(study.recordOf(1).status).toBe(STATUS.UNKNOWN)
       expect(study.wrongList.map((q) => q.id)).toContain(1)
@@ -383,7 +384,7 @@ describe('刷题页 · 自评', () => {
   it('自评后展开的答案自动收起', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice()
+      const { wrapper } = await mountPractice({ mode: 'sequential' })
       // 背题模式默认展开；切题时会按模式重置，这里验证「自评后回到收起态」
       expect(wrapper.find('.answer').classes()).toContain('answer--open')
 
@@ -401,7 +402,7 @@ describe('刷题页 · 自评', () => {
   it('最后一题自评后展示完成小结', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice({ category: 'MySQL' })
+      const { wrapper } = await mountPractice({ mode: 'sequential', category: 'MySQL' })
       await wrapper.findAll('.actions__btn')[1].trigger('click')
       await vi.advanceTimersByTimeAsync(400)
       await wrapper.vm.$nextTick()
@@ -447,7 +448,7 @@ describe('刷题页 · 键盘操作', () => {
   it('方向键右切到下一题', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice()
+      const { wrapper } = await mountPractice({ mode: 'sequential' })
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
       await vi.advanceTimersByTimeAsync(400)
       await wrapper.vm.$nextTick()
@@ -461,7 +462,7 @@ describe('刷题页 · 键盘操作', () => {
   it('方向键左回到上一题', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice()
+      const { wrapper } = await mountPractice({ mode: 'sequential' })
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
       await vi.advanceTimersByTimeAsync(400)
       await wrapper.vm.$nextTick()
@@ -479,7 +480,7 @@ describe('刷题页 · 键盘操作', () => {
   it('空格切换答案展开（背题模式默认展开 → 按下收起）', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice()
+      const { wrapper } = await mountPractice({ mode: 'sequential' })
       // 背题模式默认已展开
       expect(wrapper.find('.answer').classes()).toContain('answer--open')
 
@@ -500,7 +501,7 @@ describe('刷题页 · 键盘操作', () => {
   it('数字 1 标记不会、2 标记会', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice()
+      const { wrapper } = await mountPractice({ mode: 'sequential' })
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }))
       await vi.advanceTimersByTimeAsync(400)
       expect(study.recordOf(1).status).toBe(STATUS.UNKNOWN)
@@ -513,7 +514,7 @@ describe('刷题页 · 键盘操作', () => {
   it('输入框内按键不触发切题', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice()
+      const { wrapper } = await mountPractice({ mode: 'sequential' })
       const input = document.createElement('input')
       document.body.appendChild(input)
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
@@ -563,7 +564,7 @@ describe('刷题页 · 进度持久化（做题模式才写断点）', () => {
     vi.useFakeTimers()
     try {
       useBankStore().questions = CHOICE_BANK
-      const { wrapper } = await mountPractice({ studyMode: 'practice' })
+      const { wrapper } = await mountPractice({ mode: 'sequential', studyMode: 'practice' })
       await swipeStageLeft(wrapper)
       await vi.advanceTimersByTimeAsync(400)
       await wrapper.vm.$nextTick()
@@ -579,14 +580,14 @@ describe('刷题页 · 进度持久化（做题模式才写断点）', () => {
     vi.useFakeTimers()
     try {
       useBankStore().questions = CHOICE_BANK
-      const first = await mountPractice({ studyMode: 'practice' })
+      const first = await mountPractice({ mode: 'sequential', studyMode: 'practice' })
       await swipeStageLeft(first.wrapper)
       await vi.advanceTimersByTimeAsync(400)
       await first.wrapper.vm.$nextTick()
       first.wrapper.unmount()
       vi.useRealTimers()
 
-      const second = await mountPractice({ studyMode: 'practice' })
+      const second = await mountPractice({ mode: 'sequential', studyMode: 'practice' })
       expect(second.wrapper.text()).toContain('第 2 / 3 题')
     } finally {
       vi.useRealTimers()

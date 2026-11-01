@@ -134,7 +134,7 @@ async function mountWithAsyncLoad(query = {}) {
 
 describe('滑动切题 · 异步加载后仍可用（核心回归）', () => {
   it('题库加载前没有题卡（先落在选择练习方式）', async () => {
-    const { wrapper } = await mountWithAsyncLoad()
+    const { wrapper } = await mountWithAsyncLoad({ mode: 'sequential' })
     expect(wrapper.find('.stage').exists()).toBe(false)
     // 未点选之前不渲染题卡；选择页本身可先选，加载会并行完成
     expect(wrapper.find('.picker').exists() || wrapper.find('.skeleton').exists()).toBe(true)
@@ -143,7 +143,7 @@ describe('滑动切题 · 异步加载后仍可用（核心回归）', () => {
   it('加载完成后卡片出现，鼠标左滑能切到下一题', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper, finishLoading } = await mountWithAsyncLoad()
+      const { wrapper, finishLoading } = await mountWithAsyncLoad({ mode: 'sequential' })
 
       // 用真实定时器完成加载
       vi.useRealTimers()
@@ -167,7 +167,7 @@ describe('滑动切题 · 异步加载后仍可用（核心回归）', () => {
   it('触摸左滑同样生效', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper, finishLoading } = await mountWithAsyncLoad()
+      const { wrapper, finishLoading } = await mountWithAsyncLoad({ mode: 'sequential' })
       vi.useRealTimers()
       await finishLoading()
       vi.useFakeTimers()
@@ -186,7 +186,7 @@ describe('滑动切题 · 异步加载后仍可用（核心回归）', () => {
   it('右滑回到上一题', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper, finishLoading } = await mountWithAsyncLoad()
+      const { wrapper, finishLoading } = await mountWithAsyncLoad({ mode: 'sequential' })
       vi.useRealTimers()
       await finishLoading()
       vi.useFakeTimers()
@@ -258,7 +258,7 @@ describe('滑动切题 · 组件卸载清理', () => {
   it('卸载后 window 上不再残留手势监听', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper, finishLoading } = await mountWithAsyncLoad()
+      const { wrapper, finishLoading } = await mountWithAsyncLoad({ mode: 'sequential' })
       vi.useRealTimers()
       await finishLoading()
       vi.useFakeTimers()
