@@ -195,29 +195,35 @@ function openWeak() {
       </div>
     </button>
 
-    <!-- 两种复习：一次性题组，练完即止，与「连续刷」互补 -->
+    <!--
+      每日一刷：紧跟在每日一题下方，是「每天两个动作」里的第二个。
+      与每日一题的差别：每日一题是「看一道」，每日一刷是「考一批」并给分数。
+      它不属于「复习巩固」（那是按错题/薄弱去补），所以单独成块。
+    -->
+    <h2 class="section-title">每日一刷</h2>
+    <button class="review review--drill" @click="startReview('dailyDrill')">
+      <span class="review__icon review__icon--drill" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="19" height="19">
+          <path
+            d="M12 4a8 8 0 1 0 7.5 10.5M12 4a8 8 0 0 1 7 4.3M19 4v4.5h-4.5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.9"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
+      <span class="review__text">
+        <span class="review__title">随机 30 题选择题</span>
+        <span class="review__desc">刷完给分与建议 · 只考选择题</span>
+      </span>
+      <span class="review__arrow" aria-hidden="true">→</span>
+    </button>
+
+    <!-- 一次性题组：练完即止，与「连续刷」互补 -->
     <h2 class="section-title">复习巩固</h2>
     <div class="reviews">
-      <button class="review" @click="startReview('daily')">
-        <span class="review__icon review__icon--daily" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="19" height="19">
-            <path
-              d="M12 4a8 8 0 1 0 7.5 10.5M12 4a8 8 0 0 1 7 4.3M19 4v4.5h-4.5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.9"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <span class="review__text">
-          <span class="review__title">每日复习</span>
-          <span class="review__desc">随机 15 题 · 巩固已学</span>
-        </span>
-        <span class="review__arrow" aria-hidden="true">→</span>
-      </button>
-
       <button class="review" :disabled="!wrongCount" @click="startReview('wrong')">
         <span class="review__icon review__icon--wrong" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="19" height="19">
@@ -557,6 +563,10 @@ function openWeak() {
   transform: scale(0.985);
   box-shadow: var(--shadow-lift);
 }
+/* 每日一刷是独立卡片（不在 .reviews 容器里），补上与相邻区块一致的间距 */
+.review--drill {
+  margin-bottom: 4px;
+}
 /* 错题本为空时置灰：看起来像禁用，而不是点了才发现没题 */
 .review:disabled {
   opacity: 0.5;
@@ -572,7 +582,7 @@ function openWeak() {
   justify-content: center;
   color: #fff;
 }
-.review__icon--daily {
+.review__icon--drill {
   background: var(--grad-indigo);
 }
 .review__icon--wrong {

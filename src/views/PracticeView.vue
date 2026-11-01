@@ -26,6 +26,7 @@ import {
   normalizeStudyMode,
   describeProgress,
   summarizeRound,
+  drillResult,
 } from '@/utils/practice'
 import {
   isShort,
@@ -63,7 +64,7 @@ const category = computed(() =>
 /**
  * 复习赛（从首页直接进入的一次性题组）。
  *
- * - daily：每日复习，全库随机 15 题
+ * - dailyDrill：每日一刷，全库随机 30 题（仅选择题）
  * - wrong：错题复习，错题本随机 10 题
  *
  * 与普通刷题的区别：直接出题（跳过「选择练习方式」）、每次进入重新抽、
@@ -74,6 +75,8 @@ const reviewKind = computed(() =>
   REVIEW_MODES.includes(route.query.review) ? route.query.review : ''
 )
 const isReview = computed(() => !!reviewKind.value)
+/** 每日一刷强制做题模式：只有选择题才可能算出客观分数 */
+const isDrill = computed(() => reviewKind.value === 'dailyDrill')
 
 const queue = ref([])
 const cursor = ref(0)
@@ -145,9 +148,20 @@ const optionStates = computed(() =>
 const roundSummary = computed(() => {
   const answers = Object.values(roundAnswers.value)
   return summarizeRound(
-    answers.filter((s) => s === STATUS.KNOW).length,
-    answers.filter((s) => s === STATUS.UNKNOWN).length
+    answers.filter((s) => STATUS.KNOW === s).length,
+    answers.filter((s) => STATUS.UNKNOWN === s).length
   )
+})
+
+/**
+ * 每日一刷的分数与建议。
+ *
+ * 只在每日一刷展示：普通刷题和错题复习是「练」，不需要被打分；
+ * 每日一刷的定位是「自测」，分数才是它存在的意义。
+ */
+const drill = computed(() => {
+  if (!isDrill.value) return null
+  return drillResult(roundSummary.value.knowRate, roundSummary.value.total)
 })
 
 // ---------- 队列 ----------
@@ -165,18 +179,22 @@ function build() {
      * 复习赛也必须遵守「刷题只考选择题、背题只背简答题」：
      * 否则从刷题页进来复习，抽到简答题还得手点「看答案」+ 自评，
      * 节奏跟选择题完全两回事。
+     *
+     * **每日一刷例外**：强制做题模式。它的定位是「自测打分」，
+     * 简答题靠自评，分母主观、分数没有可比性，所以不接受 memorize。
      */
     const source =
       reviewKind.value === 'wrong'
         ? bank.questions.filter((q) => study.isWrong(q.id))
         : bank.questions.slice()
-    const pool = byStudyMode(source, studyMode.value)
+    const effectiveStudyMode = isDrill.value ? 'practice' : studyMode.value
+    const pool = byStudyMode(source, effectiveStudyMode)
     queue.value = pickReviewSet(pool, { size: REVIEW_SIZES[reviewKind.value] })
     cursor.value = 0
     resumed.value = false
     // 复习赛直接进入题卡（不显示「选择练习方式」）
     started.value = true
-    expanded.value = studyMode.value === 'memorize'
+    expanded.value = effectiveStudyMode === 'memorize'
     finished.value = false
     roundAnswers.value = {}
     resetChoice()
@@ -611,9 +629,10 @@ function backToPicker() {
 const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 
 /** 复习赛的顶栏标题 */
-const reviewTitle = computed(() =>
-  reviewKind.value === 'wrong' ? '错题复习' : '每日复习'
-)
+const reviewTitle = computed(() => {
+  if (reviewKind.value === 'wrong') return '错题复习'
+  return '每日一刷'
+})
 
 /** 空态文案：复习赛和普通刷题的原因不一样，提示也要分开 */
 const emptyTitle = computed(() => {
@@ -799,15 +818,36 @@ const emptyDesc = computed(() => {
 
     <!-- 完成小结 -->
     <section v-else-if="finished" class="done card">
-      <Ring :percent="roundSummary.knowRate" :size="96" label="掌握" />
+      <Ring
+        :percent="roundSummary.knowRate"
+        :size="96"
+        :label="isDrill ? '得分' : '掌握'"
+      />
       <h2 class="done__title">{{ isReview ? `${reviewTitle}完成` : '本轮完成' }}</h2>
       <p class="done__desc">
         共 {{ roundSummary.total }} 题 · 对 <strong class="ok">{{ roundSummary.know }}</strong> ·
         错 <strong class="bad">{{ roundSummary.unknown }}</strong>
       </p>
+
+      <!--
+        每日一刷：给分数与建议。
+        普通刷题/错题复习是「练」，不需要被打分；每日一刷的定位是「自测」，
+        分数和建议才是它区别于其他模式的价值。
+      -->
+      <div v-if="drill" class="drill">
+        <p class="drill__score">
+          <strong class="drill__num">{{ drill.rate }}</strong>
+          <span class="drill__unit">分</span>
+          <span class="drill__level">{{ drill.level }}</span>
+        </p>
+        <p class="drill__advice">{{ drill.advice }}</p>
+      </div>
+
       <div class="done__actions">
         <!-- 复习赛「再来一批」= 重新抽题，不沿用旧题组 -->
-        <button class="btn btn--plain" @click="restart">{{ isReview ? '再来一批' : '再来一轮' }}</button>
+        <button class="btn btn--plain" @click="restart">
+          {{ isDrill ? '再来一轮' : isReview ? '再来一批' : '再来一轮' }}
+        </button>
         <button class="btn btn--primary" @click="isReview ? router.push('/') : router.push('/me')">
           {{ isReview ? '回首页' : '看掌握情况' }}
         </button>
@@ -1685,6 +1725,49 @@ const emptyDesc = computed(() => {
 }
 .done__desc .bad {
   color: var(--c-danger);
+}
+
+/* ---------- 每日一刷：分数与建议 ---------- */
+.drill {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--c-primary-weak);
+  text-align: center;
+}
+.drill__score {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+.drill__num {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--c-primary);
+}
+.drill__unit {
+  font-size: 13px;
+  color: var(--c-text-2);
+}
+.drill__level {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--c-primary);
+  /* 与主色同底的文字必须用高对比度前景，深色主题下也成立 */
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.drill__advice {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--c-text-2);
 }
 .done__actions {
   display: flex;

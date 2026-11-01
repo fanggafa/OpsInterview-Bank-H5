@@ -222,8 +222,9 @@ describe('刷题页练习方式（源码级约束）', () => {
   })
 
   it('复习赛也按练习模式收窄题型', () => {
-    // 否则从做题页进复习会抽到简答题，节奏完全不同
-    expect(view).toMatch(/byStudyMode\(source, studyMode\.value\)/)
+    // 否则从做题页进复习会抽到简答题，节奏完全不同。
+    // 每日一刷例外：它强制做题模式（只有选择题才可能算出客观分数）。
+    expect(view).toMatch(/byStudyMode\(source, effectiveStudyMode\)/)
   })
 
   it('不再有「继续上次」面板入口与「直接开始」（续刷改为自动恢复）', () => {

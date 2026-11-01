@@ -212,3 +212,56 @@ export function summarizeRound(know, unknown) {
     knowRate: total ? Math.round((know / total) * 100) : null,
   }
 }
+
+/**
+ * 每日一刷的「分数 + 建议」。
+ *
+ * 分数直接用正确率（0–100），不换算成别的花样 —— 用户关心的是
+ * 「我这次对了几成」，而不是某个抽象评分。
+ *
+ * 建议按分数段给一句**可执行**的话，不说「继续加油」这种空话：
+ * 分数越低越要指向「回去补哪类内容」，分数高则指向「保持手感」。
+ *
+ * @param {number} rate 0–100 的正确率
+ * @param {number} total 本次题量
+ * @returns {{ rate: number, level: string, advice: string }|null}
+ */
+export function drillResult(rate, total) {
+  if (rate == null || !total) return null
+
+  const r = Math.round(rate)
+
+  if (r >= 90) {
+    return {
+      rate: r,
+      level: '优秀',
+      advice: '准确率已经很稳。保持每周刷一轮的手感，重点看错题里那些「蒙对」的题。',
+    }
+  }
+  if (r >= 75) {
+    return {
+      rate: r,
+      level: '良好',
+      advice: '主干知识扎实。去看错题所属的分类，那里通常是一两个固定盲点。',
+    }
+  }
+  if (r >= 60) {
+    return {
+      rate: r,
+      level: '及格',
+      advice: '基础面够用但细节不牢。回到「题库」按错题分类成组刷，比随机刷更能补短板。',
+    }
+  }
+  if (r >= 40) {
+    return {
+      rate: r,
+      level: '偏弱',
+      advice: '知识面有明显缺口。先按分类顺序刷一遍，别用随机刷掩盖盲区。',
+    }
+  }
+  return {
+    rate: r,
+    level: '薄弱',
+    advice: '基础还没建立起来。先挑 2~3 个高频分类（Linux基础 / 网络基础 / MySQL）顺序刷一轮再回来测。',
+  }
+}

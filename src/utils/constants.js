@@ -189,16 +189,30 @@ export const PRACTICE_MODES = ['sequential', 'random', 'wrong']
 /**
  * 复习赛（从首页直接进入的一次性题组）。
  *
- * - daily：每日复习，从全库随机抽 15 题，用来巩固
+ * - dailyDrill：每日一刷，从全库随机抽 30 题**选择题**，刷完给分数与建议
  * - wrong：错题复习，从错题本里随机抽 10 题，集中攻克
  *
  * 与上面的 PRACTICE_MODES 分开：那三个是「连续刷」的队列来源，
  * 复习赛是有明确题量、抽完即止的一次性题组，且每次进入都重新随机。
+ *
+ * 2026-11：原「每日复习（15 题，全库混题）」被「每日一刷」取代 ——
+ * 两者都是「随机一批、直到有结论」，但每日复习混了简答题（要自评），
+ * 给不出可比的分数，价值与「连续刷」重叠。每日一刷只考选择题，
+ * 点选即判定、有客观对错，才撑得起「打分 + 建议」这个定位。
  */
-export const REVIEW_MODES = ['daily', 'wrong']
+export const REVIEW_MODES = ['dailyDrill', 'wrong']
 
 /** 复习赛题量 */
-export const REVIEW_SIZES = { daily: 15, wrong: 10 }
+export const REVIEW_SIZES = { dailyDrill: 30, wrong: 10 }
+
+/**
+ * 只出选择题的复习赛。
+ *
+ * 每日一刷定位是「自测打分」：选择题点选即判定、有客观对错，才可能给出
+ * 可信的分数与建议。简答题要自评，分数没有可比性。
+ * 所以它不跟随 URL 里的 studyMode，强制用做题模式。
+ */
+export const REVIEW_CHOICE_ONLY = ['dailyDrill']
 
 /**
  * 错题本的「毕业」门槛：连续/累计答对满 3 次即自动移出。
