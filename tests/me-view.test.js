@@ -136,6 +136,27 @@ describe('我的 · 分类图表默认折叠', () => {
     expect(wrapper.text()).not.toContain('各分类选择正确率')
   })
 
+  it('各分类掌握度的顺序与题库页分类筛选顺序一致（CATEGORIES）', async () => {
+    /**
+     * 故意让题库里的分类顺序与 CATEGORIES 相反：
+     * 题库遍历顺序会是 MySQL → 网络基础 → Linux基础，
+     * 而 CATEGORIES 里是 Linux基础 → 网络基础 → …… → MySQL。
+     * 图表必须跟随后者，否则两个页面的分类排列会跳来跳去。
+     */
+    const bank = useBankStore()
+    bank.questions = [
+      { id: 1, type: 'short', category: 'MySQL', difficulty: '简单', question: 'q', answer: 'a', tags: ['t'], frequency: '高频' },
+      { id: 2, type: 'short', category: '网络基础', difficulty: '简单', question: 'q', answer: 'a', tags: ['t'], frequency: '高频' },
+      { id: 3, type: 'short', category: 'Linux基础', difficulty: '简单', question: 'q', answer: 'a', tags: ['t'], frequency: '高频' },
+    ]
+
+    const { wrapper } = await mountMe()
+    await wrapper.findAll('.collapse')[0].trigger('click')
+
+    const labels = wrapper.findAll('.bar-row__label').map((n) => n.text())
+    expect(labels).toEqual(['Linux基础', '网络基础', 'MySQL'])
+  })
+
   it('折叠条是卡片式（带 bg/border/padding），不是裸文字', () => {
     // 回归：早先只写了 padding: 0 2px + 无边框，视觉上像普通小标题
     const src = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
