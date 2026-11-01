@@ -9,10 +9,12 @@ import {
   STUDY_MODE_LABEL,
   STUDY_MODES,
   DEFAULT_STUDY_MODE,
+  CATEGORIES,
 } from '@/utils/constants'
 import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
 import { readJSON, writeJSON, isStorageAvailable } from '@/utils/storage'
+import { installGuide } from '@/utils/installGuide'
 
 /**
  * 设置页：把「我的」页里偏配置的项收进来。
@@ -94,6 +96,26 @@ const prefOptions = computed(() =>
 const favCount = computed(() => study.favorites.length)
 const storageOk = computed(() => isStorageAvailable())
 const appVersion = '0.3.0'
+
+/**
+ * 安装引导：识别平台后给出「装到手机桌面」的步骤。
+ *
+ * 平台与「是否已装好」都在浏览器里读，所以包在 computed 里延迟取，
+ * 避免 SSR / 测试环境下直接访问 navigator 报错。
+ */
+const guide = computed(() => {
+  if (typeof navigator === 'undefined') return installGuide({})
+  const mm = typeof window !== 'undefined' && window.matchMedia
+  return installGuide({
+    ua: navigator.userAgent,
+    maxTouchPoints: navigator.maxTouchPoints || 0,
+    standalone: !!(mm && window.matchMedia('(display-mode: standalone)').matches),
+    navStandalone: !!navigator.standalone,
+  })
+})
+
+/** 安装引导是否展开（默认收起，避免设置页被一大段步骤撑长） */
+const guideOpen = ref(false)
 </script>
 
 <template>
@@ -236,6 +258,45 @@ const appVersion = '0.3.0'
       </div>
     </div>
 
+    <!-- 安装到桌面：给用户一个「怎么变成 App」的入口 -->
+    <h2 class="section-title">安装到桌面</h2>
+    <div class="group card">
+      <button class="row row--btn" @click="guideOpen = !guideOpen">
+        <div class="row__text">
+          <span class="row__title">{{ guide.title }}</span>
+          <span class="row__desc">
+            {{
+              guide.installed
+                ? '已在独立形态运行，可离线刷题'
+                : guide.platform === 'desktop'
+                  ? '装到电脑桌面，像普通应用一样启动'
+                  : '装到手机桌面，离线也能刷题'
+            }}
+          </span>
+        </div>
+        <span class="row__chev" :class="{ 'row__chev--open': guideOpen }" aria-hidden="true">›</span>
+      </button>
+
+      <div v-if="guideOpen" class="guide">
+        <p v-if="guide.installed" class="guide__done">
+          ✓ 已装好。当前就在独立形态里运行，断网也能刷题。
+        </p>
+
+        <template v-else>
+          <p v-if="guide.warning" class="guide__warn">⚠️ {{ guide.warning }}</p>
+
+          <ol class="guide__steps">
+            <li v-for="(s, i) in guide.steps" :key="i">{{ s }}</li>
+          </ol>
+
+          <!-- 安卓特有：失败时的备选路径（这块来自真实踩坑） -->
+          <p v-if="guide.fallback" class="guide__fallback">{{ guide.fallback }}</p>
+
+          <p class="guide__note">{{ guide.note }}</p>
+        </template>
+      </div>
+    </div>
+
     <!-- 关于 -->
     <h2 class="section-title">关于</h2>
     <div class="group card">
@@ -249,7 +310,7 @@ const appVersion = '0.3.0'
       </div>
       <div class="row row--static">
         <div class="row__text"><span class="row__title">题库</span></div>
-        <span class="row__value">{{ bank.total }} 题 · 23 分类</span>
+        <span class="row__value">{{ bank.total }} 题 · {{ CATEGORIES.length }} 分类</span>
       </div>
     </div>
 
@@ -353,6 +414,53 @@ const appVersion = '0.3.0'
   font-size: 16px;
   color: var(--c-text-3);
   line-height: 1;
+  transition: transform 0.18s ease;
+}
+.row__chev--open {
+  transform: rotate(90deg);
+}
+
+/* ---------- 安装引导 ---------- */
+.guide {
+  padding: 4px 0 12px;
+  border-top: 1px solid var(--c-border);
+}
+.guide__done {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--c-success);
+  line-height: 1.6;
+}
+.guide__warn {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--c-warning);
+}
+.guide__steps {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--c-text);
+}
+.guide__steps li {
+  margin-bottom: 4px;
+}
+.guide__fallback {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--c-danger-weak);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--c-danger);
+}
+.guide__note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--c-text-2);
 }
 
 .seg {
