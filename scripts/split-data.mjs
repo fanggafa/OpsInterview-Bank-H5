@@ -32,7 +32,7 @@ const CAT_SLUG = {
   Redis: 'redis',
   MongoDB: 'mongodb',
   '消息队列': 'mq',
-  '容器与K8s': 'k8s',
+  Kubernetes: 'kubernetes',
   '存储与备份': 'storage',
   '虚拟化': 'virtualization',
   'CI/CD': 'cicd',
