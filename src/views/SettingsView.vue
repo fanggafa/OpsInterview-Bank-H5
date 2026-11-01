@@ -6,9 +6,6 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import {
   THEMES,
   STORAGE_KEYS,
-  STUDY_MODE_LABEL,
-  STUDY_MODES,
-  DEFAULT_STUDY_MODE,
   CATEGORIES,
 } from '@/utils/constants'
 import { useStudyStore } from '@/stores/studyStore'
@@ -19,9 +16,14 @@ import { installGuide } from '@/utils/installGuide'
 /**
  * 设置页：把「我的」页里偏配置的项收进来。
  *
- * 从「我的」页拆出来的原因：主页面被主题、默认模式、数据管理、关于
- * 塞得太长，而这些都不是每天要看的东西。设置页只做三件事：
- * 外观、默认练习方式、数据管理（含清空与关于）。
+ * 从「我的」页拆出来的原因：主页面被主题、数据管理、关于
+ * 塞得太长，而这些都不是每天要看的东西。
+ *
+ * 设置页只做这几件事：外观主题、数据管理、安装到桌面、关于。
+ *
+ * 2026-11：移除了「默认练习方式」—— 那个开关**从来没有被读取过**
+ * （PracticeView 用的是硬编码的 DEFAULT_STUDY_MODE 常量，不读 oi_settings），
+ * 属于死开关，还向用户承诺了没实现的行为。
  */
 
 const router = useRouter()
@@ -73,25 +75,6 @@ function toast(text) {
     toastText.value = ''
   }, 1800)
 }
-
-// ---------- 默认练习方式 ----------
-
-const prefMode = computed({
-  get() {
-    const saved = readJSON(STORAGE_KEYS.SETTINGS, {})
-    return STUDY_MODES.includes(saved?.studyMode) ? saved.studyMode : DEFAULT_STUDY_MODE
-  },
-  set(next) {
-    if (!STUDY_MODES.includes(next)) return
-    const saved = readJSON(STORAGE_KEYS.SETTINGS, {})
-    writeJSON(STORAGE_KEYS.SETTINGS, { ...saved, studyMode: next })
-    toast(`默认模式：${STUDY_MODE_LABEL[next]}`)
-  },
-})
-
-const prefOptions = computed(() =>
-  STUDY_MODES.map((m) => ({ value: m, label: STUDY_MODE_LABEL[m] }))
-)
 
 const favCount = computed(() => study.favorites.length)
 const storageOk = computed(() => isStorageAvailable())
@@ -150,39 +133,6 @@ const guideOpen = ref(false)
             class="seg__item"
             :class="{ 'seg__item--on': settings.theme === opt.value }"
             @click="settings.setTheme(opt.value)"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 默认练习方式 -->
-    <h2 class="section-title">练习</h2>
-    <div class="group card">
-      <div class="row row--stack">
-        <div class="row__main">
-          <span class="row__icon row__icon--teal" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="17" height="17">
-              <path
-                d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5v-13zM14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14V4z"
-                fill="currentColor"
-                opacity=".9"
-              />
-            </svg>
-          </span>
-          <div class="row__text">
-            <span class="row__title">默认练习方式</span>
-            <span class="row__desc">进入刷题页时默认选中</span>
-          </div>
-        </div>
-        <div class="seg">
-          <button
-            v-for="opt in prefOptions"
-            :key="opt.value"
-            class="seg__item"
-            :class="{ 'seg__item--on': prefMode === opt.value }"
-            @click="prefMode = opt.value"
           >
             {{ opt.label }}
           </button>
