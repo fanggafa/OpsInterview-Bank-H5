@@ -33,8 +33,8 @@ export const CATEGORIES = [
   '自动化与配置管理',
   '消息队列',
   '日志与ELK',
-  '容器与K8s',
   'Docker',
+  'Kubernetes',
   '存储与备份',
   '云与高可用',
   '监控告警',
@@ -68,10 +68,10 @@ export const CATEGORY_ADVICE = {
     '理解文档模型与内嵌/引用取舍、索引类型与执行计划 explain、副本集选举与读写关注（writeConcern/readConcern）。',
   消息队列:
     '分清 Kafka 的分区/副本/消费者组与 offset 语义，掌握积压排查、顺序性与幂等、消息丢失的三种场景。',
-  '容器与K8s':
-    '重点补镜像分层与构建优化、Pod 生命周期与探针、资源 requests/limits、Service/Ingress 转发、Pod 异常排查 kubectl describe/logs/events。',
   Docker:
     '补多阶段构建与镜像瘦身、ENTRYPOINT 与 CMD 的 exec/shell 两种形式的差别、Volume 与 Bind Mount 的区别、容器网络模式、Secrets 与资源限制。',
+  Kubernetes:
+    '重点补 Pod 生命周期与探针、资源 requests/limits、Service/Ingress 转发、RBAC 与 NetworkPolicy、PV/PVC/StorageClass，以及 Pod 异常排查 kubectl describe/logs/events。',
   '存储与备份':
     '区分块/文件/对象存储的适用场景，掌握 rsync 增量同步与 --delete 风险、备份的三二一原则与恢复演练。',
   虚拟化:
@@ -119,8 +119,8 @@ export const CATEGORY_HUE = {
   Redis: 'rose',
   MongoDB: 'lime',
   消息队列: 'violet',
-  '容器与K8s': 'blue',
   Docker: 'cyan',
+  Kubernetes: 'blue',
   '存储与备份': 'fuchsia',
   '虚拟化': 'indigo',
   'CI/CD': 'violet',
