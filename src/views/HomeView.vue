@@ -242,9 +242,13 @@ function openWeak() {
       <!--
         薄弱环节入口：与上面两张卡同款式，只显示「最弱的是哪块」这一条摘要。
         完整榜单（含样本量、分类题库入口）在 /weak 页 —— 首页不该被一长条列表撑开。
-        没有足够样本时（刷得少）不显示，避免给出误导性结论。
+
+        **卡片常驻**（与「错题复习」一致）：早先没有足够样本时整卡隐藏，导致
+        「功能看不见、以为没了」。（样本门槛 = 该分类刷过 ≥3 题且含错题）
+        现在无数据时显示引导文案并可点进 /weak —— 那页有空状态说明「为什么还不给结论」，
+        既保留「不给误导性结论」的初衷，也让入口始终可发现。
       -->
-      <button v-if="study.weakCategories.length" class="review" @click="openWeak">
+      <button class="review" @click="openWeak">
         <span class="review__icon review__icon--weak" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="19" height="19">
             <path
@@ -259,10 +263,15 @@ function openWeak() {
         <span class="review__text">
           <span class="review__title">薄弱分类</span>
           <span class="review__desc">
-            {{ study.weakCategories[0].category }} ·
-            {{ study.weakCategories[0].wrong }}/{{ study.weakCategories[0].reviewed }} 错
-            <template v-if="study.weakCategories.length > 1">
-              · 共 {{ study.weakCategories.length }} 个待补
+            <template v-if="study.weakCategories.length">
+              {{ study.weakCategories[0].category }} ·
+              {{ study.weakCategories[0].wrong }}/{{ study.weakCategories[0].reviewed }} 错
+              <template v-if="study.weakCategories.length > 1">
+                · 共 {{ study.weakCategories.length }} 个待补
+              </template>
+            </template>
+            <template v-else>
+              数据还不够 · 同分类刷满 3 题且含错题后开始排行
             </template>
           </span>
         </span>

@@ -80,11 +80,23 @@ async function mountAt(path, comp) {
 }
 
 describe('首页 · 薄弱环节入口卡', () => {
-  it('数据不足时不显示入口', async () => {
-    study.records = { 1: rec({ inWrong: true }) } // 只刷 1 题
-    const { wrapper } = await mountAt('/', HomeView)
+  it('数据不足时入口卡仍常驻，显示引导文案且可点进 /weak', async () => {
+    study.records = { 1: rec({ inWrong: true }) } // 只刷 1 题，未达门槛
+    const { wrapper, router } = await mountAt('/', HomeView)
     const texts = wrapper.findAll('.review__title').map((t) => t.text())
-    expect(texts).not.toContain('薄弱分类')
+    // 卡片常驻（与「错题复习」一致）：功能要可发现，不能整卡消失
+    expect(texts).toContain('薄弱分类')
+
+    const cards = wrapper.findAll('.review')
+    const card = cards.find((c) => c.text().includes('薄弱分类'))
+    expect(card).toBeTruthy()
+    // 不给结论，只给引导
+    expect(card.text()).toContain('数据还不够')
+
+    // 点击仍进入 /weak（那边有空状态说明「为什么还不给结论」）
+    await card.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/weak')
   })
 
   it('有数据时显示入口卡，摘要显示最弱分类与错题数', async () => {
