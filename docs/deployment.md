@@ -216,7 +216,48 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/actions/runs/<run_id>/jobs"
 - **与 `stripSourceData` 的顺序是对的**：`sw.js` 里已确认不含 `questions.json`
 
 **CI 与部署工作流都加了 PWA 产物断言**：检查 `sw.js` / `manifest.webmanifest` /
-两个图标存在，并 `grep` 确认 `sw.js` 真的预缓存了索引与答案分片 ——
-防止「能装但离线没数据」这种静默失效。
+三个图标（含 iOS 的 `apple-touch-icon.png`）存在，并 `grep` 确认 `sw.js`
+真的预缓存了索引与答案分片 —— 防止「能装但离线没数据」这种静默失效。
 
 测试：`tests/pwaUpdate.test.js`。
+
+## 安装到手机桌面
+
+**线上地址**：https://fanggafa.github.io/OpsInterview-Bank-H5/
+
+> ⚠️ **必须打开根地址**。GitHub Pages 不支持服务器端 rewrite，站点用的是 **hash 路由**，
+> 所以 `https://…/OpsInterview-Bank-H5/#/bank` 可用，
+> 而 `https://…/OpsInterview-Bank-H5/bank`（不带 `#`）会 404。
+
+### iPhone / iPad（必须用 Safari）
+
+1. **Safari** 打开上面的地址（Chrome / 微信内打开**不能**添加）
+2. 点底部分享按钮（方框 + 向上箭头）
+3. 下滑找到「**添加到主屏幕**」
+4. 改名称（默认「运维题库」）→ 点「添加」
+
+### Android（Chrome / Edge）
+
+1. **Chrome** 打开上面的地址
+2. 右上角 **⋮** 菜单 →「**安装应用**」或「**添加到主屏幕**」
+3. 确认
+
+Chrome 也可能在页面底部自动弹出「安装」提示条，直接点也行。
+
+### 安装后的行为
+
+| 项 | 表现 |
+|---|---|
+| 运行形态 | 全屏，无浏览器地址栏（`display: standalone`） |
+| 离线 | **可用**（索引与全部分片已预缓存） |
+| 更新 | 不自动重载；新版本就绪后页内弹提示条（「稍后 / 立即更新」） |
+
+### 为什么需要 `apple-touch-icon.png`
+
+**iOS 只认 `apple-touch-icon`，不看 web manifest 的 `icons`。**
+缺它时 iOS 会拿页面截图缩成桌面图标，看起来像「快捷方式」而不是应用。
+
+该图标由 `scripts/gen-icons.mjs` 生成：180×180、**不透明**、**不加圆角**
+（iOS 会自己加圆角遮罩，我们自己再圆角会出现双层毛边）。
+
+CI 已加断言：产物里必须有 `dist/apple-touch-icon.png`，且 `index.html` 里必须有引用。

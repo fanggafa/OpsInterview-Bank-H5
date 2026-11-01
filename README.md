@@ -7,6 +7,11 @@
 - 题库：**2892 题**（1000 简答 + 1720 单选 + 172 多选），26 个分类；含 **363 张内联 SVG 图解**
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 
+> **装到手机桌面**：iPhone 用 **Safari** 打开后「添加到主屏幕」；Android 用 **Chrome** 的「安装应用」。
+> 装完是全屏应用、可离线刷题。详细步骤见 [deployment](docs/deployment.md#安装到手机桌面)。
+>
+> ⚠️ 必须打开**根地址**（GitHub Pages 不支持 rewrite，站点用 hash 路由，`.../bank` 这种子路径会 404）。
+
 > 只想部署出去用？看 [deployment](docs/deployment.md) 的 hash 模式一节，一行改动零配置上线。
 
 ---
@@ -131,6 +136,7 @@ ops-interview-h5/
 | 学习记录会丢吗 | 存在**浏览器 localStorage**，换设备 / 清缓存即丢失（无后端，属预期） |
 | 需要后端吗 | 不需要。纯静态托管即可 |
 | 能离线用吗 | 能，已实现 PWA 全量预缓存 |
+| 怎么装到手机桌面 | iPhone：Safari → 添加到主屏幕；Android：Chrome → 安装应用。见 [deployment](docs/deployment.md#安装到手机桌面) |
 | 题库怎么加题 | 见 [question-authoring](docs/question-authoring.md) |
 | 部署后刷新 404 | 缺 rewrite 回退，见 [deployment](docs/deployment.md#先理解为什么需要-rewrite) |
 | 提交被拒 `GH006` | `main` 有保护，必须走 PR，见 [conventions](docs/conventions.md#提交与-pr) |

@@ -16,6 +16,12 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234F7CFF'/%3E%3Cpath d='M8 12h16M8 20h10' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"
     />
+    <!--
+      iOS「添加到主屏幕」只认 apple-touch-icon（不看 manifest 的 icons）。
+      缺它时 iOS 会拿页面截图缩成图标，看起来像个快捷方式而不是应用。
+      由 scripts/gen-icons.mjs 生成，180×180、不透明、不加圆角（iOS 自己会加遮罩）。
+    -->
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   </head>
   <body>
     <div id="app"></div>

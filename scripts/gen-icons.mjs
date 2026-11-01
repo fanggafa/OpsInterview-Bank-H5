@@ -137,6 +137,19 @@ for (const size of [192, 512]) {
   console.log(`✓ public/icon-${size}.png  ${(png.length / 1024).toFixed(1)} KB`)
 }
 
+/**
+ * iOS 的「添加到主屏幕」**只认 apple-touch-icon**，不看 web manifest 的 icons。
+ * 缺它时 iOS 会拿页面截图缩成一个图标，看起来像「快捷方式」而不是应用。
+ *
+ * 尺寸规范：Apple 推荐 180×180（iPhone @3x），并且**不留透明通道、不做圆角** ——
+ * iOS 会自己加圆角遮罩，我们自己mask 反而会出现「圆角套圆角」的毛边。
+ * makePng 画的就是不透明底 + 方角图形，正好符合。
+ */
+const APPLE_SIZE = 180
+const applePng = makePng(APPLE_SIZE)
+writeFileSync('public/apple-touch-icon.png', applePng)
+console.log(`✓ public/apple-touch-icon.png  ${(applePng.length / 1024).toFixed(1)} KB`)
+
 // favicon.svg（浏览器标签页图标）
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <rect width="100" height="100" rx="22" fill="#1f6feb"/>
