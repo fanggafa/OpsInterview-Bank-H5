@@ -78,10 +78,15 @@ function startReview(kind) {
   router.push({ path: '/practice', query: { review: kind } })
 }
 
-/** 卡片右上角的日期，让「每日」这个语义看得出来 */
+/**
+ * 今天的日期，显示在 hero 标题下方。
+ *
+ * 显示为「年月日」完整日期（如「2026年11月1日」），让「每日」这个语义
+ * 在页面上直接看得见，而不是要用户自己点开某处才知道今天是几号。
+ */
 const dateText = computed(() => {
   const d = new Date()
-  return `${d.getMonth() + 1}月${d.getDate()}日`
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
 })
 
 function openDaily() {
@@ -102,6 +107,12 @@ function openWeak() {
       <div class="hero__top">
         <div>
           <h1 class="hero__title">运维面试题库</h1>
+          <!--
+            日期放在标题下方：早先它挂在「每日一题」卡片右上角，
+            但那个位置属于「每日一题」这个区块，日期其实是「今天」的属性，
+            应该跟着页面标题走。改到标题下方，也让「每日」这个语义一眼可见。
+          -->
+          <p class="hero__date">{{ dateText }}</p>
           <p class="hero__sub">
             {{ todayDone ? `今天已经刷了 ${study.todayReviewedCount} 题，继续保持` : '碎片时间，背完这些题' }}
           </p>
@@ -171,21 +182,18 @@ function openWeak() {
     <!-- 每日一题：给一个「今天具体做什么」的动作，替代原来的分类列表 -->
     <h2 class="section-title">每日一题</h2>
     <button v-if="daily" class="daily card" @click="openDaily">
-      <div class="daily__head">
-        <!--
-          标签只在「已作答」时出现（今天答对/答错、标记会/不会）。
-          未作答时不显示「今日一题」——标题已经写了「每日一题」，
-          再挂一个同义徽标只是重复，还把题干挤下去。
-        -->
-        <span
-          v-if="dailyState.answered"
-          class="daily__tag"
-          :class="`daily__tag--${dailyState.status}`"
-        >
-          {{ dailyState.label }}
-        </span>
-        <span class="daily__date">{{ dateText }}</span>
-      </div>
+      <!--
+        状态标签只在「已作答」时出现（今天答对/答错、标记会/不会）。
+        未作答时不显示「今日一题」——标题已经写了「每日一题」，
+        再挂一个同义徽标只是重复。
+      -->
+      <span
+        v-if="dailyState.answered"
+        class="daily__tag"
+        :class="`daily__tag--${dailyState.status}`"
+      >
+        {{ dailyState.label }}
+      </span>
 
       <p class="daily__q">{{ dailySummary }}</p>
 
@@ -347,6 +355,13 @@ function openWeak() {
   font-size: 12.5px;
   color: rgba(255, 255, 255, 0.82);
 }
+/* 日期：跟在标题下方，比副标题更淡，不抢主标题 */
+.hero__date {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.6);
+  font-variant-numeric: tabular-nums;
+}
 .hero__btn {
   flex-shrink: 0;
   width: 36px;
@@ -468,6 +483,8 @@ function openWeak() {
 
 /* ---------- 每日一题 ---------- */
 .daily {
+  /* 日期绝对定位到右上角，所以卡片自己要做定位上下文 */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -483,14 +500,9 @@ function openWeak() {
   transform: scale(0.985);
   box-shadow: var(--shadow-lift);
 }
-.daily__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-/* 状态胶囊：今日未答是主色，答过之后转绿/转红，一眼看出今天做没做 */
+/* 状态胶囊：答过之后转绿/转红，一眼看出今天做没做。现在它是卡片首行的行内元素 */
 .daily__tag {
-  flex-shrink: 0;
+  align-self: flex-start;
   padding: 3px 8px;
   border-radius: 6px;
   font-size: 11.5px;
@@ -506,13 +518,6 @@ function openWeak() {
   color: var(--c-danger);
   background: var(--c-danger-weak);
 }
-.daily__date {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--c-text-3);
-  font-variant-numeric: tabular-nums;
-}
-
 .daily__q {
   margin: 0;
   font-size: 15px;

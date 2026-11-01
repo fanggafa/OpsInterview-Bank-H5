@@ -188,8 +188,18 @@ describe('首页 · 每日一题', () => {
     const { wrapper } = await mountHome()
     // 未作答时挂一个同义徽标只是重复，还会把题干挤下去
     expect(wrapper.find('.daily__tag').exists()).toBe(false)
-    // 日期仍然显示
-    expect(wrapper.find('.daily__date').exists()).toBe(true)
+    // 题干成为卡片首行内容，不再被一行空白顶下去
+    expect(wrapper.find('.daily__q').exists()).toBe(true)
+  })
+
+  it('日期显示在 hero 标题下方（年月日完整格式）', async () => {
+    const { wrapper } = await mountHome()
+    const date = wrapper.find('.hero__date')
+    expect(date.exists()).toBe(true)
+    // 必须带年份：只写「11月1日」不足以让人一眼认出是哪一年
+    expect(date.text()).toMatch(/\d{4}年\d{1,2}月\d{1,2}日/)
+    // 日期不再挂在每日一题卡片上
+    expect(wrapper.find('.daily__date').exists()).toBe(false)
   })
 
   it('今日答对后状态转绿并提示已作答', async () => {
