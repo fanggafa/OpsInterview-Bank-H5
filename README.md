@@ -29,7 +29,7 @@ npm run dev          # http://127.0.0.1:5273
 | `npm run check:encoding` | 编码守卫（防中文被写坏，见[编码守卫](#编码守卫)） |
 | `npm run check:figures` | 插图文字溢出检查（防被 SVG 裁掉半句，见[画图注意事项](#画图注意事项踩过的坑)） |
 | `npm run check:figure-sfc` | 插图结构检查：SFC 完整性 + **文字压字 / 行距过紧**（连同名文件过滤可用） |
-| `npm run split:data` | 由 `questions.json` 生成轻量索引 + 按分类的答案分片（见[分片数据](#分片数据p0-性能优化第一步)） |
+| `npm run split:data` | 由 `questions.json` 生成轻量索引 + 按分类的答案分片（见[分片数据](#分片数据首屏体积优化)） |
 | `npm run verify` | **提交前跑这个**：编码 + 题库 + 插图 + 测试 + 构建 全流程 |
 
 环境要求：Node.js ≥ 18。
@@ -45,7 +45,7 @@ npm run dev          # http://127.0.0.1:5273
 | `/` 首页 | 总进度环、三个指标、**继续刷题入口**、**每日一题**、**复习巩固（每日复习 / 错题复习）** |
 | `/bank` 题库 | 分类（默认折叠）+ 频率 + 难度筛选、防抖搜索、分页（10 条/页，页码进 URL） |
 | `/question/:id` | 简答折叠答案 + 自评；选择题选项判定 + 解析；**左右滑动切题** |
-| `/practice` | 两步：**先选做题 / 背题，再出题卡**（做题=选择题，背题=简答题）；顺序 / 随机，滑动 + 键盘，断点自动续刷 |
+| `/practice` | 两步：**先选做题 / 背题，再出题卡**（做题=选择题，背题=简答题）；**默认随机**（可切顺序），滑动 + 键盘，**仅顺序模式**自动续刷 |
 | `/practice?review=daily\|wrong` | **复习赛**：直接出题、一次性题组（每日复习 15 题 / 错题复习 10 题），不写断点 |
 | `/wrong` 错题本 | **连对 3 次才移出**，每题显示连对进度；入口进错题复习 |
 | `/favorites` 收藏 | 按收藏时间倒序，分页 |
@@ -121,7 +121,7 @@ ops-interview-h5/
 │       ├── question.js              # 题型判定（简答 / 单选 / 多选）
 │       ├── filter.js                # 题库筛选 + URL query 序列化
 │       ├── paginate.js              # 分页计算
-│       ├── practice.js              # 刷题队列、断点续刷、复习赛抽题
+│       ├── practice.js              # 刷题队列（默认随机）、断点续刷（仅顺序）、复习赛抽题
 │       ├── daily.js                 # 每日一题（日期种子 → 稳定选题）
 │       ├── pinch.js                 # 看图缩放（双指 + 滚轮）
 │       ├── gestures.js              # 滑动手势判定（轴锁定 + 阈值 + 速度）
@@ -160,7 +160,7 @@ ops-interview-h5/
 | `oi_records` | `{ [id]: { status: "know"\|"unknown", times: number, lastReviewed: number, streak: number, inWrong: boolean } }` |
 | `oi_favorites` | `[id, ...]`（按收藏先后 push，展示倒序） |
 | `oi_settings` | `{ theme: "light"\|"dark"\|"system" }` |
-| `oi_progress` | `{ mode, studyMode, category, index, updatedAt }`（断点续刷；复习赛不写） |
+| `oi_progress` | `{ mode, studyMode, category, index, updatedAt }`（断点续刷；**仅顺序模式写**，随机模式与复习赛都不写） |
 
 - 写入采用 ≥200ms 节流，并在 `visibilitychange(hidden)` / `pagehide` 时强制落盘。
 - JSON 损坏会自动回退默认值并清理脏数据；配额超限时静默降级，不阻塞使用。
@@ -535,10 +535,16 @@ npm run validate:data
 
 ### 关键设计
 
+- **默认题序是随机**（`sequential` 保留为可选项，顶部胶囊可切）。
+  - 理由：连续刷题时固定顺序会让「每天从同一批题开始」，前面的题反复刷、后面的题永远轮不到；
+    随机能让覆盖更均匀。
 - **`studyMode` 参与续刷判定**：换了练习模式就不算「同一批题」，会从头开始
   （`resolveStartIndex` 同时比对 `mode`、`studyMode`、`category` 三项）。
 - **`studyMode` 会存进 progress**（`saveProgress` 一并写入），否则自动续刷无法恢复上次在练什么。
-- **断点自动续刷**：进入页面不需要点「继续上次」，直接从上次位置恢复，顶部一行提示告知。
+- **断点自动续刷（仅顺序模式）**：进入页面不需要点「继续上次」，直接从上次位置恢复，顶部一行提示告知。
+  - **随机模式既不写断点、也不续刷**：随机队列每次进入都重新打乱，同一个 `index` 指向的是**另一道题**，
+    按位置恢复等于「打开一道和上次无关的题」。随机模式的意图就是「每次不一样」。
+  - 因此选择页的「上次停在 …」提示也会过滤掉随机记录（含升级前遗留的旧记录）。
 - 首页不再有「开始刷题 / 继续上次」入口，**统一走底部 Tab 的「刷题」**。
 - `/settings` 可设默认练习方式（存 `oi_settings.studyMode`）。
 
@@ -1139,7 +1145,7 @@ git branch -d feat/你的改动   # 删除已合并的本地分支
 
 ### 已注册的插图
 
-共 **363 张**，按 25 个分类分组维护 —— 完整清单见 [`docs/figures-registry.md`](docs/figures-registry.md)
+共 **363 张**，按 26 个分类分组维护 —— 完整清单见 [`docs/figures-registry.md`](docs/figures-registry.md)
 （含每张图的 id、内容与挂载题目）。
 
 新增插图后需要同步该文档（追加一行），否则清单会与实际不符。
@@ -1332,21 +1338,25 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
 
 ---
 
-## 分片数据（P0 性能优化第一步）
+## 分片数据（首屏体积优化）
 
-首屏慢的根源是「一次拉全量题库」：`questions.json` 4.20 MB / **gzip 1455 KB**。
+首屏慢的根源是「一次拉全量题库」：`questions.json` 5.01 MB / **gzip 1755 KB**。
 而列表页其实只需要 `id / type / category / difficulty / frequency / question` 几个字段。
 
-`npm run split:data` 会从 `questions.json` 生成两套产物：
+`npm run split:data` 会从 `questions.json` 生成三套产物：
 
 | 产物 | 内容 | 原始 | gzip |
 |---|---|---|---|
-| `public/data/questions-index.json` | 列表页索引（7 字段） | 308 KB | **121 KB** |
-| `public/data/answers/<slug>.json` | 25 个分类的答案分片（answer/explanation/options） | — | 最大 **85 KB**（k8s） |
-| `public/data/answers/manifest.json` | 分类 → slug 映射 + 每片题数 | 很小 | — |
+| `public/data/questions-index.json` | 列表页索引（**6 字段**，不含 tags） | 422 KB | **106 KB** |
+| `public/data/answers/<slug>.json` | 26 个分类的答案分片（answer/explanation/options/tags） | — | 最大 **86 KB**（`scenario-1.json`） |
+| `public/data/answers/manifest.json` | 分类 → `slugs` 映射 + 每片题数 | 很小 | — |
 
-**体积收益**：首屏最坏情况（索引 + 最大分片）约 **gzip 210 KB**，
-相比原来的 1455 KB 减少约 **86%**。
+**体积收益**：首屏最坏情况（索引 + 最大分片）约 **gzip 192 KB**，
+相比原来的 1755 KB 减少约 **89%**。
+
+> **索引不含 tags**（`g` 字段已移出）：列表卡片与筛选都不用它，只有详情页/刷题页显示标签，
+> 而那两个场景本来就要拉答案分片。它曾占索引原始体积约 100 KB，是首屏最大的单笔开销。
+> 代价是**搜索只匹配题干**（占位文案已同步为「搜索题干」），不再按标签命中。
 
 ### 已切换：列表页走索引，详情/刷题按分类补答案
 
@@ -1354,32 +1364,40 @@ export function categoryColor(category) // 返回 var(--hue-xxx)
 
 | 场景 | 走哪个 | 拉多少 |
 |---|---|---|
-| 首页 / 题库列表 / 收藏 / 错题 / 统计 | `bank.loadIndex()` | 只有索引（gzip 121 KB） |
+| 首页 / 题库列表 / 收藏 / 错题 / 统计 | `bank.loadIndex()` | 只有索引（gzip 106 KB） |
 | 题目详情 | `loadIndex()` + `hydrateCategory(该题分类)` | 索引 + 1 个分片 |
 | 刷题 / 复习（指定分类） | 同上 | 索引 + 1 个分片 |
-| 刷题（全部分类） | `hydrateCategory('')` | 索引 + 全部 28 个分片（大分类拆成多片） |
+| 刷题（全部分类） | `hydrateCategory('')` | 索引 + 全部 33 个分片（大分类拆成多片） |
 
 **大分类会自动拆成多个分片**（`scripts/split-data.mjs` 的 `SPLIT_THRESHOLD = 180 KB`）。
 
-题量增长后「综合场景题」「Linux基础」「Kubernetes」单个分片体积超标，
-会突破「索引 + 最大分片」的首屏预算（gzip 220 KB，由 `tests/splitData.test.js` 守住）。
+题量增长后单个分片体积超标，会突破「索引 + 最大分片」的首屏预算
+（gzip 220 KB，由 `tests/splitData.test.js` 守住）。
 
-所以改成：超过阈值的分类自动按条目数切成多片（如 `scenario-1` / `scenario-2`），
+所以改成：超过阈值的分类自动按条目数切成多片，
 manifest 用 **`slugs` 数组**（单分片时也是数组，前端逻辑统一），
 `hydrateAnswers` 并行拉取同一分类的多片再合并。
 
-实测效果：最大分片 gzip 从 141 KB 降到 85 KB，首屏最坏回到 210 KB（预算内）。
+当前被拆分的分类（7 个，共 33 个分片文件）：
 
-**实测首屏数据体积**（dev server 不压缩，取原始字节）：
+- 云与高可用：`cloud-ha-1`, `cloud-ha-2`
+- MySQL：`mysql-1`, `mysql-2`
+- Linux基础：`linux-1`, `linux-2`
+- 网络基础：`network-1`, `network-2`
+- Kubernetes：`kubernetes-1`, `kubernetes-2`
+- 监控告警：`monitoring-1`, `monitoring-2`
+- 综合场景题：`scenario-1`, `scenario-2`
+
+**实测首屏数据体积**（原始字节，未压缩）：
 
 ```
-questions-index.json      488 KB   ← 首屏只拉这个
-answers/manifest.json       1 KB
+questions-index.json      422 KB   ← 首屏只拉这个
+answers/manifest.json      1 KB
 ────────────────────────────────
-首屏合计                  ~489 KB   （旧方案 questions.json 是 4687 KB，减少 90%）
+首屏合计               ~422 KB   （旧方案 questions.json 是 5128 KB，减少 92%）
 ```
 
-线上开启 gzip 后索引约 **121 KB**，相比原来的 **1455 KB** 减少 **92%**。
+线上开启 gzip 后索引约 **106 KB**，相比原来的 **1755 KB** 减少 **94%**。
 
 ### 实现要点（改动这几处）
 
@@ -1466,8 +1484,8 @@ GitHub Pages 直接发布构建产物，而构建不会自动跑 `split:data`，
 >
 > | 数据 | 原始 | gzip | brotli |
 > |---|---|---|---|
-> | `questions.json`（全量题库） | 4.20 MB | **1455 KB** | 1057 KB |
-> | 列表页所需字段组成的索引 | 226 KB | **89 KB** | — |
+> | `questions.json`（全量题库） | 5.01 MB | **1755 KB** | 1265 KB |
+> | 列表页所需字段组成的索引 | 422 KB | **106 KB** | — |
 > | 按分类拆分后最大单片（综合场景题） | — | 79 KB | — |
 >
 > 结论：**首屏瓶颈是题库本身的 1.46 MB（gzip 后），不是插图组件的 chunk 体积。**
@@ -1475,21 +1493,21 @@ GitHub Pages 直接发布构建产物，而构建不会自动跑 `split:data`，
 
 **1. 题库 4.2 MB 单文件全量加载（gzip 后仍 1.46 MB）— 最优先**
 
-`public/data/questions.json` 实测 4.20 MB / gzip 1455 KB，`fetchQuestions()` 一次 `fetch`
+`public/data/questions.json` 实测 5.01 MB / gzip 1755 KB，`fetchQuestions()` 一次 `fetch`
 全量拉取，且 `cache: 'no-cache'`（每次强行走网络校验）。手机弱网下首屏会很慢。
 
 而首屏真正需要的信息量很小：列表页只用
 `id / type / category / difficulty / frequency / question`，
-这些字段组成的索引实测 **226 KB（gzip 89 KB）**，只占全量的 **6%**。
+这些字段组成的索引实测 **422 KB（gzip 106 KB）**，只占全量 gzip 后的 **6%**。
 
 建议做法（已实测过体积）：
 
 ```
-questions-index.json         226 KB / gzip  89 KB   ← 列表页只用这个
+questions-index.json         422 KB / gzip 106 KB   ← 列表页只用这个
 data/<分类>.json             最大 gzip 79 KB          ← 进分类/看详情时按需加载
 ```
 
-- 索引方案首屏 gzip 从 1455 KB 降到 **89 KB（-94%）**；
+- 索引方案首屏 gzip 从 1755 KB 降到 **192 KB（-89%）**；
 - 最坏情况（进一个大分类）是 89 + 79 = 168 KB；
 - 代价：题库从 1 个文件变 26 个，`validate:data`、`merge-batch.mjs`、
   `dataService`、`bankStore` 都要跟着改，详情页需要处理短暂加载态。
@@ -1513,7 +1531,7 @@ data/<分类>.json             最大 gzip 79 KB          ← 进分类/看详�
 - **请求超时 15 秒**（`dataService` 的 `REQUEST_TIMEOUT_MS`）。浏览器原生 `fetch`
   没有超时，弱网或中间设备挂住会一直转圈，用户既看不到错误也用不上重试。
   用 `AbortController` 主动中断，中断包装成可重试的 `DataError`。
-  > 为什么是 15 秒：索引 gzip 后 121 KB，4G 弱网约 1.2 秒、极弱网约 6 秒，留一倍余量。
+  > 为什么是 15 秒：索引 gzip 后 106 KB，4G 弱网约 1 秒、极弱网约 5 秒，留足余量。
 - **错误分级**：`DataError` 带 `retryable` / `timeout` 标记 ——
   网络异常与超时、5xx/408/429 判定为可重试；**数据格式错误与 4xx 判定为不可重试**
   （重试也没用，直接告诉用户根因）。
@@ -1589,7 +1607,7 @@ data/<分类>.json             最大 gzip 79 KB          ← 进分类/看详�
 目标场景：**通勤/地铁没网时也能刷题**。
 
 **缓存策略：全量预缓存**。`vite-plugin-pwa` 的 `globPatterns` 显式包含 `json`，
-把索引（488 KB）与 28 个答案分片（约 3.6 MB）全部纳入 precache ——
+把索引（422 KB）与 33 个答案分片（约 4.0 MB）全部纳入 precache ——
 实测构建输出 `precache 71 entries (5199 KiB)`。
 
 > 为什么不全量：只缓存首屏会导致「离线能打开列表、点进题目没答案」，

@@ -296,6 +296,16 @@ function persistProgress() {
   const resolvedMode = PRACTICE_MODES.includes(rawMode)
     ? rawMode
     : (study.progress?.mode ?? mode.value)
+
+  /**
+   * 随机模式不写断点。
+   *
+   * 随机队列每次进入都会重新打乱，按 index 恢复会落到另一道题，续刷没有意义
+   * （见 resolveStartIndex 的说明）。这里连断点都不存，是为了避免选择页出现
+   * 「上次停在 随机 · 第 N 题」这种点了却回不到原处的误导提示。
+   */
+  if (resolvedMode === 'random') return
+
   study.saveProgress({
     mode: resolvedMode,
     studyMode: studyMode.value,
@@ -558,8 +568,16 @@ const queueHint = computed(() => {
   return `本次 ${total.value} 题`
 })
 
-/** 上次进度（只在选择页展示，让用户知道继续会接上） */
-const progressInfo = computed(() => describeProgress(study.progress))
+/**
+ * 上次进度（只在选择页展示，让用户知道继续会接上）。
+ *
+ * 随机模式的进度一律不展示：随机队列每次重排，按位置「继续」会打开另一道题，
+ * 这条提示会变成「点了却回不到原处」的误导。新代码已不再写随机断点，
+ * 这里额外过滤是为了兼容升级前留下的旧记录。
+ */
+const progressInfo = computed(() =>
+  study.progress?.mode === 'random' ? null : describeProgress(study.progress),
+)
 
 /** 选定练习方式并开始 */
 function startStudy(next) {
