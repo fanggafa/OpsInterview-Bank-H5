@@ -4,6 +4,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import BarChart from '@/components/BarChart.vue'
 import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
+import { CATEGORIES } from '@/utils/constants'
 import { formatPercent } from '@/utils/format'
 
 /**
@@ -32,17 +33,28 @@ const summary = computed(() => [
 /** 分类图表默认折叠（页面太长，点开再看细节） */
 const expandedMastery = ref(false)
 
-/** 各分类掌握度（仅简答题） */
-const categoryMastery = computed(() =>
-  study.categoryStats
-    .filter((s) => s.shortTotal > 0)
-    .map((s) => ({
-      label: s.category,
+/**
+ * 各分类掌握度（仅简答题）。
+ *
+ * **顺序跟随题库页的分类筛选顺序**（`CATEGORIES` 的业务优先级），
+ * 而不是 `categoryStats` 的原始顺序（那是按题库遍历出来的，实际是 id 顺序）。
+ * 两个页面用同一套顺序，用户在两处看到的分类排列才不会跳来跳去。
+ */
+const categoryMastery = computed(() => {
+  const map = new Map(study.categoryStats.map((s) => [s.category, s]))
+  return CATEGORIES.filter((c) => {
+    const s = map.get(c)
+    return s && s.shortTotal > 0
+  }).map((c) => {
+    const s = map.get(c)
+    return {
+      label: c,
       count: s.know,
       total: s.know + s.unknown,
       percent: s.mastery,
-    }))
-)
+    }
+  })
+})
 
 /*
  * 2026-11：移除了「各分类选择正确率」图表（连同 categoryChoice 与 expandedChoice）。
