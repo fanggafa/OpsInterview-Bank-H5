@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
  * 题库按分类分段编号，每类 500 个位置。这些规则散落在三处，容易不同步：
  *   1. `scripts/merge-batch.mjs` 的 `ID_RANGES`（合并时校验）
  *   2. `scripts/reid-ranges.mjs` 的 `NEW`（重排脚本）
- *   3. README 的「分类与编号段」表格（文档）
+ *   3. `docs/question-authoring.md` 的「分类与编号段」表格（文档）
  *
  * 本测试保证三者一致，并且「实际题库里每道题都在其分类区间内」。
  * 这样有人改了区间却忘了同步时，CI 会直接拦住。
@@ -16,7 +16,11 @@ import { describe, expect, it } from 'vitest'
 
 const SRC = resolve(__dirname, '../scripts/merge-batch.mjs')
 const REID = resolve(__dirname, '../scripts/reid-ranges.mjs')
-const README = resolve(__dirname, '../README.md')
+/**
+ * 编号段文档表格：2026-11 文档重构时从 README 移到了 question-authoring。
+ * 守卫的意图不变 —— 防止「改了区间却忘了同步文档」。
+ */
+const DOC = resolve(__dirname, '../docs/question-authoring.md')
 const BANK = resolve(__dirname, '../public/data/questions.json')
 
 /** 从源码里解析出区间表（不执行脚本，避免副作用） */
@@ -32,7 +36,7 @@ function parseRanges(source, pattern) {
 
 const mergeSrc = readFileSync(SRC, 'utf8')
 const reidSrc = readFileSync(REID, 'utf8')
-const readme = readFileSync(README, 'utf8')
+const doc = readFileSync(DOC, 'utf8')
 const bank = JSON.parse(readFileSync(BANK, 'utf8'))
 
 const mergeRanges = parseRanges(mergeSrc, 'ID_RANGES')
@@ -67,19 +71,19 @@ describe('编号区间守卫', () => {
     expect(dup).toEqual([])
   })
 
-  it('README 的编号段表格与 ID_RANGES 一致', () => {
+  it('question-authoring 的编号段表格与 ID_RANGES 一致', () => {
     // 表格里每行形如：| 分类名 | 1000 – 1499 | 分类名 | 2000 – 2499 |
     const mismatch = []
     for (const [cat, [lo, hi]] of Object.entries(mergeRanges)) {
       const escaped = cat.replace(/[/\\^$*+?.()|[\]{}]/g, '\\$&')
       const re = new RegExp(`\\| (?:\\*\\*)?${escaped}(?:\\*\\*)? \\| (?:\\*\\*)?(\\d+)\\s*–\\s*(\\d+)`, 'u')
-      const m = readme.match(re)
+      const m = doc.match(re)
       if (!m) {
-        mismatch.push(`${cat} 未出现在 README 表格里`)
+        mismatch.push(`${cat} 未出现在 question-authoring 的编号段表格里`)
         continue
       }
       if (Number(m[1]) !== lo || Number(m[2]) !== hi) {
-        mismatch.push(`${cat} README 写的是 ${m[1]}-${m[2]}，实际是 ${lo}-${hi}`)
+        mismatch.push(`${cat} 文档写的是 ${m[1]}-${m[2]}，实际是 ${lo}-${hi}`)
       }
     }
     expect(mismatch).toEqual([])
