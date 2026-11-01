@@ -130,7 +130,9 @@ export async function fetchIndex({ force = false } = {}) {
     difficulty: r.d,
     frequency: r.f,
     question: r.q,
-    tags: r.g || [],
+    // 索引不再包含 tags（体积考虑），标签改由答案分片提供；
+    // 这里给空数组占位，hydrate 时再补。
+    tags: [],
   }))
   return indexCache
 }
@@ -154,6 +156,7 @@ export async function fetchAnswerShard(slug) {
     answer: r.a,
     ...(r.e ? { explanation: r.e } : {}),
     ...(r.o ? { options: r.o } : {}),
+    ...(r.g ? { tags: r.g } : {}),
   }))
   shardCache.set(slug, out)
   return out
@@ -208,6 +211,8 @@ export async function hydrateAnswers(indexRows, category = '') {
     const full = { ...row, answer: ans.answer }
     if (ans.explanation) full.explanation = ans.explanation
     if (ans.options) full.options = ans.options
+    // 标签来自分片（索引里已不存）
+    if (ans.tags) full.tags = ans.tags
     return full
   })
 }

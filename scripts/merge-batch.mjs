@@ -52,6 +52,7 @@ export const ID_RANGES = {
   综合场景题: [12000, 12499],
   Python: [12500, 12999],
   'AI与大模型': [13000, 13499],
+  Docker: [13500, 13999],
 }
 
 const files = process.argv.slice(2)
