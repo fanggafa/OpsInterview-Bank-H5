@@ -258,7 +258,7 @@ const resultText = computed(() => {
         type="search"
         inputmode="search"
         enterkeyhint="search"
-        placeholder="搜索题干、答案、标签"
+        placeholder="搜索题干"
         aria-label="搜索题目"
         :value="keywordInput"
         @input="onKeywordInput"

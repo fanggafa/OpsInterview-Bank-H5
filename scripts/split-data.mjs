@@ -44,13 +44,21 @@ const CAT_SLUG = {
   '云与高可用': 'cloud-ha',
   Python: 'python',
   'AI与大模型': 'ai-llm',
+  Docker: 'docker',
   '综合场景题': 'scenario',
 }
 
 const bank = JSON.parse(readFileSync(SRC, 'utf8'))
 console.log(`源题库 ${bank.length} 题`)
 
-/** 1) 索引：只留列表/筛选需要的字段，字段名压缩以减小体积 */
+/**
+ * 1) 索引：只留列表/筛选需要的字段，字段名压缩以减小体积。
+ *
+ * ⚠️ tags（原 `g` 字段）**不放进索引**：
+ *   - 列表卡片与筛选都不用它，只有详情页/刷题页显示标签，而那两个场景本来就要拉答案分片
+ *   - 它占索引原始体积约 106 KB（2823 题、8592 个标签），是首屏预算的最大单笔开销
+ *   - 代价：搜索不再能按标签命中（占位文案已同步改为「搜索题干」）
+ */
 const index = bank.map((q) => ({
   i: q.id,
   t: q.type || 'short',
@@ -58,7 +66,6 @@ const index = bank.map((q) => ({
   d: q.difficulty,
   f: q.frequency,
   q: q.question,
-  g: q.tags || [],
 }))
 
 writeFileSync(INDEX, JSON.stringify(index), 'utf8')
@@ -99,6 +106,8 @@ for (const [cat, list] of byCat) {
     const o = { i: q.id, a: q.answer }
     if (q.explanation) o.e = q.explanation
     if (q.options) o.o = q.options
+    // 标签从索引挪到分片：详情页/刷题页本来就要拉分片，标签照常显示
+    if (q.tags && q.tags.length) o.g = q.tags
     return o
   })
 
