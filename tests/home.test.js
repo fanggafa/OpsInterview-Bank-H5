@@ -240,27 +240,35 @@ describe('首页 · 不再承载「继续上次」', () => {
 })
 
 describe('首页 · 复习入口', () => {
-  it('渲染三个复习入口：每日复习 / 错题复习 / 薄弱分类', async () => {
+  it('每日一刷是独立区块（在每日一题下方），不在复习巩固里', async () => {
     const { wrapper } = await mountHome()
-    const items = wrapper.findAll('.review')
+    // 复习巩固容器里只剩错题复习与薄弱分类
+    expect(wrapper.findAll('.reviews .review')).toHaveLength(2)
+    // 每日一刷是独立的 .review--drill 卡
+    expect(wrapper.findAll('.review--drill')).toHaveLength(1)
+  })
+
+  it('复习巩固里两个入口：错题复习 / 薄弱分类', async () => {
+    const { wrapper } = await mountHome()
+    const items = wrapper.findAll('.reviews .review')
     // 薄弱分类卡常驻（无数据时显示引导，不整卡隐藏）
-    expect(items).toHaveLength(3)
-    expect(items[0].text()).toContain('每日复习')
-    expect(items[1].text()).toContain('错题复习')
-    expect(items[2].text()).toContain('薄弱分类')
+    expect(items[0].text()).toContain('错题复习')
+    expect(items[1].text()).toContain('薄弱分类')
   })
 
-  it('每日复习显示「随机 15 题」', async () => {
+  it('每日一刷显示「随机 30 题选择题」', async () => {
     const { wrapper } = await mountHome()
-    expect(wrapper.findAll('.review')[0].text()).toContain('15 题')
+    const card = wrapper.find('.review--drill')
+    expect(card.text()).toContain('30 题')
+    expect(card.text()).toContain('选择题')
   })
 
-  it('点每日复习跳到 review=daily', async () => {
+  it('点每日一刷跳到 review=dailyDrill', async () => {
     const { wrapper, router } = await mountHome()
-    await wrapper.findAll('.review')[0].trigger('click')
+    await wrapper.find('.review--drill').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/practice')
-    expect(router.currentRoute.value.query.review).toBe('daily')
+    expect(router.currentRoute.value.query.review).toBe('dailyDrill')
   })
 
   it('错题本为空时错题复习置灰不可点，并说明原因', async () => {

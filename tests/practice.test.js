@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildQueue,
   describeProgress,
+  drillResult,
   normalizeMode,
   resolveStartIndex,
   summarizeRound,
@@ -226,5 +227,39 @@ describe('summarizeRound', () => {
 
   it('总数为 0 时正确率为 null（不显示 0%）', () => {
     expect(summarizeRound(0, 0)).toEqual({ know: 0, unknown: 0, total: 0, knowRate: null })
+  })
+})
+
+describe('drillResult · 每日一刷的分数与建议', () => {
+  it('按分数段给出不同等级与建议', () => {
+    const cases = [
+      [95, '优秀'],
+      [80, '良好'],
+      [65, '及格'],
+      [45, '偏弱'],
+      [20, '薄弱'],
+    ]
+    for (const [rate, level] of cases) {
+      const r = drillResult(rate, 30)
+      expect(r.level).toBe(level)
+      expect(r.rate).toBe(rate)
+      // 建议必须是一句可执行的话，不是空话
+      expect(r.advice.length).toBeGreaterThan(10)
+    }
+  })
+
+  it('等级随分数单调变化（不低于 5 档）', () => {
+    const levels = [20, 45, 65, 80, 95].map((r) => drillResult(r, 30).level)
+    expect(new Set(levels).size).toBe(5)
+  })
+
+  it('无题量或正确率为 null 时返回 null', () => {
+    expect(drillResult(null, 30)).toBeNull()
+    expect(drillResult(80, 0)).toBeNull()
+  })
+
+  it('边界值落在较高一档（90 是优秀、89 是良好）', () => {
+    expect(drillResult(90, 30).level).toBe('优秀')
+    expect(drillResult(89, 30).level).toBe('良好')
   })
 })

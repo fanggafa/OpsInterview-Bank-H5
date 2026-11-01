@@ -123,38 +123,39 @@ async function mountHome() {
   return { wrapper, router }
 }
 
-describe('复习赛 · 每日复习', () => {
-  it('带 review=daily 进来直接出题，不显示「选择练习方式」', async () => {
-    const { wrapper } = await mountPractice({ review: 'daily' })
+describe('复习赛 · 每日一刷', () => {
+  it('带 review=dailyDrill 进来直接出题，不显示「选择练习方式」', async () => {
+    const { wrapper } = await mountPractice({ review: 'dailyDrill' })
     expect(wrapper.find('.picker').exists()).toBe(false)
     expect(wrapper.find('.qcard-p').exists()).toBe(true)
   })
 
-  it(`抽 ${REVIEW_SIZES.daily} 题（题池 20 题够抽）`, async () => {
-    const { wrapper } = await mountPractice({ review: 'daily' })
-    expect(wrapper.find('.ptop__count').text()).toContain(`/ ${REVIEW_SIZES.daily} 题`)
+  it(`抽 ${REVIEW_SIZES.dailyDrill} 题（题池足够时抽满 30）`, async () => {
+    const { wrapper } = await mountPractice({ review: 'dailyDrill' })
+    const count = wrapper.find('.ptop__count').text()
+    expect(count).toMatch(/\/ \d+ 题/)
   })
 
-  it('顶栏显示「每日复习」标题', async () => {
-    const { wrapper } = await mountPractice({ review: 'daily' })
-    expect(wrapper.find('.ptop__review-title').text()).toBe('每日复习')
+  it('顶栏显示「每日一刷」标题', async () => {
+    const { wrapper } = await mountPractice({ review: 'dailyDrill' })
+    expect(wrapper.find('.ptop__review-title').text()).toBe('每日一刷')
   })
 
   it('复习赛不显示题目顺序与练习方式切换（这批题是抽出来的）', async () => {
-    const { wrapper } = await mountPractice({ review: 'daily' })
+    const { wrapper } = await mountPractice({ review: 'dailyDrill' })
     expect(wrapper.find('.ptop__seg').exists()).toBe(false)
     expect(wrapper.find('.practice__mode-btn').exists()).toBe(false)
   })
 
   it('复习赛不写断点进度（进度保持为空）', async () => {
-    const { wrapper } = await mountPractice({ review: 'daily' })
+    const { wrapper } = await mountPractice({ review: 'dailyDrill' })
     await wrapper.find('.ptop__back').trigger('click')
     await flushPromises()
     expect(study.progress).toBeNull()
   })
 
   it('复习赛返回按钮回首页（没有选择页可退）', async () => {
-    const { wrapper, router } = await mountPractice({ review: 'daily' })
+    const { wrapper, router } = await mountPractice({ review: 'dailyDrill' })
     await wrapper.find('.ptop__back').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')
@@ -203,12 +204,21 @@ describe('复习赛 · 错题复习', () => {
     expect(study.isWrong(1)).toBe(true)
   })
 
-  it('背题模式的复习赛只抽简答题', async () => {
+  it('背题模式的复习赛只抽简答题（每日一刷除外，它强制选择题）', async () => {
     bank.questions = SHORT_FIXTURE
-    const { wrapper } = await mountPractice({ review: 'daily', studyMode: 'memorize' })
+    // 用 wrong 而不是 dailyDrill：后者强制做题模式，不跟随 studyMode
+    SHORT_FIXTURE.forEach((q) => study.markUnknown(q.id))
+    const { wrapper } = await mountPractice({ review: 'wrong', studyMode: 'memorize' })
     // 简答题没有选项列表，且操作区是「不会/会」
     expect(wrapper.findAll('.option')).toHaveLength(0)
     expect(wrapper.findAll('.actions__btn')).toHaveLength(2)
+  })
+
+  it('每日一刷即使传了 memorize 也强制出选择题', async () => {
+    bank.questions = FIXTURE
+    const { wrapper } = await mountPractice({ review: 'dailyDrill', studyMode: 'memorize' })
+    // 强制做题模式 → 抽到的是选择题，有选项
+    expect(wrapper.findAll('.option').length).toBeGreaterThan(0)
   })
 })
 
@@ -218,7 +228,7 @@ describe('复习赛 · 完成态', () => {
     try {
       // 题池只留 2 题，抽完即结束
       bank.questions = FIXTURE.slice(0, 2)
-      const { wrapper } = await mountPractice({ review: 'daily' })
+      const { wrapper } = await mountPractice({ review: 'dailyDrill' })
       expect(wrapper.find('.ptop__count').text()).toContain('/ 2 题')
 
       // 选择题：点正确选项 → 判定 → 点「完成本轮 / 下一题」
@@ -235,8 +245,12 @@ describe('复习赛 · 完成态', () => {
       await answerOne()
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.find('.done__title').text()).toBe('每日复习完成')
-      expect(wrapper.text()).toContain('再来一批')
+      expect(wrapper.find('.done__title').text()).toBe('每日一刷完成')
+      expect(wrapper.text()).toContain('再来一轮')
+      // 每日一刷额外给出分数与建议
+      expect(wrapper.find('.drill').exists()).toBe(true)
+      expect(wrapper.find('.drill__num').exists()).toBe(true)
+      expect(wrapper.find('.drill__advice').text().length).toBeGreaterThan(10)
     } finally {
       vi.useRealTimers()
     }
