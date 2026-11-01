@@ -31,7 +31,6 @@ const summary = computed(() => [
 
 /** 分类图表默认折叠（页面太长，点开再看细节） */
 const expandedMastery = ref(false)
-const expandedChoice = ref(false)
 
 /** 各分类掌握度（仅简答题） */
 const categoryMastery = computed(() =>
@@ -45,24 +44,11 @@ const categoryMastery = computed(() =>
     }))
 )
 
-/** 各分类选择题正确率 */
-const categoryChoice = computed(() => {
-  const map = new Map()
-  Array.from(study.choiceIds).forEach((id) => {
-    const q = bank.questionMap.get(id)
-    if (!q) return
-    if (!map.has(q.category)) map.set(q.category, { know: 0, unknown: 0 })
-    const s = map.get(q.category)
-    if (study.recordOf(id).status === 'know') s.know += 1
-    else s.unknown += 1
-  })
-  return Array.from(map.entries()).map(([label, s]) => ({
-    label,
-    count: s.know,
-    total: s.know + s.unknown,
-    percent: s.know + s.unknown ? Math.round((s.know / (s.know + s.unknown)) * 100) : null,
-  }))
-})
+/*
+ * 2026-11：移除了「各分类选择正确率」图表（连同 categoryChoice 与 expandedChoice）。
+ * 全局的「选择正确率」指标（tile）仍然保留 —— 那是学员最关心的一句话结论；
+ * 去掉的只是按分类细分的第二张柱状图。
+ */
 </script>
 
 <template>
@@ -166,38 +152,6 @@ const categoryChoice = computed(() => {
     </button>
     <section v-if="expandedMastery" class="card chart-card chart-card--attached">
       <BarChart :items="categoryMastery" empty-text="还没有简答题的作答记录" />
-    </section>
-
-    <!-- 各分类选择正确率：同样默认折叠 -->
-    <button
-      class="collapse"
-      :class="{ 'collapse--open': expandedChoice }"
-      :aria-expanded="expandedChoice"
-      @click="expandedChoice = !expandedChoice"
-    >
-      <span class="collapse__title">
-        <span class="collapse__icon collapse__icon--teal" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="15" height="15">
-            <path
-              d="M5 12.5l4.5 4.5L19 7"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        各分类选择正确率
-      </span>
-      <span class="collapse__chev" :class="{ 'collapse__chev--up': expandedChoice }" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="16" height="16">
-          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </span>
-    </button>
-    <section v-if="expandedChoice" class="card chart-card chart-card--attached">
-      <BarChart :items="categoryChoice" empty-text="还没有选择题的作答记录" />
     </section>
 
     <!-- 错题本 / 收藏入口 -->

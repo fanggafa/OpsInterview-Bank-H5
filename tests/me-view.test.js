@@ -8,7 +8,7 @@ import MeView from '@/views/MeView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
-import { STORAGE_KEYS, STUDY_MODE_LABEL } from '@/utils/constants'
+import { STORAGE_KEYS } from '@/utils/constants'
 
 /**
  * 「我的」页与「设置」页的职责划分：
@@ -118,7 +118,8 @@ describe('我的 · 分类图表默认折叠', () => {
   it('默认不渲染图表，标题可点', async () => {
     const { wrapper } = await mountMe()
     const collapses = wrapper.findAll('.collapse')
-    expect(collapses.length).toBe(2)
+    // 2026-11：只剩「各分类掌握度」一块（「各分类选择正确率」图表已移除）
+    expect(collapses.length).toBe(1)
     expect(wrapper.find('.chart-card').exists()).toBe(false)
     expect(collapses[0].attributes('aria-expanded')).toBe('false')
   })
@@ -130,12 +131,9 @@ describe('我的 · 分类图表默认折叠', () => {
     expect(wrapper.findAll('.collapse')[0].attributes('aria-expanded')).toBe('true')
   })
 
-  it('两块图表可独立展开', async () => {
+  it('不再有「各分类选择正确率」图表（已随需求移除）', async () => {
     const { wrapper } = await mountMe()
-    await wrapper.findAll('.collapse')[1].trigger('click')
-    expect(wrapper.findAll('.chart-card').length).toBe(1)
-    await wrapper.findAll('.collapse')[0].trigger('click')
-    expect(wrapper.findAll('.chart-card').length).toBe(2)
+    expect(wrapper.text()).not.toContain('各分类选择正确率')
   })
 
   it('折叠条是卡片式（带 bg/border/padding），不是裸文字', () => {
@@ -197,16 +195,14 @@ describe('设置 · 外观与练习方式', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS)).theme).toBe('dark')
   })
 
-  it('可以设置默认练习方式', async () => {
+  it('不再有「默认练习方式」（该开关从未被读取，已移除）', async () => {
     const { wrapper } = await mountSettings()
-    const prefButtons = wrapper.findAll('.seg')[1].findAll('.seg__item')
-    expect(prefButtons.map((b) => b.text())).toContain(STUDY_MODE_LABEL.memorize)
-
-    const memorizeBtn = prefButtons.find((b) => b.text() === STUDY_MODE_LABEL.memorize)
-    await memorizeBtn.trigger('click')
-
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS))
-    expect(saved.studyMode).toBe('memorize')
+    // 之前这里是个死开关：写进 oi_settings 却没人读，
+    // PracticeView 用的是硬编码 DEFAULT_STUDY_MODE，所以删掉而不是修。
+    expect(wrapper.text()).not.toContain('默认练习方式')
+    // 设置里不应再写入 studyMode
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS) || '{}')
+    expect(saved.studyMode).toBeUndefined()
   })
 })
 

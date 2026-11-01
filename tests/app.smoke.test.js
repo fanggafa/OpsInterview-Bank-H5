@@ -166,11 +166,12 @@ describe('SettingsView 设置页', () => {
     expect(JSON.parse(localStorage.getItem('oi_settings')).theme).toBe('dark')
   })
 
-  it('包含默认练习方式与数据管理', async () => {
+  it('包含数据管理与安装引导', async () => {
     const { wrapper } = await mountSettings()
-    expect(wrapper.text()).toContain('默认练习方式')
     expect(rowByTitle(wrapper, '清空学习记录')).toBeTruthy()
     expect(rowByTitle(wrapper, '清空收藏')).toBeTruthy()
+    // 2026-11：原「默认练习方式」已移除（开关从未被读取），改为安装引导
+    expect(wrapper.text()).toContain('安装到桌面')
   })
 
   it('清空记录用页内确认（不依赖 window.confirm），取消则不执行', async () => {
