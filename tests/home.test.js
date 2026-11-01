@@ -184,10 +184,12 @@ describe('首页 · 每日一题', () => {
     expect(router.currentRoute.value.path).toMatch(/^\/question\/\d+$/)
   })
 
-  it('未作答时状态标为「今日一题」', async () => {
+  it('未作答时不显示状态标签（区块标题已说明是每日一题）', async () => {
     const { wrapper } = await mountHome()
-    expect(wrapper.find('.daily__tag').text()).toBe('今日一题')
-    expect(wrapper.find('.daily__tag--fresh').exists()).toBe(true)
+    // 未作答时挂一个同义徽标只是重复，还会把题干挤下去
+    expect(wrapper.find('.daily__tag').exists()).toBe(false)
+    // 日期仍然显示
+    expect(wrapper.find('.daily__date').exists()).toBe(true)
   })
 
   it('今日答对后状态转绿并提示已作答', async () => {
@@ -205,7 +207,7 @@ describe('首页 · 每日一题', () => {
     expect(wrapper.find('.daily__tag--unknown').exists()).toBe(true)
   })
 
-  it('昨天答过不算今天答过（状态回到「今日一题」）', async () => {
+  it('昨天答过不算今天答过（不显示今日状态标签）', async () => {
     const q = pickDailyQuestion(FIXTURE, new Date())
     // 手工塞一条「昨天」的记录
     const yesterday = Date.now() - 24 * 60 * 60 * 1000
@@ -214,7 +216,7 @@ describe('首页 · 每日一题', () => {
       [q.id]: { status: STATUS.KNOW, times: 1, lastReviewed: yesterday },
     }
     const { wrapper } = await mountHome()
-    expect(wrapper.find('.daily__tag').text()).toBe('今日一题')
+    expect(wrapper.find('.daily__tag').exists()).toBe(false)
   })
 
   it('页脚说明题型构成', async () => {

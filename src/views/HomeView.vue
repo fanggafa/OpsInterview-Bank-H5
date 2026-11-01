@@ -172,7 +172,16 @@ function openWeak() {
     <h2 class="section-title">每日一题</h2>
     <button v-if="daily" class="daily card" @click="openDaily">
       <div class="daily__head">
-        <span class="daily__tag" :class="`daily__tag--${dailyState.status || 'fresh'}`">
+        <!--
+          标签只在「已作答」时出现（今天答对/答错、标记会/不会）。
+          未作答时不显示「今日一题」——标题已经写了「每日一题」，
+          再挂一个同义徽标只是重复，还把题干挤下去。
+        -->
+        <span
+          v-if="dailyState.answered"
+          class="daily__tag"
+          :class="`daily__tag--${dailyState.status}`"
+        >
           {{ dailyState.label }}
         </span>
         <span class="daily__date">{{ dateText }}</span>
@@ -215,8 +224,13 @@ function openWeak() {
         </svg>
       </span>
       <span class="review__text">
-        <span class="review__title">随机 30 题选择题</span>
-        <span class="review__desc">刷完给分与建议 · 只考选择题</span>
+        <!--
+          主标题与副标题分开：标题只放「这是什么」，规则细节放副标题。
+          早先标题写成「随机 30 题选择题」，把规则塞进了标题位，
+          与下方「每日一刷」区块标题重复，视觉上也很吵。
+        -->
+        <span class="review__title">30 题限时自测</span>
+        <span class="review__desc">随机选择题 · 刷完给分数与建议</span>
       </span>
       <span class="review__arrow" aria-hidden="true">→</span>
     </button>
@@ -563,9 +577,25 @@ function openWeak() {
   transform: scale(0.985);
   box-shadow: var(--shadow-lift);
 }
-/* 每日一刷是独立卡片（不在 .reviews 容器里），补上与相邻区块一致的间距 */
+/*
+ * 每日一刷是独立卡片（不在 .reviews 容器里）。
+ * 它的视觉比照「每日一题」那张：渐变底 + 更大内边距 + 更大图标，
+ * 因为它是「每天两个动作」之一，不该看起来像复习列表里的普通一行。
+ */
 .review--drill {
+  padding: 14px;
+  gap: 12px;
+  border-radius: var(--radius);
+  background-image: var(--grad-card);
   margin-bottom: 4px;
+}
+.review--drill .review__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+}
+.review--drill .review__title {
+  font-size: 15px;
 }
 /* 错题本为空时置灰：看起来像禁用，而不是点了才发现没题 */
 .review:disabled {
