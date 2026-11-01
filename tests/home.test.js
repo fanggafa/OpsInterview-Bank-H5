@@ -240,12 +240,14 @@ describe('首页 · 不再承载「继续上次」', () => {
 })
 
 describe('首页 · 复习入口', () => {
-  it('渲染两个复习入口：每日复习 / 错题复习', async () => {
+  it('渲染三个复习入口：每日复习 / 错题复习 / 薄弱分类', async () => {
     const { wrapper } = await mountHome()
     const items = wrapper.findAll('.review')
-    expect(items).toHaveLength(2)
+    // 薄弱分类卡常驻（无数据时显示引导，不整卡隐藏）
+    expect(items).toHaveLength(3)
     expect(items[0].text()).toContain('每日复习')
     expect(items[1].text()).toContain('错题复习')
+    expect(items[2].text()).toContain('薄弱分类')
   })
 
   it('每日复习显示「随机 15 题」', async () => {
