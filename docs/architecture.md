@@ -13,6 +13,10 @@
 | 路由 | 默认 `createWebHistory`；`VITE_ROUTER_MODE=hash` 时切 hash（GitHub Pages 等无 rewrite 的环境） |
 | 部署 | 任意静态托管（GitHub Pages / Vercel / Netlify / Nginx / OSS / COS） |
 
+> **进入二级页要带来源**：跳到 `/question/:id` 时用 `?from=<来源路径>` 传「从哪儿来的」，
+> 二级页的返回按钮据此回到该页（而不是写死某个目标）。
+> `from` 必须在白名单内，防止被构造成任意跳转；二级页内部再跳转时要**保留** `from`。
+
 ## 目录结构
 
 ```

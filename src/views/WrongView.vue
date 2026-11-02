@@ -98,7 +98,7 @@ const clearStreak = WRONG_CLEAR_STREAK
 
       <ul v-else class="list">
         <li v-for="(q, i) in pagedList" :key="q.id">
-          <QuestionCard :question="q" :index="pageStartIndex + i + 1" />
+          <QuestionCard :question="q" :index="pageStartIndex + i + 1" from="/wrong" />
           <!-- 连对进度：让「还差几次移出」这件事看得见，不然用户会疑惑为什么答对了还留着 -->
           <p class="progress-hint">
             <span class="progress-dots" aria-hidden="true">

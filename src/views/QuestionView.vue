@@ -28,6 +28,22 @@ const router = useRouter()
 const bank = useBankStore()
 const study = useStudyStore()
 
+/**
+ * 返回目标：按「从哪儿进来的」决定，而不是一律回题库。
+ *
+ * 题目详情可以从很多地方进入：题库列表、首页每日一题、收藏、错题本。
+ * 早先这里写死 `back-to="/bank"`，导致从**首页每日一题**点进来后，
+ * 点返回会跳到题库页 —— 用户明确反馈过这个路径不对。
+ *
+ * 约定：入口页在跳转时带 `?from=<路径>`，这里只接受白名单内的值，
+ * 防止被构造成任意跳转。没带或不在白名单 → 用浏览器历史回退。
+ */
+const FROM_ROUTES = ['/', '/bank', '/favorites', '/wrong', '/me']
+const backTo = computed(() => {
+  const from = route.query.from
+  return typeof from === 'string' && FROM_ROUTES.includes(from) ? from : ''
+})
+
 /** 错误态文案（含重试退避冷却提示） */
 const retryHint = computed(() => buildRetryHint(bank))
 
@@ -181,7 +197,10 @@ function retry() {
 }
 
 function go(q) {
-  if (q) router.push(`/question/${q.id}`)
+  if (!q) return
+  // 滑动切题要保留 from，否则切一道题后「返回」就丢了来路
+  const suffix = backTo.value ? `?from=${encodeURIComponent(backTo.value)}` : ''
+  router.push(`/question/${q.id}${suffix}`)
 }
 
 const statusText = computed(() => {
@@ -198,7 +217,7 @@ const statusText = computed(() => {
 
 <template>
   <div class="page">
-    <AppHeader title="题目详情" back-to="/bank" />
+    <AppHeader title="题目详情" :back-to="backTo" />
 
     <div v-if="bank.loading" class="skeleton card" aria-busy="true" />
 
