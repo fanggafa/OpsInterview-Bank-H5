@@ -300,7 +300,7 @@ function openWeak() {
               </template>
             </template>
             <template v-else>
-              数据还不够 · 同分类刷满 3 题且含错题后开始排行
+              数据还不够 · 同分类刷满它题量的 33% 且含错题后开始排行
             </template>
           </span>
         </span>
