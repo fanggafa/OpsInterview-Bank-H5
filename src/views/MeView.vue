@@ -23,11 +23,17 @@ const favCount = computed(() => study.favorites.length)
 const wrongCount = computed(() => study.wrongList.length)
 const percentText = computed(() => formatPercent(study.progressRate))
 
-/** 头部三格数据 */
+/**
+ * 头部三格数据：**纯展示，不再做跳转**。
+ *
+ * 2026-11 错题本/收藏入口搬到首页后，这三格若仍链到 /wrong 与 /favorites，
+ * 等于「我的」页又偷偷留了入口，与「本页只做数据看板」的定位矛盾。
+ * 数字留在这一页，去哪儿看题由首页负责。
+ */
 const summary = computed(() => [
-  { label: '已刷', value: study.reviewedCount, to: '/practice' },
-  { label: '错题', value: wrongCount.value, to: '/wrong' },
-  { label: '收藏', value: favCount.value, to: '/favorites' },
+  { label: '已刷', value: study.reviewedCount },
+  { label: '错题', value: wrongCount.value },
+  { label: '收藏', value: favCount.value },
 ])
 
 /** 分类图表默认折叠（页面太长，点开再看细节） */
@@ -110,10 +116,10 @@ const categoryMastery = computed(() => {
       </div>
 
       <div class="profile__stats">
-        <router-link v-for="s in summary" :key="s.label" :to="s.to" class="profile__stat">
+        <div v-for="s in summary" :key="s.label" class="profile__stat">
           <span class="profile__num">{{ s.value }}</span>
           <span class="profile__label">{{ s.label }}</span>
-        </router-link>
+        </div>
       </div>
     </section>
 
@@ -166,79 +172,6 @@ const categoryMastery = computed(() => {
       <BarChart :items="categoryMastery" empty-text="还没有简答题的作答记录" />
     </section>
 
-    <!-- 错题本 / 收藏入口 -->
-    <h2 class="section-title">我的题目</h2>
-    <div class="group card">
-      <router-link to="/wrong" class="row">
-        <span class="row__icon row__icon--rose" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="17" height="17">
-            <path
-              d="M12 7v6M12 16.5v.5M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 0 0-15 0z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-        <div class="row__text">
-          <span class="row__title">错题本</span>
-          <span class="row__desc">答错 / 自评「不会」的题</span>
-        </div>
-        <span class="row__value">{{ wrongCount }} 题</span>
-        <span class="row__chev" aria-hidden="true">›</span>
-      </router-link>
-
-      <router-link to="/favorites" class="row">
-        <span class="row__icon row__icon--amber" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="17" height="17">
-            <path
-              d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <div class="row__text">
-          <span class="row__title">我的收藏</span>
-          <span class="row__desc">手动标记的重点题</span>
-        </div>
-        <span class="row__value">{{ favCount }} 题</span>
-        <span class="row__chev" aria-hidden="true">›</span>
-      </router-link>
-    </div>
-
-    <!-- 设置入口：外观 / 默认练习方式 / 数据管理都收进设置页。
-         外层用 .group 包裹（与「我的题目」完全相同的容器），
-         避免「独立 card + 自己加 padding」把卡片撑宽、与上面的卡对不齐。 -->
-    <div class="group card">
-      <router-link to="/settings" class="row">
-        <span class="row__icon row__icon--indigo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="17" height="17">
-            <path
-              d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-            />
-            <path
-              d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.4"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <div class="row__text">
-          <span class="row__title">设置</span>
-          <span class="row__desc">外观主题 · 默认练习方式 · 清空数据</span>
-        </div>
-        <span class="row__chev" aria-hidden="true">›</span>
-      </router-link>
-    </div>
   </div>
 </template>
 

@@ -100,10 +100,28 @@ describe('我的 · 页面结构', () => {
     expect(entry.attributes('href')).toContain('/settings')
   })
 
-  it('提供错题本与收藏入口', async () => {
+  it('不再提供错题本 / 收藏入口（已搬到首页「我的题集」）', async () => {
     const { wrapper } = await mountMe()
-    expect(rowByTitle(wrapper, '错题本')).toBeTruthy()
-    expect(rowByTitle(wrapper, '我的收藏')).toBeTruthy()
+    /**
+     * 2026-11：错题本与收藏从「我的」页搬到首页 —— 它们是「题」而非「我的设置」，
+     * 放首页与其他题目入口同段更好找。「我的」页只留数据看板 + 右上角设置。
+     */
+    expect(rowByTitle(wrapper, '错题本')).toBeFalsy()
+    expect(rowByTitle(wrapper, '我的收藏')).toBeFalsy()
+  })
+
+  it('头部三格（已刷/错题/收藏）是纯展示，不再链去别的页面', async () => {
+    const { wrapper } = await mountMe()
+    /**
+     * 入口搬到首页后，这三格若仍链到 /wrong、/favorites，
+     * 等于「我的」页又偷偷保留了入口，与「只做数据看板」的定位矛盾。
+     */
+    const stats = wrapper.findAll('.profile__stat')
+    expect(stats).toHaveLength(3)
+    // 不该是 <a>（router-link 会被渲染成 a）
+    for (const s of stats) expect(s.element.tagName).not.toBe('A')
+    // 数值仍然看得见
+    expect(stats.map((s) => s.find('.profile__label').text())).toEqual(['已刷', '错题', '收藏'])
   })
 
   it('不再直接展示设置项（已搬到设置页）', async () => {
@@ -175,34 +193,27 @@ describe('我的 · 分类图表默认折叠', () => {
   })
 })
 
-describe('我的 · 设置入口与「我的题目」卡片对齐', () => {
-  it('设置入口也用 .group 容器包裹（宽度来源与上面的卡一致）', async () => {
+describe('我的 · 设置只有右上角一个入口', () => {
+  /**
+   * 2026-11：这一页删掉了「我的题目」整块（错题本/收藏搬到首页）
+   * 和「设置」整行（输出到页头齿轮）。
+   *
+   * 早先这里断言的是「设置行也是一个 .group 容器、与上面的卡对齐」——
+   * 那组测试的前提（页面里有两组 .group）已经不存在了，
+   * 现在改成断言「只剩一个齿轮入口、页面没有多余的分组行」。
+   */
+  it('设置入口只有页头右上角的齿轮按钮', async () => {
     const { wrapper } = await mountMe()
-    const groups = wrapper.findAll('.group')
-    // 「我的题目」一组 + 「设置」一组 = 2
-    expect(groups.length).toBe(2)
-
-    const settingsGroup = groups[1]
-    const entry = settingsGroup.find('a[href*="/settings"]')
-    expect(entry.exists()).toBe(true)
-    // 行本身不再自带左右 padding —— 交给 .group 统一提供
-    expect(entry.classes()).not.toContain('row--entry')
+    // 页面里不该再有整行式设置入口
+    expect(wrapper.find('.group').exists()).toBe(false)
+    expect(wrapper.find('a[href*="/settings"]').exists()).toBe(true)
+    // 齿轮在页头里
+    expect(wrapper.find('.header').find('a[href*="/settings"]').exists()).toBe(true)
   })
 
   it('不再保留 .row--entry（曾导致卡片宽出 28px、与上图对不齐）', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
     expect(src).not.toMatch(/\.row--entry\s*\{/)
-  })
-
-  it('设置入口是一个可点的链接行，包含图标/标题/描述/箭头', async () => {
-    const { wrapper } = await mountMe()
-    // 页头还有一个齿轮入口，这里要的是 .group 里的那一行
-    const entry = wrapper.find('.group a[href*="/settings"]')
-    expect(entry.exists()).toBe(true)
-    expect(entry.find('.row__icon').exists()).toBe(true)
-    expect(entry.find('.row__title').text()).toBe('设置')
-    expect(entry.find('.row__desc').exists()).toBe(true)
-    expect(entry.find('.row__chev').exists()).toBe(true)
   })
 })
 

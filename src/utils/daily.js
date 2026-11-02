@@ -41,11 +41,28 @@ export function dateKey(date = new Date()) {
  *
  * @param {Array} questions 题库全量
  * @param {Date} [date] 以哪一天为准（测试注入用）
+ * @param {Object} [opts] 选池条件
+ * @param {string[]} [opts.types] 只从这些题型里挑（如 `['short']`）。
+ *   不传 = 不限题型。
  * @returns {Object|null} 题库为空时返回 null
  */
-export function pickDailyQuestion(questions, date = new Date()) {
-  const list = Array.isArray(questions) ? questions : []
+export function pickDailyQuestion(questions, date = new Date(), opts = {}) {
+  let list = Array.isArray(questions) ? questions : []
   if (!list.length) return null
+
+  /**
+   * 按题型筛池。
+   *
+   * 「每日一记」只抽简答题：它的定位是「看一道题、记一个知识点」，
+   * 简答题带完整答案与解析，适合读；选择题的选项在没作答时不展示，
+   * 当作「每日看点」反而无内容可看。
+   */
+  const types = opts && Array.isArray(opts.types) ? opts.types : null
+  if (types && types.length) {
+    list = list.filter((q) => types.includes(q.type))
+    // 该题型一道都没有时返回 null，由调用方决定怎么兜底
+    if (!list.length) return null
+  }
 
   // 优先高频题；一道高频题都没有时退回全量，保证「有题可出」
   const preferred = list.filter((q) => q.frequency === '高频')
