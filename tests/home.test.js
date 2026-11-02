@@ -217,7 +217,7 @@ describe('首页 · 每日一题', () => {
   })
 
   it('今日答对后状态转绿并显示「已作答」标签', async () => {
-    const q = pickDailyQuestion(FIXTURE, new Date())
+    const q = pickDailyQuestion(FIXTURE, new Date(), { types: ['short'] })
     study.markKnow(q.id)
     const { wrapper } = await mountHome()
     /**
@@ -230,14 +230,14 @@ describe('首页 · 每日一题', () => {
   })
 
   it('今日答错后状态转红', async () => {
-    const q = pickDailyQuestion(FIXTURE, new Date())
+    const q = pickDailyQuestion(FIXTURE, new Date(), { types: ['short'] })
     study.markUnknown(q.id)
     const { wrapper } = await mountHome()
     expect(wrapper.find('.daily__tag--unknown').exists()).toBe(true)
   })
 
   it('昨天答过不算今天答过（不显示今日状态标签）', async () => {
-    const q = pickDailyQuestion(FIXTURE, new Date())
+    const q = pickDailyQuestion(FIXTURE, new Date(), { types: ['short'] })
     // 手工塞一条「昨天」的记录
     const yesterday = Date.now() - 24 * 60 * 60 * 1000
     study.records = {

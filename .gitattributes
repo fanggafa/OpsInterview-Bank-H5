@@ -1,0 +1,24 @@
+# 换行符统一策略
+#
+# 仓库与工作区一律使用 LF：
+# - `text=auto` 让 git 自动判定哪些是文本文件（会处理编码探测）
+# - `eol=lf` 保证 checkout 出来也是 LF，Windows 上不再出现 CRLF
+#
+# 为什么需要它：
+# 之前没有这个文件，`core.autocrlf=input` 只在提交时转 LF，
+# 而 checkout 时不做转换 —— 于是某个用编辑器存过的 .vue 会一直是 CRLF，
+# 下次碰巧改到那个文件时 git 就报「CRLF will be replaced by LF」。
+# 那条警告本身无害，但换来的是「同一份代码在不同机器上换行符不同」。
+#
+# 加完后用 `git add --renormalize .` 把索引里已存在的文件重新归一化一次。
+* text=auto eol=lf
+
+# 二进制文件：不能被当成文本做换行符转换，否则会损坏内容
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

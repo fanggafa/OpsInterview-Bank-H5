@@ -72,6 +72,7 @@
 
 ```
 ops-interview-h5/
+├── .gitattributes              # 换行符统一为 LF（详见 conventions.md）
 ├── docs/                       # 文档（见文末索引）
 ├── public/data/
 │   ├── questions.json          # 题库源数据（唯一真相）
