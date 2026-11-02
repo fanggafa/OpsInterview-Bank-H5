@@ -61,16 +61,18 @@ describe('不使用原生 confirm 做二次确认', () => {
     expect(offenders).toEqual([])
   })
 
-  it('「设置」页与「收藏」页都提供页内确认条', () => {
-    // 清空类操作已从「我的」页搬到「设置」页
+  it('「设置」页提供页内确认条（收藏页的清空已移除）', () => {
+    // 清空类操作统一在「设置」页；收藏页那个「全部取消」2026-11 已移除
+    // （紧贴列表的破坏性按钮容易误触，且与设置页重复）
     const settings = readFileSync(resolve(ROOT, 'views/SettingsView.vue'), 'utf8')
-    const fav = readFileSync(resolve(ROOT, 'views/FavoritesView.vue'), 'utf8')
+    expect(settings).toMatch(/role="alertdialog"/)
+    expect(settings).toMatch(/class="confirm"/)
+    expect(settings).toMatch(/btn--danger/)
 
-    ;[settings, fav].forEach((src) => {
-      expect(src).toMatch(/role="alertdialog"/)
-      expect(src).toMatch(/class="confirm"/)
-      expect(src).toMatch(/btn--danger/)
-    })
+    // 收藏页不再自己搞一套确认条
+    const fav = readFileSync(resolve(ROOT, 'views/FavoritesView.vue'), 'utf8')
+    expect(fav).not.toMatch(/role="alertdialog"/)
+    expect(fav).not.toMatch(/window\.confirm/)
   })
 
   it('「我的」页本身不再含清空操作（已移到设置页）', () => {

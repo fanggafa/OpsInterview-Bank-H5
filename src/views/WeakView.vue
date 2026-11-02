@@ -163,8 +163,14 @@ function browseCategory(category) {
   font-variant-numeric: tabular-nums;
 }
 
+/**
+ * 规则说明：把「怎么排序、什么条件才进榜」写在列表前。
+ *
+ * 下边距从 10px 加到 16px —— 原来文字与下面的分类卡几乎贴在一起，
+ * 卡片顶边看起来像被文字压着（截图里就是这个症状）。
+ */
 .rule {
-  margin: 12px 0 10px;
+  margin: 12px 0 16px;
   font-size: 11.5px;
   line-height: 1.6;
   color: var(--c-text-3);
@@ -273,10 +279,17 @@ function browseCategory(category) {
   background: linear-gradient(90deg, var(--c-warning), #e5484d);
 }
 
+/**
+ * 错误率数字。
+ *
+ * 早先 `text-align: right` 且紧贴「刷错题」按钮 —— 数字和胶囊挨在一起看着像一整块。
+ * 现在固定宽度居中，并与按钮之间留 10px，让「数字」与「操作」在视觉上是两组。
+ */
 .item__rate {
   flex-shrink: 0;
-  width: 40px;
-  text-align: right;
+  width: 38px;
+  margin-right: 10px;
+  text-align: center;
   font-size: 13px;
   font-weight: 700;
   color: var(--c-text);
