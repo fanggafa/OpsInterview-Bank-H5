@@ -39,6 +39,7 @@ import {
   resultToStatus,
 } from '@/utils/question'
 import { attachSwipe } from '@/utils/gestures'
+import { truncate } from '@/utils/format'
 import AppHeader from '@/components/AppHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import DifficultyBadge from '@/components/DifficultyBadge.vue'
@@ -78,6 +79,25 @@ const isReview = computed(() => !!reviewKind.value)
 /** 每日一刷强制做题模式：只有选择题才可能算出客观分数 */
 const isDrill = computed(() => reviewKind.value === 'dailyDrill')
 
+/**
+ * 是否允许查看答案 / 解析。
+ *
+ * 每日一刷是「自测」，答题过程中**不给看答案** —— 否则边做边看，
+ * 分数就没有参考价值了。它只在交卷后（finished）才允许看解析。
+ * 其他模式（普通刷题 / 错题复习 / 背题）照旧随时可看。
+ */
+const canRevealAnswer = computed(() => !isDrill.value || finished.value || reviewing.value)
+
+/**
+ * 是否处于「交卷后回顾」状态。
+ *
+ * 每日一刷交卷 → 点逐题回顾 → 回到题卡看解析。
+ * 这时题目是**只读**的（不能再选、不能再判分），底部要换成「返回结果」。
+ * 用独立标记而不是复用 finished：finished 一旦 true 就会整页渲染结果页，
+ * 两者必须分开。
+ */
+const reviewing = ref(false)
+
 const queue = ref([])
 const cursor = ref(0)
 /** 本次是否从断点继续（仅用于触发浮层提示，不参与渲染判断） */
@@ -97,6 +117,13 @@ let resumeTimer = null
  */
 const started = ref(false)
 const expanded = ref(false)
+/**
+ * 本轮每题作答快照：`{ [id]: { status, selected } }`。
+ *
+ * 「status」是 know/unknown（进小结与错题本用的），「selected」是选择题选了哪些键。
+ * 为什么要连选项一起存：回到已答过的题时必须**原样恢复**（选了什么、判对判错），
+ * 否则回看就变成一道空题、要重做一遍 —— 这是用户实际报过的 bug。
+ */
 const roundAnswers = ref({})
 const finished = ref(false)
 const slideDir = ref('')
@@ -148,8 +175,8 @@ const optionStates = computed(() =>
 const roundSummary = computed(() => {
   const answers = Object.values(roundAnswers.value)
   return summarizeRound(
-    answers.filter((s) => STATUS.KNOW === s).length,
-    answers.filter((s) => STATUS.UNKNOWN === s).length
+    answers.filter((a) => a && STATUS.KNOW === a.status).length,
+    answers.filter((a) => a && STATUS.UNKNOWN === a.status).length
   )
 })
 
@@ -198,6 +225,9 @@ function build() {
     finished.value = false
     roundAnswers.value = {}
     resetChoice()
+    // 计时起点：复习赛进来即开始答题
+    startedAt.value = Date.now()
+    elapsedSec.value = 0
     ready.value = true
     return
   }
@@ -239,6 +269,9 @@ function build() {
   finished.value = false
   roundAnswers.value = {}
   resetChoice()
+  // 计时起点：普通刷题从队列生成（用户点了「做题/背题」）开始算
+  startedAt.value = Date.now()
+  elapsedSec.value = 0
   ready.value = true
 }
 
@@ -343,11 +376,38 @@ function goTo(index) {
     cursor.value = index
     // 切题后同样按模式决定：背题模式每道都直接展开答案
     expanded.value = studyMode.value === 'memorize'
-    resetChoice()
+    /**
+     * 恢复这题已有的作答，而不是一律清空。
+     *
+     * 早先这里无条件 resetChoice()，导致「答完 A 进 B、右滑回 A」时
+     * A 变成未作答的空题，要重做一遍 —— 用户实际报过的 bug。
+     */
+    restoreChoice(queue.value[index])
     slideDir.value = ''
     persistProgress()
     animating = false
   }, 180)
+}
+
+/**
+ * 按该题在本轮里的作答快照恢复选择题状态。
+ *
+ * 已答过 → 恢复所选与判定；没答过 → 清空。
+ * 简答题没有选项态，走同一函数也只是清空。
+ */
+function restoreChoice(q) {
+  if (!q) {
+    resetChoice()
+    return
+  }
+  const snap = roundAnswers.value[q.id]
+  if (!snap) {
+    resetChoice()
+    return
+  }
+  selected.value = snap.selected ? snap.selected.slice() : []
+  submitted.value = true
+  passed.value = snap.status === STATUS.KNOW
 }
 
 function next() {
@@ -358,9 +418,33 @@ function prev() {
   if (cursor.value > 0) goTo(cursor.value - 1)
 }
 
+/**
+ * 本轮用时（秒）。
+ *
+ * 只在每日一刷展示：自测结果里「用了多久」是有意义的信息
+ * （快而准 vs 慢而准，反映的是熟练度不同）。普通刷题不计时。
+ *
+ * 起点在 build() 里记（队列生成那一刻），终点在 finish() 时冻结 ——
+ * 不用响应式计时器，避免每秒重渲染；只在交卷时算一次差值。
+ */
+const startedAt = ref(0)
+const elapsedSec = ref(0)
+
+/** mm:ss */
+const elapsedText = computed(() => {
+  const s = Math.max(0, elapsedSec.value)
+  const mm = String(Math.floor(s / 60)).padStart(2, '0')
+  const ss = String(s % 60).padStart(2, '0')
+  return `${mm}:${ss}`
+})
+
 function finish() {
   finished.value = true
   cursor.value = Math.max(0, total.value - 1)
+  // 冻结用时（只在计时已开始时有意义）
+  if (startedAt.value) {
+    elapsedSec.value = Math.round((Date.now() - startedAt.value) / 1000)
+  }
   persistProgress()
 }
 
@@ -371,7 +455,8 @@ function mark(s) {
   if (!q) return
   if (s === STATUS.KNOW) study.markKnow(q.id)
   else study.markUnknown(q.id)
-  roundAnswers.value = { ...roundAnswers.value, [q.id]: s }
+  // 简答题没有选项，selected 保持空
+  roundAnswers.value = { ...roundAnswers.value, [q.id]: { status: s, selected: [] } }
 
   if (cursor.value >= total.value - 1) {
     finish()
@@ -410,7 +495,11 @@ function commitResult(isPassed) {
   const s = resultToStatus(isPassed)
   if (s === STATUS.KNOW) study.markKnow(q.id)
   else study.markUnknown(q.id)
-  roundAnswers.value = { ...roundAnswers.value, [q.id]: s }
+  // 连所选的键一起存：回到这题时要原样恢复「当时选了哪几个」
+  roundAnswers.value = {
+    ...roundAnswers.value,
+    [q.id]: { status: s, selected: selected.value.slice() },
+  }
 
   /**
    * 判定后**停在本题**，不自动翻页。
@@ -439,6 +528,42 @@ function toggleFavorite() {
 
 function toggleAnswer() {
   expanded.value = !expanded.value
+}
+
+// ---------- 结果页的逐题回顾 ----------
+
+/** 该题在本轮的正确/错误标记（未答返回空串） */
+function markTextOf(q) {
+  const snap = q ? roundAnswers.value[q.id] : null
+  if (!snap) return '—'
+  return snap.status === STATUS.KNOW ? '✓' : '✕'
+}
+
+function markClassOf(q) {
+  const snap = q ? roundAnswers.value[q.id] : null
+  if (!snap) return 'rl__mark--none'
+  return snap.status === STATUS.KNOW ? 'rl__mark--ok' : 'rl__mark--bad'
+}
+
+/**
+ * 从结果页点进某一题查看解析。
+ *
+ * 此时 finished 已经是 true，但要看解析必须回到题卡状态 ——
+ * 所以先退出结果态，再把 cursor 定位到该题。
+ * 不重做整轮（roundAnswers 保留），用户看完可以再回结果页按钮。
+ */
+function goToFromResult(index) {
+  finished.value = false
+  reviewing.value = true
+  cursor.value = index
+  expanded.value = false
+  restoreChoice(queue.value[index])
+}
+
+/** 回顾完回到结果页 */
+function backToResult() {
+  reviewing.value = false
+  finished.value = true
 }
 
 function restart() {
@@ -481,14 +606,26 @@ function onKeydown(e) {
   const tag = (e.target?.tagName || '').toLowerCase()
   if (tag === 'input' || tag === 'textarea') return
 
+  /**
+   * 左右方向键对**两种题型都有效**（等价于左右滑动切题）。
+   *
+   * 早先这两个键只在简答题分支里处理，选择题分支只认 A–D / Enter ——
+   * 于是做题模式（包括每日一刷）里按 ← 回上一题完全没反应。
+   * 滑动手势一直是通的，键盘却不通，属于遗漏。
+   */
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault()
+    prev()
+    return
+  }
+  if (e.key === 'ArrowRight') {
+    e.preventDefault()
+    next()
+    return
+  }
+
   if (short.value) {
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault()
-      prev()
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      next()
-    } else if (e.key === ' ') {
+    if (e.key === ' ') {
       e.preventDefault()
       toggleAnswer()
     } else if (e.key === '1') {
@@ -818,38 +955,68 @@ const emptyDesc = computed(() => {
 
     <!-- 完成小结 -->
     <section v-else-if="finished" class="done card">
-      <Ring
-        :percent="roundSummary.knowRate"
-        :size="96"
-        :label="isDrill ? '得分' : '掌握'"
-      />
-      <h2 class="done__title">{{ isReview ? `${reviewTitle}完成` : '本轮完成' }}</h2>
-      <p class="done__desc">
-        共 {{ roundSummary.total }} 题 · 对 <strong class="ok">{{ roundSummary.know }}</strong> ·
-        错 <strong class="bad">{{ roundSummary.unknown }}</strong>
-      </p>
-
       <!--
-        每日一刷：给分数与建议。
-        普通刷题/错题复习是「练」，不需要被打分；每日一刷的定位是「自测」，
-        分数和建议才是它区别于其他模式的价值。
+        每日一刷：贴合「测试结果」的三栏样式（正确率 / 答对题数 / 用时）。
+        其他模式保留原来的环形图（它们不是考试，不需要这种成绩单感）。
       -->
-      <div v-if="drill" class="drill">
-        <p class="drill__score">
-          <strong class="drill__num">{{ drill.rate }}</strong>
-          <span class="drill__unit">分</span>
-          <span class="drill__level">{{ drill.level }}</span>
+      <template v-if="isDrill">
+        <h2 class="done__title">🏆 测试结果</h2>
+
+        <div class="score">
+          <div class="score__cell">
+            <strong class="score__num">{{ roundSummary.knowRate }}<span class="score__pct">%</span></strong>
+            <span class="score__label">正确率</span>
+          </div>
+          <div class="score__div" aria-hidden="true" />
+          <div class="score__cell">
+            <strong class="score__num">{{ roundSummary.know }}/{{ roundSummary.total }}</strong>
+            <span class="score__label">答对题数</span>
+          </div>
+          <div class="score__div" aria-hidden="true" />
+          <div class="score__cell">
+            <strong class="score__num">{{ elapsedText }}</strong>
+            <span class="score__label">用时</span>
+          </div>
+        </div>
+
+        <div class="drill">
+          <p class="drill__score">
+            <span class="drill__level">{{ drill.level }}</span>
+          </p>
+          <p class="drill__advice">{{ drill.advice }}</p>
+        </div>
+      </template>
+
+      <template v-else>
+        <Ring :percent="roundSummary.knowRate" :size="96" label="掌握" />
+        <h2 class="done__title">{{ isReview ? `${reviewTitle}完成` : '本轮完成' }}</h2>
+        <p class="done__desc">
+          共 {{ roundSummary.total }} 题 · 对 <strong class="ok">{{ roundSummary.know }}</strong> ·
+          错 <strong class="bad">{{ roundSummary.unknown }}</strong>
         </p>
-        <p class="drill__advice">{{ drill.advice }}</p>
+      </template>
+
+      <!-- 逐题回顾：点任意一行回到该题查看解析（交卷后已解锁） -->
+      <div class="review-list">
+        <p class="review-list__title">逐题回顾（点任意题查看解析）</p>
+        <ol class="review-list__items">
+          <li v-for="(q, i) in queue" :key="q.id">
+            <button class="rl__row" @click="goToFromResult(i)">
+              <span class="rl__no">{{ i + 1 }}</span>
+              <span class="rl__mark" :class="markClassOf(q)">{{ markTextOf(q) }}</span>
+              <span class="rl__q">{{ truncate(q.question, 28) }}</span>
+              <span class="rl__arrow" aria-hidden="true">›</span>
+            </button>
+          </li>
+        </ol>
       </div>
 
       <div class="done__actions">
-        <!-- 复习赛「再来一批」= 重新抽题，不沿用旧题组 -->
         <button class="btn btn--plain" @click="restart">
           {{ isDrill ? '再来一轮' : isReview ? '再来一批' : '再来一轮' }}
         </button>
-        <button class="btn btn--primary" @click="isReview ? router.push('/') : router.push('/me')">
-          {{ isReview ? '回首页' : '看掌握情况' }}
+        <button class="btn btn--primary" @click="isReview || isDrill ? router.push('/') : router.push('/me')">
+          {{ isReview || isDrill ? '退出' : '看掌握情况' }}
         </button>
       </div>
     </section>
@@ -914,8 +1081,13 @@ const emptyDesc = computed(() => {
               <ul v-if="current.tags?.length" class="qcard-p__tags">
                 <li v-for="tag in current.tags" :key="tag" class="qcard-p__tag">#{{ tag }}</li>
               </ul>
-              <!-- 看答案按钮与标签同一行，靠最右；两种题型都有（做题模式默认收起） -->
+              <!--
+                看答案按钮与标签同一行，靠最右。
+                每日一刷答题中**不显示**（canRevealAnswer=false）：
+                自测场景边做边看答案，分数就失去意义了。
+              -->
               <button
+                v-if="canRevealAnswer"
                 class="qcard-p__toggle"
                 :aria-expanded="expanded"
                 @click="toggleAnswer"
@@ -948,19 +1120,35 @@ const emptyDesc = computed(() => {
                 @select="onSelect"
               />
 
-              <div v-if="submitted" class="result" :class="passed ? 'result--ok' : 'result--bad'">
+              <!--
+                判定结果与解析只在「可看答案」时展示。
+                每日一刷答题中两者都藏起来：既不能看答案，也不该立刻知道对错
+                （否则可以回去改，分数同样失真）。交卷后统一展示。
+              -->
+              <div
+                v-if="submitted && canRevealAnswer"
+                class="result"
+                :class="passed ? 'result--ok' : 'result--bad'"
+              >
                 <span class="result__icon">{{ passed ? '✓' : '✕' }}</span>
                 <span>{{ passed ? '回答正确' : '回答错误' }}</span>
               </div>
 
               <!-- 判定后：解析自动显示（选择题的价值就在解析里，不用再点一次） -->
-              <div v-if="submitted && current.explanation && !expanded" class="explain">
+              <div
+                v-if="submitted && canRevealAnswer && current.explanation && !expanded"
+                class="explain"
+              >
                 <p class="explain__label">解析</p>
                 <AnswerText :answer="current.explanation" />
               </div>
 
-              <!-- 点「看答案」展开：正确答案 + 解析（未作答时也能看，做题模式默认收起） -->
-              <div class="answer" :class="{ 'answer--open': expanded }">
+              <!--
+                看答案展开区：正确答案 + 解析。
+                每日一刷答题中**整块不渲染**（不是仅收起）——
+                否则 devtools / 无障碍树里仍能读到答案，等于没藏住。
+              -->
+              <div v-if="canRevealAnswer" class="answer" :class="{ 'answer--open': expanded }">
                 <div class="answer__inner">
                   <div class="answer__body">
                     <!-- 标签与答案同行：答案只是一个字母，单独占一行太浪费 -->
@@ -977,9 +1165,9 @@ const emptyDesc = computed(() => {
               </div>
             </template>
 
-            <!-- 简答题：答案 -->
+            <!-- 简答题：答案（同样遵守「每日一刷答题中不看答案」） -->
             <template v-else>
-              <div class="answer" :class="{ 'answer--open': expanded }">
+              <div v-if="canRevealAnswer" class="answer" :class="{ 'answer--open': expanded }">
                 <div class="answer__inner">
                   <div class="answer__body">
                     <AnswerText :answer="current.answer" />
@@ -993,7 +1181,11 @@ const emptyDesc = computed(() => {
 
       <!-- 吸底操作区 -->
       <div class="actions">
-        <template v-if="short">
+        <!-- 交卷后回顾：题目只读，只给「返回结果」 -->
+        <template v-if="reviewing">
+          <button class="btn btn--primary actions__submit" @click="backToResult">返回结果</button>
+        </template>
+        <template v-else-if="short">
           <button
             class="btn actions__btn actions__btn--unknown"
             :class="{ 'actions__btn--on': status === 'unknown' }"
@@ -1725,6 +1917,112 @@ const emptyDesc = computed(() => {
 }
 .done__desc .bad {
   color: var(--c-danger);
+}
+
+/* ---------- 每日一刷：成绩三栏（正确率 / 答对题数 / 用时） ---------- */
+.score {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  width: 100%;
+  margin-top: 18px;
+  padding: 6px 0 14px;
+}
+.score__cell {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.score__num {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+.score__pct {
+  font-size: 18px;
+  font-weight: 700;
+  margin-left: 1px;
+}
+.score__label {
+  font-size: 12px;
+  color: var(--c-text-3);
+}
+.score__div {
+  width: 1px;
+  align-self: center;
+  height: 40px;
+  background: var(--c-border);
+}
+
+/* ---------- 结果页：逐题回顾 ---------- */
+.review-list {
+  width: 100%;
+  margin-top: 18px;
+}
+.review-list__title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--c-text-3);
+}
+.review-list__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* 题多时不把结果页撑得无限长 */
+  max-height: 300px;
+  overflow-y: auto;
+}
+.rl__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--c-border);
+  text-align: left;
+  font-size: 13px;
+  color: var(--c-text);
+}
+.rl__row:active {
+  background: var(--c-primary-weak);
+}
+.rl__no {
+  flex-shrink: 0;
+  width: 22px;
+  font-size: 11.5px;
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.rl__mark {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  font-weight: 700;
+}
+.rl__mark--ok {
+  color: var(--c-success);
+}
+.rl__mark--bad {
+  color: var(--c-danger);
+}
+.rl__mark--none {
+  color: var(--c-text-3);
+}
+.rl__q {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rl__arrow {
+  flex-shrink: 0;
+  font-size: 15px;
+  color: var(--c-text-3);
 }
 
 /* ---------- 每日一刷：分数与建议 ---------- */
