@@ -66847,7 +66847,7 @@
     "category": "CI/CD",
     "difficulty": "中等",
     "question": "Jenkins Pipeline 的核心概念是什么？写一个简单示例。",
-    "answer": "核心概念：1）Pipeline：流水线即代码（Jenkinsfile，Groovy DSL），版本化可 review；2）Stage：阶段划分（拉代码/构建/测试/部署），可视化展示；3）Step：具体步骤，最小执行单元；4）Agent：执行节点；5）Post：阶段结束后动作（always/success/failure，如发通知）；6）凭据通过 credentialsId 注入，不明文写。示例：pipeline { agent any; stages { stage(Build) { steps { sh mvn clean package } } stage(Deploy) { steps { sh scp target/app.jar user@host:/opt/ } } } post { failure { echo 构建失败 } } }。现代趋势：声明式语法优于脚本式。",
+    "answer": "核心概念：\n1. Pipeline：流水线即代码（Jenkinsfile，Groovy DSL），版本化可 review；\n2. Stage：阶段划分（拉代码/构建/测试/部署），可视化展示；\n3. Step：具体步骤，最小执行单元；\n4. Agent：执行节点；\n5. Post：阶段结束后动作（always/success/failure，如发通知）；\n6. 凭据通过 credentialsId 注入，不明文写。示例：pipeline { agent any; stages { stage(Build) { steps { sh mvn clean package } } stage(Deploy) { steps { sh scp target/app.jar user@host:/opt/ } } } post { failure { echo 构建失败 } } }。现代趋势：声明式语法优于脚本式。",
     "tags": [
       "Jenkins",
       "Pipeline",
@@ -70606,7 +70606,7 @@
     "category": "监控告警",
     "difficulty": "中等",
     "question": "Prometheus 的整体架构和工作原理是什么？",
-    "answer": "核心：1）Prometheus Server：定时（scrape_interval，默认15s）通过 HTTP 拉取（Pull）各 Exporter 的 /metrics 端点，时序数据存入本地 TSDB；2）Exporter：node_exporter（主机）、mysqld_exporter、redis_exporter、blackbox_exporter（探活），应用通过 client 库暴露自定义指标；3）服务发现：配合 K8s 自动发现 Pod/Service；4）PromQL：查询语言，rate(http_requests_total[5m]) 算 QPS；5）Alertmanager：接收告警，去重、分组、路由（按标签发不同接收人）、静默和抑制（如主机宕机抑制其所有服务告警）；6）Grafana 可视化。Push 场景（短生命周期任务）用 Pushgateway。",
+    "answer": "核心：\n1. Prometheus Server：定时（scrape_interval，默认15s）通过 HTTP 拉取（Pull）各 Exporter 的 /metrics 端点，时序数据存入本地 TSDB；\n2. Exporter：node_exporter（主机）、mysqld_exporter、redis_exporter、blackbox_exporter（探活），应用通过 client 库暴露自定义指标；\n3. 服务发现：配合 K8s 自动发现 Pod/Service；\n4. PromQL：查询语言，rate(http_requests_total[5m]) 算 QPS；\n5. Alertmanager：接收告警，去重、分组、路由（按标签发不同接收人）、静默和抑制（如主机宕机抑制其所有服务告警）；\n6. Grafana 可视化。Push 场景（短生命周期任务）用 Pushgateway。",
     "tags": [
       "Prometheus",
       "时序数据库",
@@ -77243,7 +77243,7 @@
     "category": "综合场景题",
     "difficulty": "困难",
     "question": "用户反馈网站打开很慢，给出你的全链路排查思路。",
-    "answer": "[[图:slow-service-layers]]\n\n自顶向下分层：1）界定范围：是个别用户还是全部？某页面还是全站？（个别用户指向本地网络/运营商线路；全站指向服务端）；2）客户端侧：F12 看 Network 瀑布图——慢在 DNS、TCP连接、TTFB（服务端响应）、还是内容下载/前端渲染；3）网络链路：ping/mtr 看延迟丢包，CDN 是否命中（回源慢？）；4）接入层：Nginx access log 看 upstream_response_time 和 request_time 的差值——差大说明后端慢；连接数是否打满、是否有大量 TIME_WAIT；5）应用层：APM（SkyWalking）看 trace 哪个服务/哪个 SQL 慢，线程池是否打满、GC 是否频繁；6）依赖层：DB 慢查询、锁等待，Redis 慢查询/大key，下游 API 超时；7）资源层：CPU/内存/磁盘IO/带宽是否打满。面试表达要点：先分层隔离缩小范围，再说每层看什么指标用什么工具。",
+    "answer": "[[图:slow-service-layers]]\n\n自顶向下分层：\n1. 界定范围：是个别用户还是全部？某页面还是全站？（个别用户指向本地网络/运营商线路；全站指向服务端）；\n2. 客户端侧：F12 看 Network 瀑布图——慢在 DNS、TCP连接、TTFB（服务端响应）、还是内容下载/前端渲染；\n3. 网络链路：ping/mtr 看延迟丢包，CDN 是否命中（回源慢？）；\n4. 接入层：Nginx access log 看 upstream_response_time 和 request_time 的差值——差大说明后端慢；连接数是否打满、是否有大量 TIME_WAIT；\n5. 应用层：APM（SkyWalking）看 trace 哪个服务/哪个 SQL 慢，线程池是否打满、GC 是否频繁；\n6. 依赖层：DB 慢查询、锁等待，Redis 慢查询/大key，下游 API 超时；\n7. 资源层：CPU/内存/磁盘IO/带宽是否打满。面试表达要点：先分层隔离缩小范围，再说每层看什么指标用什么工具。",
     "tags": [
       "全链路",
       "性能排查",
@@ -77257,7 +77257,7 @@
     "category": "综合场景题",
     "difficulty": "困难",
     "question": "凌晨3点，监控系统告警：多台服务器 CPU 同时飙高，部分服务超时。你的处理流程？",
-    "answer": "1）先止血保业务：摘除异常节点（LB 权重调0、K8s cordon+drain），让健康节点扛流量；判断是否攻击（流量来源是否集中、异常UA）——是攻击则启用 WAF/封 IP；[[图:midnight-cpu-surge]]\n\n2）定位：us 高还是 sy 高——us 高找进程（top -H 定位线程+jstack），凌晨3点重点怀疑定时任务雪崩（crontab/对账任务/调度平台）、batch job、消息队列突增消费、重试风暴；sy 高看上下文切换和软中断；wa 高看磁盘 IO（备份任务、日志狂写）；3）注意多台同时高的关联性：共同的外部依赖（某下游超时导致重试风暴）、共用存储/NFS 抖动、同宿主机问题；4）恢复与复盘：找到根因后修复，输出故障报告（时间线、影响面、根因、改进项：加限流、任务错峰、监控补盲点）。面试加分点：先说止血再说根因，凌晨3点这个时间线索指向定时任务。",
+    "answer": "1）先止血保业务：摘除异常节点（LB 权重调0、K8s cordon+drain），让健康节点扛流量；判断是否攻击（流量来源是否集中、异常UA）——是攻击则启用 WAF/封 IP；[[图:midnight-cpu-surge]]\n\n2. 定位：us 高还是 sy 高——us 高找进程（top -H 定位线程+jstack），凌晨3点重点怀疑定时任务雪崩（crontab/对账任务/调度平台）、batch job、消息队列突增消费、重试风暴；sy 高看上下文切换和软中断；wa 高看磁盘 IO（备份任务、日志狂写）；\n3. 注意多台同时高的关联性：共同的外部依赖（某下游超时导致重试风暴）、共用存储/NFS 抖动、同宿主机问题；\n4. 恢复与复盘：找到根因后修复，输出故障报告（时间线、影响面、根因、改进项：加限流、任务错峰、监控补盲点）。面试加分点：先说止血再说根因，凌晨3点这个时间线索指向定时任务。",
     "tags": [
       "故障处理",
       "CPU",
@@ -77271,7 +77271,7 @@
     "category": "综合场景题",
     "difficulty": "困难",
     "question": "线上数据库主库磁盘 IO 使用率 100%，业务开始超时，如何处理？",
-    "answer": "1）止血：确认读写分离架构下把读流量全部切到从库；开启限流保护（ProxySQL 连接限制、应用侧降级开关关掉非核心写功能）；紧急扩容磁盘 IO（云盘升 IOPS）；2）定位 IO 来源：iostat -x 看哪块盘 util 100%、await 多高；iotop 找 IO 最高的进程；进 MySQL：show processlist 看是否有大查询、大批量写入、DDL（alter table 重建表最吃IO）、binlog 刷盘压力；3）针对性处置：kill 大查询，长事务提交/回滚（大事务回滚本身也吃IO，评估后选择），暂停备份任务，评估 sync_binlog 降级策略（牺牲少量持久性换IO，需审批）；4）中期优化：热点表加缓存、慢SQL治理、磁盘换 SSD/提升 IOPS、归档冷数据；5）预防：binlog/数据/日志分盘部署，IO 使用率监控提前到70%告警。",
+    "answer": "1. 止血：确认读写分离架构下把读流量全部切到从库；开启限流保护（ProxySQL 连接限制、应用侧降级开关关掉非核心写功能）；紧急扩容磁盘 IO（云盘升 IOPS）；\n2. 定位 IO 来源：iostat -x 看哪块盘 util 100%、await 多高；iotop 找 IO 最高的进程；进 MySQL：show processlist 看是否有大查询、大批量写入、DDL（alter table 重建表最吃IO）、binlog 刷盘压力；\n3. 针对性处置：kill 大查询，长事务提交/回滚（大事务回滚本身也吃IO，评估后选择），暂停备份任务，评估 sync_binlog 降级策略（牺牲少量持久性换IO，需审批）；\n4. 中期优化：热点表加缓存、慢SQL治理、磁盘换 SSD/提升 IOPS、归档冷数据；\n5. 预防：binlog/数据/日志分盘部署，IO 使用率监控提前到70%告警。",
     "tags": [
       "数据库",
       "磁盘IO",
@@ -77285,7 +77285,7 @@
     "category": "综合场景题",
     "difficulty": "中等",
     "question": "设计一次新版本上线方案：从上线前检查、发布过程到回滚预案。",
-    "answer": "上线前：1）代码冻结，变更评审（review+测试报告）；2）检查发布窗口（低峰期）、通知相关方、值班安排；3）数据库变更先行且必须可回滚——DDL 用 online DDL 工具（pt-online-schema-change/gh-ost）或先加字段后发布代码的兼容方案，禁止先改代码后改库；4）确认监控看板、告警就绪，回滚命令预演过；5）制品从测试环境晋级（同一镜像，不重新构建）。发布过程：金丝雀灰度 1%到10%到50%到100%，每档观察5-10分钟核心指标（错误率、P99、饱和度），异常即暂停。回滚预案：1）代码回滚：切回旧版本（rollout undo/蓝绿切换），必须验证旧版本与新数据结构兼容；2）DB 回滚最难点：加字段可回滚（灰度期未写入新字段时），删字段/改类型不可逆——破坏性变更拆两次发布（第一次加新列双写，第二次稳定后切读再删旧列）；3）回滚后验证核心业务，出故障报告。",
+    "answer": "上线前：\n1. 代码冻结，变更评审（review+测试报告）；\n2. 检查发布窗口（低峰期）、通知相关方、值班安排；\n3. 数据库变更先行且必须可回滚——DDL 用 online DDL 工具（pt-online-schema-change/gh-ost）或先加字段后发布代码的兼容方案，禁止先改代码后改库；\n4. 确认监控看板、告警就绪，回滚命令预演过；\n5. 制品从测试环境晋级（同一镜像，不重新构建）。发布过程：金丝雀灰度 1%到10%到50%到100%，每档观察5-10分钟核心指标（错误率、P99、饱和度），异常即暂停。\n6. 回滚预案：① 代码回滚：切回旧版本（rollout undo/蓝绿切换），必须验证旧版本与新数据结构兼容； ② DB 回滚最难点：加字段可回滚（灰度期未写入新字段时），删字段/改类型不可逆——破坏性变更拆两次发布（第一次加新列双写，第二次稳定后切读再删旧列）； ③ 回滚后验证核心业务，出故障报告。",
     "tags": [
       "发布方案",
       "回滚",
@@ -77299,7 +77299,7 @@
     "category": "综合场景题",
     "difficulty": "中等",
     "question": "电商大促（双11类）前，作为运维你要做哪些保障工作？",
-    "answer": "1）容量规划：基于往年数据+压测结果做容量评估，核心链路（下单/支付）按预估峰值3-5倍扩容，全链路压测摸出瓶颈点（限流阈值、线程池、DB 连接池、缓存热点）；2）架构预案：降级开关预案（非核心功能如推荐/评论可一键关闭）、限流熔断阈值配置、静态资源 CDN 预热、缓存预热防击穿；3）稳定性检查：慢SQL清零、核心接口超时治理、连接池/队列容量核对、证书有效期、第三方依赖（短信/支付）的降级方案；4）变更冻结：大促前N天禁止一切非必要变更；5）监控与值守：大屏+专项看板、核心指标秒级监控、告警升级链路、作战室与 oncall 排班、应急预案演练；6）大促中盯核心指标，突发按预案降级扩容；7）大促后复盘、容量回收。",
+    "answer": "1. 容量规划：基于往年数据+压测结果做容量评估，核心链路（下单/支付）按预估峰值3-5倍扩容，全链路压测摸出瓶颈点（限流阈值、线程池、DB 连接池、缓存热点）；\n2. 架构预案：降级开关预案（非核心功能如推荐/评论可一键关闭）、限流熔断阈值配置、静态资源 CDN 预热、缓存预热防击穿；\n3. 稳定性检查：慢SQL清零、核心接口超时治理、连接池/队列容量核对、证书有效期、第三方依赖（短信/支付）的降级方案；\n4. 变更冻结：大促前N天禁止一切非必要变更；\n5. 监控与值守：大屏+专项看板、核心指标秒级监控、告警升级链路、作战室与 oncall 排班、应急预案演练；\n6. 大促中盯核心指标，突发按预案降级扩容；\n7. 大促后复盘、容量回收。",
     "tags": [
       "大促保障",
       "容量",
@@ -77313,7 +77313,7 @@
     "category": "综合场景题",
     "difficulty": "困难",
     "question": "公司要求把传统物理机/虚拟机上的应用迁移到 Kubernetes，你会如何规划这次迁移？",
-    "answer": "[[图:k8s-migration-plan]]\n\n1）评估与规划：梳理应用清单，分类——无状态应用（最易迁）、有状态应用（需 Operator/StatefulSet 或应用先迁数据留在库）、不适合迁的（强依赖物理硬件/特殊内核模块）；制定分批迁移计划和回退方案；2）基础平台建设：K8s 集群高可用、网络方案选型（CNI）、Ingress、镜像仓库 Harbor、CI/CD 改造（构建镜像、Helm 模板化）、监控日志接入（Prometheus Operator、Loki）、命名空间与 RBAC 隔离、ResourceQuota；3）应用改造：容器化（Dockerfile、健康检查、优雅停机 preStop、配置外置 ConfigMap/Secret、无状态化改造）、HPA 弹性配置、PDB 配置；4）灰度迁移：双跑验证（新旧环境并行，流量按比例切换）、数据层同步、切流用 DNS/网关权重控制，保留旧环境观察期作为快速回退；5）收尾：旧环境下线计划、团队培训、故障演练（混沌工程）、成本对比复盘。关键原则：先平台后应用、先无状态后有状态、随时可回退。",
+    "answer": "[[图:k8s-migration-plan]]\n\n1. 评估与规划：梳理应用清单，分类——无状态应用（最易迁）、有状态应用（需 Operator/StatefulSet 或应用先迁数据留在库）、不适合迁的（强依赖物理硬件/特殊内核模块）；制定分批迁移计划和回退方案；\n2. 基础平台建设：K8s 集群高可用、网络方案选型（CNI）、Ingress、镜像仓库 Harbor、CI/CD 改造（构建镜像、Helm 模板化）、监控日志接入（Prometheus Operator、Loki）、命名空间与 RBAC 隔离、ResourceQuota；\n3. 应用改造：容器化（Dockerfile、健康检查、优雅停机 preStop、配置外置 ConfigMap/Secret、无状态化改造）、HPA 弹性配置、PDB 配置；\n4. 灰度迁移：双跑验证（新旧环境并行，流量按比例切换）、数据层同步、切流用 DNS/网关权重控制，保留旧环境观察期作为快速回退；\n5. 收尾：旧环境下线计划、团队培训、故障演练（混沌工程）、成本对比复盘。关键原则：先平台后应用、先无状态后有状态、随时可回退。",
     "tags": [
       "K8s",
       "迁移",
