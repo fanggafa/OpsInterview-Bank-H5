@@ -275,13 +275,13 @@ export const STORAGE_KEYS = {
   SETTINGS: 'oi_settings',
   PROGRESS: 'oi_progress',
   /**
-   * 每日一刷进行中的题组快照。
+   * 刷题进行中的会话快照（普通刷题与每日一刷共用）。
    *
-   * 存的是「这一轮抽到哪些题 + 每题答了什么 + 剩余时间」。
+   * 存的是「这一轮抽到哪些题 + 每题答了什么 + 当前位置（+ 每日一刷的剩余时间）」。
    * 用 sessionStorage 而不是 localStorage：换标签页 / 关掉浏览器就重开一轮，
    * 只有「手滑刷新」才恢复 —— 这才是用户抱怨的那个场景。
    */
-  DRILL_SESSION: 'oi_drill_session',
+  PRACTICE_SESSION: 'oi_practice_session',
 }
 
 /**

@@ -30,11 +30,16 @@ function goBack() {
       @click="goBack"
     >
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <!--
+          与刷题页顶栏用同一个「带横线的返回箭头」。
+          全局只保留这一种返回图标，避免同一个动作在不同页面长出两张脸。
+          宽度取 20 而非 22：20 是这套图标里的标准尺寸，视觉重量更稳。
+        -->
         <path
-          d="M15 5l-7 7 7 7"
+          d="M20 12H5M11 6l-6 6 6 6"
           fill="none"
           stroke="currentColor"
-          stroke-width="2"
+          stroke-width="1.9"
           stroke-linecap="round"
           stroke-linejoin="round"
         />

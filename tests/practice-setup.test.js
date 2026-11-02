@@ -193,12 +193,25 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
     expect(src).toMatch(/M20 12H5M11 6l-6 6 6 6/)
   })
 
-  it('返回按钮有淡底色块（与其它块状控件同一视觉语言，不显孤立）', () => {
+  it('返回按钮与全站 AppHeader 统一（透明底 / 圆形 / 同款图标）', () => {
+    /**
+     * 2026-11：原来这里要求刷题页返回按钮「有淡底色块 + 描边圆角」，
+     * 但 AppHeader 的返回按钮是**透明圆形** —— 两个页面的返回键长得不一样，
+     * 用户反馈「返回键不统一、看着丑」。
+     * 现在统一到 AppHeader 那套，只有 :active 给反馈。
+     */
     const src = readFileSync(resolve(process.cwd(), 'src/views/PracticeView.vue'), 'utf8')
     const block = src.slice(src.indexOf('.ptop__back {'), src.indexOf('.ptop__back:active'))
-    expect(block).toMatch(/background:\s*var\(--c-card\)/)
-    expect(block).toMatch(/border:\s*1px solid var\(--c-border\)/)
-    expect(block).toMatch(/border-radius:\s*9px/)
+    expect(block).toMatch(/background:\s*transparent/)
+    expect(block).toMatch(/border:\s*0/)
+    expect(block).toMatch(/border-radius:\s*50%/)
+
+    // 图标也要是同一个（带横线的返回箭头）
+    expect(src).toContain('d="M20 12H5M11 6l-6 6 6 6"')
+
+    // AppHeader 也用同一图标
+    const header = readFileSync(resolve(process.cwd(), 'src/components/AppHeader.vue'), 'utf8')
+    expect(header).toContain('d="M20 12H5M11 6l-6 6 6 6"')
   })
 
   it('点返回回到「选择练习方式」页（而不是跳走）', async () => {

@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -75,7 +75,7 @@ function unmountKeepStorage() {
 }
 
 function readSnap() {
-  const raw = sessionStorage.getItem(STORAGE_KEYS.DRILL_SESSION)
+  const raw = sessionStorage.getItem(STORAGE_KEYS.PRACTICE_SESSION)
   return raw ? JSON.parse(raw) : null
 }
 

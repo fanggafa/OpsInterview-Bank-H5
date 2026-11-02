@@ -253,7 +253,7 @@ function build() {
      * 刷新等于重开一轮，之前的作答和剩余时间全没了。
      * 这里先查会话快照：命中就原样恢复；没有才抽新题。
      */
-    const snap = isDrill.value ? readDrillSession() : null
+    const snap = isDrill.value ? readPracticeSession() : null
     if (snap) {
       // 按 id 还原题序（题库可能已变，找不到的题直接跳过，不致于整组报废）
       const restored = snap.ids
@@ -298,9 +298,41 @@ function build() {
      * 不留这一步的话，新抽的题组要等到「第一次作答」或「第一次倒计时 tick」
      * 才被保存 —— 这中间刷新一下，题组就丢了，等于又换一套题。
      */
-    saveDrillSession()
+    savePracticeSession()
     ready.value = true
     return
+  }
+
+  /**
+   * 刷题页也优先恢复会话快照 —— 保证**刷新后题目不变**。
+   *
+   * 不恢复的话，随机模式下 buildQueue 会重新洗牌，刷新一次就换一批题：
+   * 用户抱怨的「刷新题目变了」就是这个。
+   *
+   * 只在「已开始答题」且四项条件（mode/studyMode/category/review）全一致时恢复；
+   * 否则按正常流程重抽（比如换了模式、换了分类）。
+   */
+  const snap = readPracticeSession()
+  if (snap && started.value) {
+    const restored = snap.ids
+      .map((id) => bank.questionMap.get(id))
+      .filter(Boolean)
+    // 题库可能已变（删题/加题），只剩很少几题时不如重抽
+    if (restored.length >= Math.min(snap.ids.length, 3)) {
+      queue.value = restored
+      cursor.value = Math.min(Math.max(0, snap.cursor), restored.length - 1)
+      roundAnswers.value = snap.roundAnswers || {}
+      resumed.value = false
+      expanded.value = studyMode.value === 'memorize'
+      finished.value = false
+      resetChoice()
+      restoreChoice(queue.value[cursor.value])
+      startedAt.value = snap.startedAt || Date.now()
+      elapsedSec.value = snap.elapsedSec || 0
+      ready.value = true
+      persistProgress()
+      return
+    }
   }
 
   const wrongIds = new Set(study.wrongList.map((q) => q.id))
@@ -345,6 +377,13 @@ function build() {
   elapsedSec.value = 0
   // 倒计时只对每日一刷生效（内部判断）
   startCountdown()
+  /**
+   * 抽完题立刻落一次快照。
+   *
+   * 不落的话，刷新时读不到快照 → 重新 buildQueue → 随机模式重新洗牌，
+   * 题目就变了。用户抱怨的「刷新题目变了」正是缺这一步。
+   */
+  savePracticeSession()
   ready.value = true
 }
 
@@ -355,6 +394,15 @@ function resetChoice() {
 }
 
 onMounted(() => {
+  /**
+   * 刷新时 URL 里带着 started=1 → 直接回到答题态，不停在「选择练习方式」。
+   *
+   * 这是用户在刷题页刷新后最直接的抱怨：一刷新就退回选模式，还得再点一次。
+   * 复习赛本来就跳过选择页（build 里自己置 started），这里只处理普通刷题。
+   */
+  const wantStarted = route.query.started === '1' && !isReview.value
+  if (wantStarted) started.value = true
+
   // 刷题要用答案：先取索引，再按当前分类补答案分片。
   // category 为空表示「全部分类」，此时需要全量（用户要跨分类抽题）。
   bank
@@ -458,6 +506,8 @@ function goTo(index) {
     restoreChoice(queue.value[index])
     slideDir.value = ''
     persistProgress()
+    // 切题也要更新会话快照，否则刷新会回到旧位置
+    savePracticeSession()
     animating = false
   }, 180)
 }
@@ -564,7 +614,7 @@ function startCountdown(fromSec) {
     const left = Math.max(0, Math.round((endAt - Date.now()) / 1000))
     remainSec.value = left
     // 每秒同步剩余时间到快照：刷新时才能接着原来的时钟跑
-    saveDrillSession()
+    savePracticeSession()
     if (left <= 0) {
       stopCountdown()
       // 时间到：自动交卷。已答的照常计分，未答的算错
@@ -588,14 +638,22 @@ function stopCountdown() {
 /**
  * 读取会话里的进行中快照。没有 / 损坏 / 不属于当前模式 → null。
  *
- * 只认 review 匹配的快照：万一是上一轮别的模式留下的，恢复出来会串味。
+ * **普通刷题与每日一刷共用同一套快照**。
+ * 早先只有每日一刷存快照，普通刷题刷新后会重新 buildQueue ——
+ * 随机模式下就是「换了一批题」，用户抱怨「刷新题目变了」。
+ *
+ * 恢复条件要严格匹配：mode + studyMode + category + review 全部一致，
+ * 否则宁可重抽也不串味。
  */
-function readDrillSession() {
-  const snap = readSessionJSON(STORAGE_KEYS.DRILL_SESSION, null, (v) => {
+function readPracticeSession() {
+  const snap = readSessionJSON(STORAGE_KEYS.PRACTICE_SESSION, null, (v) => {
     return v && typeof v === 'object' && Array.isArray(v.ids) && v.ids.length > 0
   })
   if (!snap) return null
   if (snap.review !== reviewKind.value) return null
+  if (snap.mode !== mode.value) return null
+  if (snap.studyMode !== (isDrill.value ? 'practice' : studyMode.value)) return null
+  if ((snap.category || '') !== (category.value || '')) return null
   return snap
 }
 
@@ -606,12 +664,18 @@ function readDrillSession() {
  * 频繁写是为了让「刷新」丢的数据尽量少 —— 但 sessionStorage 是纯内存操作，
  * 这点开销可以忽略，不必节流。
  */
-function saveDrillSession() {
-  if (!isDrill.value) return
+function savePracticeSession() {
+  // 已主动退出：不再写快照（否则 build 重跑会把刚清掉的写回来）
+  if (exited.value) return
   // 交卷后不再保存：成绩单不该能被「刷新回来继续答题」
   if (finished.value || !started.value || !queue.value.length) return
-  writeSessionJSON(STORAGE_KEYS.DRILL_SESSION, {
+  // 没真正开始答题（还在选择页）时不存
+  if (!isReview.value && !started.value) return
+  writeSessionJSON(STORAGE_KEYS.PRACTICE_SESSION, {
     review: reviewKind.value,
+    mode: mode.value,
+    studyMode: isDrill.value ? 'practice' : studyMode.value,
+    category: category.value,
     ids: queue.value.map((q) => q.id),
     cursor: cursor.value,
     roundAnswers: roundAnswers.value,
@@ -622,8 +686,8 @@ function saveDrillSession() {
 }
 
 /** 清掉快照（交卷 / 正常退出时） */
-function clearDrillSession() {
-  removeSessionJSON(STORAGE_KEYS.DRILL_SESSION)
+function clearPracticeSession() {
+  removeSessionJSON(STORAGE_KEYS.PRACTICE_SESSION)
 }
 
 function finish() {
@@ -641,7 +705,7 @@ function finish() {
    * 快照存在的意义是「刷新后能接着答」；已经交卷的轮次不该被恢复，
    * 否则刷新会回到答题态、还能改答案，成绩单就失去意义了。
    */
-  clearDrillSession()
+  clearPracticeSession()
   persistProgress()
 }
 
@@ -698,7 +762,7 @@ function commitResult(isPassed) {
     [q.id]: { status: s, selected: selected.value.slice() },
   }
   // 每答一题就落快照：刷新后能接着答，而不是从头再来
-  saveDrillSession()
+  savePracticeSession()
 
   /**
    * 判定后**停在本题**，不自动翻页。
@@ -783,7 +847,7 @@ function restart() {
      * 如果这里不清，点「再来一轮」会恢复上一轮的题组 ——
      * 等于「再考一次」变成了「重看一遍原题」，与需求正好相反。
      */
-    clearDrillSession()
+    clearPracticeSession()
     build()
     return
   }
@@ -948,6 +1012,17 @@ const progressInfo = computed(() =>
 /** 选定练习方式并开始 */
 function startStudy(next) {
   started.value = true
+  // 重新开始答题：解除「已退出」封锁
+  exited.value = false
+  /**
+   * 把「已开始答题」写进 URL。
+   *
+   * started 只存在内存里，刷新就复位 → 页面回落到「选择练习方式」，
+   * 用户抱怨「刷题页一刷新就退回选模式」。写进 URL 后刷新能读回来。
+   */
+  if (route.query.started !== '1') {
+    router.replace({ path: '/practice', query: { ...route.query, started: '1' } })
+  }
   if (studyMode.value !== next) {
     switchStudyMode(next)
   } else {
@@ -974,6 +1049,16 @@ function startStudy(next) {
  */
 const confirmExit = ref(false)
 
+/**
+ * 已主动退出的标记。
+ *
+ * doExit() 会先清快照，但紧接着的 router.replace 会触发 build() 重跑，
+ * 而 build() 结尾会 savePracticeSession() —— 于是刚清掉的快照又被写回来
+ * （里面是重抽的新队列），刷新后又能「恢复」出一轮本不该存在的数据。
+ * 这个标记让 save 在退出后彻底闭嘴，直到用户重新点「做题/背题」开始新一轮。
+ */
+const exited = ref(false)
+
 function backToPicker() {
   // 每日一刷答题中：先弹页内确认（不用 window.confirm —— 微信/部分安卓 WebView
   // 会静默返回 false，表现为「点了没反应」）
@@ -987,7 +1072,7 @@ function backToPicker() {
 /** 用户点「确定退出」：清掉快照再离开，避免下次进来又恢复这一轮 */
 function confirmExitYes() {
   confirmExit.value = false
-  clearDrillSession()
+  clearPracticeSession()
   doExit()
 }
 
@@ -999,12 +1084,26 @@ function confirmExitNo() {
 function doExit() {
   // 复习赛没有「选择练习方式」这一步，返回应当是退出到首页
   if (isReview.value) {
+    exited.value = true
+    clearPracticeSession()
     router.push('/')
     return
   }
   started.value = false
+  exited.value = true
+  // 先清快照，再改路由 —— 顺序反了的话 build 重跑会把旧的写回来
+  clearPracticeSession()
   resumeToast.value = ''
   clearTimeout(resumeTimer)
+  /**
+   * 回到「选择练习方式」时要从 URL 里摘掉 started。
+   * 否则用户刷新一下又被送回答题态，等于「退不出去」。
+   */
+  if (route.query.started === '1') {
+    const next = { ...route.query }
+    delete next.started
+    router.replace({ path: '/practice', query: next })
+  }
 }
 
 const headerTitle = computed(() => (category.value ? category.value : '刷题'))
@@ -1729,6 +1828,16 @@ const emptyDesc = computed(() => {
  * - 加一个与「顺序胶囊」同款淡底色圆角方块，让它成为「一排控件」中的一员
  * - 颜色用 text-2（不是更浅的 text-3），避免被当成禁用态
  */
+/**
+ * 返回按钮。
+ *
+ * **与全站 AppHeader 的返回按钮统一**：同一个动作不该在不同页面长出两张脸。
+ * 之前这里是有底色的圆角方块 + 描边，而 AppHeader 是透明圆形，
+ * 两个页面来回切时会觉得「返回键不一样」。
+ *
+ * 统一后：透明底 + 圆形 + 同款图标，只有 :active 给一层淡色反馈。
+ * 尺寸保留 32（这是紧凑顶栏 48px 高，用 44 会顶满、失去紧凑感）。
+ */
 .ptop__back {
   flex-shrink: 0;
   width: 32px;
@@ -1736,14 +1845,13 @@ const emptyDesc = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--c-text-2);
-  background: var(--c-card);
-  border: 1px solid var(--c-border);
-  border-radius: 9px;
+  color: var(--c-text);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
 }
 .ptop__back:active {
   background: var(--c-primary-weak);
-  border-color: var(--c-primary);
   color: var(--c-primary);
 }
 
