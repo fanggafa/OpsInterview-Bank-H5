@@ -244,7 +244,19 @@ export const useStudyStore = defineStore('study', () => {
    * 返回项同时带 reviewed / total，界面可显示「已刷 5/30」，
    * 让用户知道这份错误率是在多大样本上得出的。
    */
+  /**
+   * 参赛门槛：一个分类要**刷过该分类题量的 33%**才参与排行。
+   *
+   * 为什么不再用「刷过 3 题」：3 题在 100+ 题的分类里只占 3%，
+   * 刷三道全错就把这个分类判成 100% 薄弱，结论站不住。
+   * 按比例才有可比性 —— 大分类和小分类都得刷够三成，才算「真的刷过」。
+   *
+   * 仍保留一个**下限 3 题**：很小的分类（如 32 题的 Python）刷到 33% 是 11 题，
+   * 但如果某分类只有 6 题，33% 才 2 题，2 题的样本同样不可信。
+   * 所以门槛取 max(3 题, 33%)。
+   */
   const MIN_SAMPLE = 3
+  const MIN_COVERAGE = 0.33
   const weakCategories = computed(() => {
     const stats = new Map()
 
@@ -261,8 +273,15 @@ export const useStudyStore = defineStore('study', () => {
     })
 
     return Array.from(stats.values())
-      .filter((s) => s.reviewed >= MIN_SAMPLE && s.wrong > 0)
-      .map((s) => ({ ...s, rate: ratio(s.wrong, s.reviewed) }))
+      .filter((s) => {
+        if (s.wrong === 0) return false
+        const need = Math.max(MIN_SAMPLE, Math.ceil(s.total * MIN_COVERAGE))
+        return s.reviewed >= need
+      })
+      .map((s) => {
+        const need = Math.max(MIN_SAMPLE, Math.ceil(s.total * MIN_COVERAGE))
+        return { ...s, rate: ratio(s.wrong, s.reviewed), need }
+      })
       .sort((a, b) => b.rate - a.rate || b.wrong - a.wrong)
   })
 

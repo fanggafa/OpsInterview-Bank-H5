@@ -157,7 +157,7 @@ describe('薄弱环节详情页', () => {
     expect(wrapper.findAll('.item')).toHaveLength(7)
   })
 
-  it('每项显示错误率、样本量与「已刷 x/y」', async () => {
+  it('每行显示错误率与紧凑样本量（错 n · 刷 x/y）', async () => {
     study.records = {
       1: rec({ inWrong: true }),
       2: rec({ inWrong: true }),
@@ -166,8 +166,14 @@ describe('薄弱环节详情页', () => {
     const { wrapper } = await mountAt('/weak', WeakView)
     const item = wrapper.find('.item')
     expect(item.find('.item__rate').text()).toBe('67%')
-    expect(item.find('.item__meta').text()).toContain('错')
-    expect(item.find('.item__meta').text()).toContain('已刷 3/3 题')
+    /**
+     * 2026-11：为了把 26 个分类压进更少屏幕，样本量文案从
+     * 「错 2 题 · 已刷 3/3 题」精简成「错 2 · 刷 3/3」——
+     * 行内放得下，语义也没丢。
+     */
+    const meta = item.find('.item__meta').text()
+    expect(meta).toContain('错')
+    expect(meta).toContain('刷 3/3')
   })
 
   it('顶部小结指出最弱分类', async () => {
@@ -183,15 +189,44 @@ describe('薄弱环节详情页', () => {
     expect(wrapper.find('.summary__main').text()).toContain('MySQL')
   })
 
-  it('「刷这个分类的错题」跳到 practice?mode=wrong&category=', async () => {
+  it('整行是纯展示区，不可点、不触发任何跳转', async () => {
     study.records = {
       1: rec({ inWrong: true }),
       2: rec({ inWrong: true }),
       3: rec({ inWrong: true }),
     }
     const { wrapper, router } = await mountAt('/weak', WeakView)
-    const primary = wrapper.findAll('.item__btn').find((b) => b.text().includes('刷这个分类的错题'))
-    await primary.trigger('click')
+    /**
+     * 2026-11：整行最终定为**不可点**。
+     *
+     * 走过两个弯路：
+     * ① 整行可点 = 直接开刷  → 用户：「点文字/进度条想看看数据，却被丢进练习页」
+     * ② 整行可点 = 进题库页  → 用户：「整行就显示这个进度条不行吗，非得跳转」
+     * 结论：数据展示就是展示，本页唯一操作是右侧「刷错题」。
+     */
+    const info = wrapper.find('.item__info')
+    expect(info.exists()).toBe(true)
+    // 是 div 而不是 button —— 不该有任何可点语义
+    expect(info.element.tagName).toBe('DIV')
+
+    const before = router.currentRoute.value.fullPath
+    await info.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe(before)
+  })
+
+  it('「刷错题」是明确文字按钮（不是难懂的图标），点了进 practice', async () => {
+    study.records = {
+      1: rec({ inWrong: true }),
+      2: rec({ inWrong: true }),
+      3: rec({ inWrong: true }),
+    }
+    const { wrapper, router } = await mountAt('/weak', WeakView)
+    const act = wrapper.find('.item__act')
+    expect(act.exists()).toBe(true)
+    // 用文字而不是纯图标：图标「看不清也看不明白」
+    expect(act.text()).toContain('刷错题')
+    await act.trigger('click')
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/practice')
@@ -199,19 +234,28 @@ describe('薄弱环节详情页', () => {
     expect(router.currentRoute.value.query.category).toBe('MySQL')
   })
 
-  it('「看题库」跳到 bank?category=', async () => {
+  it('行尾不再有含义不清的小图标按钮', async () => {
     study.records = {
       1: rec({ inWrong: true }),
       2: rec({ inWrong: true }),
       3: rec({ inWrong: true }),
     }
-    const { wrapper, router } = await mountAt('/weak', WeakView)
-    const ghost = wrapper.findAll('.item__btn').find((b) => b.text().includes('看题库'))
-    await ghost.trigger('click')
-    await flushPromises()
+    const { wrapper } = await mountAt('/weak', WeakView)
+    // 试过的书本图标已移除
+    expect(wrapper.find('.item__browse').exists()).toBe(false)
+    // 双箭头也移除了（整行就是入口，不需要再提示箭头）
+    expect(wrapper.find('.item__chevron').exists()).toBe(false)
+  })
 
-    expect(router.currentRoute.value.path).toBe('/bank')
-    expect(router.currentRoute.value.query.category).toBe('MySQL')
+  it('卡片不再塞整块大按钮（27 个分类时页面不该被撑长）', async () => {
+    study.records = {
+      1: rec({ inWrong: true }),
+      2: rec({ inWrong: true }),
+      3: rec({ inWrong: true }),
+    }
+    const { wrapper } = await mountAt('/weak', WeakView)
+    expect(wrapper.find('.item__acts').exists()).toBe(false)
+    expect(wrapper.find('.item__btn').exists()).toBe(false)
   })
 
   it('错误率条宽度按比例（100% → 全宽）', async () => {
