@@ -17,6 +17,11 @@
 > 二级页的返回按钮据此回到该页（而不是写死某个目标）。
 > `from` 必须在白名单内，防止被构造成任意跳转；二级页内部再跳转时要**保留** `from`。
 
+> **「返回」只有一种长相**：图标统一是带横线的 `←`（`d="M20 12H5M11 6l-6 6 6 6"`），
+> 外观统一是**透明底 + 圆形**，只在 `:active` 给一层淡色反馈。
+> 常规页用 `AppHeader`（44×44）；刷题页是 48px 紧凑顶栏，尺寸降到 32×32，
+> **但底色/边框/圆角/图标必须与 AppHeader 一致** —— 同一个动作不该在不同页面长出两张脸。
+
 ## 目录结构
 
 ```
@@ -148,7 +153,21 @@ studyStore（records / favorites / progress）→ localStorage
 
 | key | 结构 | 用途 |
 |---|---|---|
-| `oi_drill_session` | `{ review, ids, cursor, roundAnswers, startedAt, elapsedSec, remainSec }` | 每日一刷进行中快照：**刷新不丢**题组/作答/倒计时 |
+| `oi_practice_session` | `{ review, mode, studyMode, category, ids, cursor, roundAnswers, startedAt, elapsedSec, remainSec }` | 刷题进行中快照：**刷新不丢**题组 / 当前位置 / 作答（每日一刷另含倒计时） |
+
+**普通刷题与每日一刷共用这一份快照**。
+
+> 早先只有每日一刷存快照，普通刷题刷新后会重新 `buildQueue` —— 随机模式下就是
+> 「换了一批题」，用户抱怨的「刷新题目变了」正是这个。
+
+恢复条件是**严格匹配**：`review` / `mode` / `studyMode` / `category` 四项全一致才恢复，
+否则宁可重抽也不串味（比如用户换了模式或分类）。
+
+另外两个容易踩的点：
+
+- **抽完题要立刻写一次快照**：不写的话，新题组要等第一次作答才落盘，这中间刷新就丢题
+- **「已退出」后不再写快照**：`doExit()` 先清快照，但紧接着的 `router.replace` 会让
+  `build()` 重跑、把刚清掉的写回来 —— 用一个 `exited` 标记挡住
 
 **为什么用 sessionStorage 而不是 localStorage**：这个快照只该活在当前标签页。
 用 localStorage 的话第二天打开还是昨天的题，等于把「一次性自测」变成「跨天续做」。
