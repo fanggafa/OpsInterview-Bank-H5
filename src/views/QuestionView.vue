@@ -216,7 +216,7 @@ const statusText = computed(() => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page page--fill">
     <AppHeader title="题目详情" :back-to="backTo" />
 
     <div v-if="bank.loading" class="skeleton card" aria-busy="true" />
@@ -590,9 +590,31 @@ const statusText = computed(() => {
   border-color: var(--c-success);
 }
 
-/* 滑动切题的舞台：自身与所有子孙都要 pan-y，
-   否则移动端横向手势会被浏览器纵向滚动吞掉 */
-.stage,
+/**
+ * 滑动切题的舞台。
+ *
+ * **`flex: 1` 是关键**：滑动事件绑在这个容器上，它必须撑满「页头以下、
+ * 提示文字以上」的全部剩余空间，用户才能在屏幕任意位置左右滑动切题。
+ *
+ * 早先这里只写了 `touch-action`、没有布局 —— 容器高度由内容撑开，
+ * 于是**可滑动区域只有卡片那一小块**（用户反馈「只有卡片那点地方能滑」）。
+ * 刷题页的 `.stage` 一直有 `flex: 1`，所以那边一直是正常的。
+ *
+ * 前提是外层 `.page` 带 `page--fill`（纵列 flex），否则 flex 链在父级就断了。
+ *
+ * `touch-action: pan-y` 必须同时给自身与**所有子孙**：
+ * 手指通常落在卡片文字上，不设的话横向手势会被浏览器的纵向滚动吞掉（踩过一次）。
+ */
+.stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 .stage * {
   touch-action: pan-y;
 }
