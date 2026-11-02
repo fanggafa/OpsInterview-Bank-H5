@@ -2,8 +2,6 @@
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Ring from '@/components/Ring.vue'
-import DifficultyBadge from '@/components/DifficultyBadge.vue'
-import FrequencyBadge from '@/components/FrequencyBadge.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -58,8 +56,6 @@ const daily = computed(() =>
   pickDailyQuestion(bank.questions, new Date(), { types: ['short'] }),
 )
 
-const dailyTypeLabel = computed(() => (daily.value ? TYPE_LABEL[getType(daily.value)] : ''))
-
 /** 今天这道题的作答状态（只看今天，不把上周的结果算进来） */
 const dailyState = computed(() => {
   const q = daily.value
@@ -77,7 +73,11 @@ const dailyState = computed(() => {
 })
 
 /** 题干摘要：卡片只放一行半，太长会把下面的内容顶出首屏 */
-const dailySummary = computed(() => (daily.value ? truncate(daily.value.question, 46) : ''))
+/**
+ * 题干摘要。现在它**独占副标题那一行**（不再和「每天一道…」挤在一起），
+ * 所以可以放宽截断长度 —— 46 字在手机上只够显示半句，看不出是哪道题。
+ */
+const dailySummary = computed(() => (daily.value ? truncate(daily.value.question, 70) : ''))
 
 /** 错题本数量：错题复习入口据此决定是否可用 */
 const wrongCount = computed(() => study.wrongList.length)
@@ -185,66 +185,62 @@ function openWeak() {
 
       背题 = 每日一记（每天读一道、记一个知识点）+ 我的收藏（收藏只收简答题）。
     -->
-    <h2 class="section-title">背题</h2>
+    <h2 class="section-title">背一背题</h2>
 
     <!--
       每日一记：给一个「今天具体记什么」的动作。
       只抽简答题 —— 它能直接读答案解析，符合「记」的定位。
+
+      **与其它卡片同构**：图标 + 标题 + 副标题 + 行尾箭头。
+      早先是「左上状态胶囊 + 纯文字标题 + 题干」的独立版式，
+      和下面几张卡放在一起明显是两个东西：没图标、标题跟题干挤在一行、
+      卡片间距也不同。现在统一成同一套 `.review` 骨架，只在内部多一行题干。
     -->
-    <h3 class="section-sub">每日一记</h3>
-    <button v-if="daily" class="daily card" @click="openDaily">
-      <!--
-        状态标签只在「已作答」时出现（今天答对/答错、标记会/不会）。
-        未作答时不显示「今日一记」——标题已经写了「每日一记」，
-        再挂一个同义徽标只是重复。
-      -->
-      <span
-        v-if="dailyState.answered"
-        class="daily__tag"
-        :class="`daily__tag--${dailyState.status}`"
-      >
-        {{ dailyState.label }}
-      </span>
-
-      <p class="daily__q">{{ dailySummary }}</p>
-
-      <div class="daily__meta">
-        <span class="badge daily__cat">{{ daily.category }}</span>
-        <span class="badge daily__type">{{ dailyTypeLabel }}</span>
-        <DifficultyBadge :difficulty="daily.difficulty" />
-        <FrequencyBadge :frequency="daily.frequency" />
-      </div>
-
-      <!--
-        只留一个箭头，不再写「点开作答，答完看解析」那行提示。
-        整张卡片本来就是按钮，箭头已经说明可进；那一行既重复又白占高度。
-      -->
-            <span class="daily__arrow" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="15" height="15">
-          <path
-            d="M9 6l6 6-6 6"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </span>
-    </button>
-
-    <!--
-      每日一刷：紧跟在每日一记下方，是「每天两个动作」里的第二个。
-      与每日一记的差别：每日一记是「看一道」，每日一刷是「考一批」并给分数。
-      它不属于「复习巩固」（那是按错题/薄弱去补），所以单独成块。
-    -->
-    <!--
-      我的收藏：从「我的」页搬来 —— 它们本质是「题」而不是「我的设置」，
-      放首页与其他题目入口同段更好找。「我的」页只留数据看板 + 右上角设置。
-      （收藏只收简答题，所以归在「简答题」这块。）
-    -->
-    <h3 class="section-sub">我的收藏</h3>
     <div class="reviews">
+      <button v-if="daily" class="review review--daily" @click="openDaily">
+        <span class="review__icon review__icon--daily" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="19" height="19">
+            <path
+              d="M5 4.5h11a2.5 2.5 0 0 1 2.5 2.5v13a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 20V7A2.5 2.5 0 0 1 5 4.5zM6.5 9.5h8M6.5 13h8M6.5 16.5h4.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+
+        <span class="review__text">
+          <span class="review__title">
+            每日一记
+            <!-- 已作答时把状态贴在标题后面，不占额外一行 -->
+            <span v-if="dailyState.answered" class="review__state">{{ dailyState.label }}</span>
+          </span>
+          <!--
+            只显示题干，不要副标题。
+            题干才是用户真正关心的（今天记哪道题），
+            副标题那种「每天一道 · 看完答案再自评」是说明文案，纯占地方。
+
+            往下拉开一点距离 + 字号大一些，让它读起来像「题目」而不是「备注」。
+          -->
+          <span class="review__desc review__desc--question">{{ dailySummary }}</span>
+        </span>
+
+        <span class="review__arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15">
+            <path
+              d="M9 6l6 6-6 6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+      </button>
+
       <router-link to="/favorites" class="review">
         <span class="review__icon review__icon--fav" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="19" height="19">
@@ -260,7 +256,7 @@ function openWeak() {
         <span class="review__text">
           <span class="review__title">我的收藏</span>
           <span class="review__desc">
-            {{ favCount ? `${favCount} 题 · 手动标记的重点` : '还没有收藏，题卡上点星标即可收进来' }}
+            {{ favCount ? `${favCount} 题 · 手动标记的重点` : '0 题 · 题卡点星标即可收藏' }}
           </span>
         </span>
               <span class="review__arrow" aria-hidden="true">
@@ -283,31 +279,71 @@ function openWeak() {
       每日一刷（30 题自测）+ 复习巩固（错题本 / 错题复习 / 薄弱分类）。
       这几项**都只涉及选择题**：错题本只收选择题，薄弱分类也只统计选择题。
     -->
-    <h2 class="section-title">刷题</h2>
-    <h3 class="section-sub">每日一刷</h3>
-    <button class="review review--drill" @click="startReview('dailyDrill')">
-      <span class="review__icon review__icon--drill" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="19" height="19">
-          <path
-            d="M12 4a8 8 0 1 0 7.5 10.5M12 4a8 8 0 0 1 7 4.3M19 4v4.5h-4.5"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.9"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </span>
-      <span class="review__text">
-        <!--
-          主标题与副标题分开：标题只放「这是什么」，规则细节放副标题。
-          早先标题写成「随机 30 题选择题」，把规则塞进了标题位，
-          与下方「每日一刷」区块标题重复，视觉上也很吵。
-        -->
-        <span class="review__title">30 题限时自测</span>
-        <span class="review__desc">随机选择题 · 刷完给分数与建议</span>
-      </span>
-            <span class="review__arrow" aria-hidden="true">
+    <h2 class="section-title">刷一刷题</h2>
+
+    <!-- 用 .reviews 包住，与下面几张卡共用同一个 gap —— 卡片间距才一致 -->
+    <div class="reviews">
+      <button class="review" @click="startReview('dailyDrill')">
+        <span class="review__icon review__icon--drill" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="19" height="19">
+            <path
+              d="M8 3.5h8l1 3.5H7l1-3.5zM12 7v6m-3-3h6M5 10h14l-1.2 9.2A2 2 0 0 1 15.8 21H8.2a2 2 0 0 1-2-1.8L5 10z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <span class="review__text">
+          <span class="review__title">每日一刷30题</span>
+          <span class="review__desc">随机选择题 · 限时30分钟 · 给分数建议</span>
+        </span>
+        <span class="review__arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15">
+            <path
+              d="M9 6l6 6-6 6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+      </button>
+      <!--
+        复习区：按「复习 → 错题 → 薄弱」的顺序排。
+        每日复习（原「错题复习」）放最前面 —— 它是「现在就练一批」的动作，
+        错题本则是「看看有哪些题要补」的清单，先练再翻清单更顺手。
+
+        **与每日一刷同处一个 .reviews 容器**：早先它们各用一个 .reviews，
+        两个容器相邻却没有外边距，结果「每日一刷」和「每日复习」之间是 0px，
+        而组内其它卡片是 8px —— 看着就是「间距不对」。
+        同一个区块内的卡片，本该共用一个 gap。
+      -->
+      <!-- 每日复习：从错题本里抽一批来练（原「错题复习」） -->
+      <button class="review" :disabled="!wrongCount" @click="startReview('wrong')">
+        <span class="review__icon review__icon--review" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="19" height="19">
+            <path
+              d="M4 9a8 8 0 1 1 1.6 5.2M4 4v5h5M9 12l2.5 2.5L16 10"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <span class="review__text">
+          <span class="review__title">每日复习30题</span>
+          <span class="review__desc">
+            {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 10)} 题 · 连对3次移出` : '错题本为空' }}
+          </span>
+        </span>
+              <span class="review__arrow" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="15" height="15">
           <path
             d="M9 6l6 6-6 6"
@@ -319,15 +355,8 @@ function openWeak() {
           />
         </svg>
       </span>
-    </button>
+      </button>
 
-    <!--
-      复习巩固：按「错题 → 复习 → 薄弱」的顺序排。
-      错题本放最前面 —— 它是「有哪些题要补」的清单，错题复习是从清单里抽题练，
-      先看清单再开练更合逻辑。
-    -->
-    <h3 class="section-sub">复习巩固</h3>
-    <div class="reviews">
       <!-- 错题本：清单（点了去看有哪些题），不是练习 -->
       <router-link to="/wrong" class="review">
         <span class="review__icon review__icon--wrong" aria-hidden="true">
@@ -344,7 +373,7 @@ function openWeak() {
         <span class="review__text">
           <span class="review__title">错题本</span>
           <span class="review__desc">
-            {{ wrongCount ? `已收集 ${wrongCount} 题 · 连对 3 次自动移出` : '还没有错题，选择题答错会进这里' }}
+            {{ wrongCount ? `已收集 ${wrongCount} 题 · 连对3次移出` : '0 题 · 选择题答错会进这里' }}
           </span>
         </span>
               <span class="review__arrow" aria-hidden="true">
@@ -360,40 +389,6 @@ function openWeak() {
         </svg>
       </span>
       </router-link>
-
-      <!-- 错题复习：从错题本里抽一批来练 -->
-      <button class="review" :disabled="!wrongCount" @click="startReview('wrong')">
-        <span class="review__icon review__icon--drill" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="19" height="19">
-            <path
-              d="M12 4a8 8 0 1 0 7.5 10.5M12 4a8 8 0 0 1 7 4.3M19 4v4.5h-4.5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.9"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <span class="review__text">
-          <span class="review__title">错题复习</span>
-          <span class="review__desc">
-            {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 10)} 题 · 连对 3 次移出` : '错题本是空的' }}
-          </span>
-        </span>
-              <span class="review__arrow" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="15" height="15">
-          <path
-            d="M9 6l6 6-6 6"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </span>
-      </button>
 
       <!--
         薄弱环节入口：与上面两张卡同款式，只显示「最弱的是哪块」这一条摘要。
@@ -565,94 +560,6 @@ function openWeak() {
   color: rgba(255, 255, 255, 0.66);
 }
 
-
-/* ---------- 每日一记 ---------- */
-.daily {
-  /* 日期绝对定位到右上角，所以卡片自己要做定位上下文 */
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  padding: 14px;
-  text-align: left;
-  color: var(--c-text);
-  border: 1px solid var(--c-border);
-  background-image: var(--grad-card);
-  transition: transform 0.14s ease, box-shadow 0.14s ease;
-}
-.daily:active {
-  transform: scale(0.985);
-  box-shadow: var(--shadow-lift);
-}
-/* 状态胶囊：答过之后转绿/转红，一眼看出今天做没做。现在它是卡片首行的行内元素 */
-.daily__tag {
-  align-self: flex-start;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--c-primary);
-  background: var(--c-primary-weak);
-}
-.daily__tag--know {
-  color: var(--c-success);
-  background: var(--c-success-weak);
-}
-.daily__tag--unknown {
-  color: var(--c-danger);
-  background: var(--c-danger-weak);
-}
-.daily__q {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.55;
-  color: var(--c-text);
-}
-
-.daily__meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.daily__cat {
-  color: var(--c-text-2);
-  background: var(--c-bg);
-}
-.daily__type {
-  color: var(--c-primary);
-  background: var(--c-primary-weak);
-}
-
-/**
- * 箭头绝对定位到卡片右下角。
- *
- * 早先它跟「点开作答，答完看解析」凑成一行，用一条分隔线隔开 ——
- * 那行既重复（卡片本身就是按钮）又白占十几像素高度。
- * 现在只留箭头，浮在右下角，与右上角的日期形成对角平衡。
- */
-/**
- * 卡片右下角的进入箭头。
- *
- * 原来是文本字符 `→`：不同字体下粗细/长度不一，和卡片内的线条图标风格不搭。
- * 现在用 chevron 图标 + 淡色圆底，与 AppHeader 的返回箭头同一套线条语言。
- */
-.daily__arrow {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--c-primary-weak);
-  color: var(--c-primary);
-}
-
 /* ---------- 复习入口 ---------- */
 .reviews {
   display: flex;
@@ -668,34 +575,35 @@ function openWeak() {
   border-radius: var(--radius);
   border: 1px solid var(--c-border);
   background: var(--c-card);
-  box-shadow: var(--shadow-card);
-  text-align: left;
+  box-shadow: var(--shadow-card);  text-align: left;
   transition: transform 0.14s ease, box-shadow 0.14s ease;
 }
 .review:active:not(:disabled) {
   transform: scale(0.985);
   box-shadow: var(--shadow-lift);
 }
-/*
- * 每日一刷是独立卡片（不在 .reviews 容器里）。
- * 它的视觉比照「每日一记」那张：渐变底 + 更大内边距 + 更大图标，
- * 因为它是「每天两个动作」之一，不该看起来像复习列表里的普通一行。
+/**
+ * 「每日一记」这张卡比其它卡高（多一行题干），不能沿用父级的 `align-items: center` ——
+ * 那会把图标垂直居中、沉到 29px，而其它卡的图标在 14px，一眼就能看出没对齐。
+ *
+ * 处理：整卡改为顶部对齐（图标与标题同为 14px），
+ * 但**箭头单独 `align-self: center`** —— 箭头是「可进入」的指示，
+ * 贴在卡片垂直中部比顶在角落自然。
  */
-.review--drill {
-  padding: 14px;
-  gap: 12px;
-  border-radius: var(--radius);
-  background-image: var(--grad-card);
-  margin-bottom: 4px;
+.review--daily {
+  align-items: flex-start;
 }
-.review--drill .review__icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
+.review--daily .review__arrow {
+  align-self: center;
 }
-.review--drill .review__title {
-  font-size: 15px;
-}
+/*
+ * 首页所有入口卡都是**同一套骨架**：`.review` 的尺寸、内边距、图标大小、标题字号。
+ *
+ * 早先「每日一记」和「每日一刷」各自有一套版式（渐变底、更大内边距、
+ * 38px 图标、15px 标题），理由是「它们属于每日两个动作，不该长得像普通一行」。
+ * 但实际效果是：同一屏里出现了三种卡片尺寸，用户反馈「图标、字号、间距都不一样，太乱」。
+ * 现在统一了 —— 靠图标配色和标题区分，而不是靠尺寸差异。
+ */
 /* 错题本为空时置灰：看起来像禁用，而不是点了才发现没题 */
 .review:disabled {
   opacity: 0.5;
@@ -725,6 +633,21 @@ function openWeak() {
 .review__icon--fav {
   background: linear-gradient(135deg, #4ec38a, #2f9e6d);
 }
+/*
+ * 两个「每天必做」的入口：配色要与复习那几张区分开。
+ * - 每日一记 → 蓝紫（对应 hero 主色，是「今天第一件事」）
+ * - 每日一刷 → 靛蓝（与每日复习的品红区分）
+ * - 每日复习 → 品红（与每日一刷的靛蓝区分）
+ *
+ * 早先「每日一刷」和「每日复习」都用了同一个循环箭头图标 + 同一种靛蓝，
+ * 视觉上完全一样，用户反馈「这两个图标重复了」。
+ */
+.review__icon--daily {
+  background: linear-gradient(135deg, #6b8afd, #4f7cff);
+}
+.review__icon--review {
+  background: linear-gradient(135deg, #c084fc, #9333ea);
+}
 .review__text {
   flex: 1;
   display: flex;
@@ -733,13 +656,51 @@ function openWeak() {
   min-width: 0;
 }
 .review__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 14px;
   font-weight: 600;
   color: var(--c-text);
 }
+/**
+ * 标题后面的状态小胶囊（只有「每日一记」会用到）。
+ * 贴在标题右侧而不是另起一行 —— 卡片高度不变，还一眼能看出今天做了没。
+ */
+.review__state {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--c-primary);
+  background: var(--c-primary-weak);
+}
 .review__desc {
   font-size: 11px;
   color: var(--c-text-3);
+}
+/**
+ * 题干（每日一记专用）。
+ *
+ * 这张卡没有副标题，题干是用户唯一要看的内容 ——
+ * 字号比普通副标题大（11 → 13px）、颜色用正文色。
+ *
+ * `margin-top` 取 14px 是**实测量出来的**，不是估的：
+ * 标题在 14~32px、图标在 14~48px，题干若按常规 5px 上边距只到 39px，
+ * 与图标底（48px）差 9px，看起来像「题干贴着标题、悬在图标中间」。
+ * 补上这 9px 后题干顶部正好与图标底部齐平，卡片左侧形成一条整齐的边缘。
+ * 最多两行后省略，避免长题干把卡片撑高。
+ */
+.review__desc--question {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--c-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 /* 复习入口行尾的箭头：与「每日一记」那个同一套样式（chevron + 淡色圆底） */
 .review__arrow {

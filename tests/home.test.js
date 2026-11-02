@@ -171,11 +171,29 @@ describe('首页 · 快捷入口已移除', () => {
   })
 })
 
-describe('首页 · 每日一题', () => {
-  it('渲染每日一题卡片（替代原来的分类列表）', async () => {
+describe('首页 · 每日一记', () => {
+  /**
+   * 2026-11：每日一记卡片改成**与其它卡片同构**（.review 骨架）。
+   *
+   * 早先它是独立版式：.daily 卡片 + 左上状态胶囊 + 纯文字标题 + 题干 + meta 徽标。
+   * 放在「我的收藏 / 每日一刷 / 错题本」这些卡中间，明显是两套东西 ——
+   * 没图标、标题跟题干挤在一行、卡片间距也不同。用户反馈「太乱了」。
+   *
+   * 现在：图标 + 标题 + 副标题 + 行尾箭头，和其它卡完全一致。
+   * 题干摘要移进副标题（作答后显示「状态 · 题干」）。
+   */
+  it('渲染每日一记卡片，与其它卡片同构', async () => {
     const { wrapper } = await mountHome()
-    expect(wrapper.find('.daily').exists()).toBe(true)
-    expect(wrapper.find('.daily__q').text().length).toBeGreaterThan(0)
+    const card = wrapper.find('.review--daily')
+    expect(card.exists()).toBe(true)
+    // 同一套骨架：图标 + 标题 + 副标题 + 箭头
+    expect(card.find('.review__icon').exists()).toBe(true)
+    expect(card.find('.review__title').text()).toBe('每日一记')
+    expect(card.find('.review__desc').exists()).toBe(true)
+    expect(card.find('.review__arrow').exists()).toBe(true)
+    // 旧版式已移除
+    expect(wrapper.find('.daily').exists()).toBe(false)
+    expect(wrapper.find('.daily__q').exists()).toBe(false)
   })
 
   it('不再渲染「按分类刷题」列表（点哪儿都跳同一个刷题页，信息量低）', async () => {
@@ -185,25 +203,32 @@ describe('首页 · 每日一题', () => {
   })
 
   it('同一天始终是同一题（不是随机刷新）', async () => {
+    const q = pickDailyQuestion(FIXTURE, new Date(), { types: ['short'] })
     const { wrapper } = await mountHome()
-    const first = wrapper.find('.daily__q').text()
+    // 副标题在未作答时是固定文案；这里验证挑题是确定性的
     const second = await mountHome()
-    expect(second.wrapper.find('.daily__q').text()).toBe(first)
+    expect(second.wrapper.vm.daily.id).toBe(q.id)
+    expect(wrapper.vm.daily.id).toBe(q.id)
   })
 
   it('点击进入题目详情页（与刷题页不重复）', async () => {
     const { wrapper, router } = await mountHome()
-    await wrapper.find('.daily').trigger('click')
+    await wrapper.find('.review--daily').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toMatch(/^\/question\/\d+$/)
   })
 
-  it('未作答时不显示状态标签（区块标题已说明是每日一题）', async () => {
+  it('未作答时显示题干，且不显示状态胶囊', async () => {
     const { wrapper } = await mountHome()
-    // 未作答时挂一个同义徽标只是重复，还会把题干挤下去
-    expect(wrapper.find('.daily__tag').exists()).toBe(false)
-    // 题干成为卡片首行内容，不再被一行空白顶下去
-    expect(wrapper.find('.daily__q').exists()).toBe(true)
+    /**
+     * 2026-11：这张卡**不要副标题**，只显示题干 ——
+     * 题干才是用户关心的（今天记哪道题），
+     * 「每天一道 · 看完答案再自评」那种说明文案纯占地方。
+     */
+    const desc = wrapper.find('.review--daily .review__desc--question').text()
+    expect(desc.length).toBeGreaterThan(0)
+    // 未作答时没有状态胶囊
+    expect(wrapper.find('.review--daily .review__state').exists()).toBe(false)
   })
 
   it('日期显示在 hero 标题下方（年月日完整格式）', async () => {
@@ -212,40 +237,33 @@ describe('首页 · 每日一题', () => {
     expect(date.exists()).toBe(true)
     // 必须带年份：只写「11月1日」不足以让人一眼认出是哪一年
     expect(date.text()).toMatch(/\d{4}年\d{1,2}月\d{1,2}日/)
-    // 日期不再挂在每日一题卡片上
-    expect(wrapper.find('.daily__date').exists()).toBe(false)
   })
 
-  it('今日答对后状态转绿并显示「已作答」标签', async () => {
+  it('今日标记「会」后，标题旁出现状态胶囊', async () => {
     const q = pickDailyQuestion(FIXTURE, new Date(), { types: ['short'] })
     study.markKnow(q.id)
     const { wrapper } = await mountHome()
-    /**
-     * 2026-11：删掉了「点开作答，答完看解析」那一行提示（连同 .daily__hint）。
-     * 卡片本身就是按钮、箭头已说明可进，那行既重复又占高度；
-     * 「已作答」这件事改由状态标签表达。
-     */
-    expect(wrapper.find('.daily__tag--know').exists()).toBe(true)
-    expect(wrapper.find('.daily__hint').exists()).toBe(false)
+    expect(wrapper.find('.review--daily .review__state').text()).toContain('会')
+    // 题干摘要仍在，让用户不点进去也知道是哪道题
+    expect(wrapper.find('.review--daily .review__desc--question').text().length).toBeGreaterThan(0)
   })
 
-  it('今日答错后状态转红', async () => {
+  it('今日标记「不会」后，标题旁出现对应状态胶囊', async () => {
     const q = pickDailyQuestion(FIXTURE, new Date(), { types: ['short'] })
     study.markUnknown(q.id)
     const { wrapper } = await mountHome()
-    expect(wrapper.find('.daily__tag--unknown').exists()).toBe(true)
+    expect(wrapper.find('.review--daily .review__state').text()).toContain('不会')
   })
 
-  it('昨天答过不算今天答过（不显示今日状态标签）', async () => {
+  it('昨天答过不算今天答过（不显示状态胶囊）', async () => {
     const q = pickDailyQuestion(FIXTURE, new Date(), { types: ['short'] })
-    // 手工塞一条「昨天」的记录
     const yesterday = Date.now() - 24 * 60 * 60 * 1000
     study.records = {
       ...study.records,
       [q.id]: { status: STATUS.KNOW, times: 1, lastReviewed: yesterday },
     }
     const { wrapper } = await mountHome()
-    expect(wrapper.find('.daily__tag').exists()).toBe(false)
+    expect(wrapper.find('.review--daily .review__state').exists()).toBe(false)
   })
 
   it('页脚说明题型构成', async () => {
@@ -271,65 +289,69 @@ describe('首页 · 不再承载「继续上次」', () => {
 })
 
 describe('首页 · 复习入口', () => {
-  it('每日一刷是独立区块（在每日一记下方），不在复习巩固里', async () => {
+  it('刷一刷题区共 4 张卡，同一容器内间距一致', async () => {
     const { wrapper } = await mountHome()
     /**
-     * 2026-11 区块重排：
-     * - 「复习巩固」= 错题本 + 错题复习 + 薄弱分类（3 张）
-     * - 「我的题集」= 我的收藏（1 张）
-     * 所以 .reviews 里共 4 张，其中错题本/错题复习/薄弱分类在「复习巩固」。
+     * 2026-11 区块重排：`.reviews` 现在只有两组 ——
+     * ① 背一背题（每日一记 + 我的收藏，2 张）
+     * ② 刷一刷题（每日一刷30题 + 每日复习30题 + 错题本 + 薄弱分类，4 张）
+     *
+     * 早先「每日一刷」和「复习组」各用一个 `.reviews`，两个容器相邻却没有外边距，
+     * 结果它们之间是 0px、组内其它卡是 8px —— 看着就是「间距不对」。
+     * 现在同区块的卡都在一个容器里，共用一个 gap。
      */
-    expect(wrapper.findAll('.reviews .review')).toHaveLength(4)
-    // 每日一刷是独立的 .review--drill 卡
-    expect(wrapper.findAll('.review--drill')).toHaveLength(1)
+    expect(wrapper.findAll('.reviews .review')).toHaveLength(6)
+    const groups = wrapper.findAll('.reviews')
+    expect(groups).toHaveLength(2)
+    expect(groups[1].findAll('.review')).toHaveLength(4)
   })
 
-  it('首页按使用方式分成「背题」「刷题」两个区块', async () => {
+  it('首页分成「背一背题」「刷一刷题」两个区块', async () => {
     /**
-     * 2026-11：首页按**使用方式**分成两个区块，方便用户一眼区分：
-     * - 背题：每日一记 + 我的收藏（收藏只收简答题）
-     * - 刷题：每日一刷 + 复习巩固（错题本 / 错题复习 / 薄弱分类）
+     * 2026-11：首页按**使用方式**分成两个大区块：
+     * - 背一背题：每日一记 + 我的收藏（收藏只收简答题）
+     * - 刷一刷题：每日一刷30题 + 每日复习30题 / 错题本 / 薄弱分类
      *
-     * 标题不用「简答题 / 选择题」——那是题型名，像目录一样生硬；
-     * 「背题 / 刷题」是 App 里本来就在用的说法（背题模式 / 刷题），用户熟悉。
+     * 2026-11 二次调整：**取消了所有子标题**（`.section-sub`）——
+     * 「每日一记」「我的收藏」「每日一刷」「复习巩固」这些名字，
+     * 要么本身就是卡片标题（重复），要么只是把几张卡归个类（没必要另起一行）。
+     * 现在只有两个大区块标题 + 每张卡自己的标题。
      */
     const { wrapper } = await mountHome()
     const titles = wrapper.findAll('.section-title').map((n) => n.text())
-    expect(titles).toEqual(['背题', '刷题'])
+    expect(titles).toEqual(['背一背题', '刷一刷题'])
 
-    // 背题区在前，里面是每日一记 + 我的收藏
-    const subs = wrapper.findAll('.section-sub').map((n) => n.text())
-    expect(subs).toContain('每日一记')
-    expect(subs).toContain('我的收藏')
-    expect(subs).toContain('每日一刷')
-    expect(subs).toContain('复习巩固')
+    // 不再有任何子标题
+    expect(wrapper.findAll('.section-sub')).toHaveLength(0)
   })
 
-  it('复习巩固按「错题本 → 错题复习 → 薄弱分类」排列', async () => {
+  it('刷一刷题区按「每日一刷30题 → 每日复习30题 → 错题本 → 薄弱分类」排列', async () => {
     const { wrapper } = await mountHome()
-    // 只取「复习巩固」这一组（收藏已挪到简答题区，不在这组里）
+    // 取最后一个 .reviews（刷一刷题区，4 张卡）
     const groups = wrapper.findAll('.reviews')
     const last = groups[groups.length - 1]
     const items = last.findAll('.review')
     /**
-     * 错题本排最前：它是「有哪些题要补」的清单，错题复习是从清单里抽题练，
-     * 先看清单再开练更合逻辑（用户明确要求把错题本挪到错题复习上面）。
+     * 2026-11 调整：**每日复习30题（原「错题复习」）排到第二**，错题本退到第三 ——
+     * 每日复习是「现在就练一批」的动作，错题本是「看看有哪些题要补」的清单，
+     * 先练再翻清单更顺手。
      */
-    expect(items[0].text()).toContain('错题本')
-    expect(items[1].text()).toContain('错题复习')
-    expect(items[2].text()).toContain('薄弱分类')
+    expect(items[0].text()).toContain('每日一刷30题')
+    expect(items[1].text()).toContain('每日复习30题')
+    expect(items[2].text()).toContain('错题本')
+    expect(items[3].text()).toContain('薄弱分类')
   })
 
   it('每日一刷显示「随机 30 题选择题」', async () => {
     const { wrapper } = await mountHome()
-    const card = wrapper.find('.review--drill')
-    expect(card.text()).toContain('30 题')
+    const card = wrapper.findAll('.review').find((c) => c.text().includes('每日一刷30题'))
+    expect(card.text()).toContain('每日一刷30题')
     expect(card.text()).toContain('选择题')
   })
 
   it('点每日一刷跳到 review=dailyDrill', async () => {
     const { wrapper, router } = await mountHome()
-    await wrapper.find('.review--drill').trigger('click')
+    await wrapper.findAll('.review').find((c) => c.text().includes('每日一刷30题')).trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/practice')
     expect(router.currentRoute.value.query.review).toBe('dailyDrill')
@@ -337,16 +359,16 @@ describe('首页 · 复习入口', () => {
 
   it('错题本为空时错题复习置灰不可点，并说明原因', async () => {
     const { wrapper } = await mountHome()
-    const wrongBtn = reviewBy(wrapper, '错题复习')
+    const wrongBtn = reviewBy(wrapper, '每日复习30题')
     expect(wrongBtn.attributes('disabled')).toBeDefined()
-    expect(wrongBtn.text()).toContain('错题本是空的')
+    expect(wrongBtn.text()).toContain('错题本为空')
   })
 
   it('有错题时可点，且文案带上实际抽题数', async () => {
     // 错题本只收选择题：用 id=4（single）造一道错题
     study.markUnknown(4)
     const { wrapper, router } = await mountHome()
-    const wrongBtn = reviewBy(wrapper, '错题复习')
+    const wrongBtn = reviewBy(wrapper, '每日复习30题')
     expect(wrongBtn.attributes('disabled')).toBeUndefined()
     expect(wrongBtn.text()).toContain('抽 1 题')
 
@@ -375,13 +397,13 @@ describe('首页 · 复习入口', () => {
     ]
     bank.questions.filter((q) => q.type === 'single').forEach((q) => study.markUnknown(q.id))
     const { wrapper } = await mountHome()
-    expect(reviewBy(wrapper, '错题复习').text()).toContain('抽 10 题')
+    expect(reviewBy(wrapper, '每日复习30题').text()).toContain('抽 10 题')
   })
 
   it('错题复习入口说明「连对 3 次移出」', async () => {
     // 错题本只收选择题，用 single 题造错题
     study.markUnknown(4)
     const { wrapper } = await mountHome()
-    expect(reviewBy(wrapper, '错题复习').text()).toContain('连对 3 次移出')
+    expect(reviewBy(wrapper, '每日复习30题').text()).toContain('连对3次移出')
   })
 })
