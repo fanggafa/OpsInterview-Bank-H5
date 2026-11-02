@@ -13,21 +13,21 @@ import { useStudyStore } from '@/stores/studyStore'
 
 const FIXTURE = [
   // MySQL：5 题，刷 4 题，错 3 题 → 75%
-  { id: 1, type: 'short', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm1', answer: 'a1', tags: [] },
-  { id: 2, type: 'short', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm2', answer: 'a2', tags: [] },
-  { id: 3, type: 'short', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm3', answer: 'a3', tags: [] },
-  { id: 4, type: 'short', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm4', answer: 'a4', tags: [] },
-  { id: 5, type: 'short', category: 'MySQL', difficulty: '简单', frequency: '低频', question: 'm5', answer: 'a5', tags: [] },
+  { id: 1, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 2, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 3, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm3', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 4, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm4', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 5, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '低频', question: 'm5', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
   // Nginx：5 题，刷 5 题，错 1 题 → 20%
-  { id: 11, type: 'short', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n1', answer: 'b1', tags: [] },
-  { id: 12, type: 'short', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n2', answer: 'b2', tags: [] },
-  { id: 13, type: 'short', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n3', answer: 'b3', tags: [] },
-  { id: 14, type: 'short', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n4', answer: 'b4', tags: [] },
-  { id: 15, type: 'short', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n5', answer: 'b5', tags: [] },
+  { id: 11, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 12, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 13, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n3', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 14, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n4', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 15, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n5', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
   // Redis：3 题，只刷 1 题且错 → 样本不足
-  { id: 21, type: 'short', category: 'Redis', difficulty: '简单', frequency: '高频', question: 'r1', answer: 'c1', tags: [] },
-  { id: 22, type: 'short', category: 'Redis', difficulty: '简单', frequency: '高频', question: 'r2', answer: 'c2', tags: [] },
-  { id: 23, type: 'short', category: 'Redis', difficulty: '简单', frequency: '高频', question: 'r3', answer: 'c3', tags: [] },
+  { id: 21, type: 'single', category: 'Redis', difficulty: '简单', frequency: '高频', question: 'r1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 22, type: 'single', category: 'Redis', difficulty: '简单', frequency: '高频', question: 'r2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 23, type: 'single', category: 'Redis', difficulty: '简单', frequency: '高频', question: 'r3', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
 ]
 
 const rec = ({ times = 1, inWrong = false } = {}) => ({
@@ -116,7 +116,7 @@ describe('studyStore · weakCategories', () => {
     let id = 100
     for (const cat of ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7']) {
       for (let i = 0; i < 3; i++) {
-        many.push({ id, type: 'short', category: cat, difficulty: '简单', frequency: '高频', question: `q${id}`, answer: `a${id}`, tags: [] })
+        many.push({ id, type: 'single', category: cat, difficulty: '简单', frequency: '高频', question: `q${id}`, answer: `a${id}`, tags: [] })
         id += 1
       }
     }

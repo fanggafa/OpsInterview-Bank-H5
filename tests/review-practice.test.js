@@ -205,14 +205,27 @@ describe('复习赛 · 错题复习', () => {
     expect(study.isWrong(1)).toBe(true)
   })
 
-  it('背题模式的复习赛只抽简答题（每日一刷除外，它强制选择题）', async () => {
+  it('错题复习即使传了 memorize 也只有选择题（错题本只收选择题）', async () => {
+    /**
+     * 2026-11 规则：**错题本只收选择题**。
+     *
+     * 早先这条用例断言「背题模式的错题复习抽简答题」——
+     * 但简答题现在根本进不了错题本，这个场景已不存在。
+     * 现在无论传什么 studyMode，错题复习抽出来的都是选择题（有选项、无自评按钮）。
+     */
     bank.questions = SHORT_FIXTURE
-    // 用 wrong 而不是 dailyDrill：后者强制做题模式，不跟随 studyMode
     SHORT_FIXTURE.forEach((q) => study.markUnknown(q.id))
     const { wrapper } = await mountPractice({ review: 'wrong', studyMode: 'memorize' })
-    // 简答题没有选项列表，且操作区是「不会/会」
-    expect(wrapper.findAll('.option')).toHaveLength(0)
-    expect(wrapper.findAll('.actions__btn')).toHaveLength(2)
+    // 简答题进不了错题本 → 队列为空，给空态提示
+    expect(wrapper.text()).toContain('错题本是空的')
+  })
+
+  it('错题复习抽的是选择题（有选项、无自评按钮）', async () => {
+    bank.questions = FIXTURE
+    FIXTURE.filter((q) => q.type !== 'short').forEach((q) => study.markUnknown(q.id))
+    const { wrapper } = await mountPractice({ review: 'wrong', studyMode: 'memorize' })
+    expect(wrapper.findAll('.option').length).toBeGreaterThan(0)
+    expect(wrapper.findAll('.actions__btn')).toHaveLength(0)
   })
 
   it('每日一刷即使传了 memorize 也强制出选择题', async () => {

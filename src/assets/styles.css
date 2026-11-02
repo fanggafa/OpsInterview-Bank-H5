@@ -279,6 +279,21 @@ ul {
   color: var(--c-text);
 }
 
+/**
+ * 区块内的子标题。
+ *
+ * 首页按题型分成两个大区块（简答题 / 选择题），
+ * 大区块用 `.section-title`，区块内的分组（每日一刷、复习巩固、我的收藏）
+ * 用这个更轻的 `.section-sub` —— 两者字号与颜色有差别，
+ * 用户扫一眼就能分清「这是大分类还是分类里的某一项」。
+ */
+.section-sub {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 14px 0 6px;
+  color: var(--c-text-2);
+}
+
 .muted {
   color: var(--c-text-2);
   font-size: 12.5px;
