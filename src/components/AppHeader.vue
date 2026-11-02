@@ -45,7 +45,12 @@ function goBack() {
         />
       </svg>
     </button>
-    <router-link v-else to="/" class="header__brand">运维面试题库</router-link>
+    <!--
+      首页（没有返回按钮时）用等宽占位替代原来的「运维面试题库」品牌字：
+      它在页头左侧占着位置，把标题挤到右边、看起来没居中；
+      而且底部 TabBar 已经明确「你在哪个 App」，页头重复一遍是噪音。
+    -->
+    <span v-else class="header__left-spacer" aria-hidden="true" />
 
     <h1 class="header__title">{{ title }}</h1>
 
@@ -83,14 +88,13 @@ function goBack() {
   background: var(--c-primary-weak);
 }
 
-.header__brand {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--c-text);
-  padding-left: 8px;
-  white-space: nowrap;
-}
-
+/**
+ * 标题真正居中。
+ *
+ * 早先标题写 `flex: 1` + `text-align: center`，但左侧有 44px 的返回按钮、
+ * 右侧又有 44px 槽位 —— 两侧宽度虽然对得上，文字却因为品牌字挤在左边
+ * 显得偏右。现在左右各留一个等宽占位（`.header__slot`），标题居中才是真的居中。
+ */
 .header__title {
   flex: 1;
   margin: 0;
@@ -102,8 +106,11 @@ function goBack() {
   white-space: nowrap;
   text-align: center;
 }
-.header__title + .header__right {
-  min-width: 44px;
+
+/* 左侧占位：把标题推到视觉中心 */
+.header__left-spacer {
+  flex-shrink: 0;
+  width: 44px;
 }
 
 .header__right {

@@ -208,7 +208,18 @@ function openWeak() {
         只留一个箭头，不再写「点开作答，答完看解析」那行提示。
         整张卡片本来就是按钮，箭头已经说明可进；那一行既重复又白占高度。
       -->
-      <span class="daily__arrow" aria-hidden="true">→</span>
+            <span class="daily__arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="15" height="15">
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
     </button>
 
     <!--
@@ -239,7 +250,18 @@ function openWeak() {
         <span class="review__title">30 题限时自测</span>
         <span class="review__desc">随机选择题 · 刷完给分数与建议</span>
       </span>
-      <span class="review__arrow" aria-hidden="true">→</span>
+            <span class="review__arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="15" height="15">
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
     </button>
 
     <!--
@@ -268,7 +290,18 @@ function openWeak() {
             {{ wrongCount ? `已收集 ${wrongCount} 题 · 连对 3 次自动移出` : '还没有错题，答错或自评「不会」会进这里' }}
           </span>
         </span>
-        <span class="review__arrow" aria-hidden="true">→</span>
+              <span class="review__arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="15" height="15">
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
       </router-link>
 
       <!-- 错题复习：从错题本里抽一批来练 -->
@@ -291,7 +324,18 @@ function openWeak() {
             {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 10)} 题 · 连对 3 次移出` : '错题本是空的' }}
           </span>
         </span>
-        <span class="review__arrow" aria-hidden="true">→</span>
+              <span class="review__arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="15" height="15">
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
       </button>
 
       <!--
@@ -328,7 +372,18 @@ function openWeak() {
             </template>
           </span>
         </span>
-        <span class="review__arrow" aria-hidden="true">→</span>
+              <span class="review__arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="15" height="15">
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
       </button>
     </div>
 
@@ -357,7 +412,18 @@ function openWeak() {
             {{ favCount ? `${favCount} 题 · 手动标记的重点` : '还没有收藏，题卡上点星标即可收进来' }}
           </span>
         </span>
-        <span class="review__arrow" aria-hidden="true">→</span>
+              <span class="review__arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="15" height="15">
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
       </router-link>
     </div>
 
@@ -550,11 +616,23 @@ function openWeak() {
  * 那行既重复（卡片本身就是按钮）又白占十几像素高度。
  * 现在只留箭头，浮在右下角，与右上角的日期形成对角平衡。
  */
+/**
+ * 卡片右下角的进入箭头。
+ *
+ * 原来是文本字符 `→`：不同字体下粗细/长度不一，和卡片内的线条图标风格不搭。
+ * 现在用 chevron 图标 + 淡色圆底，与 AppHeader 的返回箭头同一套线条语言。
+ */
 .daily__arrow {
   position: absolute;
-  right: 14px;
-  bottom: 12px;
-  font-size: 15px;
+  right: 12px;
+  bottom: 10px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--c-primary-weak);
   color: var(--c-primary);
 }
 
@@ -646,9 +724,16 @@ function openWeak() {
   font-size: 11px;
   color: var(--c-text-3);
 }
+/* 复习入口行尾的箭头：与「每日一记」那个同一套样式（chevron + 淡色圆底） */
 .review__arrow {
   flex-shrink: 0;
-  font-size: 15px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--c-primary-weak);
   color: var(--c-primary);
 }
 

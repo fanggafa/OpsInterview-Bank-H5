@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppHeader from '@/components/AppHeader.vue'
 import QuestionCard from '@/components/QuestionCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -242,10 +243,15 @@ const resultText = computed(() => {
 
 <template>
   <div class="page">
-    <header class="bank-head">
-      <h1 class="bank-title">题库</h1>
-      <span class="bank-count muted">{{ resultText }}</span>
-    </header>
+    <!--
+      页头统一走 AppHeader —— 全站的标题/返回/右侧槽位都在那一处，
+      本页不该再自造一套 `.bank-head`（那正是「标题没跟着一起变」的根因）。
+
+      题库是底部 TabBar 的**一级页面**，没有「上一页」可回 ——
+      所以 `:back="false"`，不显示返回箭头（它在这里只会让人误以为能退到别处）。
+      题数不占页头，而是放进搜索框末尾（见下方），页头只留标题。
+    -->
+    <AppHeader title="题库" :back="false" />
 
     <!-- 搜索框 -->
     <div class="search">
@@ -263,6 +269,8 @@ const resultText = computed(() => {
         :value="keywordInput"
         @input="onKeywordInput"
       />
+      <!-- 题数：贴在搜索框最右侧，省一行高度 -->
+      <span class="search__count">{{ resultText }}</span>
       <button v-if="keywordInput" class="search__clear" aria-label="清空搜索" @click="clearKeyword">
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
           <path d="M7 7l10 10M17 7L7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -408,22 +416,12 @@ const resultText = computed(() => {
 </template>
 
 <style scoped>
-.bank-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 12px 0 8px;
-}
-.bank-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-.bank-count {
-  font-size: 12px;
-}
-
+/**
+ * 页头：标题居中 + 计数在下方。
+ *
+ * 原来是 `display: flex; justify-content: space-between; align-items: baseline`
+ * —— 标题贴左、计数贴右，与全站其它页面（标题居中）不同。
+ */
 /* 搜索框 */
 .search {
   display: flex;
@@ -459,6 +457,25 @@ const resultText = computed(() => {
 .search__input::-webkit-search-cancel-button {
   display: none;
 }
+/**
+ * 题数：贴在搜索框最右侧。
+ *
+ * 早先是页头右侧单独一行（`justify-content: space-between` 把标题挤到左边），
+ * 既多占一行、又让页头与全站居中的标题不一致。
+ * 现在放进搜索框尾部 —— 搜索时它顺带告诉你「筛出了多少题」，语义也更顺。
+ * 左侧加一条细分割线，与输入区隔开。
+ */
+.search__count {
+  flex-shrink: 0;
+  padding-left: 8px;
+  margin-left: 2px;
+  border-left: 1px solid var(--c-border);
+  font-size: 11.5px;
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .search__clear {
   flex-shrink: 0;
   width: 24px;

@@ -236,15 +236,20 @@ describe('错题本 · 分类汇总 → 明细', () => {
     expect(router.currentRoute.value.query.category).toBe(cat)
     // 明细里只有这一类的 5 题
     expect(wrapper.findAll('.qcard')).toHaveLength(PER_CAT)
-    expect(wrapper.find('.head__cat').text()).toBe(cat)
+    // 分类名写在页头标题里（「错题本 · Linux基础」），不再在正文里重复一行
+    expect(wrapper.find('.header__title').text()).toContain(cat)
   })
 
-  it('明细里点返回回到汇总视图', async () => {
+  it('明细里点页头返回箭头回到汇总视图', async () => {
     markWrongMulti(MULTI.length)
     const { wrapper, router } = await mountView(WrongView, '/wrong', { category: CATS[0] })
     expect(wrapper.findAll('.qcard')).toHaveLength(PER_CAT)
 
-    await wrapper.find('.head__back').trigger('click')
+    /**
+     * 2026-11：明细里删掉了正文那个「‹」返回箭头 —— 它与页头那个重复，
+     * 一屏两个返回箭头让人疑惑。现在返回只靠页头 `.header__btn`。
+     */
+    await wrapper.find('.header__btn').trigger('click')
     await flushPromises()
     await wrapper.vm.$nextTick()
 
@@ -304,10 +309,11 @@ describe('收藏页 · 分类汇总 → 明细', () => {
     expect(wrapper.findAll('.qcard')).toHaveLength(PER_CAT)
   })
 
-  it('明细里点返回回到汇总', async () => {
+  it('明细里点页头返回箭头回到汇总', async () => {
     markFavMulti(MULTI.length)
     const { wrapper, router } = await mountView(FavoritesView, '/favorites', { category: CATS[0] })
-    await wrapper.find('.head__back').trigger('click')
+    // 返回只靠页头那个箭头（正文里那个「‹」已移除，避免一屏两个返回）
+    await wrapper.find('.header__btn').trigger('click')
     await flushPromises()
     await wrapper.vm.$nextTick()
 
@@ -315,18 +321,16 @@ describe('收藏页 · 分类汇总 → 明细', () => {
     expect(wrapper.findAll('.cat')).toHaveLength(CATS.length)
   })
 
-  it('「全部取消」后显示空状态', async () => {
+  it('不再提供「全部取消」（清空统一走设置页，避免列表页误触）', async () => {
     markFavMulti(MULTI.length)
     const { wrapper } = await mountView(FavoritesView, '/favorites')
-
-    // 点「全部取消」→ 页内确认条 → 点「确定取消」
-    await wrapper.find('.head__clear').trigger('click')
-    await wrapper.vm.$nextTick()
-    await wrapper.find('.confirm .btn--danger').trigger('click')
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).toContain('还没有收藏')
-    expect(wrapper.findAll('.cat')).toHaveLength(0)
+    /**
+     * 2026-11：删掉了列表页右上角的「全部取消」。
+     * 它紧贴列表又是破坏性操作，很容易误触；设置页已有「清空数据」的统一入口。
+     */
+    expect(wrapper.find('.head__clear').exists()).toBe(false)
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('全部取消')
   })
 
   it('有收藏时**不再**显示「还没有收藏」空状态（曾因 v-else 错位而重复出现）', async () => {

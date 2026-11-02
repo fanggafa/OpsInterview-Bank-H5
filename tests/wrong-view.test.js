@@ -134,23 +134,19 @@ describe('错题本 · 连对移出规则', () => {
   })
 })
 
-describe('错题本 · 入口按钮', () => {
-  it('有错题时显示「错题复习」按钮（不是旧的专项刷题）', async () => {
+describe('错题本 · 不再有「错题复习」按钮', () => {
+  it('页面里没有「错题复习」按钮（已移除）', async () => {
     study.markUnknown(1)
     const { wrapper } = await mountWrong()
-    const btn = wrapper.find('.head__btn')
-    expect(btn.text()).toBe('错题复习')
+    /**
+     * 2026-11：移除了本页的「错题复习」按钮。
+     *
+     * 它做的事（从错题本抽一批来练）与首页「复习巩固」里的同名入口重复，
+     * 放在这一页反而和「点进某个分类补那一类」抢注意力 —— 用户反映「没啥用」。
+     * 需要「抽一批来练」的场景从首页进。
+     */
+    expect(wrapper.find('.head__btn').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('错题专项刷题')
-  })
-
-  it('点按钮进入 review=wrong 的复习赛', async () => {
-    study.markUnknown(1)
-    const { wrapper } = await mountWrong()
-    const router = wrapper.vm.$router
-    await wrapper.find('.head__btn').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/practice')
-    expect(router.currentRoute.value.query.review).toBe('wrong')
   })
 
   it('空态文案说明「连对 3 次移出」，不是旧的「答对就移出」', async () => {

@@ -81,9 +81,19 @@ function openCategory(category) {
   router.push({ path: '/favorites', query: { category } })
 }
 
-function backToSummary() {
-  router.push({ path: '/favorites' })
-}
+/**
+ * 页头标题：明细视图把分类名写进标题（「我的收藏 · 网络基础」）。
+ *
+ * 早先正文里还有一行「‹ 网络基础 共 1 题」，页头再加一个返回箭头 ——
+ * 一屏出现两个返回箭头，用户第一反应是「为什么有两个返回」。
+ * 现在靠标题表达「在哪一类」，箭头只留页头那一个。
+ */
+const headerTitle = computed(() =>
+  inCategory.value ? `我的收藏 · ${activeCategory.value}` : '我的收藏',
+)
+
+/** 页头返回目标：明细 → 汇总（当前路由），汇总 → 首页 */
+const headerBackTo = computed(() => (inCategory.value ? '/favorites' : '/'))
 
 function changePage(next) {
   page.value = next
@@ -100,33 +110,16 @@ watch(detailMeta, (m) => {
 })
 
 /**
- * 「全部取消」用页内确认，不用 window.confirm。
+ * 「清空收藏」只放在设置页，**本页不再提供**。
  *
- * window.confirm 在微信内置浏览器 / 部分 WebView / 禁止弹窗的设置下
- * 会静默返回 false 或干脆不弹，表现为「点了没反应」。
- * 「我的」页曾因同样的写法出现过这个 bug，这里保持一致。
+ * 早先右上角有个「全部取消」，但它紧贴列表、又是破坏性操作，很容易误触；
+ * 而设置页本来就有「清空数据」的统一入口（含二次确认）。两处都放 = 多一个误触点。
  */
-const confirming = ref(false)
-
-function askClear() {
-  if (!list.value.length) return
-  confirming.value = true
-}
-
-function cancelClear() {
-  confirming.value = false
-}
-
-function clearAll() {
-  study.clearFavorites()
-  page.value = 1
-  confirming.value = false
-}
 </script>
 
 <template>
   <div class="page">
-    <AppHeader title="我的收藏" back-to="/" />
+    <AppHeader :title="headerTitle" :back-to="headerBackTo" />
 
     <div v-if="bank.loading" class="skeleton card" aria-busy="true" />
 
@@ -150,38 +143,14 @@ function clearAll() {
         @action="router.push('/bank')"
       />
 
-      <!-- 页内确认条：不依赖 window.confirm（未收藏时不相关） -->
-      <div v-if="confirming" class="confirm" role="alertdialog">
-        <p class="confirm__text">确定取消全部收藏？（{{ list.length }} 题）</p>
-        <div class="confirm__actions">
-          <button class="btn btn--plain btn--sm" @click="cancelClear">取消</button>
-          <button class="btn btn--danger btn--sm" @click="clearAll">确定取消</button>
-        </div>
-      </div>
-
       <!-- ========== 明细视图：某个分类下的收藏 ========== -->
       <template v-else-if="inCategory">
-        <div class="head">
-          <div class="head__left">
-            <button class="head__back" aria-label="返回分类列表" @click="backToSummary">
-              <svg viewBox="0 0 24 24" width="16" height="16">
-                <path
-                  d="M20 12H5M11 6l-6 6 6 6"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.9"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </button>
-            <p class="head__count">
-              <strong class="head__cat">{{ activeCategory }}</strong>
-              共 {{ categoryList.length }} 题
-            </p>
-          </div>
-          <button class="head__clear" @click="askClear">全部取消</button>
-        </div>
+        <!--
+          只留一行统计文字。
+          早先这里有「‹ 网络基础」的返回箭头 + 「全部取消」按钮：
+          前者与页头那个重复（分类名已写进页头标题），后者容易误触（清空改去设置页）。
+        -->
+        <p class="head__count head__count--detail">共 {{ categoryList.length }} 题</p>
 
         <ul class="list">
           <li v-for="(q, i) in detailList" :key="q.id">
@@ -194,12 +163,9 @@ function clearAll() {
 
       <!-- ========== 汇总视图：每个分类一行，右侧「查看」进明细 ========== -->
       <template v-else>
-        <div class="head">
-          <p class="head__count">
-            共 <strong>{{ list.length }}</strong> 道收藏 · {{ summaryGroups.length }} 个分类
-          </p>
-          <button class="head__clear" @click="askClear">全部取消</button>
-        </div>
+        <p class="head__count">
+          共 <strong>{{ list.length }}</strong> 道收藏 · {{ summaryGroups.length }} 个分类
+        </p>
 
         <!--
           与「薄弱分类」页同款：一行一个分类，分类名 + 收藏数 + 占比条 + 「查看」按钮。
@@ -289,10 +255,15 @@ function clearAll() {
   /* 收藏用金色渐变，与错题本的红色区分 */
   background: linear-gradient(90deg, #f7b955, #e09428);
 }
+/**
+ * 右侧的题数：固定宽度居中 + 与「查看」之间留 10px，
+ * 让「数字」和「操作」在视觉上是两组东西（原来右对齐紧贴按钮，看着像一整块）。
+ */
 .cat__count {
   flex-shrink: 0;
-  width: 28px;
-  text-align: right;
+  width: 26px;
+  margin-right: 10px;
+  text-align: center;
   font-size: 13px;
   font-weight: 700;
   color: var(--c-text);
@@ -315,32 +286,6 @@ function clearAll() {
   opacity: 0.7;
 }
 
-/* 明细视图头部的「返回分类列表」 */
-.head__left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.head__back {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: var(--c-text-2);
-  background: transparent;
-}
-.head__back:active {
-  background: var(--c-primary-weak);
-  color: var(--c-primary);
-}
-.head__cat {
-  color: var(--c-text);
-}
-
 .head {
   display: flex;
   align-items: center;
@@ -348,8 +293,14 @@ function clearAll() {
   gap: 10px;
   padding: 10px 0;
 }
+/**
+ * 统计文字。
+ *
+ * 下边距 16px：原来没有下边距，文字紧贴下面的分类卡片，
+ * 卡片顶边看起来像被文字压着（截图里就是这个症状）。
+ */
 .head__count {
-  margin: 0;
+  margin: 0 0 16px;
   font-size: 13px;
   color: var(--c-text-2);
 }
@@ -357,44 +308,10 @@ function clearAll() {
   color: var(--c-warning);
   font-size: 15px;
 }
-.head__clear {
-  min-height: 36px;
-  padding: 0 10px;
-  font-size: 12.5px;
-  color: var(--c-text-3);
-  border-radius: var(--radius-sm);
-}
-.head__clear:active {
-  background: var(--c-bg);
-}
-
-/* 页内确认条 */
-.confirm {
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--c-border);
-  background: var(--c-card);
-}
-.confirm__text {
-  margin: 0 0 9px;
-  font-size: 12.5px;
-  color: var(--c-text);
-}
-.confirm__actions {
-  display: flex;
-  gap: 8px;
-}
-.btn--sm {
-  height: 34px;
-  padding: 0 14px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-}
-.btn--danger {
-  background: var(--c-danger);
-  color: #fff;
-  font-weight: 500;
+/* 明细视图顶部的统计文字：单独占一行，与列表拉开 */
+/* 明细视图顶部的统计文字：与下方题目列表拉开 16px */
+.head__count--detail {
+  margin: 10px 0 16px;
 }
 
 .list {

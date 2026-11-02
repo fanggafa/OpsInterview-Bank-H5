@@ -98,19 +98,10 @@ function openCategory(category) {
   router.push({ path: '/wrong', query: { category } })
 }
 
-function backToSummary() {
-  router.push({ path: '/wrong' })
-}
-
 /** 题量变化（连对满 3 次移出）后，页码可能越界，由 meta 自动收敛 */
 watch(detailMeta, (m) => {
   if (inCategory.value && m.page !== page.value) page.value = m.page
 })
-
-/** 从错题本随机抽 10 题复习 */
-function startWrongReview() {
-  router.push({ path: '/practice', query: { review: 'wrong' } })
-}
 
 /** 题目在错题本里的连对进度（0/3、1/3、2/3） */
 function streakOf(id) {
@@ -118,6 +109,23 @@ function streakOf(id) {
 }
 
 const clearStreak = WRONG_CLEAR_STREAK
+
+/**
+ * 页头标题。
+ *
+ * 明细视图把分类名放进标题（「错题本 · Linux基础》）——
+ * 早先是在正文里再来一行「‹ Linux基础 共 6 题」，于是页面上出现**两个返回箭头**
+ * （页头的 + 正文的），用户第一反应是「为什么有两个返回」。
+ * 现在靠标题表达「你在哪一类」，返回箭头只留页头那一个：
+ * 在明细里它回汇总列表，在汇总里它回首页。
+ */
+const headerTitle = computed(() => (inCategory.value ? `错题本 · ${activeCategory.value}` : '错题本'))
+
+/** 页头返回按钮的目标：明细 → 汇总（当前路由），汇总 → 首页 */
+const headerBackTo = computed(() => (inCategory.value ? '/wrong' : '/'))
+
+/** 明细头部还剩多少题（去掉返回箭头后只留文字） */
+const detailCountText = computed(() => `共 ${categoryList.value.length} 题`)
 
 /**
  * 汇总视图里进度条的基准：以「错题最多的那个分类」为满格。
@@ -132,7 +140,7 @@ const maxGroupCount = computed(() =>
 
 <template>
   <div class="page">
-    <AppHeader title="错题本" back-to="/" />
+    <AppHeader :title="headerTitle" :back-to="headerBackTo" />
 
     <div v-if="bank.loading" class="skeleton card" aria-busy="true" />
 
@@ -158,29 +166,13 @@ const maxGroupCount = computed(() =>
 
       <!-- ========== 明细视图：某个分类下的错题 ========== -->
       <template v-else-if="inCategory">
-        <div class="head">
-          <div class="head__left">
-            <button class="head__back" aria-label="返回分类列表" @click="backToSummary">
-              <svg viewBox="0 0 24 24" width="16" height="16">
-                <path
-                  d="M20 12H5M11 6l-6 6 6 6"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.9"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </button>
-            <p class="head__count">
-              <strong class="head__cat">{{ activeCategory }}</strong>
-              共 {{ categoryList.length }} 题
-            </p>
-          </div>
-          <button class="btn btn--primary head__btn" @click="startWrongReview">
-            错题复习
-          </button>
-        </div>
+        <!--
+          只留一行统计文字。
+          早先这里有「‹ Linux基础 共 6 题」+ 右侧「错题复习」两个元素 ——
+          返回箭头与页头那个重复，按钮又挤在同一行，所以都去掉了：
+          分类名已经写在页头标题里，返回靠页头那一个箭头。
+        -->
+        <p class="head__count head__count--detail">{{ detailCountText }}</p>
 
         <ul class="list">
           <li v-for="(q, i) in detailList" :key="q.id">
@@ -205,12 +197,15 @@ const maxGroupCount = computed(() =>
 
       <!-- ========== 汇总视图：每个分类一行，右侧「查看」进明细 ========== -->
       <template v-else>
-        <div class="head">
-          <p class="head__count">共 <strong>{{ list.length }}</strong> 道错题 · {{ summaryGroups.length }} 个分类</p>
-          <button class="btn btn--primary head__btn" @click="startWrongReview">
-            错题复习
-          </button>
-        </div>
+        <!--
+          去掉了右侧的「错题复习」按钮。
+          它做的事和「从错题本重新抽一批」是同一个入口，但放在这一页里
+          反而与「点进某个分类补那一类」的动作抢注意力 —— 用户反映「没啥用」。
+          真正需要「抽一批来练」的场景从首页「复习巩固」进。
+        -->
+        <p class="head__count">
+          共 <strong>{{ list.length }}</strong> 道错题 · {{ summaryGroups.length }} 个分类
+        </p>
 
         <p class="rule">
           连对 {{ clearStreak }} 次自动移出 · 任意方式刷到都算
@@ -248,8 +243,14 @@ const maxGroupCount = computed(() =>
   gap: 10px;
   padding: 10px 0;
 }
+/**
+ * 统计文字。
+ *
+ * 下边距 6px 而不是 0：汇总视图下面紧跟 `.rule`（它自己带 16px 下边距），
+ * 而明细视图下面直接就是题目列表 —— 没有这条下边距时文字会贴住第一张卡。
+ */
 .head__count {
-  margin: 0;
+  margin: 0 0 6px;
   font-size: 13px;
   color: var(--c-text-2);
 }
@@ -257,16 +258,17 @@ const maxGroupCount = computed(() =>
   color: var(--c-danger);
   font-size: 15px;
 }
-.head__btn {
-  min-height: 36px;
-  padding: 0 14px;
-  font-size: 13px;
+/* 明细视图顶部的统计文字：单独占一行，与列表拉开 */
+/* 明细视图顶部的统计文字：与下方题目列表拉开 16px */
+.head__count--detail {
+  margin: 10px 0 16px;
 }
 
 /* 规则说明：把「怎么才会移出」写在列表前，省得用户猜 */
 .rule {
-  margin: -4px 0 10px;
+  margin: 6px 0 16px;
   font-size: 11.5px;
+  line-height: 1.6;
   color: var(--c-text-3);
 }
 
@@ -357,10 +359,18 @@ const maxGroupCount = computed(() =>
   /* 错题用一种稳定的红色渐变：它表达「需要补的量」，不是错误率 */
   background: linear-gradient(90deg, #f0736f, #d64b52);
 }
+/**
+ * 右侧的题数。
+ *
+ * 早先是 `text-align: right` + 紧贴「查看」按钮 —— 数字和胶囊贴在一起，
+ * 看着像一整块。现在：固定宽度居中、并在它与按钮之间留出 10px 的间距，
+ * 让「数字」和「操作」在视觉上是两组东西。
+ */
 .cat__count {
   flex-shrink: 0;
-  width: 28px;
-  text-align: right;
+  width: 26px;
+  margin-right: 10px;
+  text-align: center;
   font-size: 13px;
   font-weight: 700;
   color: var(--c-text);
@@ -381,32 +391,6 @@ const maxGroupCount = computed(() =>
 }
 .cat__act:active {
   opacity: 0.7;
-}
-
-/* 明细视图头部的「返回分类列表」 */
-.head__left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.head__back {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: var(--c-text-2);
-  background: transparent;
-}
-.head__back:active {
-  background: var(--c-primary-weak);
-  color: var(--c-primary);
-}
-.head__cat {
-  color: var(--c-text);
 }
 
 .list {
