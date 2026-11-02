@@ -242,7 +242,15 @@ function build() {
       reviewKind.value === 'wrong'
         ? bank.questions.filter((q) => study.isWrong(q.id))
         : bank.questions.slice()
-    const effectiveStudyMode = isDrill.value ? 'practice' : studyMode.value
+    /**
+     * **错题复习也强制做题模式（选择题）**。
+     *
+     * 错题本只收选择题（2026-11 规则），所以从它抽出来的必然是选择题；
+     * 若还跟随 URL 的 `studyMode=memorize`，`byStudyMode` 会把这批选择题
+     * 再按「只要简答题」筛一遍 —— 结果永远是空队列。
+     * 每日一刷同理（它本来就是选择题自测）。
+     */
+    const effectiveStudyMode = isDrill.value || reviewKind.value === 'wrong' ? 'practice' : studyMode.value
     const pool = byStudyMode(source, effectiveStudyMode)
 
     /**
@@ -1124,11 +1132,11 @@ const emptyTitle = computed(() => {
 const emptyDesc = computed(() => {
   if (isReview.value) {
     return reviewKind.value === 'wrong'
-      ? '答错或自评「不会」的题会进入错题本，连对 3 次才移出。'
+      ? '答错的选择题会进入错题本，连对 3 次才移出。'
       : '换一个分类，或到题库页浏览全部题目。'
   }
   if (mode.value === 'wrong') {
-    return `答错 / 自评「不会」的题会自动进入错题本；之后任意方式连对 ${WRONG_CLEAR_STREAK} 次自动移出。`
+    return `答错的选择题会自动进入错题本；之后任意方式连对 ${WRONG_CLEAR_STREAK} 次自动移出。`
   }
   // 做题模式只含选择题、背题模式只含简答题，空态要说清是「这个模式的题型没了」，
   // 否则用户会以为整个分类没题。
@@ -1462,8 +1470,13 @@ const emptyDesc = computed(() => {
             <span v-if="wrongStreak" class="badge qcard-p__wrong">
               错题 {{ wrongStreak }} / {{ WRONG_CLEAR_STREAK }}
             </span>
-            <!-- 收藏：放在题目自己这一行，与「顶部导航」无关 -->
+            <!--
+              收藏：只有简答题（背题模式）显示。
+              选择题的价值在选项里，单独收进收藏页意义不大。
+              放在题目自己这一行，与「顶部导航」无关。
+            -->
             <button
+              v-if="short"
               class="qcard-p__fav"
               :class="{ 'qcard-p__fav--on': favorite }"
               :aria-label="favorite ? '取消收藏' : '收藏这道题'"

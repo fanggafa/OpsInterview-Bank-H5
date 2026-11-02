@@ -4,13 +4,28 @@ import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
 import { STATUS, STORAGE_KEYS } from '@/utils/constants'
 
-/** 构造一个最小的题库：3分类，各若干题 */
+/**
+ * 构造一个最小的题库：3分类，各若干题（**简答题**）。
+ *
+ * 这批用例覆盖「自评 / 掌握率 / 收藏 / 持久化」，本来就是简答题语义。
+ * 2026-11 起错题本只收选择题，所以**错题本相关用例会各自局部换用选择题夹具**，
+ * 而不是把这份全局夹具改成选择题（那会连带改坏掌握率等断言）。
+ */
 const FIXTURE = [
   { id: 1, category: 'A', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t'], frequency: '高频' },
   { id: 2, category: 'A', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t'], frequency: '高频' },
   { id: 3, category: 'B', difficulty: '中等', question: 'q3', answer: 'a3', tags: ['t'], frequency: '中频' },
   { id: 4, category: 'B', difficulty: '困难', question: 'q4', answer: 'a4', tags: ['t'], frequency: '中频' },
   { id: 5, category: 'C', difficulty: '困难', question: 'q5', answer: 'a5', tags: ['t'], frequency: '低频' },
+]
+
+/** 错题本用例专用的选择题夹具（错题本只收选择题） */
+const CHOICE_FIXTURE = [
+  { id: 1, type: 'single', category: 'A', difficulty: '简单', question: 'q1', answer: ['A'], tags: ['t'], frequency: '高频' },
+  { id: 2, type: 'single', category: 'A', difficulty: '中等', question: 'q2', answer: ['A'], tags: ['t'], frequency: '高频' },
+  { id: 3, type: 'single', category: 'B', difficulty: '中等', question: 'q3', answer: ['A'], tags: ['t'], frequency: '中频' },
+  { id: 4, type: 'single', category: 'B', difficulty: '困难', question: 'q4', answer: ['A'], tags: ['t'], frequency: '中频' },
+  { id: 5, type: 'single', category: 'C', difficulty: '困难', question: 'q5', answer: ['A'], tags: ['t'], frequency: '低频' },
 ]
 
 let bank
@@ -101,6 +116,15 @@ describe('统计口径（PRD §五.4）', () => {
 })
 
 describe('错题本派生', () => {
+  /**
+   * 2026-11 起**错题本只收选择题**：
+   * 简答题靠自评、没有客观对错，进了错题本也复习不了（错题复习只抽选择题），
+   * 还会污染薄弱分类的统计。所以这一组用例换用选择题夹具。
+   */
+  beforeEach(() => {
+    bank.questions = CHOICE_FIXTURE
+  })
+
   it('答错（自评不会）后进入错题本', () => {
     study.markUnknown(1)
     expect(study.wrongList.map((q) => q.id)).toEqual([1])
@@ -172,12 +196,36 @@ describe('错题本派生', () => {
 })
 
 describe('收藏', () => {
+  /**
+   * 收藏的 fixture 要用**简答题**：2026-11 起「收藏只收简答题」，
+   * 选择题即使调 toggleFavorite 也不会写进去。
+   * 这里单独重设题库，不影响上面错题本那些用选择题的用例。
+   */
+  beforeEach(() => {
+    bank.questions = [
+      { id: 1, type: 'short', category: 'A', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t'], frequency: '高频' },
+      { id: 2, type: 'short', category: 'A', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t'], frequency: '高频' },
+      { id: 3, type: 'short', category: 'B', difficulty: '中等', question: 'q3', answer: 'a3', tags: ['t'], frequency: '中频' },
+    ]
+    study.favorites = []
+  })
+
   it('toggle 添加与取消', () => {
     expect(study.isFavorite(1)).toBe(false)
     study.toggleFavorite(1)
     expect(study.isFavorite(1)).toBe(true)
     study.toggleFavorite(1)
     expect(study.isFavorite(1)).toBe(false)
+  })
+
+  it('选择题不会被写进收藏（收藏只收简答题）', () => {
+    bank.questions = [
+      { id: 7, type: 'single', category: 'A', difficulty: '简单', question: 'c1', answer: ['A'], tags: ['t'], frequency: '高频' },
+    ]
+    study.favorites = []
+    study.toggleFavorite(7)
+    expect(study.isFavorite(7)).toBe(false)
+    expect(study.favorites).toEqual([])
   })
 
   it('收藏列表按收藏时间倒序', () => {

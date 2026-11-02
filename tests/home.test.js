@@ -284,9 +284,33 @@ describe('首页 · 复习入口', () => {
     expect(wrapper.findAll('.review--drill')).toHaveLength(1)
   })
 
+  it('首页按使用方式分成「背题」「刷题」两个区块', async () => {
+    /**
+     * 2026-11：首页按**使用方式**分成两个区块，方便用户一眼区分：
+     * - 背题：每日一记 + 我的收藏（收藏只收简答题）
+     * - 刷题：每日一刷 + 复习巩固（错题本 / 错题复习 / 薄弱分类）
+     *
+     * 标题不用「简答题 / 选择题」——那是题型名，像目录一样生硬；
+     * 「背题 / 刷题」是 App 里本来就在用的说法（背题模式 / 刷题），用户熟悉。
+     */
+    const { wrapper } = await mountHome()
+    const titles = wrapper.findAll('.section-title').map((n) => n.text())
+    expect(titles).toEqual(['背题', '刷题'])
+
+    // 背题区在前，里面是每日一记 + 我的收藏
+    const subs = wrapper.findAll('.section-sub').map((n) => n.text())
+    expect(subs).toContain('每日一记')
+    expect(subs).toContain('我的收藏')
+    expect(subs).toContain('每日一刷')
+    expect(subs).toContain('复习巩固')
+  })
+
   it('复习巩固按「错题本 → 错题复习 → 薄弱分类」排列', async () => {
     const { wrapper } = await mountHome()
-    const items = wrapper.findAll('.reviews .review')
+    // 只取「复习巩固」这一组（收藏已挪到简答题区，不在这组里）
+    const groups = wrapper.findAll('.reviews')
+    const last = groups[groups.length - 1]
+    const items = last.findAll('.review')
     /**
      * 错题本排最前：它是「有哪些题要补」的清单，错题复习是从清单里抽题练，
      * 先看清单再开练更合逻辑（用户明确要求把错题本挪到错题复习上面）。
@@ -294,8 +318,6 @@ describe('首页 · 复习入口', () => {
     expect(items[0].text()).toContain('错题本')
     expect(items[1].text()).toContain('错题复习')
     expect(items[2].text()).toContain('薄弱分类')
-    // 「我的题集」里的收藏排在第 4 张
-    expect(items[3].text()).toContain('我的收藏')
   })
 
   it('每日一刷显示「随机 30 题选择题」', async () => {
@@ -321,12 +343,12 @@ describe('首页 · 复习入口', () => {
   })
 
   it('有错题时可点，且文案带上实际抽题数', async () => {
-    study.markUnknown(1)
-    study.markUnknown(2)
+    // 错题本只收选择题：用 id=4（single）造一道错题
+    study.markUnknown(4)
     const { wrapper, router } = await mountHome()
     const wrongBtn = reviewBy(wrapper, '错题复习')
     expect(wrongBtn.attributes('disabled')).toBeUndefined()
-    expect(wrongBtn.text()).toContain('抽 2 题')
+    expect(wrongBtn.text()).toContain('抽 1 题')
 
     await wrongBtn.trigger('click')
     await flushPromises()
@@ -334,26 +356,31 @@ describe('首页 · 复习入口', () => {
   })
 
   it('错题超过 10 道时文案显示抽 10 题', async () => {
-    // FIXTURE 只有 4 题，这里补到 12 道错题
+    // 错题本只收选择题，所以这里补的都是 single 题
     bank.questions = [
       ...FIXTURE,
-      ...Array.from({ length: 8 }, (_, i) => ({
+      ...Array.from({ length: 12 }, (_, i) => ({
         id: 100 + i,
-        type: 'short',
+        type: 'single',
         category: 'Linux基础',
         difficulty: '中等',
         question: `q${100 + i}`,
-        answer: 'a',
+        answer: ['A'],
+        options: [
+          { key: 'A', text: 'a' },
+          { key: 'B', text: 'b' },
+        ],
         frequency: '高频',
       })),
     ]
-    bank.questions.forEach((q) => study.markUnknown(q.id))
+    bank.questions.filter((q) => q.type === 'single').forEach((q) => study.markUnknown(q.id))
     const { wrapper } = await mountHome()
     expect(reviewBy(wrapper, '错题复习').text()).toContain('抽 10 题')
   })
 
   it('错题复习入口说明「连对 3 次移出」', async () => {
-    study.markUnknown(1)
+    // 错题本只收选择题，用 single 题造错题
+    study.markUnknown(4)
     const { wrapper } = await mountHome()
     expect(reviewBy(wrapper, '错题复习').text()).toContain('连对 3 次移出')
   })

@@ -264,13 +264,20 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
     expect(src).toMatch(/\.practice__mode-btn--memorize/)
   })
 
-  it('收藏按钮在题卡内，不在页头', async () => {
-    const { wrapper } = await mountPractice()
-    await pick(wrapper, '做题模式')
-    // 页头里不应有收藏按钮
-    expect(wrapper.find('.header__right .qcard-p__fav').exists()).toBe(false)
-    // 收藏按钮在题卡的题头行里
-    expect(wrapper.find('.qcard-p__meta .qcard-p__fav').exists()).toBe(true)
+  it('收藏按钮只在简答题（背题模式）出现，做题模式没有', async () => {
+    /**
+     * 2026-11 规则：**收藏只收简答题**，所以选择题不再有收藏按钮。
+     * 做题模式只出选择题 → 题头不该有星标；背题模式是简答题 → 有星标。
+     */
+    const practice = await mountPractice()
+    await pick(practice.wrapper, '做题模式')
+    expect(practice.wrapper.find('.qcard-p__fav').exists()).toBe(false)
+
+    const memorize = await mountPractice()
+    await pick(memorize.wrapper, '背题模式')
+    expect(memorize.wrapper.find('.qcard-p__meta .qcard-p__fav').exists()).toBe(true)
+    // 页头里始终不应有收藏按钮
+    expect(memorize.wrapper.find('.header__right .qcard-p__fav').exists()).toBe(false)
   })
 
   it('题头不显示历史的「答对/答错」标签（避免与结果条语义打架）', async () => {

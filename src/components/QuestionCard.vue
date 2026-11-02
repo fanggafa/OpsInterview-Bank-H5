@@ -72,7 +72,13 @@ function toggleFavorite(e) {
           <template v-else>{{ seg.text }}</template>
         </template>
       </p>
+      <!--
+        **只有简答题能收藏**：收藏的定位是「留一道值得反复看的题」——
+        简答题自带完整答案可读；选择题的价值在选项里，脱离作答场景意义不大。
+        所以选择题的星标直接不渲染（不是禁用，省得用户以为是权限问题）。
+      -->
       <button
+        v-if="!isChoice(props.question)"
         class="qcard__star"
         :class="{ 'qcard__star--on': favorite }"
         :aria-label="favorite ? '取消收藏' : '收藏'"

@@ -19,7 +19,7 @@ import { WRONG_CLEAR_STREAK } from '@/utils/constants'
 
 const FIXTURE = Array.from({ length: 5 }, (_, i) => ({
   id: i + 1,
-  type: 'short',
+  type: 'single',
   category: 'Linux基础',
   difficulty: '中等',
   frequency: '高频',

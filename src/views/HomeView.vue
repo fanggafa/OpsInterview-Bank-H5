@@ -177,10 +177,21 @@ function openWeak() {
     </header>
 
     <!--
+      ========== 背题区 ==========
+      首页按**使用方式**分成两个区块：背题（读题看答案记住）、刷题（成组做判对错）。
+
+      不用「简答题 / 选择题」当标题 —— 那是题型名，读起来像目录、很生硬；
+      「背题 / 刷题」是 App 里本来就在用的说法（背题模式 / 刷题），用户熟悉。
+
+      背题 = 每日一记（每天读一道、记一个知识点）+ 我的收藏（收藏只收简答题）。
+    -->
+    <h2 class="section-title">背题</h2>
+
+    <!--
       每日一记：给一个「今天具体记什么」的动作。
       只抽简答题 —— 它能直接读答案解析，符合「记」的定位。
     -->
-    <h2 class="section-title">每日一记</h2>
+    <h3 class="section-sub">每日一记</h3>
     <button v-if="daily" class="daily card" @click="openDaily">
       <!--
         状态标签只在「已作答」时出现（今天答对/答错、标记会/不会）。
@@ -227,7 +238,53 @@ function openWeak() {
       与每日一记的差别：每日一记是「看一道」，每日一刷是「考一批」并给分数。
       它不属于「复习巩固」（那是按错题/薄弱去补），所以单独成块。
     -->
-    <h2 class="section-title">每日一刷</h2>
+    <!--
+      我的收藏：从「我的」页搬来 —— 它们本质是「题」而不是「我的设置」，
+      放首页与其他题目入口同段更好找。「我的」页只留数据看板 + 右上角设置。
+      （收藏只收简答题，所以归在「简答题」这块。）
+    -->
+    <h3 class="section-sub">我的收藏</h3>
+    <div class="reviews">
+      <router-link to="/favorites" class="review">
+        <span class="review__icon review__icon--fav" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="19" height="19">
+            <path
+              d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <span class="review__text">
+          <span class="review__title">我的收藏</span>
+          <span class="review__desc">
+            {{ favCount ? `${favCount} 题 · 手动标记的重点` : '还没有收藏，题卡上点星标即可收进来' }}
+          </span>
+        </span>
+              <span class="review__arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="15" height="15">
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
+      </router-link>
+    </div>
+
+    <!--
+      ========== 刷题区 ==========
+      每日一刷（30 题自测）+ 复习巩固（错题本 / 错题复习 / 薄弱分类）。
+      这几项**都只涉及选择题**：错题本只收选择题，薄弱分类也只统计选择题。
+    -->
+    <h2 class="section-title">刷题</h2>
+    <h3 class="section-sub">每日一刷</h3>
     <button class="review review--drill" @click="startReview('dailyDrill')">
       <span class="review__icon review__icon--drill" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="19" height="19">
@@ -269,7 +326,7 @@ function openWeak() {
       错题本放最前面 —— 它是「有哪些题要补」的清单，错题复习是从清单里抽题练，
       先看清单再开练更合逻辑。
     -->
-    <h2 class="section-title">复习巩固</h2>
+    <h3 class="section-sub">复习巩固</h3>
     <div class="reviews">
       <!-- 错题本：清单（点了去看有哪些题），不是练习 -->
       <router-link to="/wrong" class="review">
@@ -287,7 +344,7 @@ function openWeak() {
         <span class="review__text">
           <span class="review__title">错题本</span>
           <span class="review__desc">
-            {{ wrongCount ? `已收集 ${wrongCount} 题 · 连对 3 次自动移出` : '还没有错题，答错或自评「不会」会进这里' }}
+            {{ wrongCount ? `已收集 ${wrongCount} 题 · 连对 3 次自动移出` : '还没有错题，选择题答错会进这里' }}
           </span>
         </span>
               <span class="review__arrow" aria-hidden="true">
@@ -385,46 +442,6 @@ function openWeak() {
         </svg>
       </span>
       </button>
-    </div>
-
-    <!--
-      我的题集：从「我的」页搬来 —— 它们本质是「题」而不是「我的设置」，
-      放首页与其他题目入口同段更好找。「我的」页只留数据看板 + 右上角设置。
-      （错题本因为要挨着「错题复习」，已并入上面的「复习巩固」。）
-    -->
-    <h2 class="section-title">我的题集</h2>
-    <div class="reviews">
-      <router-link to="/favorites" class="review">
-        <span class="review__icon review__icon--fav" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="19" height="19">
-            <path
-              d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <span class="review__text">
-          <span class="review__title">我的收藏</span>
-          <span class="review__desc">
-            {{ favCount ? `${favCount} 题 · 手动标记的重点` : '还没有收藏，题卡上点星标即可收进来' }}
-          </span>
-        </span>
-              <span class="review__arrow" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="15" height="15">
-          <path
-            d="M9 6l6 6-6 6"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </span>
-      </router-link>
     </div>
 
     <p class="home-foot">

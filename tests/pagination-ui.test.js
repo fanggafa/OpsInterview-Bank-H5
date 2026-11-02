@@ -35,24 +35,44 @@ const OVER_ONE_PAGE = PAGE_SIZE + 5
  *
  * 这里造 6 个分类 × 5 题 = 30 题。组页大小是 4，所以 30 题 → 6 组 → 2 页，
  * 第 1 页 4 组（20 题）、第 2 页 2 组（10 题）。
- */
-/**
- * 多分类 fixture：错题本 / 收藏页现在是**按分类分组 + 按组分页**，
- * 单分类题库只会分出一组、永远只有一页，测不出分页行为。
  *
- * ⚠️ 这里必须按 `CATEGORIES` 的**真实业务顺序**排列
+ * ⚠️ 分类顺序必须按 `CATEGORIES` 的**真实业务顺序**排列
  * （Linux基础 → 网络基础 → Nginx → Redis → MySQL → Kubernetes），
  * 分组后组的先后就按它来 —— 随便写一个自认为的顺序会让断言与实现不一致。
+ *
+ * ⚠️ **选择题与简答题要分开造**：2026-11 起
+ * 「错题本只收选择题、收藏只收简答题」，
+ * 一份混合夹具会让两个页面的列表都缺一半。
  */
 const CATS = ['Linux基础', '网络基础', 'Nginx', 'Redis', 'MySQL', 'Kubernetes']
 const PER_CAT = 5
-const MULTI = CATS.flatMap((cat, ci) =>
+
+/** 错题本用：选择题 */
+const MULTI_CHOICE = CATS.flatMap((cat, ci) =>
   Array.from({ length: PER_CAT }, (_, i) => ({
     id: ci * PER_CAT + i + 1,
-    type: 'short',
+    type: 'single',
     category: cat,
     difficulty: '中等',
     question: `${cat} 题目 ${i + 1}`,
+    answer: ['A'],
+    options: [
+      { key: 'A', text: 'a' },
+      { key: 'B', text: 'b' },
+    ],
+    tags: ['标签'],
+    frequency: '中频',
+  })),
+)
+
+/** 收藏用：简答题（id 与选择题错开，避免两个夹具混用时撞 id） */
+const MULTI_SHORT = CATS.flatMap((cat, ci) =>
+  Array.from({ length: PER_CAT }, (_, i) => ({
+    id: 1000 + ci * PER_CAT + i + 1,
+    type: 'short',
+    category: cat,
+    difficulty: '中等',
+    question: `${cat} 简答 ${i + 1}`,
     answer: `答案 ${i + 1}`,
     tags: ['标签'],
     frequency: '中频',
@@ -195,14 +215,14 @@ describe('题库页 · 分页边界', () => {
 })
 
 describe('错题本 · 分类汇总 → 明细', () => {
-  /** 把 MULTI 前 n 题标记为错题 */
+  /** 把 MULTI_CHOICE 前 n 题标记为错题 */
   function markWrongMulti(n) {
-    bank.questions = MULTI
+    bank.questions = MULTI_CHOICE
     for (let i = 1; i <= n; i++) study.markUnknown(i)
   }
 
   it('默认进入分类汇总视图：一行一个分类，不直接铺题目', async () => {
-    markWrongMulti(MULTI.length)
+    markWrongMulti(MULTI_CHOICE.length)
     const { wrapper } = await mountView(WrongView, '/wrong')
     /**
      * 2026-11：两页都改成「先进分类汇总，再点进某个分类看明细」，
@@ -213,20 +233,20 @@ describe('错题本 · 分类汇总 → 明细', () => {
   })
 
   it('汇总顺序跟随 CATEGORIES', async () => {
-    markWrongMulti(MULTI.length)
+    markWrongMulti(MULTI_CHOICE.length)
     const { wrapper } = await mountView(WrongView, '/wrong')
     expect(wrapper.findAll('.cat__name').map((n) => n.text())).toEqual(CATS)
   })
 
   it('每行显示该分类的错题数与「查看」按钮', async () => {
-    markWrongMulti(MULTI.length)
+    markWrongMulti(MULTI_CHOICE.length)
     const { wrapper } = await mountView(WrongView, '/wrong')
     expect(wrapper.findAll('.cat__meta')[0].text()).toBe(`${PER_CAT} 道错题`)
     expect(wrapper.findAll('.cat__act').map((b) => b.text())).toEqual(Array(CATS.length).fill('查看'))
   })
 
   it('点「查看」进入该分类的明细，只显示这一类的题', async () => {
-    markWrongMulti(MULTI.length)
+    markWrongMulti(MULTI_CHOICE.length)
     const { wrapper, router } = await mountView(WrongView, '/wrong')
     await wrapper.findAll('.cat__act')[2].trigger('click')
     await flushPromises()
@@ -241,7 +261,7 @@ describe('错题本 · 分类汇总 → 明细', () => {
   })
 
   it('明细里点页头返回箭头回到汇总视图', async () => {
-    markWrongMulti(MULTI.length)
+    markWrongMulti(MULTI_CHOICE.length)
     const { wrapper, router } = await mountView(WrongView, '/wrong', { category: CATS[0] })
     expect(wrapper.findAll('.qcard')).toHaveLength(PER_CAT)
 
@@ -258,14 +278,14 @@ describe('错题本 · 分类汇总 → 明细', () => {
   })
 
   it('明细里编号从 1 开始连续', async () => {
-    markWrongMulti(MULTI.length)
+    markWrongMulti(MULTI_CHOICE.length)
     const { wrapper } = await mountView(WrongView, '/wrong', { category: CATS[0] })
     const indexes = wrapper.findAll('.qcard__index').map((n) => Number(n.text()))
     expect(indexes).toEqual(Array.from({ length: PER_CAT }, (_, i) => i + 1))
   })
 
   it('错题本为空时给空状态，不显示分类汇总', async () => {
-    bank.questions = MULTI
+    bank.questions = MULTI_CHOICE
     const { wrapper } = await mountView(WrongView, '/wrong')
     expect(wrapper.text()).toContain('错题本是空的')
     expect(wrapper.findAll('.cat')).toHaveLength(0)
@@ -273,33 +293,34 @@ describe('错题本 · 分类汇总 → 明细', () => {
   })
 
   it('汇总视图里没有分页（分类数量有限，一屏能看完）', async () => {
-    markWrongMulti(MULTI.length)
+    markWrongMulti(MULTI_CHOICE.length)
     const { wrapper } = await mountView(WrongView, '/wrong')
     expect(wrapper.find('.pager').exists()).toBe(false)
   })
 })
 
 describe('收藏页 · 分类汇总 → 明细', () => {
+  /** 收藏前 n 题（按 MULTI_SHORT 的真实 id，不是从 1 数） */
   function markFavMulti(n) {
-    bank.questions = MULTI
-    for (let i = 1; i <= n; i++) study.toggleFavorite(i)
+    bank.questions = MULTI_SHORT
+    MULTI_SHORT.slice(0, n).forEach((q) => study.toggleFavorite(q.id))
   }
 
   it('默认进入分类汇总视图：一行一个分类，不直接铺题目', async () => {
-    markFavMulti(MULTI.length)
+    markFavMulti(MULTI_SHORT.length)
     const { wrapper } = await mountView(FavoritesView, '/favorites')
     expect(wrapper.findAll('.cat')).toHaveLength(CATS.length)
     expect(wrapper.findAll('.qcard')).toHaveLength(0)
   })
 
   it('汇总顺序跟随 CATEGORIES', async () => {
-    markFavMulti(MULTI.length)
+    markFavMulti(MULTI_SHORT.length)
     const { wrapper } = await mountView(FavoritesView, '/favorites')
     expect(wrapper.findAll('.cat__name').map((n) => n.text())).toEqual(CATS)
   })
 
   it('点「查看」进入该分类明细', async () => {
-    markFavMulti(MULTI.length)
+    markFavMulti(MULTI_SHORT.length)
     const { wrapper, router } = await mountView(FavoritesView, '/favorites')
     await wrapper.findAll('.cat__act')[1].trigger('click')
     await flushPromises()
@@ -310,7 +331,7 @@ describe('收藏页 · 分类汇总 → 明细', () => {
   })
 
   it('明细里点页头返回箭头回到汇总', async () => {
-    markFavMulti(MULTI.length)
+    markFavMulti(MULTI_SHORT.length)
     const { wrapper, router } = await mountView(FavoritesView, '/favorites', { category: CATS[0] })
     // 返回只靠页头那个箭头（正文里那个「‹」已移除，避免一屏两个返回）
     await wrapper.find('.header__btn').trigger('click')
@@ -322,7 +343,7 @@ describe('收藏页 · 分类汇总 → 明细', () => {
   })
 
   it('不再提供「全部取消」（清空统一走设置页，避免列表页误触）', async () => {
-    markFavMulti(MULTI.length)
+    markFavMulti(MULTI_SHORT.length)
     const { wrapper } = await mountView(FavoritesView, '/favorites')
     /**
      * 2026-11：删掉了列表页右上角的「全部取消」。

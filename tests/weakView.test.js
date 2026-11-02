@@ -15,14 +15,19 @@ import { useStudyStore } from '@/stores/studyStore'
  */
 
 const FIXTURE = [
+  /**
+   * 薄弱分类**只统计选择题**（2026-11 规则）：
+   * 简答题靠自评、没有客观对错，算进薄弱分类会让分母虚高、语义也混乱。
+   * 所以这里的夹具必须是选择题，否则统计结果为空。
+   */
   // MySQL：3 题全刷全错 → 100%
-  { id: 1, type: 'short', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm1', answer: 'a1', tags: [] },
-  { id: 2, type: 'short', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm2', answer: 'a2', tags: [] },
-  { id: 3, type: 'short', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm3', answer: 'a3', tags: [] },
+  { id: 1, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 2, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 3, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm3', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
   // Nginx：3 题全刷，错 1 → 33%
-  { id: 11, type: 'short', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n1', answer: 'b1', tags: [] },
-  { id: 12, type: 'short', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n2', answer: 'b2', tags: [] },
-  { id: 13, type: 'short', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n3', answer: 'b3', tags: [] },
+  { id: 11, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 12, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  { id: 13, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n3', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
 ]
 
 const rec = ({ times = 1, inWrong = false } = {}) => ({
@@ -142,7 +147,8 @@ describe('薄弱环节详情页', () => {
     let id = 100
     for (const cat of ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7']) {
       for (let i = 0; i < 3; i++) {
-        many.push({ id, type: 'short', category: cat, difficulty: '简单', frequency: '高频', question: `q${id}`, answer: `a${id}`, tags: [] })
+        // 薄弱分类只统计选择题，所以这里的题必须是 single，否则统计为空
+        many.push({ id, type: 'single', category: cat, difficulty: '简单', frequency: '高频', question: `q${id}`, answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] })
         id += 1
       }
     }

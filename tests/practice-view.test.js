@@ -368,13 +368,17 @@ describe('刷题页 · 自评', () => {
     }
   })
 
-  it('点「不会」写入 unknown 并使错题本包含该题', async () => {
+  it('点「不会」写入 unknown，但简答题不进错题本', async () => {
     vi.useFakeTimers()
     try {
       const { wrapper } = await mountPractice({ mode: 'sequential' })
       await wrapper.findAll('.actions__btn')[0].trigger('click')
       expect(study.recordOf(1).status).toBe(STATUS.UNKNOWN)
-      expect(study.wrongList.map((q) => q.id)).toContain(1)
+      /**
+       * 2026-11 规则：**错题本只收选择题**。
+       * 这里的题库是简答题（背题模式），所以自评「不会」只记状态、不进错题本。
+       */
+      expect(study.wrongList.map((q) => q.id)).not.toContain(1)
       vi.useRealTimers()
     } finally {
       vi.useRealTimers()
@@ -541,10 +545,23 @@ describe('刷题页 · 空队列', () => {
   })
 
   it('有错题时错题模式只刷错题', async () => {
-    study.markUnknown(2)
-    const { wrapper } = await mountPractice({ mode: 'wrong' })
+    /**
+     * 2026-11 规则：错题本只收选择题。
+     * 这里必须用**选择题**造错题，否则错题本为空、这个用例测不出「只刷错题」。
+     */
+    useBankStore().questions = [
+      { id: 21, type: 'single', category: 'MySQL', difficulty: '中等', question: 'w1', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], answer: ['A'], explanation: '解析', tags: ['t'], frequency: '中频' },
+      { id: 22, type: 'single', category: 'MySQL', difficulty: '中等', question: 'w2', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], answer: ['A'], explanation: '解析', tags: ['t'], frequency: '中频' },
+    ]
+    study.markUnknown(22)
+    /**
+     * 必须显式传 `studyMode: 'practice'`：
+     * `mountPractice` 默认注入 `memorize`（这个文件的历史夹具是简答题），
+     * 而背题模式只留简答题 —— 这批选择题会被筛空，队列变 0。
+     */
+    const { wrapper } = await mountPractice({ mode: 'wrong', studyMode: 'practice' })
     expect(wrapper.text()).toContain('第 1 / 1 题')
-    expect(wrapper.find('.qcard-p__q').text()).toBe('q2')
+    expect(wrapper.find('.qcard-p__q').text()).toBe('w2')
   })
 })
 

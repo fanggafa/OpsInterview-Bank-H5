@@ -11,16 +11,25 @@ import { useStudyStore } from '@/stores/studyStore'
  * 改成按比例后，大分类和小分类都得刷够三成，才谈得上「薄弱」。
  */
 
-/** 造一个指定题数、全属于同一分类的题库 */
+/**
+ * 造一个指定题数、全属于同一分类的题库。
+ *
+ * **必须是选择题**：薄弱分类只统计选择题（简答题靠自评、没有客观对错，
+ * 算进去会让分母虚高、语义也混乱）。
+ */
 function makeBank(category, total) {
   return Array.from({ length: total }, (_, i) => ({
     id: 1000 + i,
-    type: 'short',
+    type: 'single',
     category,
     difficulty: '简单',
     frequency: '高频',
     question: `${category}-${i}`,
-    answer: 'a',
+    answer: ['A'],
+    options: [
+      { key: 'A', text: 'a' },
+      { key: 'B', text: 'b' },
+    ],
     tags: [],
   }))
 }

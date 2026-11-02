@@ -26,8 +26,9 @@ onMounted(() => bank.loadIndex().catch(() => {}))
 /**
  * 错题本由 records 的 inWrong 标记派生。
  *
- * 规则（用户要求）：答错 / 自评「不会」进入；之后任意方式（刷题、每日一题、
- * 复习赛）刷到时，连续答对满 WRONG_CLEAR_STREAK 次自动移出。
+ * 规则：**只有选择题答错才进入**（简答题靠自评、没有客观对错，不进错题本）；
+ * 之后任意方式（刷题、每日一题、复习赛）刷到时，
+ * 连续答对满 WRONG_CLEAR_STREAK 次自动移出。
  * 所以列表不再随「最近一次答对」立刻消失，而是等连对攒够。
  */
 const list = computed(() => study.wrongList)
@@ -159,7 +160,7 @@ const maxGroupCount = computed(() =>
         v-if="!list.length"
         variant="wrong"
         title="错题本是空的"
-        desc="答错或自评「不会」的题目会进入这里；之后任意方式连续答对 3 次即自动移出。"
+        desc="答错的选择题会进入这里；之后任意方式连续答对 3 次即自动移出。"
         action="去刷题"
         @action="router.push('/practice')"
       />

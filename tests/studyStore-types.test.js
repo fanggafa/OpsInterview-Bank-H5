@@ -141,10 +141,25 @@ describe('错题本包含答错的选择题', () => {
     expect(study.wrongList).toHaveLength(0) // 第 3 次对，移出
   })
 
-  it('简答与选择题错题混合，按题库顺序', () => {
+  it('简答题不会被写进错题本（错题本只收选择题）', () => {
+    /**
+     * 2026-11 规则：错题本只收选择题。
+     *
+     * 简答题靠自评「会/不会」，没有客观对错；进了错题本也复习不了
+     * （错题复习只从错题本抽选择题），还会让薄弱分类的分母虚高。
+     * 所以这里在**源头**拦住：简答题 markUnknown 不会写 inWrong。
+     */
+    study.markUnknown(2) // id=2 是简答题
+    expect(study.wrongList).toHaveLength(0)
+
+    study.markUnknown(5) // id=5 是选择题
+    expect(study.wrongList.map((q) => q.id)).toEqual([5])
+  })
+
+  it('多个选择题错题按题库顺序返回', () => {
     study.markUnknown(5)
-    study.markUnknown(2)
-    expect(study.wrongList.map((q) => q.id)).toEqual([2, 5])
+    study.markUnknown(4)
+    expect(study.wrongList.map((q) => q.id)).toEqual([4, 5])
   })
 })
 

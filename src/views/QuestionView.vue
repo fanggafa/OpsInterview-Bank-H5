@@ -248,7 +248,9 @@ const statusText = computed(() => {
           <span class="badge detail__type" :class="{ 'detail__type--choice': !short }">{{ typeLabel }}</span>
           <DifficultyBadge :difficulty="question.difficulty" />
           <FrequencyBadge :frequency="question.frequency" />
+          <!-- 只有简答题可收藏（选择题的价值在选项里，收进收藏页无意义） -->
           <button
+            v-if="short"
             class="detail__star"
             :class="{ 'detail__star--on': favorite }"
             :aria-label="favorite ? '取消收藏' : '收藏这道题'"

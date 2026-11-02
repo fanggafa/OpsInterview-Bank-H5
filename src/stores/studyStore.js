@@ -260,7 +260,18 @@ export const useStudyStore = defineStore('study', () => {
   const weakCategories = computed(() => {
     const stats = new Map()
 
+    /**
+     * **只统计选择题**。
+     *
+     * 简答题靠自评「会/不会」，没有客观对错；把它算进薄弱分类会造成两个问题：
+     * ① 分母虚高 —— 简答题答过之后 `total` 变大，33% 门槛跟着抬高；
+     * ② 语义混乱 —— 自评「不会」并不等于「这题做错了」。
+     *
+     * 而错题本已限定只收选择题，这里的 `wrong` 天然只来自选择题；
+     * 但仍显式过滤一遍，避免 `total`/`reviewed` 把简答题的刷题记录算进来。
+     */
     bank.questions.forEach((q) => {
+      if (q.type === 'short') return
       if (!stats.has(q.category)) {
         stats.set(q.category, { category: q.category, total: 0, reviewed: 0, wrong: 0 })
       }
@@ -341,13 +352,26 @@ export const useStudyStore = defineStore('study', () => {
     const prevStreak = prev?.streak || 0
     const prevInWrong = !!prev?.inWrong
 
+    /**
+     * **错题本只收选择题**。
+     *
+     * 规则：简答题只在「背题模式」出现（看题背答案、自评会/不会），
+     * 它没有客观对错、也不参与错题复习与薄弱统计 ——
+     * 进了错题本既复习不了（错题复习只抽选择题），还会污染薄弱分类的分母。
+     *
+     * 所以在源头拦住：简答题无论怎么自评，都不会被写进 inWrong。
+     * 上游都自动正确（错题本列表、错题复习、薄弱分类统计都不用再各自过滤）。
+     */
+    const q = bank.questionMap.get(key)
+    const shortAnswer = q ? isShort(q) : false
+
     let streak
     let inWrong
 
     if (status === STATUS.UNKNOWN) {
-      // 答错：必进错题本，连对计数清零
+      // 答错：选择题进错题本、连对计数清零；简答题不进错题本
       streak = 0
-      inWrong = true
+      inWrong = !shortAnswer
     } else {
       // 答对：连对 +1
       streak = prevStreak + 1
@@ -381,11 +405,26 @@ export const useStudyStore = defineStore('study', () => {
     mark(id, STATUS.UNKNOWN)
   }
 
+  /**
+   * 收藏 / 取消收藏。
+   *
+   * **收藏只收简答题**：收藏的定位是「留一道值得反复看的题」——
+   * 简答题自带完整答案可读，适合反复看；选择题的价值在选项里，
+   * 单独收进来脱离作答场景意义不大，因此选择题的收藏按钮已从三个页面移除。
+   *
+   * 这里在源头再拦一道：选择题即使被调用也不会写进 favorites，
+   * 免得以后某个页面漏删按钮又把选择题塞进来。
+   */
   function toggleFavorite(id) {
     const key = Number(id)
     if (!Number.isFinite(key)) return
-    const index = favorites.value.indexOf(key)
-    if (index >= 0) {
+
+    const q = bank.questionMap.get(key)
+    // 已取消收藏时不拦：允许把历史误收的选择题清出去
+    const favorited = favorites.value.includes(key)
+    if (!favorited && q && !isShort(q)) return
+
+    if (favorited) {
       favorites.value = favorites.value.filter((f) => f !== key)
     } else {
       favorites.value = [...favorites.value, key]
