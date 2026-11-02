@@ -295,8 +295,25 @@ describe('详情页 · 翻题（改为左右滑动）', () => {
 
   it('舞台及其子孙都设了 touch-action: pan-y（否则移动端横向手势会被吞掉）', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/views/QuestionView.vue'), 'utf8')
-    expect(src).toMatch(/\.stage,\s*\n\s*\.stage \*/)
-    expect(src).toMatch(/touch-action:\s*pan-y/)
+    // `.stage` 与 `.stage *` 各自一条规则
+    expect(src).toMatch(/\.stage \{[\s\S]*?touch-action:\s*pan-y/)
+    expect(src).toMatch(/\.stage \* \{\s*touch-action:\s*pan-y/)
+  })
+
+  it('舞台撑满剩余高度，滑动区域不止卡片那一小块', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/views/QuestionView.vue'), 'utf8')
+    /**
+     * 用户反馈：从错题本/收藏进详情页后，左右滑动只有卡片那一小块可用。
+     *
+     * 根因是详情页的 `.stage` 只写了 `touch-action`、**没有布局**，
+     * 高度由内容撑开；而刷题页的 `.stage` 有 `flex: 1`，所以那边一直正常。
+     *
+     * 两处都要断言：
+     * ① `.stage` 自身是 `flex: 1`（撑满剩余高度）
+     * ② 外层 `.page` 带 `page--fill`（否则 flex 链断在父级，`flex: 1` 也无效）
+     */
+    expect(src).toMatch(/\.stage \{[\s\S]*?flex:\s*1/)
+    expect(src).toMatch(/class="page[^"]*page--fill/)
   })
 
   it('边界处不越界：第一题没有上一题，最后一题没有下一题', async () => {
