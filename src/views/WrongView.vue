@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import QuestionCard from '@/components/QuestionCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -8,19 +8,18 @@ import Pagination from '@/components/Pagination.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { buildRetryHint } from '@/utils/retryHint'
 import { useStudyStore } from '@/stores/studyStore'
-import { WRONG_CLEAR_STREAK } from '@/utils/constants'
+import { PAGE_SIZE, WRONG_CLEAR_STREAK } from '@/utils/constants'
 import { pageMeta, paginate } from '@/utils/paginate'
 import { groupByCategory } from '@/utils/groupByCategory'
 import { scrollToTop } from '@/utils/scroll'
 
+const route = useRoute()
 const router = useRouter()
 const bank = useBankStore()
 const study = useStudyStore()
 
 /** 错误态文案（含重试退避冷却提示） */
 const retryHint = computed(() => buildRetryHint(bank))
-
-const page = ref(1)
 
 onMounted(() => bank.loadIndex().catch(() => {}))
 
@@ -56,14 +55,56 @@ const groups = computed(() => {
 const meta = computed(() => pageMeta(groups.value.length, page.value, GROUP_PAGE_SIZE))
 const pagedGroups = computed(() => paginate(groups.value, meta.value.page, GROUP_PAGE_SIZE))
 
+/**
+ * 当前查看的分类（`?category=` 给定）。
+ *
+ * 页面分两个视图：
+ * - 不带 category → **分类汇总**（每个分类一张卡：分类名 / 错题数 / 连对门槛 / 「查看」按钮）
+ * - 带 category   → 该分类的**题目明细**
+ *
+ * 为什么用 query 而不是新增路由：两个视图是同一个列表的两种粒度，
+ * 共用一个页面的加载、错误态与数据源；拆两个路由会让「返回」多一层跳转，
+ * 而这里退回汇总只是把 query 去掉。
+ */
+const activeCategory = computed(() => route.query.category || '')
+const inCategory = computed(() => !!activeCategory.value)
+
+/** 当前分类下的题（保持错题本原顺序） */
+const categoryList = computed(() => {
+  if (!activeCategory.value) return list.value
+  return list.value.filter((q) => q.category === activeCategory.value)
+})
+
+/** 汇总视图的分组（每分类一组，组内 count 就是该分类错题数） */
+const summaryGroups = computed(() => groups.value)
+
+const page = computed({
+  get: () => Number(route.query.page) || 1,
+  set: (v) => router.push({ path: '/wrong', query: { ...route.query, page: v } }),
+})
+
 function changePage(next) {
   page.value = next
   scrollToTop()
 }
 
+/** 明细视图的分页：按条分页（分类内题目不再分组） */
+const detailMeta = computed(() => pageMeta(categoryList.value.length, page.value, PAGE_SIZE))
+const detailList = computed(() => paginate(categoryList.value, detailMeta.value.page, PAGE_SIZE))
+const detailStartIndex = computed(() => (detailMeta.value.page - 1) * PAGE_SIZE)
+
+function openCategory(category) {
+  page.value = 1
+  router.push({ path: '/wrong', query: { category } })
+}
+
+function backToSummary() {
+  router.push({ path: '/wrong' })
+}
+
 /** 题量变化（连对满 3 次移出）后，页码可能越界，由 meta 自动收敛 */
-watch(meta, (m) => {
-  if (m.page !== page.value) page.value = m.page
+watch(detailMeta, (m) => {
+  if (inCategory.value && m.page !== page.value) page.value = m.page
 })
 
 /** 从错题本随机抽 10 题复习 */
@@ -77,6 +118,16 @@ function streakOf(id) {
 }
 
 const clearStreak = WRONG_CLEAR_STREAK
+
+/**
+ * 汇总视图里进度条的基准：以「错题最多的那个分类」为满格。
+ *
+ * 为什么不用总错题数做分母：那样每个分类的条都短得看不出来差别；
+ * 用最大值为满格，各分类之间的相对多少才一眼可比。
+ */
+const maxGroupCount = computed(() =>
+  summaryGroups.value.reduce((max, g) => Math.max(max, g.count), 1),
+)
 </script>
 
 <template>
@@ -96,17 +147,6 @@ const clearStreak = WRONG_CLEAR_STREAK
     />
 
     <template v-else>
-      <div v-if="list.length" class="head">
-        <p class="head__count">共 <strong>{{ list.length }}</strong> 道错题</p>
-        <button class="btn btn--primary head__btn" @click="startWrongReview">
-          错题复习
-        </button>
-      </div>
-
-      <p v-if="list.length" class="rule">
-        连对 {{ clearStreak }} 次自动移出 · 任意方式刷到都算
-      </p>
-
       <EmptyState
         v-if="!list.length"
         variant="wrong"
@@ -116,35 +156,86 @@ const clearStreak = WRONG_CLEAR_STREAK
         @action="router.push('/practice')"
       />
 
-      <!-- 按分类分组渲染：每组一个标题（分类名 + 题数），组内题目连续编号 -->
-      <div v-else class="groups">
-        <section v-for="g in pagedGroups" :key="g.key" class="group">
-          <h2 class="group__title">
-            <span class="group__cat">{{ g.category }}</span>
-            <span class="group__count">{{ g.count }} 题</span>
-          </h2>
-          <ul class="list">
-            <li v-for="(q, i) in g.items" :key="q.id">
-              <QuestionCard :question="q" :index="g.startIndex + i + 1" from="/wrong" />
-              <!-- 连对进度：让「还差几次移出」这件事看得见，不然用户会疑惑为什么答对了还留着 -->
-              <p class="progress-hint">
-                <span class="progress-dots" aria-hidden="true">
-                  <span
-                    v-for="n in clearStreak"
-                    :key="n"
-                    class="progress-dot"
-                    :class="{ 'progress-dot--on': n <= streakOf(q.id) }"
-                  />
-                </span>
-                连对 {{ streakOf(q.id) }} / {{ clearStreak }}
-              </p>
-            </li>
-          </ul>
-        </section>
-      </div>
+      <!-- ========== 明细视图：某个分类下的错题 ========== -->
+      <template v-else-if="inCategory">
+        <div class="head">
+          <div class="head__left">
+            <button class="head__back" aria-label="返回分类列表" @click="backToSummary">
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <path
+                  d="M20 12H5M11 6l-6 6 6 6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+            <p class="head__count">
+              <strong class="head__cat">{{ activeCategory }}</strong>
+              共 {{ categoryList.length }} 题
+            </p>
+          </div>
+          <button class="btn btn--primary head__btn" @click="startWrongReview">
+            错题复习
+          </button>
+        </div>
 
-      <!-- 分页控件自带 visible 判断，外层不用再包 v-if -->
-      <Pagination :meta="meta" unit="组" @change="changePage" />
+        <ul class="list">
+          <li v-for="(q, i) in detailList" :key="q.id">
+            <QuestionCard :question="q" :index="detailStartIndex + i + 1" from="/wrong" />
+            <!-- 连对进度：让「还差几次移出」这件事看得见，不然用户会疑惑为什么答对了还留着 -->
+            <p class="progress-hint">
+              <span class="progress-dots" aria-hidden="true">
+                <span
+                  v-for="n in clearStreak"
+                  :key="n"
+                  class="progress-dot"
+                  :class="{ 'progress-dot--on': n <= streakOf(q.id) }"
+                />
+              </span>
+              连对 {{ streakOf(q.id) }} / {{ clearStreak }}
+            </p>
+          </li>
+        </ul>
+
+        <Pagination :meta="detailMeta" unit="题" @change="changePage" />
+      </template>
+
+      <!-- ========== 汇总视图：每个分类一行，右侧「查看」进明细 ========== -->
+      <template v-else>
+        <div class="head">
+          <p class="head__count">共 <strong>{{ list.length }}</strong> 道错题 · {{ summaryGroups.length }} 个分类</p>
+          <button class="btn btn--primary head__btn" @click="startWrongReview">
+            错题复习
+          </button>
+        </div>
+
+        <p class="rule">
+          连对 {{ clearStreak }} 次自动移出 · 任意方式刷到都算
+        </p>
+
+        <!--
+          与「薄弱分类」页同款：一行一个分类，分类名 + 题数 + 连对进度条 + 「查看」按钮。
+          整行是纯信息展示（不可点），唯一操作是右侧按钮 —— 点一下才进该分类的明细。
+        -->
+        <ul class="list list--cats">
+          <li v-for="g in summaryGroups" :key="g.category" class="cat">
+            <div class="cat__info">
+              <span class="cat__text">
+                <span class="cat__name">{{ g.category }}</span>
+                <span class="cat__meta">{{ g.count }} 道错题</span>
+              </span>
+              <span class="cat__bar" :aria-label="`${g.category} ${g.count} 道错题`">
+                <span class="cat__fill" :style="{ width: `${(g.count / maxGroupCount) * 100}%` }" />
+              </span>
+              <span class="cat__count">{{ g.count }}</span>
+            </div>
+            <button class="cat__act" @click="openCategory(g.category)">查看</button>
+          </li>
+        </ul>
+      </template>
     </template>
   </div>
 </template>
@@ -203,41 +294,119 @@ const clearStreak = WRONG_CLEAR_STREAK
   background: var(--c-success);
 }
 
-/* ---------- 分类分组 ---------- */
-.groups {
+/* ---------- 分类汇总（与「薄弱分类」页同款） ---------- */
+.list--cats {
+  gap: 0;
+  border-radius: var(--radius);
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.cat {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--c-border);
+}
+.cat:first-child {
+  border-top: 0;
+}
+
+/* 信息区是纯展示，不可点 */
+.cat__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 4px 11px 14px;
+}
+.cat__text {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 2px;
+  min-width: 0;
+  flex: 0 0 42%;
 }
-.group__title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin: 0 0 8px;
+.cat__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cat__meta {
+  font-size: 11px;
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.cat__bar {
+  flex: 1;
+  min-width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--c-border);
+  overflow: hidden;
+}
+.cat__fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  /* 错题用一种稳定的红色渐变：它表达「需要补的量」，不是错误率 */
+  background: linear-gradient(90deg, #f0736f, #d64b52);
+}
+.cat__count {
+  flex-shrink: 0;
+  width: 28px;
+  text-align: right;
   font-size: 13px;
   font-weight: 700;
   color: var(--c-text);
+  font-variant-numeric: tabular-nums;
 }
-/* 分类名左侧加一条主色短线，与题目卡列表形成层级区分 */
-.group__cat {
-  position: relative;
-  padding-left: 9px;
+
+/* 「查看」：明确文字胶囊，不用难懂的小图标 */
+.cat__act {
+  flex-shrink: 0;
+  margin-right: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--c-primary-weak);
+  color: var(--c-primary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.group__cat::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 12px;
-  border-radius: 2px;
-  background: var(--c-primary);
+.cat__act:active {
+  opacity: 0.7;
 }
-.group__count {
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--c-text-3);
+
+/* 明细视图头部的「返回分类列表」 */
+.head__left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.head__back {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--c-text-2);
+  background: transparent;
+}
+.head__back:active {
+  background: var(--c-primary-weak);
+  color: var(--c-primary);
+}
+.head__cat {
+  color: var(--c-text);
 }
 
 .list {
