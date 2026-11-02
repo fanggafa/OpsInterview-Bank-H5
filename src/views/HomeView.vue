@@ -90,7 +90,8 @@ const dateText = computed(() => {
 })
 
 function openDaily() {
-  if (daily.value) router.push(`/question/${daily.value.id}`)
+  // 带 from=/：详情页据此把返回指向首页（而不是一律回题库）
+  if (daily.value) router.push(`/question/${daily.value.id}?from=/`)
 }
 
 /** 进入薄弱环节详情页（完整榜单在那里） */

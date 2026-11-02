@@ -306,7 +306,9 @@ describe('详情页 · 翻题（改为左右滑动）', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/views/QuestionView.vue'), 'utf8')
     expect(src).toMatch(/onLeft:\s*\(\)\s*=>\s*go\(nextQuestion\.value\)/)
     expect(src).toMatch(/onRight:\s*\(\)\s*=>\s*go\(prevQuestion\.value\)/)
-    expect(src).toMatch(/function go\(q\)\s*\{\s*\n\s*if \(q\)/)
+    // 判空写法是 `if (!q) return`；同时 go() 必须保留来路（from），否则切一题就丢返回目标
+    expect(src).toMatch(/function go\(q\)\s*\{\s*\n\s*if \(!q\) return/)
+    expect(src).toMatch(/backTo\.value/)
     expect(first.find('.stage').exists()).toBe(true)
     expect(last.find('.stage').exists()).toBe(true)
   })

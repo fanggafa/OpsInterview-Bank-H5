@@ -17,6 +17,11 @@ const props = defineProps({
   index: { type: Number, default: null },
   /** 搜索关键词（用于题干高亮；为空则不高亮） */
   keyword: { type: String, default: '' },
+  /**
+   * 来源页路径（如 `/bank`、`/favorites`）。
+   * 详情页据此决定「返回」跳到哪；不传则详情页用浏览器历史回退。
+   */
+  from: { type: String, default: '' },
 })
 
 const router = useRouter()
@@ -46,7 +51,9 @@ const statusText = computed(() => {
 })
 
 function open() {
-  router.push(`/question/${props.question.id}`)
+  // 带上来路，详情页的「返回」才能回到正确的列表
+  const suffix = props.from ? `?from=${encodeURIComponent(props.from)}` : ''
+  router.push(`/question/${props.question.id}${suffix}`)
 }
 
 function toggleFavorite(e) {

@@ -397,6 +397,7 @@ const resultText = computed(() => {
           :question="q"
           :index="pageStartIndex + i + 1"
           :keyword="state.keyword"
+          from="/bank"
         />
       </li>
     </ul>

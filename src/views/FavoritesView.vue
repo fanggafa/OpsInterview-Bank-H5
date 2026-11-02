@@ -107,7 +107,7 @@ function clearAll() {
 
       <ul v-if="list.length" class="list">
         <li v-for="(q, i) in pagedList" :key="q.id">
-          <QuestionCard :question="q" :index="pageStartIndex + i + 1" />
+          <QuestionCard :question="q" :index="pageStartIndex + i + 1" from="/favorites" />
         </li>
       </ul>
 
