@@ -160,3 +160,55 @@ export function __resetPending() {
   for (const entry of pending.values()) clearTimeout(entry.timer)
   pending.clear()
 }
+
+// ---------- sessionStorage 版（用于「刷新不丢」的临时快照） ----------
+
+/**
+ * 会话级读写：关标签页即清，刷新则保留。
+ *
+ * 为什么单独一套而不是复用上面的 localStorage 封装：
+ * 每日一刷的题组快照**只应活在这个标签页里** —— 用 localStorage 的话，
+ * 第二天打开还是昨天的题，等于把「一次性自测」变成了「跨天续做」。
+ *
+ * 同样做好容错：解析失败 / 类型不符一律回退并把脏数据删掉。
+ */
+export function readSessionJSON(key, fallback, validate) {
+  try {
+    if (typeof sessionStorage === 'undefined') return clone(fallback)
+    const raw = sessionStorage.getItem(key)
+    if (raw === null || raw === '') return clone(fallback)
+    const parsed = JSON.parse(raw)
+    if (validate && !validate(parsed)) {
+      sessionStorage.removeItem(key)
+      return clone(fallback)
+    }
+    return parsed
+  } catch (e) {
+    try {
+      sessionStorage.removeItem(key)
+    } catch (_) {
+      /* 忽略：清理失败也不该影响主流程 */
+    }
+    return clone(fallback)
+  }
+}
+
+/** 会话级写入；失败（超限/不可用）返回 false，不抛异常 */
+export function writeSessionJSON(key, value) {
+  try {
+    if (typeof sessionStorage === 'undefined') return false
+    sessionStorage.setItem(key, JSON.stringify(value))
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
+/** 会话级删除 */
+export function removeSessionJSON(key) {
+  try {
+    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(key)
+  } catch (e) {
+    /* 忽略 */
+  }
+}
