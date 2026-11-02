@@ -17,6 +17,7 @@ import {
   REVIEW_SIZES,
   DAILY_DRILL_LIMIT_SEC,
   WRONG_CLEAR_STREAK,
+  STORAGE_KEYS,
 } from '@/utils/constants'
 import {
   buildQueue,
@@ -41,6 +42,11 @@ import {
 } from '@/utils/question'
 import { attachSwipe } from '@/utils/gestures'
 import { truncate } from '@/utils/format'
+import {
+  readSessionJSON,
+  writeSessionJSON,
+  removeSessionJSON,
+} from '@/utils/storage'
 import AppHeader from '@/components/AppHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import DifficultyBadge from '@/components/DifficultyBadge.vue'
@@ -239,6 +245,39 @@ function build() {
         : bank.questions.slice()
     const effectiveStudyMode = isDrill.value ? 'practice' : studyMode.value
     const pool = byStudyMode(source, effectiveStudyMode)
+
+    /**
+     * 每日一刷：优先**恢复刷新前的快照**，而不是重新抽题。
+     *
+     * 用户报过「考试时一下拉刷新题目就换了」—— 因为每次进入都重新随机抽，
+     * 刷新等于重开一轮，之前的作答和剩余时间全没了。
+     * 这里先查会话快照：命中就原样恢复；没有才抽新题。
+     */
+    const snap = isDrill.value ? readDrillSession() : null
+    if (snap) {
+      // 按 id 还原题序（题库可能已变，找不到的题直接跳过，不致于整组报废）
+      const restored = snap.ids
+        .map((id) => bank.questionMap.get(id))
+        .filter((q) => q && pool.some((p) => p.id === q.id))
+      if (restored.length) {
+        queue.value = restored
+        cursor.value = Math.min(Math.max(0, snap.cursor), restored.length - 1)
+        roundAnswers.value = snap.roundAnswers || {}
+        started.value = true
+        // 每日一刷强制做题模式，答案默认收起
+        expanded.value = false
+        finished.value = false
+        resetChoice()
+        restoreChoice(queue.value[cursor.value])
+        startedAt.value = snap.startedAt || Date.now()
+        elapsedSec.value = snap.elapsedSec || 0
+        // 从快照的剩余时间续跑，而不是重置为 30 分钟
+        startCountdown(snap.remainSec)
+        ready.value = true
+        return
+      }
+    }
+
     queue.value = pickReviewSet(pool, { size: REVIEW_SIZES[reviewKind.value] })
     cursor.value = 0
     resumed.value = false
@@ -253,6 +292,13 @@ function build() {
     elapsedSec.value = 0
     // 每日一刷开跑倒计时（其他复习赛 mode 内部会直接 return）
     startCountdown()
+    /**
+     * 抽完题立刻落一次快照。
+     *
+     * 不留这一步的话，新抽的题组要等到「第一次作答」或「第一次倒计时 tick」
+     * 才被保存 —— 这中间刷新一下，题组就丢了，等于又换一套题。
+     */
+    saveDrillSession()
     ready.value = true
     return
   }
@@ -501,15 +547,24 @@ const remainUrgent = computed(() => countdownActive.value && remainSec.value <= 
  * 后者在浏览器切后台、定时器被节流时会越走越慢，倒计时就不准了。
  * 这里每次都用 Date.now() 重算，切回前台立即对齐真实时间。
  */
-function startCountdown() {
+/**
+ * 启动倒计时。
+ *
+ * @param {number} [fromSec] 从多少秒开始（刷新恢复时用快照里的剩余值）。
+ *   不传则重置为整轮时长。**恢复时必须传**，否则刷新一次就白送 30 分钟。
+ */
+function startCountdown(fromSec) {
   stopCountdown()
   if (!isDrill.value) return
-  remainSec.value = DAILY_DRILL_LIMIT_SEC
-  const endAt = Date.now() + DAILY_DRILL_LIMIT_SEC * 1000
+  const startAt = typeof fromSec === 'number' ? Math.max(0, fromSec) : DAILY_DRILL_LIMIT_SEC
+  remainSec.value = startAt
+  const endAt = Date.now() + startAt * 1000
 
   countdownTimer = setInterval(() => {
     const left = Math.max(0, Math.round((endAt - Date.now()) / 1000))
     remainSec.value = left
+    // 每秒同步剩余时间到快照：刷新时才能接着原来的时钟跑
+    saveDrillSession()
     if (left <= 0) {
       stopCountdown()
       // 时间到：自动交卷。已答的照常计分，未答的算错
@@ -528,6 +583,49 @@ function stopCountdown() {
   }
 }
 
+// ---------- 每日一刷：刷新不丢快照 ----------
+
+/**
+ * 读取会话里的进行中快照。没有 / 损坏 / 不属于当前模式 → null。
+ *
+ * 只认 review 匹配的快照：万一是上一轮别的模式留下的，恢复出来会串味。
+ */
+function readDrillSession() {
+  const snap = readSessionJSON(STORAGE_KEYS.DRILL_SESSION, null, (v) => {
+    return v && typeof v === 'object' && Array.isArray(v.ids) && v.ids.length > 0
+  })
+  if (!snap) return null
+  if (snap.review !== reviewKind.value) return null
+  return snap
+}
+
+/**
+ * 把当前答题进度写进会话快照。
+ *
+ * 何时调用：每次作答 / 切题 / 倒计时整秒变化。
+ * 频繁写是为了让「刷新」丢的数据尽量少 —— 但 sessionStorage 是纯内存操作，
+ * 这点开销可以忽略，不必节流。
+ */
+function saveDrillSession() {
+  if (!isDrill.value) return
+  // 交卷后不再保存：成绩单不该能被「刷新回来继续答题」
+  if (finished.value || !started.value || !queue.value.length) return
+  writeSessionJSON(STORAGE_KEYS.DRILL_SESSION, {
+    review: reviewKind.value,
+    ids: queue.value.map((q) => q.id),
+    cursor: cursor.value,
+    roundAnswers: roundAnswers.value,
+    startedAt: startedAt.value,
+    elapsedSec: elapsedSec.value,
+    remainSec: remainSec.value,
+  })
+}
+
+/** 清掉快照（交卷 / 正常退出时） */
+function clearDrillSession() {
+  removeSessionJSON(STORAGE_KEYS.DRILL_SESSION)
+}
+
 function finish() {
   finished.value = true
   cursor.value = Math.max(0, total.value - 1)
@@ -537,6 +635,13 @@ function finish() {
   if (startedAt.value) {
     elapsedSec.value = Math.round((Date.now() - startedAt.value) / 1000)
   }
+  /**
+   * 交卷即清快照。
+   *
+   * 快照存在的意义是「刷新后能接着答」；已经交卷的轮次不该被恢复，
+   * 否则刷新会回到答题态、还能改答案，成绩单就失去意义了。
+   */
+  clearDrillSession()
   persistProgress()
 }
 
@@ -592,6 +697,8 @@ function commitResult(isPassed) {
     ...roundAnswers.value,
     [q.id]: { status: s, selected: selected.value.slice() },
   }
+  // 每答一题就落快照：刷新后能接着答，而不是从头再来
+  saveDrillSession()
 
   /**
    * 判定后**停在本题**，不自动翻页。
@@ -669,6 +776,14 @@ function restart() {
 
   // 复习赛：重新抽一批（不是重放同一批，那样第二遍就记住答案了）
   if (isReview.value) {
+    /**
+     * **必须先清快照再 build()**。
+     *
+     * build() 现在会优先从会话快照恢复（为了「刷新不丢」），
+     * 如果这里不清，点「再来一轮」会恢复上一轮的题组 ——
+     * 等于「再考一次」变成了「重看一遍原题」，与需求正好相反。
+     */
+    clearDrillSession()
     build()
     return
   }
@@ -848,7 +963,40 @@ function startStudy(next) {
  * 不是退出 App、也不是跳题库：刷题页本身有两个阶段（选模式 / 刷题），
  * 返回箭头就应该是「退回上一个阶段」，和用户在浏览器里点后退的预期一致。
  */
+/**
+ * 退出确认：每日一刷答题中按返回，要先问一句。
+ *
+ * 为什么只有每日一刷需要：
+ * - 它是**限时自测**，退出即整轮作废（快照也会被清），代价比普通刷题大；
+ * - 普通刷题/错题复习是「练」，随时退出没有损失，不需要多一层打扰。
+ *
+ * 交卷后（finished）也不弹：那时退出已经没有损失。
+ */
+const confirmExit = ref(false)
+
 function backToPicker() {
+  // 每日一刷答题中：先弹页内确认（不用 window.confirm —— 微信/部分安卓 WebView
+  // 会静默返回 false，表现为「点了没反应」）
+  if (isDrill.value && started.value && !finished.value) {
+    confirmExit.value = true
+    return
+  }
+  doExit()
+}
+
+/** 用户点「确定退出」：清掉快照再离开，避免下次进来又恢复这一轮 */
+function confirmExitYes() {
+  confirmExit.value = false
+  clearDrillSession()
+  doExit()
+}
+
+function confirmExitNo() {
+  confirmExit.value = false
+}
+
+/** 真正的退出动作 */
+function doExit() {
   // 复习赛没有「选择练习方式」这一步，返回应当是退出到首页
   if (isReview.value) {
     router.push('/')
@@ -1053,6 +1201,50 @@ const emptyDesc = computed(() => {
     <Transition name="toast">
       <div v-if="resumeToast && !finished" class="resume-toast" role="status">{{ resumeToast }}</div>
     </Transition>
+
+    <!--
+      退出确认（仅每日一刷答题中）。
+      页内对话框而不是 window.confirm：微信内置浏览器 / 部分安卓 WebView 下
+      confirm 会静默返回 false，表现为「点了完全没反应」。
+    -->
+    <div v-if="confirmExit" class="exit-mask" role="alertdialog" aria-modal="true">
+      <div class="exit-box">
+        <div class="exit-box__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8" />
+            <path
+              d="M12 7.6v5.2M12 16.2v.6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+          </svg>
+        </div>
+
+        <p class="exit-box__title">退出本轮自测？</p>
+        <p class="exit-box__desc">退出后本轮成绩作废，需要重新开始。</p>
+
+        <!-- 进度与剩余时间做成两个小指标，比塞进一句话里好读 -->
+        <div class="exit-box__stats">
+          <div class="exit-box__stat">
+            <span class="exit-box__stat-num">{{ answeredCount }}<span class="exit-box__stat-slash">/</span>{{ total }}</span>
+            <span class="exit-box__stat-label">已答</span>
+          </div>
+          <div class="exit-box__stat">
+            <span class="exit-box__stat-num">{{ remainText }}</span>
+            <span class="exit-box__stat-label">剩余</span>
+          </div>
+        </div>
+
+        <div class="exit-box__actions">
+          <!-- 主操作是「继续答题」：退出是破坏性的次要动作，不给它主色 -->
+          <button class="btn btn--primary" @click="confirmExitNo">继续答题</button>
+          <button class="btn btn--danger-outline" @click="confirmExitYes">确定退出</button>
+        </div>
+      </div>
+    </div>
+
 
     <!-- loading -->
     <div v-if="!ready || bank.loading" class="skeleton card" aria-busy="true" />
@@ -1655,6 +1847,110 @@ const emptyDesc = computed(() => {
   padding: 0 11px;
   font-size: 12px;
   gap: 4px;
+}
+
+/* ---------- 退出确认框 ---------- */
+.exit-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  /* 淡入，避免突然糊一屏黑 */
+  animation: exitFadeIn 0.16s ease-out;
+}
+@keyframes exitFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.exit-box {
+  width: 100%;
+  max-width: 300px;
+  padding: 0 20px 18px;
+  border-radius: 16px;
+  background: var(--c-card);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  text-align: center;
+  animation: exitPop 0.18s ease-out;
+}
+@keyframes exitPop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* 顶部警示图标：露在盒子边缘外，形成视觉锚点 */
+.exit-box__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin: -23px auto 10px;
+  border-radius: 50%;
+  background: var(--c-danger-weak);
+  color: var(--c-danger);
+}
+.exit-box__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+.exit-box__desc {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--c-text-2);
+}
+/* 两个小指标：比把数字塞进句子里好读 */
+.exit-box__stats {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.exit-box__stat {
+  flex: 1;
+  padding: 9px 6px;
+  border-radius: 10px;
+  background: var(--c-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.exit-box__stat-num {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+.exit-box__stat-slash {
+  margin: 0 2px;
+  font-weight: 400;
+  color: var(--c-text-3);
+}
+.exit-box__stat-label {
+  font-size: 11px;
+  color: var(--c-text-3);
+}
+.exit-box__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.exit-box__actions .btn {
+  width: 100%;
 }
 
 /* 续刷浮层提示：2 秒后消失，不占常驻高度 */

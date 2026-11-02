@@ -312,6 +312,26 @@ ul {
   border: 1px solid var(--c-border);
   color: var(--c-text);
 }
+/*
+ * 危险动作（清空数据 / 确定退出自测）。
+ * 从 SettingsView 提到全局：那里原本是局部样式，PracticeView 用不上，
+ * 导致退出确认框的「确定退出」渲染成了默认白底按钮，看着别扭。
+ */
+.btn--danger {
+  background: var(--c-danger);
+  color: #fff;
+  font-weight: 500;
+}
+/*
+ * 描边式危险按钮：用于「退出 / 放弃」这类可选但破坏性的动作。
+ * 比实心红轻，不会把对话框的视觉重心抢走（主操作应是「继续」）。
+ */
+.btn--danger-outline {
+  background: transparent;
+  border: 1px solid var(--c-danger);
+  color: var(--c-danger);
+  font-weight: 500;
+}
 .btn--block {
   width: 100%;
 }

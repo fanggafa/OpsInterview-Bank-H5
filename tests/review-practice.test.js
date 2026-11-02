@@ -154,8 +154,9 @@ describe('复习赛 · 每日一刷', () => {
     expect(study.progress).toBeNull()
   })
 
-  it('复习赛返回按钮回首页（没有选择页可退）', async () => {
-    const { wrapper, router } = await mountPractice({ review: 'dailyDrill' })
+  it('复习赛返回：只有错题复习直接回首页（每日一刷要确认）', async () => {
+    // 错题复习是一次性练习，退出无损失 → 直接回首页，不弹确认
+    const { wrapper, router } = await mountPractice({ review: 'wrong' })
     await wrapper.find('.ptop__back').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')

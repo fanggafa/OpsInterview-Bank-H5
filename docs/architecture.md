@@ -144,6 +144,18 @@ studyStore（records / favorites / progress）→ localStorage
 | `oi_settings` | `{ theme: "light"\|"dark"\|"system", studyMode }` |
 | `oi_progress` | `{ mode, studyMode, category, index, updatedAt }`（**仅顺序模式写**） |
 
+### sessionStorage（会话级，关标签页即清）
+
+| key | 结构 | 用途 |
+|---|---|---|
+| `oi_drill_session` | `{ review, ids, cursor, roundAnswers, startedAt, elapsedSec, remainSec }` | 每日一刷进行中快照：**刷新不丢**题组/作答/倒计时 |
+
+**为什么用 sessionStorage 而不是 localStorage**：这个快照只该活在当前标签页。
+用 localStorage 的话第二天打开还是昨天的题，等于把「一次性自测」变成「跨天续做」。
+
+存储封装在 `storage.js` 里另开一套（`readSessionJSON` / `writeSessionJSON` / `removeSessionJSON`），
+容错策略与 localStorage 版一致（解析失败回退并清脏数据）。
+
 - 写入采用 ≥200ms 节流，并在 `visibilitychange(hidden)` / `pagehide` 时强制落盘。
 - JSON 损坏自动回退默认值并清理脏数据；配额超限时静默降级，不阻塞使用。
 - `streak` / `inWrong` 是后加字段：`normalizeRecord()` 读取时补齐，
