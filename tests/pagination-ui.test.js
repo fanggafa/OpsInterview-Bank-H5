@@ -29,6 +29,38 @@ const SECOND_PAGE = TOTAL - PAGE_SIZE * 3
 /** 跨两页所需的条目数（PAGE_SIZE + 5），保证末页不是整页 */
 const OVER_ONE_PAGE = PAGE_SIZE + 5
 
+/**
+ * 多分类 fixture：错题本 / 收藏页现在是**按分类分组 + 按组分页**，
+ * 单分类题库只会分出一组、永远只有一页，测不出分页行为。
+ *
+ * 这里造 6 个分类 × 5 题 = 30 题。组页大小是 4，所以 30 题 → 6 组 → 2 页，
+ * 第 1 页 4 组（20 题）、第 2 页 2 组（10 题）。
+ */
+/**
+ * 多分类 fixture：错题本 / 收藏页现在是**按分类分组 + 按组分页**，
+ * 单分类题库只会分出一组、永远只有一页，测不出分页行为。
+ *
+ * ⚠️ 这里必须按 `CATEGORIES` 的**真实业务顺序**排列
+ * （Linux基础 → 网络基础 → Nginx → Redis → MySQL → Kubernetes），
+ * 分组后组的先后就按它来 —— 随便写一个自认为的顺序会让断言与实现不一致。
+ */
+const CATS = ['Linux基础', '网络基础', 'Nginx', 'Redis', 'MySQL', 'Kubernetes']
+const PER_CAT = 5
+const MULTI = CATS.flatMap((cat, ci) =>
+  Array.from({ length: PER_CAT }, (_, i) => ({
+    id: ci * PER_CAT + i + 1,
+    type: 'short',
+    category: cat,
+    difficulty: '中等',
+    question: `${cat} 题目 ${i + 1}`,
+    answer: `答案 ${i + 1}`,
+    tags: ['标签'],
+    frequency: '中频',
+  })),
+)
+/** 组页大小，与视图里的 GROUP_PAGE_SIZE 一致 */
+const GROUP_PAGE_SIZE = 4
+
 function makeRouter() {
   return createRouter({
     history: createMemoryHistory(),
@@ -162,52 +194,81 @@ describe('题库页 · 分页边界', () => {
   })
 })
 
-describe('错题本 · 分页边界', () => {
-  function markWrong(count) {
-    for (let i = 1; i <= count; i++) study.markUnknown(i)
+describe('错题本 · 分组与分页', () => {
+  /** 把 MULTI 前 n 题标记为错题 */
+  function markWrongMulti(n) {
+    bank.questions = MULTI
+    for (let i = 1; i <= n; i++) study.markUnknown(i)
   }
 
-  it('错题超过一页时出现分页控件', async () => {
-    markWrong(OVER_ONE_PAGE)
+  it('按分类分组，组顺序跟随 CATEGORIES，每组显示题数', async () => {
+    markWrongMulti(MULTI.length)
     const { wrapper } = await mountView(WrongView, '/wrong')
-    expect(wrapper.findAll('.qcard')).toHaveLength(PAGE_SIZE)
+    /**
+     * 2026-11：错题本改为按分类分组展示（用户反馈「都没分类」）。
+     * 6 个分类 × 5 题 = 6 组；组页大小 4，所以第 1 页 4 组。
+     */
+    const titles = wrapper.findAll('.group__cat').map((n) => n.text())
+    expect(titles.slice(0, GROUP_PAGE_SIZE)).toEqual(['Linux基础', '网络基础', 'Nginx', 'Redis'])
+    // 每组 5 题
+    expect(wrapper.findAll('.group__count').map((n) => n.text())[0]).toBe('5 题')
+  })
+
+  it('组数超过一页时出现分页控件（按组分页，不是按条）', async () => {
+    markWrongMulti(MULTI.length)
+    const { wrapper } = await mountView(WrongView, '/wrong')
+    // 第 1 页 4 组 × 5 题 = 20 题
+    expect(wrapper.findAll('.qcard')).toHaveLength(GROUP_PAGE_SIZE * PER_CAT)
     expect(wrapper.find('.pager').text()).toContain('第 1 / 2 页')
   })
 
-  it('翻到第 2 页只显示剩余条目', async () => {
-    markWrong(OVER_ONE_PAGE)
+  it('翻到第 2 页显示剩余两组（每组仍完整）', async () => {
+    markWrongMulti(MULTI.length)
     const { wrapper } = await mountView(WrongView, '/wrong')
     await wrapper.findAll('.pager__nav')[1].trigger('click')
     await wrapper.vm.$nextTick()
-    expect(wrapper.findAll('.qcard')).toHaveLength(OVER_ONE_PAGE - PAGE_SIZE)
+
+    // 剩 2 组 × 5 题 = 10 题，而且组是完整的（不会把一组拆到两页）
+    expect(wrapper.findAll('.group')).toHaveLength(CATS.length - GROUP_PAGE_SIZE)
+    expect(wrapper.findAll('.qcard')).toHaveLength((CATS.length - GROUP_PAGE_SIZE) * PER_CAT)
+    expect(wrapper.findAll('.group__cat').map((n) => n.text())).toEqual(['MySQL', 'Kubernetes'])
+  })
+
+  it('题目跨组的编号连续（不每组从 1 开始）', async () => {
+    markWrongMulti(MULTI.length)
+    const { wrapper } = await mountView(WrongView, '/wrong')
+    const indexes = wrapper.findAll('.qcard__index').map((n) => Number(n.text()))
+    // 第 1 页有 20 题，编号应是 1..20
+    expect(indexes).toEqual(Array.from({ length: GROUP_PAGE_SIZE * PER_CAT }, (_, i) => i + 1))
   })
 
   it('错题不足一页时不显示分页控件（避免多余 UI）', async () => {
-    markWrong(5)
+    // 只刷 5 题 → 1 组 → 1 页
+    markWrongMulti(PER_CAT)
     const { wrapper } = await mountView(WrongView, '/wrong')
-    expect(wrapper.findAll('.qcard')).toHaveLength(5)
+    expect(wrapper.findAll('.qcard')).toHaveLength(PER_CAT)
     expect(wrapper.find('.pager').exists()).toBe(false)
   })
 
-  it('末页答对移出导致越界时，页码自动回退且控件隐藏', async () => {
-    markWrong(OVER_ONE_PAGE)
+  it('末页题被移出导致组数骤减时，页码自动回退且控件隐藏', async () => {
+    markWrongMulti(MULTI.length)
     const { wrapper } = await mountView(WrongView, '/wrong')
     await wrapper.findAll('.pager__nav')[1].trigger('click')
     await wrapper.vm.$nextTick()
     expect(wrapper.find('.pager__info').text()).toContain('第 2 / 2 页')
 
-    // 把第 2 页的题全部连对 3 次移出错题本，只剩第 1 页的 PAGE_SIZE 条 → 恰好一页
-    for (let i = PAGE_SIZE + 1; i <= OVER_ONE_PAGE; i++) {
-      study.markKnow(i)
-      study.markKnow(i)
-      study.markKnow(i)
+    // 把第 2 页那两组（Nginx、Kubernetes）全部连对 3 次移出 → 只剩 4 组 = 恰好一页
+    const tail = MULTI.slice(GROUP_PAGE_SIZE * PER_CAT)
+    for (const q of tail) {
+      study.markKnow(q.id)
+      study.markKnow(q.id)
+      study.markKnow(q.id)
     }
     await wrapper.vm.$nextTick()
 
-    // 只剩一页时分页控件整体隐藏，列表回退到第 1 页
     expect(wrapper.find('.pager').exists()).toBe(false)
-    expect(wrapper.findAll('.qcard')).toHaveLength(PAGE_SIZE)
-    expect(wrapper.text()).toContain(`共 ${PAGE_SIZE} 道错题`)
+    expect(wrapper.findAll('.group')).toHaveLength(GROUP_PAGE_SIZE)
+    expect(wrapper.text()).toContain(`共 ${GROUP_PAGE_SIZE * PER_CAT} 道错题`)
   })
 
   it('空错题本时既不显示列表也不显示分页', async () => {
@@ -217,28 +278,36 @@ describe('错题本 · 分页边界', () => {
   })
 })
 
-describe('收藏页 · 分页边界', () => {
-  function markFav(count) {
-    for (let i = 1; i <= count; i++) study.toggleFavorite(i)
+describe('收藏页 · 分组与分页', () => {
+  function markFavMulti(n) {
+    bank.questions = MULTI
+    for (let i = 1; i <= n; i++) study.toggleFavorite(i)
   }
 
-  it('收藏超过一页时出现分页控件', async () => {
-    markFav(OVER_ONE_PAGE)
+  it('按分类分组，组顺序跟随 CATEGORIES', async () => {
+    markFavMulti(MULTI.length)
     const { wrapper } = await mountView(FavoritesView, '/favorites')
-    expect(wrapper.findAll('.qcard')).toHaveLength(PAGE_SIZE)
+    const titles = wrapper.findAll('.group__cat').map((n) => n.text())
+    expect(titles.slice(0, GROUP_PAGE_SIZE)).toEqual(['Linux基础', '网络基础', 'Nginx', 'Redis'])
+  })
+
+  it('组数超过一页时出现分页控件', async () => {
+    markFavMulti(MULTI.length)
+    const { wrapper } = await mountView(FavoritesView, '/favorites')
+    expect(wrapper.findAll('.qcard')).toHaveLength(GROUP_PAGE_SIZE * PER_CAT)
     expect(wrapper.find('.pager').text()).toContain('第 1 / 2 页')
   })
 
-  it('末页显示剩余条目', async () => {
-    markFav(OVER_ONE_PAGE)
+  it('末页显示剩余组', async () => {
+    markFavMulti(MULTI.length)
     const { wrapper } = await mountView(FavoritesView, '/favorites')
     await wrapper.findAll('.pager__nav')[1].trigger('click')
     await wrapper.vm.$nextTick()
-    expect(wrapper.findAll('.qcard')).toHaveLength(OVER_ONE_PAGE - PAGE_SIZE)
+    expect(wrapper.findAll('.qcard')).toHaveLength((CATS.length - GROUP_PAGE_SIZE) * PER_CAT)
   })
 
   it('「全部取消」后回到第 1 页且隐藏分页', async () => {
-    markFav(OVER_ONE_PAGE)
+    markFavMulti(MULTI.length)
     const { wrapper } = await mountView(FavoritesView, '/favorites')
     await wrapper.findAll('.pager__nav')[1].trigger('click')
     await wrapper.vm.$nextTick()
@@ -254,8 +323,22 @@ describe('收藏页 · 分页边界', () => {
   })
 
   it('收藏不足一页时不显示分页', async () => {
-    markFav(3)
+    markFavMulti(3)
     const { wrapper } = await mountView(FavoritesView, '/favorites')
     expect(wrapper.find('.pager').exists()).toBe(false)
+  })
+
+  it('有收藏时**不再**显示「还没有收藏」空状态（曾因 v-else 错位而重复出现）', async () => {
+    markFavMulti(3)
+    const { wrapper } = await mountView(FavoritesView, '/favorites')
+    /**
+     * 用户实际报过的 bug：明明已经有收藏，页面上还挂着「还没有收藏」的提示。
+     *
+     * 根因：EmptyState 用的是 `v-else`，它接的是上面 `v-if="confirming"` 的确认条，
+     * 而不是 `list.length` —— 只要没在确认态，空状态就永远显示。
+     * 现在改成 `v-if="!list.length"` 独立判断。
+     */
+    expect(wrapper.text()).not.toContain('还没有收藏')
+    expect(wrapper.findAll('.qcard')).toHaveLength(3)
   })
 })

@@ -8,8 +8,8 @@ import Pagination from '@/components/Pagination.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { buildRetryHint } from '@/utils/retryHint'
 import { useStudyStore } from '@/stores/studyStore'
-import { PAGE_SIZE } from '@/utils/constants'
 import { pageMeta, paginate } from '@/utils/paginate'
+import { groupByCategory } from '@/utils/groupByCategory'
 import { scrollToTop } from '@/utils/scroll'
 
 const router = useRouter()
@@ -26,9 +26,33 @@ onMounted(() => bank.loadIndex().catch(() => {}))
 /** 收藏列表：按收藏时间倒序（store 已处理） */
 const list = computed(() => study.favoriteList)
 
-const meta = computed(() => pageMeta(list.value.length, page.value, PAGE_SIZE))
-const pagedList = computed(() => paginate(list.value, meta.value.page, PAGE_SIZE))
-const pageStartIndex = computed(() => (meta.value.page - 1) * PAGE_SIZE)
+/**
+ * 按分类分组后再分页。
+ *
+ * 用户反馈「收藏都没分类」—— 平铺一长串，想复习某一类只能一页页翻。
+ * 这里先把同一分类的题聚成一组（组顺序复用 `CATEGORIES` 的业务优先级），
+ * 再把「分组」按页切开：**一页里仍能看到清晰的分组**，而不是把一组拆到两页。
+ *
+ * 为什么按组切页而不是按条切页：按条切会把同一分类拆散到相邻两页，
+ * 分组的意义就没了；按组切页保证「翻到哪一页，那页的组都是完整的」。
+ */
+const GROUP_PAGE_SIZE = 4
+
+/**
+ * 分组，并给每组算出「全局起始序号」—— 这样跨组的编号是连续的（1、2、3…），
+ * 不会每组都从 1 开始。用 reduce 一次算完，避免再写一层嵌套循环。
+ */
+const groups = computed(() => {
+  let acc = 0
+  return groupByCategory(list.value).map((g, i) => {
+    const startIndex = acc
+    acc += g.count
+    return { ...g, key: i, startIndex }
+  })
+})
+
+const meta = computed(() => pageMeta(groups.value.length, page.value, GROUP_PAGE_SIZE))
+const pagedGroups = computed(() => paginate(groups.value, meta.value.page, GROUP_PAGE_SIZE))
 
 function changePage(next) {
   page.value = next
@@ -67,7 +91,7 @@ function clearAll() {
 
 <template>
   <div class="page">
-    <AppHeader title="我的收藏" back-to="/me" />
+    <AppHeader title="我的收藏" back-to="/" />
 
     <div v-if="bank.loading" class="skeleton card" aria-busy="true" />
 
@@ -97,7 +121,7 @@ function clearAll() {
       </div>
 
       <EmptyState
-        v-else
+        v-if="!list.length"
         variant="favorites"
         title="还没有收藏"
         desc="在题目卡片或详情页点击星标，就会出现在这里，方便反复看。"
@@ -105,18 +129,65 @@ function clearAll() {
         @action="router.push('/bank')"
       />
 
-      <ul v-if="list.length" class="list">
-        <li v-for="(q, i) in pagedList" :key="q.id">
-          <QuestionCard :question="q" :index="pageStartIndex + i + 1" from="/favorites" />
-        </li>
-      </ul>
+      <!-- 按分类分组渲染：每组一个标题（分类名 + 题数），组内题目连续编号 -->
+      <div v-if="list.length" class="groups">
+        <section v-for="g in pagedGroups" :key="g.key" class="group">
+          <h2 class="group__title">
+            <span class="group__cat">{{ g.category }}</span>
+            <span class="group__count">{{ g.count }} 题</span>
+          </h2>
+          <ul class="list">
+            <li v-for="(q, i) in g.items" :key="q.id">
+              <QuestionCard :question="q" :index="g.startIndex + i + 1" from="/favorites" />
+            </li>
+          </ul>
+        </section>
+      </div>
 
-      <Pagination v-if="list.length" :meta="meta" unit="题" @change="changePage" />
+      <!-- 分页控件自带 visible 判断，外层不用再包 v-if -->
+      <Pagination :meta="meta" unit="组" @change="changePage" />
     </template>
   </div>
 </template>
 
 <style scoped>
+/* ---------- 分类分组 ---------- */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.group__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+/* 分类名左侧加一条主色短线，与题目卡列表形成层级区分 */
+.group__cat {
+  position: relative;
+  padding-left: 9px;
+}
+.group__cat::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--c-primary);
+}
+.group__count {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--c-text-3);
+}
+
 .head {
   display: flex;
   align-items: center;
@@ -177,6 +248,9 @@ function clearAll() {
   margin: 0;
   padding: 0;
   list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .skeleton {

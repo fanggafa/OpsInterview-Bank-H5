@@ -8,8 +8,9 @@ import Pagination from '@/components/Pagination.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { buildRetryHint } from '@/utils/retryHint'
 import { useStudyStore } from '@/stores/studyStore'
-import { PAGE_SIZE, WRONG_CLEAR_STREAK } from '@/utils/constants'
+import { WRONG_CLEAR_STREAK } from '@/utils/constants'
 import { pageMeta, paginate } from '@/utils/paginate'
+import { groupByCategory } from '@/utils/groupByCategory'
 import { scrollToTop } from '@/utils/scroll'
 
 const router = useRouter()
@@ -32,9 +33,28 @@ onMounted(() => bank.loadIndex().catch(() => {}))
  */
 const list = computed(() => study.wrongList)
 
-const meta = computed(() => pageMeta(list.value.length, page.value, PAGE_SIZE))
-const pagedList = computed(() => paginate(list.value, meta.value.page, PAGE_SIZE))
-const pageStartIndex = computed(() => (meta.value.page - 1) * PAGE_SIZE)
+/**
+ * 按分类分组后再分页 —— 与「我的收藏」页同一套规则。
+ *
+ * 错题本原来是平铺的一长串，用户反馈「都没分类」：想专门补某一类
+ * （比如 MySQL）只能一页页翻。分组后每页是若干个完整的分类块，
+ * 组顺序复用 `CATEGORIES` 的业务优先级。
+ *
+ * 按「组」切页而不是按条切：按条切会把同一分类拆散到相邻两页，分组就白做了。
+ */
+const GROUP_PAGE_SIZE = 4
+
+const groups = computed(() => {
+  let acc = 0
+  return groupByCategory(list.value).map((g, i) => {
+    const startIndex = acc
+    acc += g.count
+    return { ...g, key: i, startIndex }
+  })
+})
+
+const meta = computed(() => pageMeta(groups.value.length, page.value, GROUP_PAGE_SIZE))
+const pagedGroups = computed(() => paginate(groups.value, meta.value.page, GROUP_PAGE_SIZE))
 
 function changePage(next) {
   page.value = next
@@ -61,7 +81,7 @@ const clearStreak = WRONG_CLEAR_STREAK
 
 <template>
   <div class="page">
-    <AppHeader title="错题本" back-to="/me" />
+    <AppHeader title="错题本" back-to="/" />
 
     <div v-if="bank.loading" class="skeleton card" aria-busy="true" />
 
@@ -96,25 +116,35 @@ const clearStreak = WRONG_CLEAR_STREAK
         @action="router.push('/practice')"
       />
 
-      <ul v-else class="list">
-        <li v-for="(q, i) in pagedList" :key="q.id">
-          <QuestionCard :question="q" :index="pageStartIndex + i + 1" from="/wrong" />
-          <!-- 连对进度：让「还差几次移出」这件事看得见，不然用户会疑惑为什么答对了还留着 -->
-          <p class="progress-hint">
-            <span class="progress-dots" aria-hidden="true">
-              <span
-                v-for="n in clearStreak"
-                :key="n"
-                class="progress-dot"
-                :class="{ 'progress-dot--on': n <= streakOf(q.id) }"
-              />
-            </span>
-            连对 {{ streakOf(q.id) }} / {{ clearStreak }}
-          </p>
-        </li>
-      </ul>
+      <!-- 按分类分组渲染：每组一个标题（分类名 + 题数），组内题目连续编号 -->
+      <div v-else class="groups">
+        <section v-for="g in pagedGroups" :key="g.key" class="group">
+          <h2 class="group__title">
+            <span class="group__cat">{{ g.category }}</span>
+            <span class="group__count">{{ g.count }} 题</span>
+          </h2>
+          <ul class="list">
+            <li v-for="(q, i) in g.items" :key="q.id">
+              <QuestionCard :question="q" :index="g.startIndex + i + 1" from="/wrong" />
+              <!-- 连对进度：让「还差几次移出」这件事看得见，不然用户会疑惑为什么答对了还留着 -->
+              <p class="progress-hint">
+                <span class="progress-dots" aria-hidden="true">
+                  <span
+                    v-for="n in clearStreak"
+                    :key="n"
+                    class="progress-dot"
+                    :class="{ 'progress-dot--on': n <= streakOf(q.id) }"
+                  />
+                </span>
+                连对 {{ streakOf(q.id) }} / {{ clearStreak }}
+              </p>
+            </li>
+          </ul>
+        </section>
+      </div>
 
-      <Pagination v-if="list.length" :meta="meta" unit="题" @change="changePage" />
+      <!-- 分页控件自带 visible 判断，外层不用再包 v-if -->
+      <Pagination :meta="meta" unit="组" @change="changePage" />
     </template>
   </div>
 </template>
@@ -173,10 +203,50 @@ const clearStreak = WRONG_CLEAR_STREAK
   background: var(--c-success);
 }
 
+/* ---------- 分类分组 ---------- */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.group__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+/* 分类名左侧加一条主色短线，与题目卡列表形成层级区分 */
+.group__cat {
+  position: relative;
+  padding-left: 9px;
+}
+.group__cat::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--c-primary);
+}
+.group__count {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--c-text-3);
+}
+
 .list {
   margin: 0;
   padding: 0;
   list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .skeleton {
