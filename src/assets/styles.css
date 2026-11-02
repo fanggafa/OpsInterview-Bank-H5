@@ -19,6 +19,8 @@
   --c-freq-weak: rgba(122, 139, 168, 0.12);
   --c-success-weak: rgba(82, 196, 26, 0.12);
   --c-danger-weak: rgba(245, 34, 45, 0.12);
+  /* 警告色底：倒计时告警、超时提示这类「注意但非错误」的场景 */
+  --c-warning-weak: rgba(250, 173, 20, 0.14);
 
   /* 渐变与光效（首页/卡片背景用） */
   --grad-hero: linear-gradient(135deg, #4f7cff 0%, #7b6cf6 55%, #a06af5 100%);
@@ -92,6 +94,7 @@
   --c-freq-weak: rgba(143, 161, 189, 0.16);
   --c-success-weak: rgba(115, 209, 61, 0.16);
   --c-danger-weak: rgba(255, 120, 117, 0.16);
+  --c-warning-weak: rgba(255, 197, 61, 0.18);
 
   /* 深色下渐变降饱和，避免刺眼 */
   --grad-hero: linear-gradient(135deg, #3d5fc4 0%, #5a4fb8 55%, #6d47a3 100%);

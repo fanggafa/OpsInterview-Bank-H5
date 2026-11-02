@@ -15,6 +15,7 @@ import {
   TYPE_LABEL,
   REVIEW_MODES,
   REVIEW_SIZES,
+  DAILY_DRILL_LIMIT_SEC,
   WRONG_CLEAR_STREAK,
 } from '@/utils/constants'
 import {
@@ -174,10 +175,23 @@ const optionStates = computed(() =>
 
 const roundSummary = computed(() => {
   const answers = Object.values(roundAnswers.value)
-  return summarizeRound(
-    answers.filter((a) => a && STATUS.KNOW === a.status).length,
-    answers.filter((a) => a && STATUS.UNKNOWN === a.status).length
-  )
+  const know = answers.filter((a) => a && STATUS.KNOW === a.status).length
+  const unknown = answers.filter((a) => a && STATUS.UNKNOWN === a.status).length
+
+  /**
+   * 每日一刷**超时交卷**时，未答的题要算进分母并记为错。
+   *
+   * 否则「30 题只答了 10 题、全对」会被算成 100% —— 分页上看着完美，
+   * 实际是没做完。这类分数必须失真才诚实。
+   *
+   * 正常答完时 total 就等于队列长度，两种算法一致，不影响原有行为。
+   */
+  if (isDrill.value && total.value) {
+    const unanswered = Math.max(0, total.value - know - unknown)
+    return summarizeRound(know, unknown + unanswered)
+  }
+
+  return summarizeRound(know, unknown)
 })
 
 /**
@@ -190,6 +204,15 @@ const drill = computed(() => {
   if (!isDrill.value) return null
   return drillResult(roundSummary.value.knowRate, roundSummary.value.total)
 })
+
+/**
+ * 本轮是否因超时自动交卷。
+ *
+ * 超时交卷时「正确率」的分母仍是 30（未答的算错），
+ * 但用户需要知道「这不是我做完的结果」——成绩单要标出来，
+ * 否则会误以为自己答完了只是答错。
+ */
+const timedOut = ref(false)
 
 // ---------- 队列 ----------
 
@@ -228,6 +251,8 @@ function build() {
     // 计时起点：复习赛进来即开始答题
     startedAt.value = Date.now()
     elapsedSec.value = 0
+    // 每日一刷开跑倒计时（其他复习赛 mode 内部会直接 return）
+    startCountdown()
     ready.value = true
     return
   }
@@ -272,6 +297,8 @@ function build() {
   // 计时起点：普通刷题从队列生成（用户点了「做题/背题」）开始算
   startedAt.value = Date.now()
   elapsedSec.value = 0
+  // 倒计时只对每日一刷生效（内部判断）
+  startCountdown()
   ready.value = true
 }
 
@@ -438,9 +465,74 @@ const elapsedText = computed(() => {
   return `${mm}:${ss}`
 })
 
+// ---------- 每日一刷：限时倒计时 ----------
+
+/**
+ * 本轮剩余秒数（仅每日一刷有意义）。
+ *
+ * 与 elapsedSec 的区别：那个是「用了多久」（交卷时算一次差值），
+ * 这个是**实时倒计时**，必须每秒跳动。所以用一个独立定时器驱动，
+ * 且只在答题中（!finished）运行。
+ */
+const remainSec = ref(0)
+let countdownTimer = null
+
+/** 倒计时是否在跑（只有每日一刷未交卷时） */
+const countdownActive = computed(() => isDrill.value && started.value && !finished.value)
+
+/**
+ * 倒计时文案 mm:ss。
+ * 与用时共用格式化逻辑，避免两处各写一遍补零。
+ */
+const remainText = computed(() => {
+  const s = Math.max(0, remainSec.value)
+  const mm = String(Math.floor(s / 60)).padStart(2, '0')
+  const ss = String(s % 60).padStart(2, '0')
+  return `${mm}:${ss}`
+})
+
+/** 剩余不足 1 分钟 → 高亮告警 */
+const remainUrgent = computed(() => countdownActive.value && remainSec.value <= 60)
+
+/**
+ * 启动倒计时。
+ *
+ * 用「基准时刻 + 剩余值」而不是「每次 tick 减 1」：
+ * 后者在浏览器切后台、定时器被节流时会越走越慢，倒计时就不准了。
+ * 这里每次都用 Date.now() 重算，切回前台立即对齐真实时间。
+ */
+function startCountdown() {
+  stopCountdown()
+  if (!isDrill.value) return
+  remainSec.value = DAILY_DRILL_LIMIT_SEC
+  const endAt = Date.now() + DAILY_DRILL_LIMIT_SEC * 1000
+
+  countdownTimer = setInterval(() => {
+    const left = Math.max(0, Math.round((endAt - Date.now()) / 1000))
+    remainSec.value = left
+    if (left <= 0) {
+      stopCountdown()
+      // 时间到：自动交卷。已答的照常计分，未答的算错
+      if (!finished.value && started.value) {
+        timedOut.value = true
+        finish()
+      }
+    }
+  }, 1000)
+}
+
+function stopCountdown() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+}
+
 function finish() {
   finished.value = true
   cursor.value = Math.max(0, total.value - 1)
+  // 交卷即停表：倒计时和「用时」都不该再走
+  stopCountdown()
   // 冻结用时（只在计时已开始时有意义）
   if (startedAt.value) {
     elapsedSec.value = Math.round((Date.now() - startedAt.value) / 1000)
@@ -571,6 +663,8 @@ function restart() {
   finished.value = false
   cursor.value = 0
   expanded.value = false
+  // 新一轮开始，清掉上一轮的超时标记
+  timedOut.value = false
   resetChoice()
 
   // 复习赛：重新抽一批（不是重放同一批，那样第二遍就记住答案了）
@@ -698,6 +792,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   detachSwipe()
   clearTimers()
+  // 倒计时是 interval，必须显式清理，否则组件卸载后仍在跑
+  stopCountdown()
   if (total.value) persistProgress()
 })
 
@@ -879,6 +975,33 @@ const emptyDesc = computed(() => {
         </svg>
         <span class="practice__mode-text">{{ STUDY_MODE_LABEL[studyMode] }}</span>
       </button>
+
+      <!--
+        每日一刷的倒计时：放在顶栏**最右端**。
+        它是「限时」这件事的唯一提示，需要一眼能看到；
+        复习赛本身没有顺序胶囊和模式切换，右侧正好留出位置。
+        剩余 ≤1 分钟转告警色。
+      -->
+      <span
+        v-if="countdownActive"
+        class="ptop__countdown"
+        :class="{ 'ptop__countdown--urgent': remainUrgent }"
+        role="timer"
+        :aria-label="`剩余时间 ${remainText}`"
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+          <path
+            d="M12 7.5V12l3 1.8"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        {{ remainText }}
+      </span>
     </header>
 
     <AppHeader v-else :title="headerTitle" :back="false" />
@@ -961,6 +1084,9 @@ const emptyDesc = computed(() => {
       -->
       <template v-if="isDrill">
         <h2 class="done__title">🏆 测试结果</h2>
+
+        <!-- 超时交卷要标出来：否则用户会以为「我做完了只是错得多」 -->
+        <p v-if="timedOut" class="done__timeout">⏰ 时间到，已自动交卷（未答的题按错计）</p>
 
         <div class="score">
           <div class="score__cell">
@@ -1441,6 +1567,30 @@ const emptyDesc = computed(() => {
   font-weight: 600;
   color: var(--c-text);
 }
+/*
+ * 每日一刷的倒计时。
+ * 等宽数字（tabular-nums）避免 59→58 时宽度跳动；
+ * 剩余 ≤1 分钟转危险色，给出「该收尾」的信号。
+ */
+.ptop__countdown {
+  flex-shrink: 0;
+  /* 顶栏最右端：把剩余空间全推到自己左边，紧贴右边界 */
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--c-primary-weak);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--c-primary);
+  font-variant-numeric: tabular-nums;
+}
+.ptop__countdown--urgent {
+  background: var(--c-danger-weak);
+  color: var(--c-danger);
+}
 /* 复习态：靠左的标题要让出一部分宽度给进度条，间距收紧一点 */
 .ptop--review {
   gap: 8px;
@@ -1459,6 +1609,8 @@ const emptyDesc = computed(() => {
   color: var(--c-text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  /* 与下方进度条居中对齐，而不是靠左顶着「每日一刷」标题 */
+  text-align: center;
 }
 .ptop__bar {
   height: 3px;
@@ -1906,6 +2058,15 @@ const emptyDesc = computed(() => {
   margin: 14px 0 5px;
   font-size: 17px;
   color: var(--c-text);
+}
+/* 超时提示：醒目但不刺眼，说明「这不是做完的结果」 */
+.done__timeout {
+  margin: 0 0 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--c-warning-weak);
+  font-size: 12px;
+  color: var(--c-warning);
 }
 .done__desc {
   margin: 0;
