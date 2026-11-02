@@ -154,12 +154,17 @@ describe('复习赛 · 每日一刷', () => {
     expect(study.progress).toBeNull()
   })
 
-  it('复习赛返回：只有错题复习直接回首页（每日一刷要确认）', async () => {
-    // 错题复习是一次性练习，退出无损失 → 直接回首页，不弹确认
-    const { wrapper, router } = await mountPractice({ review: 'wrong' })
+  it('复习赛返回：两个限时自测都要确认（答题中离开有损失）', async () => {
+    /**
+     * 2026-11：每日复习升级为「限时自测」，与每日一刷共用同一套流程，
+     * 所以它也不再直接退出 —— 答题中离开会丢进度和剩余时间，需要确认。
+     * 早先这条断言「只有错题复习直接回首页」，那个前提已被推翻。
+     */
+    const { wrapper } = await mountPractice({ review: 'wrong' })
     await wrapper.find('.ptop__back').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/')
+    // 不是直接跳走，而是弹确认
+    expect(wrapper.text()).toContain('退出')
   })
 })
 
@@ -168,12 +173,34 @@ describe('复习赛 · 错题复习', () => {
     // 只让 6 道题进错题本
     ;[1, 2, 3, 4, 5, 6].forEach((id) => study.markUnknown(id))
     const { wrapper } = await mountPractice({ review: 'wrong' })
-    expect(wrapper.find('.ptop__review-title').text()).toBe('错题复习')
+    expect(wrapper.find('.ptop__review-title').text()).toBe('每日复习')
     expect(wrapper.find('.ptop__count').text()).toContain('/ 6 题')
   })
 
-  it('错题超过 10 道时只抽 10 道', async () => {
-    FIXTURE.forEach((q) => study.markUnknown(q.id))
+  it('错题超过 30 道时只抽 30 道', async () => {
+    /**
+     * 需要题池 > 30 才测得出「截断」。
+     * FIXTURE 只有 20 题，这里补一批选择题进错题本。
+     */
+    bank.questions = [
+      ...FIXTURE,
+      ...Array.from({ length: 20 }, (_, i) => ({
+        id: 900 + i,
+        type: 'single',
+        category: 'MySQL',
+        difficulty: '中等',
+        question: `补充题 ${900 + i}`,
+        options: [
+          { key: 'A', text: 'a' },
+          { key: 'B', text: 'b' },
+        ],
+        answer: ['A'],
+        explanation: '解析文本够长了吧够长了吧',
+        tags: ['t'],
+        frequency: '中频',
+      })),
+    ]
+    bank.questions.filter((q) => q.type !== 'short').forEach((q) => study.markUnknown(q.id))
     const { wrapper } = await mountPractice({ review: 'wrong' })
     expect(wrapper.find('.ptop__count').text()).toContain(`/ ${REVIEW_SIZES.wrong} 题`)
   })

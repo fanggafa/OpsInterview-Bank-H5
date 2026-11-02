@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBankStore } from '@/stores/bankStore'
@@ -15,6 +15,7 @@ import {
   TYPE_LABEL,
   REVIEW_MODES,
   REVIEW_SIZES,
+  TIMED_REVIEW_MODES,
   DAILY_DRILL_LIMIT_SEC,
   WRONG_CLEAR_STREAK,
   STORAGE_KEYS,
@@ -72,8 +73,8 @@ const category = computed(() =>
 /**
  * 复习赛（从首页直接进入的一次性题组）。
  *
- * - dailyDrill：每日一刷，全库随机 30 题（仅选择题）
- * - wrong：错题复习，错题本随机 10 题
+ * - dailyDrill：每日一刷，全库随机 30 题（仅选择题），限时 20 分钟
+ * - wrong：每日复习，错题本随机 30 题（仅选择题），限时 20 分钟
  *
  * 与普通刷题的区别：直接出题（跳过「选择练习方式」）、每次进入重新抽、
  * 不写断点进度——它是「今天练这一批」，练完就该结束，
@@ -83,15 +84,23 @@ const reviewKind = computed(() =>
   REVIEW_MODES.includes(route.query.review) ? route.query.review : ''
 )
 const isReview = computed(() => !!reviewKind.value)
-/** 每日一刷强制做题模式：只有选择题才可能算出客观分数 */
-const isDrill = computed(() => reviewKind.value === 'dailyDrill')
+/**
+ * 是否「限时自测」型复习赛（每日一刷 / 每日复习）。
+ *
+ * 两者共用同一套答题流程：强制做题模式、限时倒计时、交卷打分、结果页、
+ * 答题中不给看答案、离开前提醒。
+ * 早先只有 dailyDrill 走这套，wrong 是普通练习 —— 现在两者定位一致，共用。
+ */
+const isDrill = computed(() => TIMED_REVIEW_MODES.includes(reviewKind.value))
+/** 是否从错题本抽题（用于文案与空态） */
+const isWrongRun = computed(() => reviewKind.value === 'wrong')
 
 /**
  * 是否允许查看答案 / 解析。
  *
  * 每日一刷是「自测」，答题过程中**不给看答案** —— 否则边做边看，
  * 分数就没有参考价值了。它只在交卷后（finished）才允许看解析。
- * 其他模式（普通刷题 / 错题复习 / 背题）照旧随时可看。
+ * 其他模式（普通刷题 / 背题）照旧随时可看。
  */
 const canRevealAnswer = computed(() => !isDrill.value || finished.value || reviewing.value)
 
@@ -202,8 +211,8 @@ const roundSummary = computed(() => {
 /**
  * 每日一刷的分数与建议。
  *
- * 只在每日一刷展示：普通刷题和错题复习是「练」，不需要被打分；
- * 每日一刷的定位是「自测」，分数才是它存在的意义。
+ * 两个限时自测都展示分数：它们的定位是「自测」，分数才是存在的意义。
+ * 普通刷题是「练」，不需要被打分。
  */
 const drill = computed(() => {
   if (!isDrill.value) return null
@@ -243,22 +252,23 @@ function build() {
         ? bank.questions.filter((q) => study.isWrong(q.id))
         : bank.questions.slice()
     /**
-     * **错题复习也强制做题模式（选择题）**。
+     * 两个限时自测都强制做题模式（选择题）。
      *
      * 错题本只收选择题（2026-11 规则），所以从它抽出来的必然是选择题；
      * 若还跟随 URL 的 `studyMode=memorize`，`byStudyMode` 会把这批选择题
      * 再按「只要简答题」筛一遍 —— 结果永远是空队列。
      * 每日一刷同理（它本来就是选择题自测）。
      */
-    const effectiveStudyMode = isDrill.value || reviewKind.value === 'wrong' ? 'practice' : studyMode.value
+    const effectiveStudyMode = isDrill.value ? 'practice' : studyMode.value
     const pool = byStudyMode(source, effectiveStudyMode)
 
     /**
-     * 每日一刷：优先**恢复刷新前的快照**，而不是重新抽题。
+     * 限时自测：优先**恢复刷新前的快照**，而不是重新抽题。
      *
      * 用户报过「考试时一下拉刷新题目就换了」—— 因为每次进入都重新随机抽，
      * 刷新等于重开一轮，之前的作答和剩余时间全没了。
      * 这里先查会话快照：命中就原样恢复；没有才抽新题。
+     * 每日一刷与每日复习共用这套逻辑。
      */
     const snap = isDrill.value ? readPracticeSession() : null
     if (snap) {
@@ -278,7 +288,7 @@ function build() {
         restoreChoice(queue.value[cursor.value])
         startedAt.value = snap.startedAt || Date.now()
         elapsedSec.value = snap.elapsedSec || 0
-        // 从快照的剩余时间续跑，而不是重置为 30 分钟
+        // 从快照的剩余时间续跑，而不是重置为整轮时长
         startCountdown(snap.remainSec)
         ready.value = true
         return
@@ -608,7 +618,7 @@ const remainUrgent = computed(() => countdownActive.value && remainSec.value <= 
  * 启动倒计时。
  *
  * @param {number} [fromSec] 从多少秒开始（刷新恢复时用快照里的剩余值）。
- *   不传则重置为整轮时长。**恢复时必须传**，否则刷新一次就白送 30 分钟。
+ *   不传则重置为整轮时长。**恢复时必须传**，否则刷新一次就白送一整轮。
  */
 function startCountdown(fromSec) {
   stopCountdown()
@@ -1050,7 +1060,7 @@ function startStudy(next) {
  *
  * 为什么只有每日一刷需要：
  * - 它是**限时自测**，退出即整轮作废（快照也会被清），代价比普通刷题大；
- * - 普通刷题/错题复习是「练」，随时退出没有损失，不需要多一层打扰。
+ * - 普通刷题是「练」，随时退出没有损失，不需要多一层打扰。
  *
  * 交卷后（finished）也不弹：那时退出已经没有损失。
  */
@@ -1117,7 +1127,7 @@ const headerTitle = computed(() => (category.value ? category.value : '刷题'))
 
 /** 复习赛的顶栏标题 */
 const reviewTitle = computed(() => {
-  if (reviewKind.value === 'wrong') return '错题复习'
+  if (reviewKind.value === 'wrong') return '每日复习'
   return '每日一刷'
 })
 
@@ -1874,7 +1884,7 @@ const emptyDesc = computed(() => {
 /**
  * 复习赛的顶栏标题。
  *
- * 复习赛没有顺序/模式切换，中间换成「错题复习 · 第 3/10 题」这种标题 + 进度。
+ * 复习赛没有顺序/模式切换，中间换成「每日复习 · 第 3/30 题」这种标题 + 进度。
  * 标题用 13px 600，比进度文字重一档，让它成为这一行的视觉主体。
  */
 .ptop__review-title {

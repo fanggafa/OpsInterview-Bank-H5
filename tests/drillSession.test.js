@@ -125,23 +125,23 @@ describe('每日一刷 · 刷新不丢题组', () => {
     expect(second.wrapper.find('.actions__hint').exists()).toBe(false)
   })
 
-  it('刷新恢复剩余时间，而不是重置成 30 分钟', async () => {
+  it('刷新恢复剩余时间，而不是重置成整轮时长', async () => {
     vi.useFakeTimers()
     const first = await mountDrill()
 
-    // 跑掉 5 秒
+    // 跑掉 5 秒（一轮现在是 20 分钟）
     await vi.advanceTimersByTimeAsync(5000)
     await first.wrapper.vm.$nextTick()
-    expect(first.wrapper.find('.ptop__countdown').text()).toContain('29:5')
+    expect(first.wrapper.find('.ptop__countdown').text()).toContain('19:5')
 
     unmountKeepStorage()
     const second = await mountDrill()
     await second.wrapper.vm.$nextTick()
 
     const cd = second.wrapper.find('.ptop__countdown').text()
-    // 不能回到 30:00（那等于刷新白送时间）
-    expect(cd).not.toContain('30:00')
-    expect(cd).toMatch(/29:\d\d/)
+    // 不能回到 20:00（那等于刷新白送时间）
+    expect(cd).not.toContain('20:00')
+    expect(cd).toMatch(/19:\d\d/)
   })
 
   it('交卷后刷新不会回到答题态（快照已清）', async () => {
@@ -234,7 +234,7 @@ describe('每日一刷 · 再来一轮要重新抽题', () => {
     // 回到答题态、计时重置、成绩单消失
     expect(wrapper.find('.done').exists()).toBe(false)
     expect(wrapper.find('.qcard-p__q').exists()).toBe(true)
-    expect(wrapper.find('.ptop__countdown').text()).toContain('30:00')
+    expect(wrapper.find('.ptop__countdown').text()).toContain('20:00')
 
     const afterIds = readSnap()?.ids
     expect(afterIds).toBeTruthy()
