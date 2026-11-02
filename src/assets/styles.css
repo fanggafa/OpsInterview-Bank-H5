@@ -294,6 +294,64 @@ ul {
   color: var(--c-text-2);
 }
 
+/**
+ * 可折叠答案区（`.answer` + `.answer__inner` + `.answer__body`）。
+ *
+ * **详情页与刷题页共用这一份**。早先两边各写了一份一模一样的样式，
+ * 结果内边距悄悄跑偏了（详情页 12/13、刷题页 10/11）——
+ * 同一个「展开答案」在两个页面长得不一样。
+ *
+ * 折叠动画用 `grid-template-rows: 0fr → 1fr`：
+ * 它不需要预先知道内容多高就能平滑展开，比猜一个 `max-height` 可靠。
+ *
+ * 用法：
+ *   <div class="answer" :class="{ 'answer--open': expanded }">
+ *     <div class="answer__inner"><div class="answer__body">…</div></div>
+ *   </div>
+ */
+.answer {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+.answer--open {
+  grid-template-rows: 1fr;
+}
+.answer__inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.answer__body {
+  margin-top: 10px;
+  padding: 11px 12px;
+  background: var(--c-answer-bg);
+  border: 1px solid var(--c-answer-border);
+  border-radius: var(--radius-sm);
+}
+
+/**
+ * 选择题的「正确答案 A」那一行。
+ *
+ * 只有刷题页会用到（详情页的简答题答案是一整段文本，没有「选哪个字母」这回事），
+ * 但它是同一套「展开答案」的一部分，跟着放在这里，避免两处各写一份。
+ */
+.answer__key {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+}
+.answer__key-label {
+  margin: 0;
+}
+.answer__key-value {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--c-primary);
+  font-variant-numeric: tabular-nums;
+}
+
 .muted {
   color: var(--c-text-2);
   font-size: 12.5px;

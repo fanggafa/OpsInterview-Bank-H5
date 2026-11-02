@@ -55,9 +55,9 @@ async function mountBank(query = {}) {
   return { wrapper, router }
 }
 
-async function mountDetail(id = 1) {
+async function mountDetail(id = 1, query = {}) {
   const router = makeRouter()
-  await router.push(`/question/${id}`)
+  await router.push({ path: `/question/${id}`, query })
   await router.isReady()
   const wrapper = mount(QuestionView, { global: { plugins: [pinia, router] } })
   await wrapper.vm.$nextTick()
@@ -349,3 +349,50 @@ describe('详情页 · 翻题（改为左右滑动）', () => {
     expect(first.vm.boundaryHint).toBe('已经是第一题')
   })
 })
+
+
+describe('详情页 · 答案默认展开状态', () => {
+  /**
+   * **从收藏进详情 → 答案默认展开**。
+   *
+   * 收藏的定位是「留一道值得反复看的题」，用户进来是要回顾内容，
+   * 不该再点一次「展开参考答案」。
+   *
+   * 其他入口（题库 / 首页每日一记）保持折叠 ——
+   * 那里是做题 / 浏览场景，尤其每日一记要先想一想再看答案。
+   */
+  it('从收藏进详情，答案默认展开', async () => {
+    const { wrapper } = await mountDetail(1, { from: '/favorites' })
+    expect(wrapper.vm.expanded).toBe(true)
+    expect(wrapper.find('.answer').classes()).toContain('answer--open')
+  })
+
+  it('从题库 / 首页进详情，答案默认折叠', async () => {
+    const { wrapper: fromBank } = await mountDetail(1, { from: '/bank' })
+    expect(fromBank.vm.expanded).toBe(false)
+    expect(fromBank.find('.answer').classes()).not.toContain('answer--open')
+
+    const { wrapper: fromHome } = await mountDetail(1, { from: '/' })
+    expect(fromHome.vm.expanded).toBe(false)
+  })
+
+  it('收藏场景下切题仍保持展开（不必每题都点一次）', async () => {
+    const { wrapper, router } = await mountDetail(1, { from: '/favorites' })
+    expect(wrapper.vm.expanded).toBe(true)
+
+    await router.push({ path: '/question/2', query: { from: '/favorites' } })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.expanded).toBe(true)
+  })
+
+  it('非收藏场景切题会收起（避免边翻边看答案）', async () => {
+    const { wrapper, router } = await mountDetail(1, { from: '/bank' })
+    wrapper.vm.expanded = true
+    await wrapper.vm.$nextTick()
+
+    await router.push({ path: '/question/2', query: { from: '/bank' } })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.expanded).toBe(false)
+  })
+})
+

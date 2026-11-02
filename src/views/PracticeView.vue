@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBankStore } from '@/stores/bankStore'
@@ -2325,26 +2325,6 @@ const emptyDesc = computed(() => {
   transform: rotate(180deg);
 }
 
-.answer {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.25s ease;
-}
-.answer--open {
-  grid-template-rows: 1fr;
-}
-.answer__inner {
-  overflow: hidden;
-  min-height: 0;
-}
-.answer__body {
-  margin-top: 10px;
-  padding: 11px 12px;
-  background: var(--c-answer-bg);
-  border: 1px solid var(--c-answer-border);
-  border-radius: var(--radius-sm);
-}
-
 /* 判定结果 */
 .result {
   display: flex;
@@ -2379,24 +2359,6 @@ const emptyDesc = computed(() => {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--c-text-2);
-}
-
-/* 选择题答案：标签与字母同一行，尽量少占垂直空间 */
-.answer__key {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin: 0;
-}
-.answer__key-label {
-  margin: 0;
-}
-.answer__key-value {
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: var(--c-primary);
-  font-variant-numeric: tabular-nums;
 }
 
 /* 吸底操作区 */

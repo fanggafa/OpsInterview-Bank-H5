@@ -47,6 +47,16 @@ const backTo = computed(() => {
 /** 错误态文案（含重试退避冷却提示） */
 const retryHint = computed(() => buildRetryHint(bank))
 
+/**
+ * 答案是否展开。
+ *
+ * **从收藏进详情时默认展开**：收藏的定位就是「留一道值得反复看的题」，
+ * 用户进来是要回顾内容，不该再点一次「展开参考答案」。
+ *
+ * 从题库 / 首页进来保持折叠 —— 那里是「做题 / 浏览」场景，
+ * 尤其是首页「每日一记」，先想一想再看答案才有意义。
+ */
+const fromFavorites = computed(() => route.query.from === '/favorites')
 const expanded = ref(false)
 /** 选择题作答态 */
 const selected = ref([])
@@ -167,6 +177,9 @@ watch(stageRef, (el) => {
 onBeforeUnmount(() => detachSwipe())
 
 onMounted(async () => {
+  // 从收藏进来 → 答案默认展开（收藏是「反复看」的场景，不该再点一次）
+  expanded.value = fromFavorites.value
+
   // 详情页需要答案，但不必拉全量：先取索引（含分类），再只补这道题所属的分类分片。
   try {
     await bank.loadIndex()
@@ -193,7 +206,12 @@ async function retryLoad() {
 
 /** 切题时重置作答态与折叠态 */
 watch(id, () => {
-  expanded.value = false
+  /**
+   * 收藏场景下切题也保持展开 —— 用户是在「翻看收藏的题」，
+   * 每切一道就收起、再让他点一次「展开」，没有道理。
+   * 其他来源切题一律收起（避免边翻边看答案）。
+   */
+  expanded.value = fromFavorites.value
   resetChoice()
   // 切到的题可能属于别的分类 —— 补一次，避免答案字段缺失
   const cat = bank.getById(id.value)?.category
@@ -624,26 +642,6 @@ const statusText = computed(() => {
 }
 .answer-toggle__chevron--up {
   transform: rotate(180deg);
-}
-
-.answer {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.25s ease;
-}
-.answer--open {
-  grid-template-rows: 1fr;
-}
-.answer__inner {
-  overflow: hidden;
-  min-height: 0;
-}
-.answer__body {
-  margin-top: 12px;
-  padding: 12px 13px;
-  background: var(--c-answer-bg);
-  border: 1px solid var(--c-answer-border);
-  border-radius: var(--radius-sm);
 }
 
 .status-hint {
