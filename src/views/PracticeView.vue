@@ -157,7 +157,6 @@ const choiceAnswerText = computed(() => {
   if (!q) return ''
   return correctKeys(q).join('、')
 })
-const status = computed(() => (current.value ? study.statusOf(current.value.id) : null))
 const favorite = computed(() => (current.value ? study.isFavorite(current.value.id) : false))
 
 /**
@@ -1448,9 +1447,13 @@ const emptyDesc = computed(() => {
             <span class="badge qcard-p__type" :class="{ 'qcard-p__type--choice': !short }">{{ typeLabel }}</span>
             <DifficultyBadge :difficulty="current.difficulty" />
             <FrequencyBadge :frequency="current.frequency" />
-            <span v-if="status" class="badge qcard-p__status" :class="`qcard-p__status--${status}`">
-              {{ status === 'know' ? (short ? '会' : '答对') : (short ? '不会' : '答错') }}
-            </span>
+            <!--
+              **不再显示历史的「答对 / 答错」标签**。
+              它标的是这道题以前的状态，但这里是答题语境：没作答时顶着一个「答错」，
+              作答后又和下方「回答正确/错误」并排 —— 两处语义打架，用户会误以为
+              「这题我刚答错了」。当前对错由下方 result 负责，题头不需要重复。
+              （题库列表里的状态标签保留：那里是筛选/浏览场景，只有一个标签，没有歧义。）
+            -->
             <!--
               错题本的连对进度：只在「本来在错题本、且还没毕业」时显示。
               题头这一行空间有限，所以是极小的「错题 2/3」胶囊；
@@ -2193,19 +2196,7 @@ const emptyDesc = computed(() => {
   color: var(--c-primary);
   background: var(--c-primary-weak);
 }
-.qcard-p__status {
-  margin-left: auto;
-}
-.qcard-p__status--know {
-  color: var(--c-success);
-  background: var(--c-success-weak);
-}
-.qcard-p__status--unknown {
-  color: var(--c-danger);
-  background: var(--c-danger-weak);
-}
-
-/* 错题本连对进度：用 warning 色，和「答对/答错」的红绿区分开 */
+/* 错题本连对进度：用 warning 色，和结果条的绿/红区分开 */
 .qcard-p__wrong {
   color: var(--c-warning);
   background: rgba(250, 173, 20, 0.14);

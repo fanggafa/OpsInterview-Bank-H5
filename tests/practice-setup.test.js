@@ -273,6 +273,21 @@ describe('刷题页 · 进入后的紧凑顶栏', () => {
     expect(wrapper.find('.qcard-p__meta .qcard-p__fav').exists()).toBe(true)
   })
 
+  it('题头不显示历史的「答对/答错」标签（避免与结果条语义打架）', async () => {
+    const { wrapper } = await mountPractice()
+    await pick(wrapper, '做题模式')
+    /**
+     * 2026-11：移除了题头的 qcard-p__status。
+     *
+     * 它标的是「这道题以前的状态」：没作答时顶上写着「答错」，
+     * 作答后又和下方「回答正确/错误」并排出现 —— 两处语义打架，
+     * 用户会误以为「这题我刚答错了」。当前对错由 .result 负责。
+     *
+     * 题库列表里的状态标签保留（那里是浏览/筛选场景，只有一个标签，无歧义）。
+     */
+    expect(wrapper.find('.qcard-p__status').exists()).toBe(false)
+  })
+
   it('顶栏在「随机 / 顺序」间切换会写入对应的 mode', async () => {
     const { wrapper, router } = await mountPractice()
     await pick(wrapper, '做题模式')
