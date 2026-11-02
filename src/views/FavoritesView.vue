@@ -154,7 +154,14 @@ watch(detailMeta, (m) => {
 
         <ul class="list">
           <li v-for="(q, i) in detailList" :key="q.id">
-            <QuestionCard :question="q" :index="detailStartIndex + i + 1" from="/favorites" />
+            <!-- scope/category 让详情页的左右滑动只在本批题内切，不会串到别的分类 -->
+            <QuestionCard
+              :question="q"
+              :index="detailStartIndex + i + 1"
+              from="/favorites"
+              scope="favorites"
+              :category="activeCategory"
+            />
           </li>
         </ul>
 

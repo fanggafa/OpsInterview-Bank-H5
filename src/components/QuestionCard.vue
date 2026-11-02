@@ -22,6 +22,13 @@ const props = defineProps({
    * 详情页据此决定「返回」跳到哪；不传则详情页用浏览器历史回退。
    */
   from: { type: String, default: '' },
+  /**
+   * 滑动范围（`wrong` / `favorites`）与对应分类。
+   * 详情页据此把左右滑动**限定在那一批题**里；
+   * 不传则按全库顺序切（题库页那种浏览场景）。
+   */
+  scope: { type: String, default: '' },
+  category: { type: String, default: '' },
 })
 
 const router = useRouter()
@@ -51,8 +58,22 @@ const statusText = computed(() => {
 })
 
 function open() {
-  // 带上来路，详情页的「返回」才能回到正确的列表
-  const suffix = props.from ? `?from=${encodeURIComponent(props.from)}` : ''
+  /**
+   * 带上「来路」与「滑动范围」。
+   *
+   * - `from` → 详情页的「返回」回哪一页
+   * - `scope` + `category` → 详情页的左右滑动**只在这一批题**里前后切
+   *
+   * 只带 from 不带 scope 时，详情页会按全库切 ——
+   * 用户反馈「这个分类明明 6 题，滑两下就跳到别的分类」就是这个原因。
+   */
+  const params = new URLSearchParams()
+  if (props.from) params.set('from', props.from)
+  if (props.scope) {
+    params.set('scope', props.scope)
+    if (props.category) params.set('category', props.category)
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : ''
   router.push(`/question/${props.question.id}${suffix}`)
 }
 

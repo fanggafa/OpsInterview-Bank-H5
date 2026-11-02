@@ -177,7 +177,14 @@ const maxGroupCount = computed(() =>
 
         <ul class="list">
           <li v-for="(q, i) in detailList" :key="q.id">
-            <QuestionCard :question="q" :index="detailStartIndex + i + 1" from="/wrong" />
+            <!-- scope/category 让详情页的左右滑动只在本批题内切，不会串到别的分类 -->
+            <QuestionCard
+              :question="q"
+              :index="detailStartIndex + i + 1"
+              from="/wrong"
+              scope="wrong"
+              :category="activeCategory"
+            />
             <!-- 连对进度：让「还差几次移出」这件事看得见，不然用户会疑惑为什么答对了还留着 -->
             <p class="progress-hint">
               <span class="progress-dots" aria-hidden="true">

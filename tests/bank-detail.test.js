@@ -323,10 +323,29 @@ describe('详情页 · 翻题（改为左右滑动）', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/views/QuestionView.vue'), 'utf8')
     expect(src).toMatch(/onLeft:\s*\(\)\s*=>\s*go\(nextQuestion\.value\)/)
     expect(src).toMatch(/onRight:\s*\(\)\s*=>\s*go\(prevQuestion\.value\)/)
-    // 判空写法是 `if (!q) return`；同时 go() 必须保留来路（from），否则切一题就丢返回目标
-    expect(src).toMatch(/function go\(q\)\s*\{\s*\n\s*if \(!q\) return/)
+    /**
+     * 2026-11：判空后不再静默 `return`，而是调用 `flashBoundaryHint()` 闪一条提示。
+     * 早先界面对越界毫无反应，用户会以为手势失灵。
+     */
+    expect(src).toMatch(/if \(!q\) \{[\s\S]*?flashBoundaryHint\(\)[\s\S]*?return/)
     expect(src).toMatch(/backTo\.value/)
     expect(first.find('.stage').exists()).toBe(true)
     expect(last.find('.stage').exists()).toBe(true)
+  })
+
+  it('划到边界时给出「已经是最后一题 / 第一题」的提示', async () => {
+    // 中间题：往上往下都有，不该出边界提示
+    const { wrapper: mid } = await mountDetail(2)
+    expect(mid.vm.boundaryHint).toBe('')
+    // 最后一题继续往后滑 → 提示「已经是最后一题」
+    const { wrapper: last } = await mountDetail(3)
+    last.vm.go(last.vm.nextQuestion) // nextQuestion 为 null
+    await last.vm.$nextTick()
+    expect(last.vm.boundaryHint).toBe('已经是最后一题')
+    // 第一题继续往前滑 → 提示「已经是第一题」
+    const { wrapper: first } = await mountDetail(1)
+    first.vm.go(first.vm.prevQuestion) // prevQuestion 为 null
+    await first.vm.$nextTick()
+    expect(first.vm.boundaryHint).toBe('已经是第一题')
   })
 })
