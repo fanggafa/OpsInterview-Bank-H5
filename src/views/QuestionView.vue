@@ -67,10 +67,40 @@ const optionStates = computed(() =>
   submitted.value && question.value ? optionState(question.value, selected.value, passed.value) : {}
 )
 
-const index = computed(() => bank.questions.findIndex((q) => q.id === id.value))
-const prevQuestion = computed(() => (index.value > 0 ? bank.questions[index.value - 1] : null))
+/**
+ * 左右滑动切题的**范围**。
+ *
+ * 默认是全库顺序（题库页那种「浏览所有题」的场景）。
+ * 但**从错题本 / 收藏进来时必须限定在那一批**：
+ * 用户在「错题本 · MySQL」里看到「共 6 题」，左右滑动就该在这 6 题里走，
+ * 而不是滑两下跳到别的分类、别的来源。
+ *
+ * URL 由入口带 `?scope=wrong|favorites&category=X` 表达；
+ * 未带 scope 时才回落到全库。
+ */
+const scopedList = computed(() => {
+  const scope = route.query.scope
+  if (scope !== 'wrong' && scope !== 'favorites') return bank.questions
+
+  const source = scope === 'wrong' ? study.wrongList : study.favoriteList
+  const category = route.query.category
+  // 带分类时再按分类收窄（列表页就是按分类进的明细）
+  const list =
+    typeof category === 'string' && category ? source.filter((q) => q.category === category) : source
+
+  /**
+   * 兜底：这题可能刚被「连对移出」或「取消收藏」，已不在这批里。
+   * 此时把当前题补进去（单元素列表），滑动自然停在原地，
+   * 不会退回全库乱跳。
+   */
+  if (!list.some((q) => q.id === id.value) && question.value) return [question.value]
+  return list
+})
+
+const index = computed(() => scopedList.value.findIndex((q) => q.id === id.value))
+const prevQuestion = computed(() => (index.value > 0 ? scopedList.value[index.value - 1] : null))
 const nextQuestion = computed(() =>
-  index.value >= 0 && index.value < bank.questions.length - 1 ? bank.questions[index.value + 1] : null
+  index.value >= 0 && index.value < scopedList.value.length - 1 ? scopedList.value[index.value + 1] : null
 )
 
 /**
@@ -86,6 +116,35 @@ const nextQuestion = computed(() =>
  */
 const stageRef = ref(null)
 let detachSwipe = () => {}
+
+/**
+ * 边界提示：划到第一题 / 最后一题还继续滑时，**屏幕中间弹一个轻量提示**。
+ *
+ * 早先做在底部那行小字上，用户反馈「提示在底部，很容易忽略」——
+ * 底部那行本来就有常驻说明，再往里换字，视线根本不会落到那儿。
+ *
+ * 所以改成居中浮层：
+ * - 位置在屏幕中央偏下（不挡题干，也不用用户往下看）
+ * - 深底浅字 + 圆角，与页面其他内容的层级拉开
+ * - 1.6 秒后自动消失（不是常驻，越界只是少数情况）
+ * - `pointer-events: none`：不拦手指，提示显示期间照样能滑动
+ */
+const boundaryHint = ref('')
+let boundaryTimer = 0
+
+function flashBoundaryHint() {
+  // 先清掉上一次的计时，避免连续滑动时提示提前消失
+  if (boundaryTimer) clearTimeout(boundaryTimer)
+  boundaryHint.value = nextQuestion.value ? '已经是第一题' : '已经是最后一题'
+  boundaryTimer = setTimeout(() => {
+    boundaryHint.value = ''
+    boundaryTimer = 0
+  }, 1600)
+}
+
+onBeforeUnmount(() => {
+  if (boundaryTimer) clearTimeout(boundaryTimer)
+})
 
 function bindSwipe() {
   detachSwipe()
@@ -197,9 +256,33 @@ function retry() {
 }
 
 function go(q) {
-  if (!q) return
-  // 滑动切题要保留 from，否则切一道题后「返回」就丢了来路
-  const suffix = backTo.value ? `?from=${encodeURIComponent(backTo.value)}` : ''
+  /**
+   * 划到边界时**给出提示**，而不是静默 return。
+   *
+   * 早先 `if (!q) return` 直接返回：用户滑到最后一题继续往后滑，
+   * 界面毫无反应，会以为手势失灵或页面卡住了。
+   * 这里闪一下底部提示条，明确告诉用户「已经到头了」。
+   */
+  if (!q) {
+    flashBoundaryHint()
+    return
+  }
+  /**
+   * 切题时要**同时保留 from 与 scope/category**。
+   *
+   * - 丢 `from` → 「返回」的目标没了
+   * - 丢 `scope`/`category` → 切到下一题后滑动范围变回全库，
+   *   于是一路滑下去会串到别的分类、别的来源（正是用户报的 bug）
+   */
+  const params = new URLSearchParams()
+  if (backTo.value) params.set('from', backTo.value)
+  const scope = route.query.scope
+  if (scope === 'wrong' || scope === 'favorites') {
+    params.set('scope', scope)
+    const category = route.query.category
+    if (typeof category === 'string' && category) params.set('category', category)
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : ''
   router.push(`/question/${q.id}${suffix}`)
 }
 
@@ -364,9 +447,19 @@ const statusText = computed(() => {
         </button>
       </div>
 
-      <!-- 滑动切题提示（替代原来的两个按钮） -->
+      <!-- 滑动切题提示（常驻说明；越界时另有居中弹层） -->
       <p class="swipe-hint muted">左右滑动切换上一题 / 下一题</p>
     </template>
+
+    <!--
+      越界提示：居中浮层，1.6 秒自动消失。
+      放在 .page 里而不是 .stage 里，避免跟着滑动区一起被 transform 影响。
+    -->
+    <Transition name="boundary-fade">
+      <div v-if="boundaryHint" class="boundary-toast" role="status" aria-live="polite">
+        {{ boundaryHint }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -626,5 +719,44 @@ const statusText = computed(() => {
   padding-bottom: 8px;
   font-size: 11.5px;
   text-align: center;
+}
+
+/**
+ * 越界提示浮层。
+ *
+ * **居中、深底浅字**：早先做在底部那行小字上，用户反馈「很容易忽略」——
+ * 底部本来就有常驻说明，往里换字视线根本不会落到那儿。
+ * 做成居中浮层后，视线正在题目上，提示会自然进入视野中央。
+ *
+ * - 位置 `top: 50%` 再往上一小段：不挡题干可视区
+ * - `pointer-events: none`：不拦手指，提示期间照样能继续滑动
+ * - 层级高于卡片，但不加遮罩 —— 没必要为一条 1.6 秒的提示压暗整屏
+ */
+.boundary-toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 40;
+  transform: translate(-50%, -50%);
+  padding: 10px 20px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-text) 86%, transparent);
+  color: var(--c-bg);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+
+/* 淡入淡出：越界提示不能「啪」地出现，那样更像报错 */
+.boundary-fade-enter-active,
+.boundary-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.boundary-fade-enter-from,
+.boundary-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.94);
 }
 </style>

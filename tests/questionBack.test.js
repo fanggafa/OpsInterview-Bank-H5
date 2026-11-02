@@ -128,9 +128,17 @@ describe('详情页 · 返回来源', () => {
     }
   })
 
-  it('卡片组件把 from 透传到详情页 URL', () => {
+  it('卡片组件把 from（以及滑动范围 scope/category）透传到详情页 URL', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/components/QuestionCard.vue'), 'utf8')
+    /**
+     * 2026-11：改用 URLSearchParams 拼参数（原来手写 `?from=xxx` + encodeURIComponent）。
+     *
+     * 同时新增 scope/category —— 从错题本/收藏进详情页时，
+     * 左右滑动要**限定在那一批题**里，不能再按全库切（用户报过这个 bug）。
+     */
     expect(src).toMatch(/from/)
-    expect(src).toMatch(/encodeURIComponent/)
+    expect(src).toMatch(/URLSearchParams/)
+    expect(src).toMatch(/scope/)
+    expect(src).toMatch(/category/)
   })
 })
