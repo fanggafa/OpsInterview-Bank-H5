@@ -342,11 +342,17 @@ describe('首页 · 复习入口', () => {
     expect(items[3].text()).toContain('薄弱分类')
   })
 
-  it('每日一刷显示「随机 30 题选择题」', async () => {
+  it('每日一刷显示题量、限时与产出', async () => {
     const { wrapper } = await mountHome()
     const card = wrapper.findAll('.review').find((c) => c.text().includes('每日一刷30题'))
     expect(card.text()).toContain('每日一刷30题')
-    expect(card.text()).toContain('选择题')
+    /**
+     * 2026-11 副标题定稿：「随机抽取 30 题目 · 限时 20 分钟 · 给评测建议」——
+     * 分别对应「抽多少 / 限多久 / 交卷后得到什么」。
+     */
+    expect(card.text()).toContain('随机抽取 30 题目')
+    expect(card.text()).toContain('限时 20 分钟')
+    expect(card.text()).toContain('给评测建议')
   })
 
   it('点每日一刷跳到 review=dailyDrill', async () => {
@@ -400,15 +406,46 @@ describe('首页 · 复习入口', () => {
     expect(reviewBy(wrapper, '每日复习30题').text()).toContain('抽 30 题')
   })
 
-  it('每日复习入口说明「限时20分钟」', async () => {
+  it('每日复习入口说明题量、限时与移出规则', async () => {
     // 错题本只收选择题，用 single 题造错题
     study.markUnknown(4)
     const { wrapper } = await mountHome()
     /**
-     * 2026-11：每日复习升级为「限时自测」，副标题改成「抽 N 题 · 限时20分钟」。
-     * 早先写的是「连对3次移出」——那是练习模式的规则说明，
-     * 现在它的定位是限时自测，重点该是「多久、多少题」。
+     * 2026-11：每日复习升级为「限时自测」，副标题定稿为
+     * 「从错题本抽 N 题 · 限时 20 分钟 · 连对 3 次移出」——
+     * 三件事都要说：多少题、限多久、错题怎么移出。
+     * 「连对 3 次移出」虽然也是错题本自身的规则，但从这个入口进来的人最关心它。
      */
-    expect(reviewBy(wrapper, '每日复习30题').text()).toContain('限时20分钟')
+    const text = reviewBy(wrapper, '每日复习30题').text()
+    expect(text).toContain('从错题本抽')
+    expect(text).toContain('限时 20 分钟')
+    expect(text).toContain('连对 3 次移出')
+  })
+})
+
+describe('首页 · 错题本文案', () => {
+  it('错题本副标题说明「记录答对次数 · 连对 3 次移出」', async () => {
+    /**
+     * 2026-11 文案定稿：
+     * 「已收集 N 题 · 记录答对次数 · 连对 3 次移出」
+     *
+     * 比原来的「已收集 N 题 · 连对3次移出」多说了「记录答对次数」——
+     * 用户看到题一直在、答对了却还没移出时会疑惑，
+     * 这句提前说明「系统在记你的连对次数，攒够 3 次才移出」。
+     *
+     * 分隔符统一用 `·`（与其它卡片一致），不用逗号。
+     */
+    study.markUnknown(4)
+    const { wrapper } = await mountHome()
+    // 用**标题**精确定位：「每日复习30题」那张卡的副标题里也含「错题本」三个字
+    const card = wrapper
+      .findAll('.review')
+      .find((c) => c.find('.review__title').text() === '错题本')
+    const text = card.text()
+    expect(text).toContain('已收集')
+    expect(text).toContain('记录答对次数')
+    expect(text).toContain('连对 3 次移出')
+    // 分隔符是 · 而不是逗号
+    expect(text).not.toContain('，')
   })
 })

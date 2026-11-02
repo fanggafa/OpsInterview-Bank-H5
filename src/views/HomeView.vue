@@ -298,7 +298,7 @@ function openWeak() {
         </span>
         <span class="review__text">
           <span class="review__title">每日一刷30题</span>
-          <span class="review__desc">随机选择题 · 限时20分钟 · 给分数建议</span>
+          <span class="review__desc">随机抽取 30 题目 · 限时 20 分钟 · 给评测建议</span>
         </span>
         <span class="review__arrow" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="15" height="15">
@@ -340,7 +340,7 @@ function openWeak() {
         <span class="review__text">
           <span class="review__title">每日复习30题</span>
           <span class="review__desc">
-            {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 30)} 题 · 限时20分钟` : '错题本为空' }}
+            {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 30)} 题 · 限时 20 分钟 · 连对 3 次移出` : '错题本为空' }}
           </span>
         </span>
               <span class="review__arrow" aria-hidden="true">
@@ -373,7 +373,7 @@ function openWeak() {
         <span class="review__text">
           <span class="review__title">错题本</span>
           <span class="review__desc">
-            {{ wrongCount ? `已收集 ${wrongCount} 题 · 连对3次移出` : '0 题 · 选择题答错会进这里' }}
+            {{ wrongCount ? `已收集 ${wrongCount} 题 · 记录答对次数 · 连对 3 次移出` : '0 题 · 选择题答错会进这里' }}
           </span>
         </span>
               <span class="review__arrow" aria-hidden="true">
@@ -420,7 +420,7 @@ function openWeak() {
               </template>
             </template>
             <template v-else>
-              数据还不够 · 同分类刷满它题量的 33% 且含错题后开始排行
+              数据量不足 · 同分类刷满它题量的 33% 且含错题后开始排行
             </template>
           </span>
         </span>

@@ -96,7 +96,7 @@ describe('首页 · 薄弱环节入口卡', () => {
     const card = cards.find((c) => c.text().includes('薄弱分类'))
     expect(card).toBeTruthy()
     // 不给结论，只给引导
-    expect(card.text()).toContain('数据还不够')
+    expect(card.text()).toContain('数据量不足')
 
     // 点击仍进入 /weak（那边有空状态说明「为什么还不给结论」）
     await card.trigger('click')
