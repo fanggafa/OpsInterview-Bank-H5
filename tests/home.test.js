@@ -69,6 +69,20 @@ async function mountHome() {
   return { wrapper, router }
 }
 
+/**
+ * 按卡片标题找入口卡。
+ *
+ * 为什么不用索引：首页的卡片顺序会随产品调整而变（2026-11 就把「错题本」
+ * 插到了「错题复习」前面），用 `findAll('.review')[1]` 这类写法会在每次
+ * 重排时全部错位。按标题找，重排不影响断言。
+ */
+function reviewBy(wrapper, title) {
+  const found = wrapper.findAll('.review').find((r) => r.find('.review__title').text() === title)
+  // 找不到时给出清晰报错，而不是让后续 .attributes() 抛「undefined」
+  expect(found, `首页应有一张标题为「${title}」的卡片`).toBeTruthy()
+  return found
+}
+
 describe('首页 · 总进度与双指标', () => {
   it('未作答时两个指标显示「—」而不是 0%', async () => {
     const { wrapper } = await mountHome()
@@ -202,12 +216,17 @@ describe('首页 · 每日一题', () => {
     expect(wrapper.find('.daily__date').exists()).toBe(false)
   })
 
-  it('今日答对后状态转绿并提示已作答', async () => {
+  it('今日答对后状态转绿并显示「已作答」标签', async () => {
     const q = pickDailyQuestion(FIXTURE, new Date())
     study.markKnow(q.id)
     const { wrapper } = await mountHome()
+    /**
+     * 2026-11：删掉了「点开作答，答完看解析」那一行提示（连同 .daily__hint）。
+     * 卡片本身就是按钮、箭头已说明可进，那行既重复又占高度；
+     * 「已作答」这件事改由状态标签表达。
+     */
     expect(wrapper.find('.daily__tag--know').exists()).toBe(true)
-    expect(wrapper.find('.daily__hint').text()).toContain('今天已作答')
+    expect(wrapper.find('.daily__hint').exists()).toBe(false)
   })
 
   it('今日答错后状态转红', async () => {
@@ -252,20 +271,31 @@ describe('首页 · 不再承载「继续上次」', () => {
 })
 
 describe('首页 · 复习入口', () => {
-  it('每日一刷是独立区块（在每日一题下方），不在复习巩固里', async () => {
+  it('每日一刷是独立区块（在每日一记下方），不在复习巩固里', async () => {
     const { wrapper } = await mountHome()
-    // 复习巩固容器里只剩错题复习与薄弱分类
-    expect(wrapper.findAll('.reviews .review')).toHaveLength(2)
+    /**
+     * 2026-11 区块重排：
+     * - 「复习巩固」= 错题本 + 错题复习 + 薄弱分类（3 张）
+     * - 「我的题集」= 我的收藏（1 张）
+     * 所以 .reviews 里共 4 张，其中错题本/错题复习/薄弱分类在「复习巩固」。
+     */
+    expect(wrapper.findAll('.reviews .review')).toHaveLength(4)
     // 每日一刷是独立的 .review--drill 卡
     expect(wrapper.findAll('.review--drill')).toHaveLength(1)
   })
 
-  it('复习巩固里两个入口：错题复习 / 薄弱分类', async () => {
+  it('复习巩固按「错题本 → 错题复习 → 薄弱分类」排列', async () => {
     const { wrapper } = await mountHome()
     const items = wrapper.findAll('.reviews .review')
-    // 薄弱分类卡常驻（无数据时显示引导，不整卡隐藏）
-    expect(items[0].text()).toContain('错题复习')
-    expect(items[1].text()).toContain('薄弱分类')
+    /**
+     * 错题本排最前：它是「有哪些题要补」的清单，错题复习是从清单里抽题练，
+     * 先看清单再开练更合逻辑（用户明确要求把错题本挪到错题复习上面）。
+     */
+    expect(items[0].text()).toContain('错题本')
+    expect(items[1].text()).toContain('错题复习')
+    expect(items[2].text()).toContain('薄弱分类')
+    // 「我的题集」里的收藏排在第 4 张
+    expect(items[3].text()).toContain('我的收藏')
   })
 
   it('每日一刷显示「随机 30 题选择题」', async () => {
@@ -285,7 +315,7 @@ describe('首页 · 复习入口', () => {
 
   it('错题本为空时错题复习置灰不可点，并说明原因', async () => {
     const { wrapper } = await mountHome()
-    const wrongBtn = wrapper.findAll('.review')[1]
+    const wrongBtn = reviewBy(wrapper, '错题复习')
     expect(wrongBtn.attributes('disabled')).toBeDefined()
     expect(wrongBtn.text()).toContain('错题本是空的')
   })
@@ -294,7 +324,7 @@ describe('首页 · 复习入口', () => {
     study.markUnknown(1)
     study.markUnknown(2)
     const { wrapper, router } = await mountHome()
-    const wrongBtn = wrapper.findAll('.review')[1]
+    const wrongBtn = reviewBy(wrapper, '错题复习')
     expect(wrongBtn.attributes('disabled')).toBeUndefined()
     expect(wrongBtn.text()).toContain('抽 2 题')
 
@@ -319,12 +349,12 @@ describe('首页 · 复习入口', () => {
     ]
     bank.questions.forEach((q) => study.markUnknown(q.id))
     const { wrapper } = await mountHome()
-    expect(wrapper.findAll('.review')[1].text()).toContain('抽 10 题')
+    expect(reviewBy(wrapper, '错题复习').text()).toContain('抽 10 题')
   })
 
   it('错题复习入口说明「连对 3 次移出」', async () => {
     study.markUnknown(1)
     const { wrapper } = await mountHome()
-    expect(wrapper.findAll('.review')[1].text()).toContain('连对 3 次移出')
+    expect(reviewBy(wrapper, '错题复习').text()).toContain('连对 3 次移出')
   })
 })

@@ -281,9 +281,18 @@ describe('统计页已移除（并入「我的」）', () => {
     expect(me).toMatch(/各分类选择正确率/)
   })
 
-  it('「我的」页提供错题本与收藏入口', () => {
+  it('错题本与收藏入口在首页，「我的」页不再提供', () => {
+    /**
+     * 2026-11：这两个入口从「我的」页搬到首页。
+     * 它们是「题」而不是「我的设置」，放首页与其他题目入口同段更好找，
+     * 「我的」页只留数据看板 + 右上角设置齿轮。
+     */
+    const home = readFileSync(resolve(process.cwd(), 'src/views/HomeView.vue'), 'utf8')
+    expect(home).toMatch(/to="\/wrong"/)
+    expect(home).toMatch(/to="\/favorites"/)
+
     const me = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
-    expect(me).toMatch(/to="\/wrong"/)
-    expect(me).toMatch(/to="\/favorites"/)
+    expect(me).not.toMatch(/to="\/wrong"/)
+    expect(me).not.toMatch(/to="\/favorites"/)
   })
 })
