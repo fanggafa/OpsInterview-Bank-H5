@@ -245,12 +245,24 @@ describe('复习赛 · 完成态', () => {
       await answerOne()
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.find('.done__title').text()).toBe('每日一刷完成')
+      // 每日一刷的结果页是「成绩单」样式（对齐设计稿的三栏）
+      expect(wrapper.find('.done__title').text()).toContain('测试结果')
       expect(wrapper.text()).toContain('再来一轮')
-      // 每日一刷额外给出分数与建议
+
+      // 三栏：正确率 / 答对题数 / 用时
+      const cells = wrapper.findAll('.score__cell')
+      expect(cells).toHaveLength(3)
+      expect(cells[0].text()).toContain('正确率')
+      expect(cells[1].text()).toContain('答对题数')
+      expect(cells[2].text()).toContain('用时')
+
+      // 成绩单下方给等级与建议
       expect(wrapper.find('.drill').exists()).toBe(true)
-      expect(wrapper.find('.drill__num').exists()).toBe(true)
       expect(wrapper.find('.drill__advice').text().length).toBeGreaterThan(10)
+
+      // 逐题回顾：可点回每题查看解析
+      const rows = wrapper.findAll('.rl__row')
+      expect(rows.length).toBe(2)
     } finally {
       vi.useRealTimers()
     }
