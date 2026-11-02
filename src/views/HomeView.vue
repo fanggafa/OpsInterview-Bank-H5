@@ -298,7 +298,7 @@ function openWeak() {
         </span>
         <span class="review__text">
           <span class="review__title">每日一刷30题</span>
-          <span class="review__desc">随机选择题 · 限时30分钟 · 给分数建议</span>
+          <span class="review__desc">随机选择题 · 限时20分钟 · 给分数建议</span>
         </span>
         <span class="review__arrow" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="15" height="15">
@@ -340,7 +340,7 @@ function openWeak() {
         <span class="review__text">
           <span class="review__title">每日复习30题</span>
           <span class="review__desc">
-            {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 10)} 题 · 连对3次移出` : '错题本为空' }}
+            {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 30)} 题 · 限时20分钟` : '错题本为空' }}
           </span>
         </span>
               <span class="review__arrow" aria-hidden="true">

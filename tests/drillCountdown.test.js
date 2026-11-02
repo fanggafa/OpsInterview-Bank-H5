@@ -83,11 +83,11 @@ afterEach(() => {
 })
 
 describe('每日一刷 · 倒计时显示', () => {
-  it('进入后顶部出现倒计时，初始为 30:00', async () => {
+  it('进入后顶部出现倒计时，初始为 20:00', async () => {
     const { wrapper } = await mountPractice({ review: 'dailyDrill' })
     const el = wrapper.find('.ptop__countdown')
     expect(el.exists()).toBe(true)
-    expect(el.text()).toContain('30:00')
+    expect(el.text()).toContain('20:00')
   })
 
   it('普通刷题不显示倒计时', async () => {
@@ -99,23 +99,29 @@ describe('每日一刷 · 倒计时显示', () => {
     expect(wrapper.find('.ptop__countdown').exists()).toBe(false)
   })
 
-  it('错题复习不显示倒计时', async () => {
+  it('每日复习也显示倒计时（与每日一刷同流程）', async () => {
+    /**
+     * 2026-11：每日复习从「普通练习」升级为「限时自测」，
+     * 与每日一刷共用倒计时 / 交卷 / 结果页。
+     * 早先这条用例断言「错题复习不显示倒计时」——那个前提已被推翻。
+     */
     const { wrapper } = await mountPractice({ review: 'wrong' })
-    expect(wrapper.find('.ptop__countdown').exists()).toBe(false)
+    expect(wrapper.find('.ptop__countdown').exists()).toBe(true)
+    expect(wrapper.find('.ptop__countdown').text()).toContain('20:00')
   })
 
   it('倒计时每秒递减', async () => {
     vi.useFakeTimers()
     const { wrapper } = await mountPractice({ review: 'dailyDrill' })
-    expect(wrapper.find('.ptop__countdown').text()).toContain('30:00')
+    expect(wrapper.find('.ptop__countdown').text()).toContain('20:00')
 
     await vi.advanceTimersByTimeAsync(1000)
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.ptop__countdown').text()).toContain('29:59')
+    expect(wrapper.find('.ptop__countdown').text()).toContain('19:59')
 
     await vi.advanceTimersByTimeAsync(2000)
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.ptop__countdown').text()).toContain('29:57')
+    expect(wrapper.find('.ptop__countdown').text()).toContain('19:57')
   })
 
   it('剩余 ≤1 分钟时加告警样式', async () => {
@@ -166,3 +172,47 @@ describe('每日一刷 · 超时自动交卷', () => {
     expect(cells[1].text()).toContain('1/3')
   })
 })
+
+
+describe('每日复习 · 与每日一刷同流程', () => {
+  /**
+   * 2026-11：每日复习从「普通练习」升级为「限时自测」，
+   * 与每日一刷共用倒计时 / 交卷 / 结果页 / 离开确认。
+   * 区别只在题来源（错题本 vs 全库）与题量（两者都是 30 题）。
+   */
+  it('每日复习也限时 20 分钟', async () => {
+    const { wrapper } = await mountPractice({ review: 'wrong' })
+    const el = wrapper.find('.ptop__countdown')
+    expect(el.exists()).toBe(true)
+    expect(el.text()).toContain('20:00')
+  })
+
+  it('每日复习超时自动交卷并出结果页', async () => {
+    /**
+     * 与每日一刷同款：超时即交卷，已答的计入、未答的算错。
+     * 这里只答 1 题就等超时，验证结果页出现。
+     *
+     * 注意：每日复习从**错题本**抽题，所以必须先造几道错题，
+     * 否则队列为空、连选项都渲染不出来。
+     */
+    vi.useFakeTimers()
+    const bank = useBankStore()
+    const study = useStudyStore()
+    // 每日复习从错题本抽题，先造几道错题，否则队列为空
+    bank.questions.filter((q) => q.type !== 'short').forEach((q) => study.markUnknown(q.id))
+
+    const { wrapper } = await mountPractice({ review: 'wrong' })
+
+    await wrapper.findAll('.option')[0].trigger('click')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    await vi.advanceTimersByTimeAsync(DAILY_DRILL_LIMIT_SEC * 1000 + 2000)
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    expect(wrapper.findAll('.score__cell')).toHaveLength(3)
+    vi.useRealTimers()
+  })
+})
+

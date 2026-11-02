@@ -17,9 +17,9 @@ describe('pickReviewSet · 题量', () => {
     expect(set).toHaveLength(15)
   })
 
-  it('错题复习抽 10 题', () => {
+  it('每日复习抽 30 题', () => {
     const set = pickReviewSet(POOL, { size: REVIEW_SIZES.wrong })
-    expect(set).toHaveLength(10)
+    expect(set).toHaveLength(30)
   })
 
   it('题池不足时返回全部，不凑数也不重复', () => {

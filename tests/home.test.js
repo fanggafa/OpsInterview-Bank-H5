@@ -377,11 +377,11 @@ describe('首页 · 复习入口', () => {
     expect(router.currentRoute.value.query.review).toBe('wrong')
   })
 
-  it('错题超过 10 道时文案显示抽 10 题', async () => {
-    // 错题本只收选择题，所以这里补的都是 single 题
+  it('错题超过 30 道时文案显示抽 30 题', async () => {
+    // 错题本只收选择题，所以这里补的都是 single 题；需超过 30 道才能测「截断」
     bank.questions = [
       ...FIXTURE,
-      ...Array.from({ length: 12 }, (_, i) => ({
+      ...Array.from({ length: 35 }, (_, i) => ({
         id: 100 + i,
         type: 'single',
         category: 'Linux基础',
@@ -397,13 +397,18 @@ describe('首页 · 复习入口', () => {
     ]
     bank.questions.filter((q) => q.type === 'single').forEach((q) => study.markUnknown(q.id))
     const { wrapper } = await mountHome()
-    expect(reviewBy(wrapper, '每日复习30题').text()).toContain('抽 10 题')
+    expect(reviewBy(wrapper, '每日复习30题').text()).toContain('抽 30 题')
   })
 
-  it('错题复习入口说明「连对 3 次移出」', async () => {
+  it('每日复习入口说明「限时20分钟」', async () => {
     // 错题本只收选择题，用 single 题造错题
     study.markUnknown(4)
     const { wrapper } = await mountHome()
-    expect(reviewBy(wrapper, '每日复习30题').text()).toContain('连对3次移出')
+    /**
+     * 2026-11：每日复习升级为「限时自测」，副标题改成「抽 N 题 · 限时20分钟」。
+     * 早先写的是「连对3次移出」——那是练习模式的规则说明，
+     * 现在它的定位是限时自测，重点该是「多久、多少题」。
+     */
+    expect(reviewBy(wrapper, '每日复习30题').text()).toContain('限时20分钟')
   })
 })
