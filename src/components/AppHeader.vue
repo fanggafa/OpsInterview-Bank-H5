@@ -92,10 +92,17 @@ function goBack() {
   gap: 8px;
   height: 48px;
   /**
-   * 上移 6px 抵消 `.page` 的 `padding-top: 6px`；左右 12px、下方 12px 让胶囊浮起来
-   * 且与下方内容分开（下方为 0 会和搜索框粘连）。
+   * **左右不留白**：必须与内容区同宽，否则与搜索框、卡片、底栏对不齐。
+   *
+   * `.app-main` 已经有 `padding: 0 12px`，所有内容（搜索框、卡片、TabBar）
+   * 都在这个内边距里、左边缘对齐到 12px。页头如果再叠加 `margin: 0 12px`，
+   * 就会变成 left=24 / right=366 —— 实测比其它元素左右各内缩 12px，
+   * 截图上一眼就能看出页头比下面的框窄了一圈。
+   *
+   * 上移 6px 抵消 `.page` 的 `padding-top: 6px`；**下方留 12px** 与内容分开
+   * （下方为 0 会和紧跟的搜索框粘连、两个玻璃块连成一片）。
    */
-  margin: -6px 12px 12px;
+  margin: -6px 0 12px;
   padding: 0 8px;
   border-radius: 16px;
   background: var(--glass-bar-bg);
