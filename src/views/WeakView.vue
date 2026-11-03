@@ -39,15 +39,11 @@ const overall = computed(() => {
   return Math.round((wrong / reviewed) * 100)
 })
 
-/** 去刷该分类的错题（直接开始刷） */
-function practiceWrong(category) {
-  router.push({ path: '/practice', query: { mode: 'wrong', category } })
-}
-
-/** 去该分类的题库列表（先看题，再决定怎么刷） */
-function browseCategory(category) {
-  router.push({ path: '/bank', query: { category } })
-}
+/**
+ * 本页**没有任何跳转** —— 从「带操作的分析页」改成纯自我评估页后，
+ * `practiceWrong`（去刷错题）和 `browseCategory`（去看分类题库）都用不上了。
+ * `router` 仅保留给空态里的「去刷题」按钮。
+ */
 </script>
 
 <template>
@@ -70,8 +66,8 @@ function browseCategory(category) {
       <EmptyState
         v-if="!study.weakCategories.length"
         variant="wrong"
-        title="还没有足够的数据"
-        desc="一个分类要刷满它题量的 33%（至少 3 题）且其中有错题，才会参与排行 —— 只刷几道就下结论并不准确。先去刷题吧。"
+        title="数据量不足"
+        desc="一个分类要刷满它题量的 33%（至少 3 题）且其中有错题，才能算出可信的错误率 —— 只刷几道就下结论并不准确。"
         action="去刷题"
         @action="router.push('/practice')"
       />
@@ -91,6 +87,8 @@ function browseCategory(category) {
 
         <p class="rule">
           按「错题数 ÷ 已刷题数」排序 · 一个分类要刷满它题量的 33% 才参与排行
+          <br />
+          <span class="rule__note">本页仅供自我评估，不提供跳转</span>
         </p>
 
         <!--
@@ -101,12 +99,13 @@ function browseCategory(category) {
         <ul class="list">
           <li v-for="w in study.weakCategories" :key="w.category" class="item">
             <!--
-              整行是**纯信息展示，不可点**。
+              整行是**纯信息展示，不可点、也没有任何按钮**。
 
-              这里是「这一行数据长什么样」（分类名 / 样本量 / 错误率 / 进度条），
-              不是导航入口 —— 让整行可点反而会让人以为「这是在暗示我进去」，
-              点一下又被带走，属于多余的路由。
-              本页唯一的操作是右侧「刷错题」。
+              2026-11：本页从「带操作的分析页」变成**纯自我评估页**。
+              早先每行右侧有「刷错题」按钮，点进该分类的错题练习；
+              现在去掉 —— 想练错题有专门的入口（首页「每日复习 30 题」），
+              本页只负责回答一个问题：「我哪块最弱、弱到什么程度」。
+              带上跳转反而让页面变成又一个入口，弱化了它作为评估结果的价值。
             -->
             <div class="item__info">
               <span class="item__text">
@@ -123,15 +122,6 @@ function browseCategory(category) {
 
               <span class="item__rate">{{ w.rate }}%</span>
             </div>
-
-            <!--
-              唯一的操作：明确的文字按钮。
-              早先是个灰色书本图标 —— 用户反馈「看不清也看不明白」，
-              图标的可猜测性远不如两个字。
-            -->
-            <button class="item__act" @click="practiceWrong(w.category)">
-              刷错题
-            </button>
           </li>
         </ul>
       </template>
@@ -175,6 +165,14 @@ function browseCategory(category) {
   line-height: 1.6;
   color: var(--c-text-3);
   text-align: center;
+}
+/**
+ * 「本页仅供自我评估」那行小字。
+ * 比 rule 主体再淡一点 —— 它是补充说明，不该和排序规则抢注意力。
+ */
+.rule__note {
+  color: var(--c-text-3);
+  opacity: 0.8;
 }
 
 
@@ -296,26 +294,5 @@ function browseCategory(category) {
   font-variant-numeric: tabular-nums;
 }
 
-/**
- * 「刷错题」：行尾的明确文字按钮。
- *
- * 先试过灰色书本图标 —— 用户反馈「看不清也看不明白」。
- * 图标的可猜测性本来就低，两个字反而最省心，横向也只多占了几十像素。
- * 用小胶囊（浅主色底 + 主色字），和右侧的其它行元素区分开。
- */
-.item__act {
-  flex-shrink: 0;
-  margin-right: 12px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--c-primary-weak);
-  color: var(--c-primary);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.item__act:active {
-  opacity: 0.7;
-}
 </style>
 

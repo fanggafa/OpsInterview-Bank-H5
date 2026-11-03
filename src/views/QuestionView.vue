@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import SwipeBoundaryToast from '@/components/SwipeBoundaryToast.vue'
+import { useSwipeBoundaryToast } from '@/utils/swipeBoundary'
 import DifficultyBadge from '@/components/DifficultyBadge.vue'
 import FrequencyBadge from '@/components/FrequencyBadge.vue'
 import ChoiceOptions from '@/components/ChoiceOptions.vue'
@@ -130,31 +132,17 @@ let detachSwipe = () => {}
 /**
  * 边界提示：划到第一题 / 最后一题还继续滑时，**屏幕中间弹一个轻量提示**。
  *
- * 早先做在底部那行小字上，用户反馈「提示在底部，很容易忽略」——
- * 底部那行本来就有常驻说明，再往里换字，视线根本不会落到那儿。
- *
- * 所以改成居中浮层：
- * - 位置在屏幕中央偏下（不挡题干，也不用用户往下看）
- * - 深底浅字 + 圆角，与页面其他内容的层级拉开
- * - 1.6 秒后自动消失（不是常驻，越界只是少数情况）
- * - `pointer-events: none`：不拦手指，提示显示期间照样能滑动
+ * 逻辑与浮层都在共用件里（`src/utils/swipeBoundary.js` +
+ * `src/components/SwipeBoundaryToast.vue`）—— 刷题页（每日一刷 / 每日复习）
+ * 也要用同一套，不必各写一遍。
  */
-const boundaryHint = ref('')
-let boundaryTimer = 0
+const { text: boundaryHint, flashFirst, flashLast } = useSwipeBoundaryToast()
 
+/** 越界时按「有没有下一题」判断是哪一端 */
 function flashBoundaryHint() {
-  // 先清掉上一次的计时，避免连续滑动时提示提前消失
-  if (boundaryTimer) clearTimeout(boundaryTimer)
-  boundaryHint.value = nextQuestion.value ? '已经是第一题' : '已经是最后一题'
-  boundaryTimer = setTimeout(() => {
-    boundaryHint.value = ''
-    boundaryTimer = 0
-  }, 1600)
+  if (nextQuestion.value) flashFirst()
+  else flashLast()
 }
-
-onBeforeUnmount(() => {
-  if (boundaryTimer) clearTimeout(boundaryTimer)
-})
 
 function bindSwipe() {
   detachSwipe()
@@ -471,13 +459,9 @@ const statusText = computed(() => {
 
     <!--
       越界提示：居中浮层，1.6 秒自动消失。
-      放在 .page 里而不是 .stage 里，避免跟着滑动区一起被 transform 影响。
+      组件放在 .page 里而不是 .stage 里，避免跟着滑动区一起被 transform 影响。
     -->
-    <Transition name="boundary-fade">
-      <div v-if="boundaryHint" class="boundary-toast" role="status" aria-live="polite">
-        {{ boundaryHint }}
-      </div>
-    </Transition>
+    <SwipeBoundaryToast :text="boundaryHint" />
   </div>
 </template>
 
@@ -719,42 +703,4 @@ const statusText = computed(() => {
   text-align: center;
 }
 
-/**
- * 越界提示浮层。
- *
- * **居中、深底浅字**：早先做在底部那行小字上，用户反馈「很容易忽略」——
- * 底部本来就有常驻说明，往里换字视线根本不会落到那儿。
- * 做成居中浮层后，视线正在题目上，提示会自然进入视野中央。
- *
- * - 位置 `top: 50%` 再往上一小段：不挡题干可视区
- * - `pointer-events: none`：不拦手指，提示期间照样能继续滑动
- * - 层级高于卡片，但不加遮罩 —— 没必要为一条 1.6 秒的提示压暗整屏
- */
-.boundary-toast {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  z-index: 40;
-  transform: translate(-50%, -50%);
-  padding: 10px 20px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--c-text) 86%, transparent);
-  color: var(--c-bg);
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-  pointer-events: none;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-}
-
-/* 淡入淡出：越界提示不能「啪」地出现，那样更像报错 */
-.boundary-fade-enter-active,
-.boundary-fade-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-.boundary-fade-enter-from,
-.boundary-fade-leave-to {
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.94);
-}
 </style>

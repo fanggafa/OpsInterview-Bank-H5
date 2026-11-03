@@ -50,6 +50,8 @@ import {
 } from '@/utils/storage'
 import AppHeader from '@/components/AppHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import SwipeBoundaryToast from '@/components/SwipeBoundaryToast.vue'
+import { useSwipeBoundaryToast } from '@/utils/swipeBoundary'
 import DifficultyBadge from '@/components/DifficultyBadge.vue'
 import FrequencyBadge from '@/components/FrequencyBadge.vue'
 import ChoiceOptions from '@/components/ChoiceOptions.vue'
@@ -550,12 +552,32 @@ function restoreChoice(q) {
   passed.value = snap.status === STATUS.KNOW
 }
 
+/**
+ * 越界提示：已经在第一题还往前滑 / 已经在最后一题还往后滑时，
+ * 屏幕中间弹一条「已经是第一题 / 最后一题」。
+ *
+ * 与详情页共用同一套（`useSwipeBoundaryToast` + `SwipeBoundaryToast`）——
+ * 早先只有详情页有提示，刷题页（含每日一刷 / 每日复习）滑到边界静默不动，
+ * 用户以为手势失灵。
+ */
+const { text: boundaryHint, flashFirst, flashLast } = useSwipeBoundaryToast()
+
 function next() {
-  if (cursor.value < total.value - 1) goTo(cursor.value + 1)
+  if (cursor.value < total.value - 1) {
+    goTo(cursor.value + 1)
+    return
+  }
+  // 已经是最后一题：给提示而不是静默不动
+  flashLast()
 }
 
 function prev() {
-  if (cursor.value > 0) goTo(cursor.value - 1)
+  if (cursor.value > 0) {
+    goTo(cursor.value - 1)
+    return
+  }
+  // 已经是第一题：给提示而不是静默不动
+  flashFirst()
 }
 
 /**
@@ -1668,6 +1690,9 @@ const emptyDesc = computed(() => {
       </p>
     </template>
     </template>
+
+    <!-- 越界提示：与详情页同一个组件（居中浮层，1.6 秒自动消失） -->
+    <SwipeBoundaryToast :text="boundaryHint" />
   </div>
 </template>
 
