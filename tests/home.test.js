@@ -294,7 +294,7 @@ describe('首页 · 复习入口', () => {
     /**
      * 2026-11 区块重排：`.reviews` 现在只有两组 ——
      * ① 背一背题（每日一记 + 我的收藏，2 张）
-     * ② 刷一刷题（每日一刷30题 + 每日复习30题 + 错题本 + 薄弱分类，4 张）
+     * ② 刷一刷题（每日一刷 30 题 + 每日复习 30 题 + 错题本 + 薄弱分类，4 张）
      *
      * 早先「每日一刷」和「复习组」各用一个 `.reviews`，两个容器相邻却没有外边距，
      * 结果它们之间是 0px、组内其它卡是 8px —— 看着就是「间距不对」。
@@ -310,7 +310,7 @@ describe('首页 · 复习入口', () => {
     /**
      * 2026-11：首页按**使用方式**分成两个大区块：
      * - 背一背题：每日一记 + 我的收藏（收藏只收简答题）
-     * - 刷一刷题：每日一刷30题 + 每日复习30题 / 错题本 / 薄弱分类
+     * - 刷一刷题：每日一刷 30 题 + 每日复习 30 题 / 错题本 / 薄弱分类
      *
      * 2026-11 二次调整：**取消了所有子标题**（`.section-sub`）——
      * 「每日一记」「我的收藏」「每日一刷」「复习巩固」这些名字，
@@ -325,39 +325,39 @@ describe('首页 · 复习入口', () => {
     expect(wrapper.findAll('.section-sub')).toHaveLength(0)
   })
 
-  it('刷一刷题区按「每日一刷30题 → 每日复习30题 → 错题本 → 薄弱分类」排列', async () => {
+  it('刷一刷题区按「每日一刷 30 题 → 每日复习 30 题 → 错题本 → 薄弱分类」排列', async () => {
     const { wrapper } = await mountHome()
     // 取最后一个 .reviews（刷一刷题区，4 张卡）
     const groups = wrapper.findAll('.reviews')
     const last = groups[groups.length - 1]
     const items = last.findAll('.review')
     /**
-     * 2026-11 调整：**每日复习30题（原「错题复习」）排到第二**，错题本退到第三 ——
+     * 2026-11 调整：**每日复习 30 题（原「错题复习」）排到第二**，错题本退到第三 ——
      * 每日复习是「现在就练一批」的动作，错题本是「看看有哪些题要补」的清单，
      * 先练再翻清单更顺手。
      */
-    expect(items[0].text()).toContain('每日一刷30题')
-    expect(items[1].text()).toContain('每日复习30题')
+    expect(items[0].text()).toContain('每日一刷 30 题')
+    expect(items[1].text()).toContain('每日复习 30 题')
     expect(items[2].text()).toContain('错题本')
     expect(items[3].text()).toContain('薄弱分类')
   })
 
   it('每日一刷显示题量、限时与产出', async () => {
     const { wrapper } = await mountHome()
-    const card = wrapper.findAll('.review').find((c) => c.text().includes('每日一刷30题'))
-    expect(card.text()).toContain('每日一刷30题')
+    const card = wrapper.findAll('.review').find((c) => c.text().includes('每日一刷 30 题'))
+    expect(card.text()).toContain('每日一刷 30 题')
     /**
-     * 2026-11 副标题定稿：「随机抽取 30 题目 · 限时 20 分钟 · 给评测建议」——
+     * 2026-11 副标题定稿：「随机抽取 30 选择题 · 限时 20 分钟 · 给评测建议」——
      * 分别对应「抽多少 / 限多久 / 交卷后得到什么」。
      */
-    expect(card.text()).toContain('随机抽取 30 题目')
+    expect(card.text()).toContain('随机抽取 30 选择题')
     expect(card.text()).toContain('限时 20 分钟')
     expect(card.text()).toContain('给评测建议')
   })
 
   it('点每日一刷跳到 review=dailyDrill', async () => {
     const { wrapper, router } = await mountHome()
-    await wrapper.findAll('.review').find((c) => c.text().includes('每日一刷30题')).trigger('click')
+    await wrapper.findAll('.review').find((c) => c.text().includes('每日一刷 30 题')).trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/practice')
     expect(router.currentRoute.value.query.review).toBe('dailyDrill')
@@ -365,7 +365,7 @@ describe('首页 · 复习入口', () => {
 
   it('错题本为空时错题复习置灰不可点，并说明原因', async () => {
     const { wrapper } = await mountHome()
-    const wrongBtn = reviewBy(wrapper, '每日复习30题')
+    const wrongBtn = reviewBy(wrapper, '每日复习 30 题')
     expect(wrongBtn.attributes('disabled')).toBeDefined()
     expect(wrongBtn.text()).toContain('错题本为空')
   })
@@ -374,16 +374,16 @@ describe('首页 · 复习入口', () => {
     // 错题本只收选择题：用 id=4（single）造一道错题
     study.markUnknown(4)
     const { wrapper, router } = await mountHome()
-    const wrongBtn = reviewBy(wrapper, '每日复习30题')
+    const wrongBtn = reviewBy(wrapper, '每日复习 30 题')
     expect(wrongBtn.attributes('disabled')).toBeUndefined()
-    expect(wrongBtn.text()).toContain('抽 1 题')
+    expect(wrongBtn.text()).toContain('1 选择题')
 
     await wrongBtn.trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query.review).toBe('wrong')
   })
 
-  it('错题超过 30 道时文案显示抽 30 题', async () => {
+  it('错题超过 30 道时文案显示抽 30 选择题', async () => {
     // 错题本只收选择题，所以这里补的都是 single 题；需超过 30 道才能测「截断」
     bank.questions = [
       ...FIXTURE,
@@ -403,7 +403,7 @@ describe('首页 · 复习入口', () => {
     ]
     bank.questions.filter((q) => q.type === 'single').forEach((q) => study.markUnknown(q.id))
     const { wrapper } = await mountHome()
-    expect(reviewBy(wrapper, '每日复习30题').text()).toContain('抽 30 题')
+    expect(reviewBy(wrapper, '每日复习 30 题').text()).toContain('30 选择题')
   })
 
   it('每日复习入口说明题量、限时与移出规则', async () => {
@@ -412,12 +412,12 @@ describe('首页 · 复习入口', () => {
     const { wrapper } = await mountHome()
     /**
      * 2026-11：每日复习升级为「限时自测」，副标题定稿为
-     * 「从错题本抽 N 题 · 限时 20 分钟 · 连对 3 次移出」——
+     * 「错题本抽 N 选择题 · 限时 20 分钟 · 连对 3 次移出」——
      * 三件事都要说：多少题、限多久、错题怎么移出。
      * 「连对 3 次移出」虽然也是错题本自身的规则，但从这个入口进来的人最关心它。
      */
-    const text = reviewBy(wrapper, '每日复习30题').text()
-    expect(text).toContain('从错题本抽')
+    const text = reviewBy(wrapper, '每日复习 30 题').text()
+    expect(text).toContain('错题本抽')
     expect(text).toContain('限时 20 分钟')
     expect(text).toContain('连对 3 次移出')
   })
@@ -437,7 +437,7 @@ describe('首页 · 错题本文案', () => {
      */
     study.markUnknown(4)
     const { wrapper } = await mountHome()
-    // 用**标题**精确定位：「每日复习30题」那张卡的副标题里也含「错题本」三个字
+    // 用**标题**精确定位：「每日复习 30 题」那张卡的副标题里也含「错题本」三个字
     const card = wrapper
       .findAll('.review')
       .find((c) => c.find('.review__title').text() === '错题本')
@@ -447,5 +447,25 @@ describe('首页 · 错题本文案', () => {
     expect(text).toContain('连对 3 次移出')
     // 分隔符是 · 而不是逗号
     expect(text).not.toContain('，')
+  })
+})
+
+describe('首页 · 我的收藏文案', () => {
+  it('副标题说明「已收藏 N 题 · 简答题点星标即可收藏」', async () => {
+    /**
+     * 2026-11 文案定稿：`已收藏 N 题 · 简答题点星标即可收藏`
+     *
+     * 两点说明：
+     * - 「已收藏」比「N 题」更明确（用户在别的页面看到 N 题会不清楚是什么数量）
+     * - 「简答题」点明只有简答题能收，避免有人去选择题上找星标
+     */
+    const { wrapper } = await mountHome()
+    const card = wrapper
+      .findAll('.review')
+      .find((c) => c.find('.review__title').text() === '我的收藏')
+    const text = card.text()
+    expect(text).toContain('已收藏')
+    expect(text).toContain('题')
+    expect(text).toContain('简答题点星标即可收藏')
   })
 })
