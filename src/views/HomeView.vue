@@ -255,9 +255,7 @@ function openWeak() {
         </span>
         <span class="review__text">
           <span class="review__title">我的收藏</span>
-          <span class="review__desc">
-            {{ favCount ? `${favCount} 题 · 手动标记的重点` : '0 题 · 题卡点星标即可收藏' }}
-          </span>
+          <span class="review__desc">已收藏 {{ favCount }} 题 · 简答题点星标即可收藏</span>
         </span>
               <span class="review__arrow" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="15" height="15">
@@ -297,8 +295,8 @@ function openWeak() {
           </svg>
         </span>
         <span class="review__text">
-          <span class="review__title">每日一刷30题</span>
-          <span class="review__desc">随机抽取 30 题目 · 限时 20 分钟 · 给评测建议</span>
+          <span class="review__title">每日一刷 30 题</span>
+          <span class="review__desc">随机抽取 30 选择题 · 限时 20 分钟 · 给评测建议</span>
         </span>
         <span class="review__arrow" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="15" height="15">
@@ -338,9 +336,9 @@ function openWeak() {
           </svg>
         </span>
         <span class="review__text">
-          <span class="review__title">每日复习30题</span>
+          <span class="review__title">每日复习 30 题</span>
           <span class="review__desc">
-            {{ wrongCount ? `从错题本抽 ${Math.min(wrongCount, 30)} 题 · 限时 20 分钟 · 连对 3 次移出` : '错题本为空' }}
+            {{ wrongCount ? `错题本抽 ${Math.min(wrongCount, 30)} 选择题 · 限时 20 分钟 · 连对 3 次移出` : '错题本为空' }}
           </span>
         </span>
               <span class="review__arrow" aria-hidden="true">
@@ -420,7 +418,7 @@ function openWeak() {
               </template>
             </template>
             <template v-else>
-              数据量不足 · 同分类刷满它题量的 33% 且含错题后开始排行
+              数据量不足 · 同分类刷题满足题量的 33% 且含错题后开始排行
             </template>
           </span>
         </span>
