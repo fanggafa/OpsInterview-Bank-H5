@@ -131,7 +131,7 @@ ops-interview-h5/
 | `daily.js` | 每日一记（日期种子 → 稳定选题） |
 | `installGuide.js` | 安装引导。**两个入口**：`installGuideAll()` 给设置页列出全部平台（`{ current, installed, groups }`）；`installGuide()` / `installSteps()` 供单平台查询。含 iPadOS 伪装 macOS 的处理 |
 | `pinch.js` | 看图缩放（双指 + 滚轮） |
-| `gestures.js` | 滑动手势判定（轴锁定 + 阈值 + 速度） |
+| `gestures.js` | 滑动手势判定（轴锁定 + 阈值 + 速度）。**含横滚区分流**：起点落在 `.js-scroll-x` 容器内且内容超宽时，由脚本同步 `scrollLeft`、不切题（`SCROLL_X_CLASS` 标记被 CSS 与手势层共用） |
 
 > **`CATEGORIES` 是分类顺序的唯一真相源**（业务优先级，非字母序）。
 > 凡是要列「所有分类」的地方，都必须按它排序 —— 题库页筛选、我的页掌握度图表、

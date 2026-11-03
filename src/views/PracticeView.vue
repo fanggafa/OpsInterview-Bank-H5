@@ -2200,12 +2200,21 @@ const emptyDesc = computed(() => {
 }
 
 /**
- * 例外：答案里的表格与代码块自身要能横向滚动。
- * 继续用 pan-y 会让它们横滑不动（内容被截断看起来像是排版崩了），
- * 这里放开为 pan-x pan-y——纵向仍可翻卡，横向可看完整表格。
+ * 例外：横滚区自身要能横向滚动。
+ * 继续用 pan-y 会让表格/代码块横滑不动（内容被截断看起来像排版崩了）。
+ *
+ * 用 `js-scroll-x` 标记统一选择器（答案渲染里已打在 `.ans-table-wrap` /
+ * `.ans-pre__body` 上），**同一套标记同时服务于两件事**：
+ * ① CSS 放开 `touch-action`
+ * ② 手势判定（`utils/gestures.js`）据此让出横向滑动，不切题
+ *
+ * **必须连子孙一起放开**（关键）：`touch-action` 不继承，
+ * 只给容器设值时，里面的 `<code>` / `<table>` 仍是上一层 `.stage *` 的 `pan-y`。
+ * 手指按在文字上时起点就在那个子元素上，横向照样被禁 ——
+ * 表现是「只有拖到滚动条本身才能横滑」，而滚动条细到手机上摸不着。
  */
-.stage :deep(.ans-table-wrap),
-.stage :deep(.ans-pre__body) {
+.stage :deep(.js-scroll-x),
+.stage :deep(.js-scroll-x *) {
   touch-action: pan-x pan-y;
 }
 .stage:active {

@@ -37,10 +37,17 @@ describe('滑动手势的 touch-action 约束', () => {
     expect(/\.qcard-p__scroll\s*\{[^}]*overflow-y:\s*auto/s.test(css)).toBe(true)
   })
 
-  it('答案里的表格与代码块放开横向滚动（否则宽表格被截断）', () => {
-    // touch-action: pan-y 会阻止元素自身的横向滚动，宽表格/长命令需要例外
-    expect(/\.ans-table-wrap[\s\S]{0,400}?touch-action:\s*pan-x\s+pan-y/.test(css)).toBe(true)
-    expect(/\.ans-pre__body[\s\S]{0,200}?touch-action:\s*pan-x\s+pan-y/.test(css)).toBe(true)
+  it('横滚区放开横向滚动（否则宽表格/代码被截断）', () => {
+    /**
+     * 2026-11：选择器从写死的 `.ans-table-wrap` / `.ans-pre__body`
+     * 改成统一的 `.js-scroll-x` 标记 ——
+     * 同一套标记同时服务于 CSS（放开 touch-action）与手势层（区内不切题）。
+     *
+     * 注意 `touch-action` 不继承：必须**连子孙一起**放开，
+     * 否则手指按在 `<code>` / `<table>` 文字上时横向仍被禁。
+     */
+    expect(/\.js-scroll-x\s*\)[^;]{0,80}touch-action:\s*pan-x\s+pan-y/s.test(css)).toBe(true)
+    expect(/\.js-scroll-x\s+\*\)[^;]{0,80}touch-action:\s*pan-x\s+pan-y/s.test(css)).toBe(true)
   })
 })
 
