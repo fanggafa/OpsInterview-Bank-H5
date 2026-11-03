@@ -61,18 +61,53 @@ function goBack() {
 </template>
 
 <style scoped>
+/**
+ * 页头：**浮动圆角玻璃胶囊**（iOS 26 的真实形态）。
+ *
+ * ## 为什么不再是通栏条
+ *
+ * 早先是横贯全屏、上下都有硬边界的玻璃条。这种形态在内容密集的页面上
+ * 必然显得像「贴上去的板子」—— 边界清楚、面积大、与卡片不是一套语言
+ * （用户连续反馈「丑」「越改越丑」）。
+ *
+ * iOS 26 的导航栏本身是**浮在内容之上的圆角胶囊**：四周留白、圆角、柔和投影。
+ * 这样它和下面的玻璃卡是同一个视觉族，不再是「顶着一块板」。
+ *
+ * ## 关键细节
+ *
+ * - **四周留白**（`margin`）：浮起来的关键，贴边就变回板子
+ * - **下方必须留 12px 间距**：早先只写 `margin: 0 ... 0`（下边距为 0），
+ *   胶囊和紧跟的搜索框直接粘在一起、两个玻璃块连成一片，看着像一块坏掉的玻璃
+ * - **圆角 16px**：与卡片同族的圆角语言
+ * - **柔和投影**：给一点高度，说明它浮在内容之上
+ * - **不加边框、不加内高光线**：玻璃边界是模糊过渡，不是线
+ * - 饱和度用 `--glass-bar-saturate`（130%），条状区域面积大，190% 会把背后蓝光拉成一块
+ */
 .header {
   position: sticky;
-  top: 0;
+  top: 8px;
   z-index: 10;
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 52px;
-  margin: 0 -16px;
+  height: 48px;
+  /**
+   * 上移 6px 抵消 `.page` 的 `padding-top: 6px`；左右 12px、下方 12px 让胶囊浮起来
+   * 且与下方内容分开（下方为 0 会和搜索框粘连）。
+   */
+  margin: -6px 12px 12px;
   padding: 0 8px;
-  background: var(--c-bg);
-  backdrop-filter: blur(8px);
+  border-radius: 16px;
+  background: var(--glass-bar-bg);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-bar-saturate));
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .header {
+    background: var(--c-card);
+  }
 }
 
 .header__btn {

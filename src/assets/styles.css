@@ -4,26 +4,88 @@
    ============================================================ */
 
 :root {
-  --c-primary: #4f7cff;
-  --c-primary-weak: rgba(79, 124, 255, 0.1);
-  --c-bg: #f6f7fb;
+  /**
+   * 主色：**iOS 系统蓝**。
+   *
+   * 2026-11 换色：原先是靛蓝 `#4f7cff`（偏紫偏灰）。搭配液态玻璃材质时，
+   * 靛蓝在浅色下会显脏、在深色下与玻璃底色混成一片。
+   * iOS 系统蓝是 Apple 原生主色，与玻璃材质天然协调（系统控件本来就是这么配的）。
+   */
+  --c-primary: #0a84ff;
+  --c-primary-weak: rgba(10, 132, 255, 0.12);
+  --c-bg: #eef2f8;
   --c-card: #ffffff;
-  --c-border: #e8eaf0;
-  --c-text: #1f2430;
-  --c-text-2: #6b7280;
-  --c-text-3: #9ca3af;
-  --c-success: #52c41a;
-  --c-warning: #faad14;
-  --c-danger: #f5222d;
+  --c-border: #e2e7f0;
+  --c-text: #10131a;
+  --c-text-2: #5d6675;
+  --c-text-3: #97a0b0;
+  --c-success: #34c759;
+  --c-warning: #ff9f0a;
+  --c-danger: #ff3b30;
   --c-freq: #7a8ba8;
   --c-freq-weak: rgba(122, 139, 168, 0.12);
-  --c-success-weak: rgba(82, 196, 26, 0.12);
-  --c-danger-weak: rgba(245, 34, 45, 0.12);
+  --c-success-weak: rgba(52, 199, 89, 0.14);
+  --c-danger-weak: rgba(255, 59, 48, 0.13);
   /* 警告色底：倒计时告警、超时提示这类「注意但非错误」的场景 */
-  --c-warning-weak: rgba(250, 173, 20, 0.14);
+  --c-warning-weak: rgba(255, 159, 10, 0.15);
+
+  /* ---------- Liquid Glass 材质 ---------- */
+  /*
+   * 玻璃卡片 = **半透明底** + **背景模糊** + **高光内描边** + **柔和投影**。
+   *
+   * 每一层都有用：
+   * - 半透明底：让背后的光晕透出来
+   * - `blur`：把背后的内容糊成朦胧色块（否则文字等细节会干扰前景阅读）
+   * - `saturate`：模糊会降低饱和度，加一点回来才是「彩色玻璃」而不是「毛玻璃」
+   * - `inset 0 1px 0` 高光：模拟玻璃上沿的一道反光，这是像不像玻璃的关键
+   * - 投影：玻璃浮在背景之上，需要一点点高度感
+   */
+  /**
+   * 玻璃底色透明度是关键参数：
+   * - 太高（62%）→ 卡片接近实白，背后光晕透不出来，看着就是普通白卡
+   * - 太低（30%）→ 文字对比度不够，长题干读起来发飘
+   *
+   * 取 42%：能明显看到背后的颜色起伏，正文对比度仍达标。
+   * `-strong` 给 TabBar / 页头用（它们上面有文字要压住，需要更实一点）。
+   */
+  --glass-bg: rgba(255, 255, 255, 0.42);
+  --glass-bg-strong: rgba(255, 255, 255, 0.62);
+  /**
+   * 页头 / 底栏专用档位。
+   *
+   * 比卡片实一点（上面压着标题 / Tab 标签），但**不能实到变成一块板子**：
+   * 早先页头用过 86%，结果整条变成不透明实色，与下方玻璃卡完全是两套视觉。
+   */
+  --glass-bar-bg: rgba(255, 255, 255, 0.55);
+  /**
+   * 页头 / 底栏的饱和度**单独调低**（190% → 130%）。
+   *
+   * 卡片用 190% 是对的（让背后的光晕更鲜活）；
+   * 但条状区域横跨整屏、面积大，190% 会把背后那团蓝光拉成一块明显的深蓝色板子
+   * （深色模式尤其明显）。130% 保留一点通透，又不至于抢眼。
+   */
+  --glass-bar-saturate: 130%;
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-highlight: rgba(255, 255, 255, 0.95);
+  --glass-blur: 20px;
+  --glass-saturate: 190%;
+  --glass-shadow: 0 6px 24px rgba(16, 19, 26, 0.09);
+
+  /* 背景光晕（三团错位的径向渐变，给玻璃提供可折射的颜色） */
+  --glass-glow-1: rgba(10, 132, 255, 0.5);
+  --glass-glow-2: rgba(94, 92, 230, 0.4);
+  --glass-glow-3: rgba(48, 176, 199, 0.36);
 
   /* 渐变与光效（首页/卡片背景用） */
-  --grad-hero: linear-gradient(135deg, #4f7cff 0%, #7b6cf6 55%, #a06af5 100%);
+  /**
+   * hero 主卡渐变。
+   *
+   * 2026-11 随主色一起换成 **iOS 蓝同色系**（原来 `#4f7cff → #7b6cf6 → #a06af5`
+   * 是靛蓝→紫→品红，与新的 iOS 系统蓝主色完全不搭，整页看着「主色改了但没改到」）。
+   *
+   * 三段都在蓝色到天蓝之间，保证是「同一个色族的深浅变化」，不跑色相。
+   */
+  --grad-hero: linear-gradient(135deg, #0a84ff 0%, #3e9bff 55%, #64d2ff 100%);
   --grad-card: linear-gradient(180deg, rgba(79, 124, 255, 0.06), rgba(79, 124, 255, 0));
   --grad-indigo: linear-gradient(135deg, #6366f1, #8b5cf6);
   --grad-teal: linear-gradient(135deg, #14b8a6, #06b6d4);
@@ -55,7 +117,7 @@
   --fig-muted: #64748b;
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-lift: 0 4px 16px rgba(79, 124, 255, 0.12);
+  --shadow-lift: 0 4px 16px rgba(10, 132, 255, 0.14);
 
   /* 答案渲染：代码块 / 表格 / 行内代码 */
   --c-code-bg: #f4f6fb;
@@ -64,9 +126,21 @@
   --c-code-text: #2b3245;
   --c-table-head: #f2f5fd;
   --c-table-line: #edf0f7;
-  --c-table-zebra: rgba(79, 124, 255, 0.028);
+  --c-table-zebra: rgba(10, 132, 255, 0.03);
   --c-answer-bg: #f7f9ff;
   --c-answer-border: #e6ebf9;
+
+  /**
+   * 滚动条：细、圆角、半透明，且随主题变色。
+   *
+   * 浏览器默认滚动条在移动端 WebView / 桌面浏览器里又粗又白，
+   * 与液态玻璃的浅色主题尤其不搭（截图里是一条突兀的白色粗条）。
+   * 这里压到 6px、用主色系的半透明色，滚动时才显眼、静止时几乎看不见。
+   */
+  --scrollbar-size: 6px;
+  --scrollbar-thumb: rgba(10, 132, 255, 0.32);
+  --scrollbar-thumb-hover: rgba(10, 132, 255, 0.5);
+  --scrollbar-track: transparent;
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -78,31 +152,77 @@
 }
 
 :root[data-theme='dark'] {
-  --c-primary: #6e93ff;
-  --c-primary-weak: rgba(110, 147, 255, 0.16);
-  --c-bg: #121212;
-  --c-card: #1e1e1e;
-  --c-border: #2a2a2a;
-  --c-text: #e6e6e6;
-  --c-text-2: #a0a0a0;
+  /**
+   * 深色主色用 `#5ac8fa`（iOS 浅蓝）而不是系统蓝 `#0a84ff` ——
+   * 深背景上 `#0a84ff` 偏暗，与玻璃质感不搭；浅蓝在深色玻璃上更像「发光」。
+   */
+  --c-primary: #5ac8fa;
+  --c-primary-weak: rgba(90, 200, 250, 0.18);
+  --c-bg: #0b0d12;
+  --c-card: #1a1d25;
+  --c-border: #2a2e38;
+  --c-text: #eef1f6;
+  --c-text-2: #a3abb8;
   /* 深色下 #7A7A7A 对比度仅 3.88（低于 AA 的 4.5），提亮到 #8E8E8E → 约 4.8 */
-  --c-text-3: #8e8e8e;
-  --c-success: #73d13d;
-  --c-warning: #ffc53d;
-  --c-danger: #ff7875;
+  --c-text-3: #929aaa;
+  --c-success: #30d158;
+  --c-warning: #ffd60a;
+  --c-danger: #ff6961;
   --c-freq: #8fa1bd;
   --c-freq-weak: rgba(143, 161, 189, 0.16);
-  --c-success-weak: rgba(115, 209, 61, 0.16);
-  --c-danger-weak: rgba(255, 120, 117, 0.16);
-  --c-warning-weak: rgba(255, 197, 61, 0.18);
+  --c-success-weak: rgba(48, 209, 88, 0.16);
+  --c-danger-weak: rgba(255, 105, 97, 0.16);
+  --c-warning-weak: rgba(255, 214, 10, 0.18);
+
+  /**
+   * 深色玻璃：底色是**白色低透明度**而不是黑色。
+   *
+   * 用黑色叠在半透明上，会让卡片与深背景糊在一起、失去层次；
+   * 白色 8% 能提亮一点，恰好形成「玻璃浮在暗处」的观感。
+   * 描边同理：白色 16% 的细边是深色玻璃唯一能看清的形状来源。
+   */
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-bg-strong: rgba(255, 255, 255, 0.13);
+  /**
+   * 深色页头 / 底栏：白色 10%（对应浅色的 55%）。
+   * 深色下用白色低透明度 —— 深底叠黑会糊成一片、失去层次。
+   *
+   * 透明度**刻意比浅色更低**：深色背景本身已经很暗，
+   * 条状区域只要比周围亮一丁点就能浮起来；给多了就变成一块发灰的板子。
+   */
+  --glass-bar-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --glass-highlight: rgba(255, 255, 255, 0.22);
+
+  /* 深色光晕：降透明度，否则整屏发灰发亮 */
+  /**
+   * 2026-11 调低：深色下玻璃条会 `saturate(190%)` 把背后的蓝色光晕拉得更蓝，
+   * 顶部那条玻璃因此显出一块「深蓝方块」，与页面割裂。
+   * 把顶部两团压到 0.14 / 0.12，玻璃条背后就是低饱和的暗色，观感中性。
+   */
+  --glass-glow-1: rgba(10, 132, 255, 0.14);
+  --glass-glow-2: rgba(94, 92, 230, 0.12);
+  --glass-glow-3: rgba(48, 176, 199, 0.16);
 
   /* 深色下渐变降饱和，避免刺眼 */
-  --grad-hero: linear-gradient(135deg, #3d5fc4 0%, #5a4fb8 55%, #6d47a3 100%);
+  /**
+   * 深色 hero：同样保持蓝色系，只把亮度压下来，不换色相。
+   * 早先是 `#3d5fc4 → #5a4fb8 → #6d47a3`（靛蓝→紫），与新主色不搭。
+   */
+  --grad-hero: linear-gradient(135deg, #0b5ed7 0%, #1470c8 55%, #1a86b8 100%);
   --grad-card: linear-gradient(180deg, rgba(110, 147, 255, 0.08), rgba(110, 147, 255, 0));
   --grad-indigo: linear-gradient(135deg, #4f46e5, #7c3aed);
   --grad-teal: linear-gradient(135deg, #0d9488, #0891b2);
   --grad-amber: linear-gradient(135deg, #d97706, #ea580c);
   --grad-rose: linear-gradient(135deg, #e11d48, #db2777);
+
+  /**
+   * 深色滚动条：用浅蓝半透明。
+   * 深色背景下默认滚动条往往是白色粗条，刺眼又突兀；
+   * 换成低透明度的浅蓝，既不扎眼，又在滚动时看得见。
+   */
+  --scrollbar-thumb: rgba(90, 200, 250, 0.28);
+  --scrollbar-thumb-hover: rgba(90, 200, 250, 0.45);
 
   /* 深色下分类色略提亮，保证在深背景上可辨 */
   --hue-blue: #60a5fa;
@@ -148,6 +268,42 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/**
+ * 全局滚动条：细、圆角、半透明、随主题变色。
+ *
+ * 浏览器默认滚动条又粗又白（桌面 Chrome 约 15px 宽，且是实白底 + 灰滑块），
+ * 放在液态玻璃的浅色页面上格外突兀 —— 用户反馈「太粗了，颜色也不搭」。
+ *
+ * 两套写法都要给：
+ * - `::-webkit-scrollbar`：Chrome / Safari / Edge / 微信内核
+ * - `scrollbar-width` / `scrollbar-color`：Firefox 与新版标准
+ *
+ * 颜色全部走 `--scrollbar-*` 变量，浅色/深色各自一套，不写死。
+ */
+::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+/* 去掉两端箭头按钮（老式滚动条才有，新内核已默认无，这里兜底） */
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
 html,
 body {
   margin: 0;
@@ -157,6 +313,35 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/**
+ * Liquid Glass 的前提：**背景要有内容可折射**。
+ *
+ * 纯色背景上的 `backdrop-filter` 等于只加了一层模糊，看不出玻璃感 ——
+ * 玻璃之所以像玻璃，是因为背后有颜色变化、有明暗层次被折进来。
+ *
+ * 所以在 `body` 上铺三团错位的径向渐变光晕，卡片的半透明底才能把这些颜色吸进来。
+ *
+ * **为什么画在 `body` 的 `background-image` 上、而不是 `body::before`**：
+ * 早先用伪元素 + `z-index: -1`，结果被 `body` 自己的不透明 `background-color`
+ * 压住了，光晕完全不可见（实测卡片仍是死白一片）。
+ * 画在 `body` 的背景层里，光晕就在最底层、且不会被自己的底色盖住。
+ *
+ * 实现要点：
+ * - `background-attachment: fixed`：光晕不随页面滚动，形成稳定光源
+ * - 三团错位分布：自然起伏，而不是均匀平涂
+ * - 颜色全部走 `--glass-glow-*` 变量，**换主题自动跟着变**，不写死色值
+ */
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-image:
+    radial-gradient(60vw 50vh at 12% -6%, var(--glass-glow-1) 0%, transparent 62%),
+    radial-gradient(52vw 46vh at 96% 8%, var(--glass-glow-2) 0%, transparent 60%),
+    radial-gradient(70vw 40vh at 50% 104%, var(--glass-glow-3) 0%, transparent 66%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
 }
 
 body {
@@ -190,6 +375,15 @@ ul {
 
 /* ---------- 布局 ---------- */
 
+/**
+ * 应用外壳。
+ *
+ * **背景必须是透明的**（`background: transparent`）：
+ * 光晕画在 `body` 的背景层上，如果这里再盖一层不透明的 `--c-bg`，
+ * 卡片背后又是一片纯色，玻璃效果会消失（这个坑实测踩过）。
+ *
+ * `--maxw` 限宽 + `margin: 0 auto` 保留：桌面上内容居中、光晕铺满整个视口。
+ */
 .app-shell {
   max-width: var(--maxw);
   margin: 0 auto;
@@ -197,7 +391,7 @@ ul {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--c-bg);
+  background: transparent;
   position: relative;
 }
 
@@ -206,7 +400,11 @@ ul {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 0 12px calc(var(--tabbar-h) + var(--safe-bottom) + 12px);
+  /**
+   * 内容区底部留白：TabBar 现在是**浮动胶囊**，底部还有 10px 留白，
+   * 所以这里要比 tabbar 高度多让出 10px，否则最后一屏内容会被胶囊压住。
+   */
+  padding: 0 12px calc(var(--tabbar-h) + var(--safe-bottom) + 22px);
   overflow-x: hidden;
 }
 
@@ -229,7 +427,11 @@ ul {
  */
 .app-main--full {
   flex: none;
-  height: calc(100dvh - var(--tabbar-h) - var(--safe-bottom));
+  /**
+   * 扣掉「TabBar 高度 + 底部 10px 留白 + 安全区」：
+   * TabBar 现为浮动胶囊，不再贴底，多出的 10px 也要算进去。
+   */
+  height: calc(100dvh - var(--tabbar-h) - var(--safe-bottom) - 10px);
   padding-bottom: 0;
   overflow: hidden;
 }
@@ -265,11 +467,46 @@ ul {
 
 /* ---------- 通用元素 ---------- */
 
+/**
+ * 液态玻璃材质（Liquid Glass）。
+ *
+ * 四层叠加，缺一层都不像玻璃：
+ * 1. `background: var(--glass-bg)` —— 半透明底，让背景光晕透出来
+ * 2. `backdrop-filter: blur + saturate` —— 糊化背后内容，并补回被模糊吃掉的饱和度
+ *    （只 blur 不 saturate 会得到一张灰白毛玻璃，没有「彩色玻璃」的通透感）
+ * 3. `inset 0 1px 0 var(--glass-highlight)` —— 上沿一道高光，
+ *    这是「像玻璃」而不是「像半透明塑料」的关键一笔
+ * 4. 柔和外投影 —— 玻璃浮在背景之上，需要一点点高度感
+ *
+ * `-webkit-backdrop-filter` 必须并排写：iOS Safari 16 以下只认带前缀的版本，
+ * 而本项目主要跑在手机浏览器 / 微信里。
+ *
+ * **材质只在这一处维护**：`.card`、首页的 `.review`、TabBar、AppHeader
+ * 都引用同一批 `--glass-*` 变量。早先 `.card` 和 `.review` 各写一套实色背景，
+ * 换主题时要改好几处。
+ */
+.card,
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
 .card {
-  background: var(--c-card);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-card);
-  border: 1px solid var(--c-border);
+}
+
+/**
+ * 不支持 `backdrop-filter` 的浏览器（旧 Firefox、部分国产内核）：
+ * 退回接近实色的底，保证文字仍然可读 —— 宁可不好看，不能读不清。
+ */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card,
+  .glass {
+    background: var(--c-card);
+  }
 }
 
 .section-title {

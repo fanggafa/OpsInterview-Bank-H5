@@ -53,19 +53,45 @@ const items = computed(() => TAB_ITEMS)
 </template>
 
 <style scoped>
+/**
+ * TabBar：**浮动圆角玻璃胶囊**，与页头同一形态。
+ *
+ * ## 为什么不再是贴底通栏条
+ *
+ * 早先它 `bottom: 0` 横贯全屏、上沿一条白色高光线。
+ * 在深色下那条高光成了一条刺眼的亮线，整条底栏像一块贴上去的板子。
+ *
+ * iOS 26 的 TabBar 是**浮在内容上方的圆角胶囊**：四周留白、圆角、柔和投影。
+ * 改成胶囊后与页头、卡片统一成一套语言。
+ *
+ * ## 关键细节
+ *
+ * - **底部留白 10px + 安全区**：`bottom: calc(10px + safe-area)`，贴着屏幕下沿会失去浮动感
+ * - **左右各留 12px**：与页头、卡片对齐
+ * - 高度只算内容，`--safe-bottom` 不再进 height（它已经在 bottom 里）
+ * - 不加边框、不加内高光线：玻璃的边界是模糊过渡
+ */
 .tabbar {
   position: fixed;
   left: 50%;
-  bottom: 0;
+  bottom: calc(10px + var(--safe-bottom));
   transform: translateX(-50%);
-  width: 100%;
-  max-width: var(--maxw);
-  height: calc(var(--tabbar-h) + var(--safe-bottom));
-  padding-bottom: var(--safe-bottom);
+  width: calc(100% - 24px);
+  max-width: calc(var(--maxw) - 24px);
+  height: var(--tabbar-h);
   display: flex;
-  background: var(--c-card);
-  border-top: 1px solid var(--c-border);
+  border-radius: 16px;
+  background: var(--glass-bar-bg);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-bar-saturate));
   z-index: 20;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tabbar {
+    background: var(--c-card);
+  }
 }
 
 .tabbar__item {
