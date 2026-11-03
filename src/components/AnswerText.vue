@@ -212,8 +212,12 @@ onBeforeUnmount(() => {
             </template>
           </div>
 
-          <!-- 表格 -->
-          <div v-else-if="b.type === 'table'" class="ans-table-wrap">
+          <!--
+            表格：可横向滚动。
+            `js-scroll-x` 是给滑动手势看的标记（见 `utils/gestures.js`）：
+            手指按在这里横向滑 → 滚表格内容，不切题。
+          -->
+          <div v-else-if="b.type === 'table'" class="ans-table-wrap js-scroll-x">
             <table class="ans-table">
               <thead>
                 <tr>
@@ -287,7 +291,8 @@ onBeforeUnmount(() => {
           <!-- 代码块 -->
           <div v-else-if="b.type === 'code'" class="ans-pre">
             <span v-if="b.lang" class="ans-pre__lang">{{ b.lang }}</span>
-            <pre class="ans-pre__body"><code>{{ b.lines.join('\n') }}</code></pre>
+            <!-- 代码块：同样可横滚，打上 js-scroll-x 让手势让位 -->
+            <pre class="ans-pre__body js-scroll-x"><code>{{ b.lines.join('\n') }}</code></pre>
           </div>
 
           <!-- 分隔线 -->
