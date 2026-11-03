@@ -634,3 +634,44 @@ describe('首页 · 不再有「继续上次」入口（已移到刷题页自动
     expect(wrapper.text()).not.toContain('继续上次')
   })
 })
+
+describe('刷题页 · 越界提示（与详情页同一套）', () => {
+  /**
+   * 2026-11：刷题页原先滑到第一题 / 最后一题还是静默不动，
+   * 用户以为手势失灵。现在与详情页共用 `useSwipeBoundaryToast` + `SwipeBoundaryToast`。
+   */
+  it('第一题往前滑 → 提示「已经是第一题」', async () => {
+    const { wrapper } = await mountPractice({ mode: 'sequential', studyMode: 'practice' }, { start: true })
+    await flushPromises()
+    // 已经在第一题，调 prev() 应触发提示
+    wrapper.vm.prev()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.boundaryHint).toBe('已经是第一题')
+    expect(wrapper.find('.boundary-toast').exists()).toBe(true)
+  })
+
+  it('最后一题往后滑 → 提示「已经是最后一题」', async () => {
+    const { wrapper } = await mountPractice({ mode: 'sequential', studyMode: 'practice' }, { start: true })
+    await flushPromises()
+    // 直接跳到最后一题
+    wrapper.vm.goTo(wrapper.vm.total - 1)
+    await wrapper.vm.$nextTick()
+    wrapper.vm.next()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.boundaryHint).toBe('已经是最后一题')
+  })
+
+  it('提示 1.6 秒后自动消失', async () => {
+    vi.useFakeTimers()
+    const { wrapper } = await mountPractice({ mode: 'sequential', studyMode: 'practice' }, { start: true })
+    await flushPromises()
+    wrapper.vm.prev()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.boundaryHint).toBe('已经是第一题')
+
+    await vi.advanceTimersByTimeAsync(1700)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.boundaryHint).toBe('')
+    vi.useRealTimers()
+  })
+})

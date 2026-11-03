@@ -139,7 +139,8 @@ describe('薄弱环节详情页', () => {
   it('无数据时显示空状态而不是空列表', async () => {
     study.records = {}
     const { wrapper } = await mountAt('/weak', WeakView)
-    expect(wrapper.text()).toContain('还没有足够的数据')
+    // 2026-11 文案与首页统一：「数据量不足」
+    expect(wrapper.text()).toContain('数据量不足')
   })
 
   it('列出全部薄弱分类（不只 5 个）', async () => {
@@ -221,23 +222,24 @@ describe('薄弱环节详情页', () => {
     expect(router.currentRoute.value.fullPath).toBe(before)
   })
 
-  it('「刷错题」是明确文字按钮（不是难懂的图标），点了进 practice', async () => {
+  it('本页是纯自我评估：没有任何行内按钮，也没有跳转', async () => {
+    /**
+     * 2026-11：本页从「带操作的分析页」改为**纯自我评估页**。
+     * 早先每行右侧有「刷错题」按钮，点进该分类的错题练习；
+     * 现在去掉 —— 想练错题有专门入口（首页「每日复习 30 题」），
+     * 本页只回答「我哪块最弱、弱到什么程度」。
+     */
     study.records = {
       1: rec({ inWrong: true }),
       2: rec({ inWrong: true }),
       3: rec({ inWrong: true }),
     }
-    const { wrapper, router } = await mountAt('/weak', WeakView)
-    const act = wrapper.find('.item__act')
-    expect(act.exists()).toBe(true)
-    // 用文字而不是纯图标：图标「看不清也看不明白」
-    expect(act.text()).toContain('刷错题')
-    await act.trigger('click')
-    await flushPromises()
-
-    expect(router.currentRoute.value.path).toBe('/practice')
-    expect(router.currentRoute.value.query.mode).toBe('wrong')
-    expect(router.currentRoute.value.query.category).toBe('MySQL')
+    const { wrapper } = await mountAt('/weak', WeakView)
+    // 旧的按钮（及其样式类）都不应再出现
+    expect(wrapper.find('.item__act').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('刷错题')
+    // 行内也不该有任何 button
+    expect(wrapper.findAll('.item button')).toHaveLength(0)
   })
 
   it('行尾不再有含义不清的小图标按钮', async () => {
