@@ -1857,16 +1857,38 @@ const emptyDesc = computed(() => {
  * - 进度「第 17 / 1430 题」+ 细进度条合并成一块，不再挤成两行
  * - 顶栏底色与页面一致、底部一条 1px 分隔线，边界清晰不显脏
  */
+/**
+ * 刷题中紧凑顶栏（48px）。
+ *
+ * ## 2026-11 统一为玻璃
+ *
+ * 早先是实色 `--c-bg` + 一条 `--c-border` 下边框 —— 全站换成液态玻璃后，
+ * 它成了页面里唯一一块突兀的实色板子（用户截图反馈「这种也要优化啊」）。
+ *
+ * 现在与 `AppHeader` 用同一套材质和形态：
+ * - 半透明玻璃底 + `blur` + 低饱和（`--glass-bar-saturate`）
+ * - 圆角 16px、下方留白，浮在题卡之上
+ * - **去掉 `border-bottom`**：玻璃的边界是模糊过渡，不是一条灰线
+ */
 .ptop {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 10px;
   height: 48px;
-  margin: 0 -16px;
+  margin: 0 0 8px;
   padding: 0 12px;
-  background: var(--c-bg);
-  border-bottom: 1px solid var(--c-border);
+  border-radius: 16px;
+  background: var(--glass-bar-bg);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-bar-saturate));
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ptop {
+    background: var(--c-card);
+  }
 }
 /**
  * 返回按钮。
@@ -2396,15 +2418,26 @@ const emptyDesc = computed(() => {
   color: var(--c-text-2);
 }
 
-/* 吸底操作区 */
+/*
+ * 吸底操作区：**玻璃**，与顶栏同一套材质。
+ *
+ * 早先是实色 `--c-bg` + `border-top` 灰线，在玻璃化之后成了页面里另一块
+ * 突兀的实色板子。上下两端都应该是玻璃，中间题卡浮着，整页才统一。
+ *
+ * 去掉 `border-top`：玻璃的边界是模糊过渡，不是一条灰线。
+ * 下方的安全区内边距保留 —— 操作按钮必须避开 iPhone 的 Home 指示条。
+ */
 .actions {
   flex-shrink: 0;
   display: flex;
   gap: 10px;
-  margin: 8px -12px 0;
+  margin: 8px 0 0;
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
-  background: var(--c-bg);
-  border-top: 1px solid var(--c-border);
+  border-radius: 16px;
+  background: var(--glass-bar-bg);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-bar-saturate));
 }
 .actions__btn {
   flex: 1;

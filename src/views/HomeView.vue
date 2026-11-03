@@ -576,6 +576,15 @@ function openWeak() {
   flex-direction: column;
   gap: 8px;
 }
+/**
+ * 首页入口卡：玻璃材质。
+ *
+ * 2026-11 Liquid Glass 改造：原先是实色 `--c-card` + 普通投影，
+ * 现在改用全局 `.glass` 的同一套变量（半透明底 + backdrop blur + 上沿高光）。
+ * 因为 `.review` 是 scoped 样式、拿不到全局 `.glass` 的规则，
+ * 这里直接写属性，但**取值全部走 `--glass-*` 变量**，
+ * 换主题时与 `.card` 一起变，不会走样。
+ */
 .review {
   display: flex;
   align-items: center;
@@ -583,10 +592,20 @@ function openWeak() {
   width: 100%;
   padding: 13px 14px;
   border-radius: var(--radius);
-  border: 1px solid var(--c-border);
-  background: var(--c-card);
-  box-shadow: var(--shadow-card);  text-align: left;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  text-align: left;
   transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+
+/* 不支持 backdrop-filter 时退回实色底，保证可读 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .review {
+    background: var(--c-card);
+  }
 }
 .review:active:not(:disabled) {
   transform: scale(0.985);
