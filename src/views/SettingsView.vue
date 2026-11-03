@@ -11,7 +11,7 @@ import {
 import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
 import { readJSON, writeJSON, isStorageAvailable } from '@/utils/storage'
-import { installGuide } from '@/utils/installGuide'
+import { installGuideAll } from '@/utils/installGuide'
 
 /**
  * 设置页：把「我的」页里偏配置的项收进来。
@@ -81,21 +81,30 @@ const storageOk = computed(() => isStorageAvailable())
 const appVersion = '0.3.0'
 
 /**
- * 安装引导：识别平台后给出「装到手机桌面」的步骤。
+ * 安装引导：**列出全部平台**（iOS / 安卓 / 电脑），并标出当前设备。
+ *
+ * 2026-11 改版：早先按 UA 只显示当前平台那一套，导致「在电脑上打开时看不出
+ * 手机上也能装成 App」—— 而题库正是碎片时间在手机上用的。
+ * 现在一次全列（有下拉可收起，不占位置），任何设备打开都能看到移动端的安装方式。
  *
  * 平台与「是否已装好」都在浏览器里读，所以包在 computed 里延迟取，
  * 避免 SSR / 测试环境下直接访问 navigator 报错。
  */
 const guide = computed(() => {
-  if (typeof navigator === 'undefined') return installGuide({})
+  if (typeof navigator === 'undefined') return installGuideAll({})
   const mm = typeof window !== 'undefined' && window.matchMedia
-  return installGuide({
+  return installGuideAll({
     ua: navigator.userAgent,
     maxTouchPoints: navigator.maxTouchPoints || 0,
     standalone: !!(mm && window.matchMedia('(display-mode: standalone)').matches),
     navStandalone: !!navigator.standalone,
   })
 })
+
+/** 当前平台的组（用来生成收起状态下的副标题） */
+const currentGroup = computed(
+  () => guide.value.groups.find((g) => g.platform === guide.value.current) || null,
+)
 
 /** 安装引导是否展开（默认收起，避免设置页被一大段步骤撑长） */
 const guideOpen = ref(false)
@@ -208,19 +217,24 @@ const guideOpen = ref(false)
       </div>
     </div>
 
-    <!-- 安装到桌面：给用户一个「怎么变成 App」的入口 -->
+    <!--
+      安装到桌面：给用户一个「怎么变成 App」的入口。
+
+      2026-11：展开后**列出全部平台**（手机两个 + 电脑），而不只是当前平台。
+      这样在电脑网页上打开也能看到「手机上可以装成 App」，
+      知道可以换到手机上用 —— 题库本来就是碎片时间在手机上用的。
+      默认收起（`guideOpen = false`），不占设置页高度。
+    -->
     <h2 class="section-title">安装到桌面</h2>
     <div class="group card">
       <button class="row row--btn" @click="guideOpen = !guideOpen">
         <div class="row__text">
-          <span class="row__title">{{ guide.title }}</span>
+          <span class="row__title">装成 App，离线也能刷题</span>
           <span class="row__desc">
             {{
               guide.installed
                 ? '已在独立形态运行，可离线刷题'
-                : guide.platform === 'desktop'
-                  ? '装到电脑桌面，像普通应用一样启动'
-                  : '装到手机桌面，离线也能刷题'
+                : 'iPhone / 安卓 / 电脑，各端的安装步骤'
             }}
           </span>
         </div>
@@ -232,18 +246,33 @@ const guideOpen = ref(false)
           ✓ 已装好。当前就在独立形态里运行，断网也能刷题。
         </p>
 
-        <template v-else>
-          <p v-if="guide.warning" class="guide__warn">⚠️ {{ guide.warning }}</p>
+        <!--
+          三个平台全部列出，每个一块：
+          标题行 = 平台名 + （当前设备时）一枚「当前设备」标记。
+          当前设备那块不折叠，其它两块也全展开 —— 用户既然点开了，
+          就是想看到「别的设备怎么装」，不用再一层层点。
+        -->
+        <section
+          v-for="g in guide.groups"
+          :key="g.platform"
+          class="guide__group"
+        >
+          <h3 class="guide__group-title">
+            {{ g.label }}
+            <span v-if="g.platform === guide.current" class="guide__tag">当前设备</span>
+          </h3>
+
+          <p v-if="g.warning" class="guide__warn">⚠️ {{ g.warning }}</p>
 
           <ol class="guide__steps">
-            <li v-for="(s, i) in guide.steps" :key="i">{{ s }}</li>
+            <li v-for="(s, i) in g.steps" :key="i">{{ s }}</li>
           </ol>
 
           <!-- 安卓特有：失败时的备选路径（这块来自真实踩坑） -->
-          <p v-if="guide.fallback" class="guide__fallback">{{ guide.fallback }}</p>
+          <p v-if="g.fallback" class="guide__fallback">{{ g.fallback }}</p>
 
-          <p class="guide__note">{{ guide.note }}</p>
-        </template>
+          <p class="guide__note">{{ g.note }}</p>
+        </section>
       </div>
     </div>
 
@@ -411,6 +440,43 @@ const guideOpen = ref(false)
   font-size: 12px;
   line-height: 1.6;
   color: var(--c-text-2);
+}
+
+/**
+ * 平台分组：三个平台各自成块，块之间用细分隔线分开。
+ *
+ * 用分隔线而不是给每块加卡片边框 —— 它们在同一个 `.group.card` 里，
+ * 再加边框会出现「卡中卡」的嵌套感。
+ */
+.guide__group {
+  padding: 14px 0 4px;
+}
+.guide__group + .guide__group {
+  border-top: 1px solid var(--c-border);
+}
+
+/**
+ * 平台名 + 「当前设备」标记。
+ *
+ * 标记用小圆角胶囊，颜色走主色 —— 它只是「提示你在哪一端」，
+ * 不是警告，不该用警示色。
+ */
+.guide__group-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--c-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.guide__tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--c-primary);
+  background: var(--c-primary-weak);
 }
 
 .seg {
