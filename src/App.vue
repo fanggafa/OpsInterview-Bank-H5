@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import TabBar from '@/components/TabBar.vue'
-import PwaUpdateBar from '@/components/PwaUpdateBar.vue'
+import PwaUpdateDialog from '@/components/PwaUpdateDialog.vue'
 
 const route = useRoute()
 
@@ -38,6 +38,6 @@ const isFull = computed(() => FULL_ROUTES.includes(route.path))
     </main>
     <TabBar v-if="showTab" />
     <!-- PWA 更新提示：只有新版本就绪时才出现，不打扰正常使用 -->
-    <PwaUpdateBar />
+    <PwaUpdateDialog />
   </div>
 </template>
