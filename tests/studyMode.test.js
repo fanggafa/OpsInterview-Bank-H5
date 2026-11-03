@@ -274,11 +274,23 @@ describe('统计页已移除（并入「我的」）', () => {
     expect(tabCount).toBe(4)
   })
 
-  it('「我的」页承载了原统计页的分类掌握度图表', () => {
+  it('「我的」页不再承载按分类细分的图表（已并入「分类熟练度」页）', () => {
+    /**
+     * 2026-11：两张按分类细分的图表都移出了「我的」页 ——
+     * ① 「各分类选择正确率」（早先移除）
+     * ② 「各分类掌握度（仅简答题）」（本轮移除，并入首页「分类熟练度」页）
+     *
+     * 「我的」页只留数据看板（总体指标 + 四宫格），
+     * 按分类的细节统一去「分类熟练度」页看，避免两处重复同一份数据。
+     *
+     * 断言「没有渲染代码」而不是「文案里不出现这几个字」——
+     * 注释里说明「移除了什么」是合理的文档，不该被禁。
+     */
     const me = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
-    expect(me).toMatch(/BarChart/)
-    expect(me).toMatch(/各分类掌握度/)
-    expect(me).toMatch(/各分类选择正确率/)
+    expect(me).not.toMatch(/import BarChart/)
+    expect(me).not.toMatch(/<BarChart/)
+    expect(me).not.toMatch(/categoryMastery/)
+    expect(me).not.toMatch(/expandedMastery/)
   })
 
   it('错题本与收藏入口在首页，「我的」页不再提供', () => {

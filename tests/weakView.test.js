@@ -6,34 +6,72 @@ import WeakView from '@/views/WeakView.vue'
 import HomeView from '@/views/HomeView.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
+import { proficiencyLevel } from '@/utils/constants'
 
 /**
- * 薄弱环节：首页入口 + 详情页。
+ * 分类熟练度页（原「薄弱分类」）。
  *
- * 形态是「首页一张摘要卡 → 详情页完整榜单 → 每项两个去向」，
- * 所以测试要覆盖三件事：入口摘要、详情页列表、两个跳转目标。
+ * 2026-11 合并：本页由两处并成 ——
+ * ① 原「薄弱分类」（选择题错误率榜）
+ * ② 「我的」页的「各分类掌握度（仅简答题）」柱状图
+ *
+ * 现在一行一个分类，**左列选择题熟练度、右列简答题掌握度**。
+ * 两个指标统一成「越高越好」：选择题由错误率反算（`1 - 错率`）。
  */
 
+const mkChoice = (id, category) => ({
+  id,
+  type: 'single',
+  category,
+  difficulty: '简单',
+  frequency: '高频',
+  question: `${category}-${id}`,
+  answer: ['A'],
+  options: [
+    { key: 'A', text: 'a' },
+    { key: 'B', text: 'b' },
+  ],
+  tags: [],
+})
+
+const mkShort = (id, category) => ({
+  id,
+  type: 'short',
+  category,
+  difficulty: '简单',
+  frequency: '高频',
+  question: `${category}-简答-${id}`,
+  answer: '一段足够长的答案文本，用于通过校验。',
+  tags: [],
+})
+
+/**
+ * 夹具需同时覆盖两种题型：
+ * - MySQL：3 道选择题（全错 → 选择熟练度 0%）
+ * - MySQL：2 道简答题（自评 1 会 1 不会 → 掌握度 50%）
+ * - Nginx：3 道选择题（全对 → 选择熟练度 100%）
+ * - Nginx：2 道简答题（都自评「不会」→ 掌握度 0%）
+ *
+ * 注意分类名必须是 `CATEGORIES` 里的真实名字，否则 `categoryProficiency`
+ * 过滤时会因为不在枚举里而被丢掉。
+ */
 const FIXTURE = [
-  /**
-   * 薄弱分类**只统计选择题**（2026-11 规则）：
-   * 简答题靠自评、没有客观对错，算进薄弱分类会让分母虚高、语义也混乱。
-   * 所以这里的夹具必须是选择题，否则统计结果为空。
-   */
-  // MySQL：3 题全刷全错 → 100%
-  { id: 1, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
-  { id: 2, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
-  { id: 3, type: 'single', category: 'MySQL', difficulty: '简单', frequency: '高频', question: 'm3', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
-  // Nginx：3 题全刷，错 1 → 33%
-  { id: 11, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
-  { id: 12, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
-  { id: 13, type: 'single', category: 'Nginx', difficulty: '简单', frequency: '高频', question: 'n3', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] },
+  mkChoice(1, 'MySQL'),
+  mkChoice(2, 'MySQL'),
+  mkChoice(3, 'MySQL'),
+  mkShort(4, 'MySQL'),
+  mkShort(5, 'MySQL'),
+  mkChoice(11, 'Nginx'),
+  mkChoice(12, 'Nginx'),
+  mkChoice(13, 'Nginx'),
+  mkShort(14, 'Nginx'),
+  mkShort(15, 'Nginx'),
 ]
 
-const rec = ({ times = 1, inWrong = false } = {}) => ({
+const rec = ({ times = 1, inWrong = false, status = 'unknown' } = {}) => ({
   times,
   inWrong,
-  status: 'unknown',
+  status,
   lastReviewed: 1,
   streak: 0,
 })
@@ -84,195 +122,151 @@ async function mountAt(path, comp) {
   return { wrapper, router }
 }
 
-describe('首页 · 薄弱环节入口卡', () => {
-  it('数据不足时入口卡仍常驻，显示引导文案且可点进 /weak', async () => {
-    study.records = { 1: rec({ inWrong: true }) } // 只刷 1 题，未达门槛
-    const { wrapper, router } = await mountAt('/', HomeView)
-    const texts = wrapper.findAll('.review__title').map((t) => t.text())
-    // 卡片常驻（与「错题复习」一致）：功能要可发现，不能整卡消失
-    expect(texts).toContain('薄弱分类')
+describe('store · categoryProficiency', () => {
+  it('选择题错误率反转成熟练度（全错 → 0%）', () => {
+    // 3 道选择题全进错题本 → 错误率 100% → 熟练度 0%
+    ;[1, 2, 3].forEach((id) => study.markUnknown(id))
+    const mysql = study.categoryProficiency.find((r) => r.category === 'MySQL')
+    expect(mysql.choice.pct).toBe(0)
+    expect(mysql.choice.reviewed).toBe(3)
+    expect(mysql.choice.wrong).toBe(3)
+  })
 
-    const cards = wrapper.findAll('.review')
-    const card = cards.find((c) => c.text().includes('薄弱分类'))
+  it('选择题全对 → 熟练度 100%', () => {
+    bank.questions = [mkChoice(11, 'Nginx'), mkChoice(12, 'Nginx'), mkChoice(13, 'Nginx')]
+    ;[11, 12, 13].forEach((id) => {
+      study.records = { ...study.records, [id]: rec({ times: 1, inWrong: false, status: 'know' }) }
+    })
+    const nginx = study.categoryProficiency.find((r) => r.category === 'Nginx')
+    expect(nginx.choice.pct).toBe(100)
+    expect(nginx.choice.wrong).toBe(0)
+  })
+
+  it('简答题掌握度 = 会 / (会+不会)', () => {
+    study.markKnow(4)
+    study.markUnknown(5)
+    const mysql = study.categoryProficiency.find((r) => r.category === 'MySQL')
+    expect(mysql.short.pct).toBe(50)
+    expect(mysql.short.answered).toBe(2)
+  })
+
+  it('没刷过选择题时该列为 null（显示「—」而不是 0%）', () => {
+    const mysql = study.categoryProficiency.find((r) => r.category === 'MySQL')
+    expect(mysql.choice.pct).toBeNull()
+  })
+
+  it('不受 33% 上榜门槛影响：刷 1 题全对也给 100%', () => {
+    /**
+     * 关键差异：`weakCategories` 有 33% 门槛（样本不够不进榜），
+     * 但熟练度页要**如实展示每个分类**。
+     * 早先若复用 weakCategories，刷 3 题全对的分类会显示成「—」，像没数据。
+     */
+    bank.questions = [mkChoice(11, 'Nginx'), mkChoice(12, 'Nginx'), mkChoice(13, 'Nginx')]
+    study.records = { ...study.records, 11: rec({ times: 1, inWrong: false, status: 'know' }) }
+    const nginx = study.categoryProficiency.find((r) => r.category === 'Nginx')
+    expect(nginx.choice.pct).toBe(100)
+  })
+})
+
+describe('分类熟练度页 · 等级制单指标', () => {
+  it('一行一个分类，只有一个主指标（不再有第二列）', async () => {
+    study.markUnknown(1)
+    study.markKnow(4)
+    const { wrapper } = await mountAt('/weak', WeakView)
+
+    const items = wrapper.findAll('.item')
+    expect(items.length).toBeGreaterThan(0)
+
+    // 每行只有一条进度条 + 一个等级徽标
+    const first = items[0]
+    expect(first.findAll('.item__bar')).toHaveLength(1)
+    expect(first.findAll('.item__level')).toHaveLength(1)
+    // 旧的「双列格子」已不存在
+    expect(first.findAll('.item__cell')).toHaveLength(0)
+  })
+
+  it('不再出现「简答未自评」这类第二指标的注脚', async () => {
+    /**
+     * A 方案的核心是「一页只讲一件事」：
+     * 把主观自评数据留在列表里，哪怕字号再小，也等于承认还有第二根可比指标。
+     * 所以简答那行注脚整体移除。
+     */
+    study.markUnknown(1)
+    const { wrapper } = await mountAt('/weak', WeakView)
+    expect(wrapper.text()).not.toContain('简答未自评')
+    expect(wrapper.text()).not.toContain('简答自评')
+  })
+
+  it('页面标题是「分类熟练度」', async () => {
+    study.markUnknown(1)
+    const { wrapper } = await mountAt('/weak', WeakView)
+    expect(wrapper.find('.header__title').text()).toBe('分类熟练度')
+  })
+
+  it('没有任何按钮（纯自我评估）', async () => {
+    study.markUnknown(1)
+    const { wrapper } = await mountAt('/weak', WeakView)
+    expect(wrapper.findAll('.item button')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('刷错题')
+  })
+})
+
+describe('等级换算 proficiencyLevel', () => {
+  it('没有样本 → 未开始', () => {
+    expect(proficiencyLevel(null).key).toBe('none')
+    expect(proficiencyLevel(null).label).toBe('未开始')
+  })
+
+  it('0%（刷了但全错）→ 未掌握，而不是入门', () => {
+    /**
+     * 全错的人看到「入门」会困惑：一道都没答对，怎么就入门了。
+     * 所以 0% 单列成「未掌握」。
+     */
+    expect(proficiencyLevel(0).key).toBe('fail')
+    expect(proficiencyLevel(0).label).toBe('未掌握')
+  })
+
+  it('1~49% → 入门', () => {
+    expect(proficiencyLevel(1).key).toBe('entry')
+    expect(proficiencyLevel(49).key).toBe('entry')
+  })
+
+  it('50~79% → 熟练', () => {
+    expect(proficiencyLevel(50).key).toBe('skilled')
+    expect(proficiencyLevel(79).key).toBe('skilled')
+  })
+
+  it('>= 80% → 精通', () => {
+    expect(proficiencyLevel(80).key).toBe('mastered')
+    expect(proficiencyLevel(100).key).toBe('mastered')
+  })
+})
+describe('首页 · 分类熟练度入口卡', () => {
+  it('卡片标题是「分类熟练度」，不再叫「薄弱分类」', async () => {
+    const { wrapper } = await mountAt('/', HomeView)
+    const titles = wrapper.findAll('.review__title').map((n) => n.text())
+    expect(titles).toContain('分类熟练度')
+    expect(titles).not.toContain('薄弱分类')
+  })
+
+  it('无数据时显示引导文案，且仍可点进 /weak', async () => {
+    const { wrapper, router } = await mountAt('/', HomeView)
+    const card = wrapper.findAll('.review').find((c) => c.text().includes('分类熟练度'))
     expect(card).toBeTruthy()
-    // 不给结论，只给引导
     expect(card.text()).toContain('数据量不足')
 
-    // 点击仍进入 /weak（那边有空状态说明「为什么还不给结论」）
     await card.trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/weak')
   })
 
-  it('有数据时显示入口卡，摘要显示最弱分类与错题数', async () => {
-    study.records = {
-      1: rec({ inWrong: true }),
-      2: rec({ inWrong: true }),
-      3: rec({ inWrong: true }),
-      11: rec({ inWrong: true }),
-      12: rec({ inWrong: false }),
-      13: rec({ inWrong: false }),
-    }
+  it('有数据时摘要说明「有多少个分类有记录」并提示左右两列', async () => {
+    study.markUnknown(1)
+    study.markKnow(4)
     const { wrapper } = await mountAt('/', HomeView)
-    const cards = wrapper.findAll('.review')
-    const weakCard = cards.find((c) => c.text().includes('薄弱分类'))
-    expect(weakCard).toBeTruthy()
-    expect(weakCard.text()).toContain('MySQL')
-    expect(weakCard.text()).toContain('3/3 错')
-  })
-
-  it('点击入口卡跳转到 /weak', async () => {
-    study.records = {
-      1: rec({ inWrong: true }),
-      2: rec({ inWrong: true }),
-      3: rec({ inWrong: true }),
-    }
-    const { wrapper, router } = await mountAt('/', HomeView)
-    const weakCard = wrapper.findAll('.review').find((c) => c.text().includes('薄弱分类'))
-    await weakCard.trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/weak')
-  })
-})
-
-describe('薄弱环节详情页', () => {
-  it('无数据时显示空状态而不是空列表', async () => {
-    study.records = {}
-    const { wrapper } = await mountAt('/weak', WeakView)
-    // 2026-11 文案与首页统一：「数据量不足」
-    expect(wrapper.text()).toContain('数据量不足')
-  })
-
-  it('列出全部薄弱分类（不只 5 个）', async () => {
-    const many = []
-    let id = 100
-    for (const cat of ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7']) {
-      for (let i = 0; i < 3; i++) {
-        // 薄弱分类只统计选择题，所以这里的题必须是 single，否则统计为空
-        many.push({ id, type: 'single', category: cat, difficulty: '简单', frequency: '高频', question: `q${id}`, answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], tags: [] })
-        id += 1
-      }
-    }
-    bank.questions = many
-    const recs = {}
-    many.forEach((q) => {
-      recs[q.id] = rec({ inWrong: true })
-    })
-    study.records = recs
-
-    const { wrapper } = await mountAt('/weak', WeakView)
-    expect(wrapper.findAll('.item')).toHaveLength(7)
-  })
-
-  it('每行显示错误率与紧凑样本量（错 n · 刷 x/y）', async () => {
-    study.records = {
-      1: rec({ inWrong: true }),
-      2: rec({ inWrong: true }),
-      3: rec({ inWrong: false }),
-    }
-    const { wrapper } = await mountAt('/weak', WeakView)
-    const item = wrapper.find('.item')
-    expect(item.find('.item__rate').text()).toBe('67%')
-    /**
-     * 2026-11：为了把 26 个分类压进更少屏幕，样本量文案从
-     * 「错 2 题 · 已刷 3/3 题」精简成「错 2 · 刷 3/3」——
-     * 行内放得下，语义也没丢。
-     */
-    const meta = item.find('.item__meta').text()
-    expect(meta).toContain('错')
-    expect(meta).toContain('刷 3/3')
-  })
-
-  it('顶部小结指出最弱分类', async () => {
-    study.records = {
-      1: rec({ inWrong: true }),
-      2: rec({ inWrong: true }),
-      3: rec({ inWrong: true }),
-      11: rec({ inWrong: true }),
-      12: rec({ inWrong: false }),
-      13: rec({ inWrong: false }),
-    }
-    const { wrapper } = await mountAt('/weak', WeakView)
-    expect(wrapper.find('.summary__main').text()).toContain('MySQL')
-  })
-
-  it('整行是纯展示区，不可点、不触发任何跳转', async () => {
-    study.records = {
-      1: rec({ inWrong: true }),
-      2: rec({ inWrong: true }),
-      3: rec({ inWrong: true }),
-    }
-    const { wrapper, router } = await mountAt('/weak', WeakView)
-    /**
-     * 2026-11：整行最终定为**不可点**。
-     *
-     * 走过两个弯路：
-     * ① 整行可点 = 直接开刷  → 用户：「点文字/进度条想看看数据，却被丢进练习页」
-     * ② 整行可点 = 进题库页  → 用户：「整行就显示这个进度条不行吗，非得跳转」
-     * 结论：数据展示就是展示，本页唯一操作是右侧「刷错题」。
-     */
-    const info = wrapper.find('.item__info')
-    expect(info.exists()).toBe(true)
-    // 是 div 而不是 button —— 不该有任何可点语义
-    expect(info.element.tagName).toBe('DIV')
-
-    const before = router.currentRoute.value.fullPath
-    await info.trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe(before)
-  })
-
-  it('本页是纯自我评估：没有任何行内按钮，也没有跳转', async () => {
-    /**
-     * 2026-11：本页从「带操作的分析页」改为**纯自我评估页**。
-     * 早先每行右侧有「刷错题」按钮，点进该分类的错题练习；
-     * 现在去掉 —— 想练错题有专门入口（首页「每日复习 30 题」），
-     * 本页只回答「我哪块最弱、弱到什么程度」。
-     */
-    study.records = {
-      1: rec({ inWrong: true }),
-      2: rec({ inWrong: true }),
-      3: rec({ inWrong: true }),
-    }
-    const { wrapper } = await mountAt('/weak', WeakView)
-    // 旧的按钮（及其样式类）都不应再出现
-    expect(wrapper.find('.item__act').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('刷错题')
-    // 行内也不该有任何 button
-    expect(wrapper.findAll('.item button')).toHaveLength(0)
-  })
-
-  it('行尾不再有含义不清的小图标按钮', async () => {
-    study.records = {
-      1: rec({ inWrong: true }),
-      2: rec({ inWrong: true }),
-      3: rec({ inWrong: true }),
-    }
-    const { wrapper } = await mountAt('/weak', WeakView)
-    // 试过的书本图标已移除
-    expect(wrapper.find('.item__browse').exists()).toBe(false)
-    // 双箭头也移除了（整行就是入口，不需要再提示箭头）
-    expect(wrapper.find('.item__chevron').exists()).toBe(false)
-  })
-
-  it('卡片不再塞整块大按钮（27 个分类时页面不该被撑长）', async () => {
-    study.records = {
-      1: rec({ inWrong: true }),
-      2: rec({ inWrong: true }),
-      3: rec({ inWrong: true }),
-    }
-    const { wrapper } = await mountAt('/weak', WeakView)
-    expect(wrapper.find('.item__acts').exists()).toBe(false)
-    expect(wrapper.find('.item__btn').exists()).toBe(false)
-  })
-
-  it('错误率条宽度按比例（100% → 全宽）', async () => {
-    study.records = {
-      1: rec({ inWrong: true }),
-      2: rec({ inWrong: true }),
-      3: rec({ inWrong: true }),
-    }
-    const { wrapper } = await mountAt('/weak', WeakView)
-    expect(wrapper.find('.item__fill').attributes('style')).toContain('width: 100%')
+    const card = wrapper.findAll('.review').find((c) => c.text().includes('分类熟练度'))
+    expect(card.text()).toContain('个分类有记录')
+    expect(card.text()).toContain('选择题熟练度')
+    
   })
 })

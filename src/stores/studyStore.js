@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useBankStore } from '@/stores/bankStore'
-import { STATUS, STORAGE_KEYS, WRONG_CLEAR_STREAK } from '@/utils/constants'
+import { STATUS, STORAGE_KEYS, WRONG_CLEAR_STREAK, CATEGORIES } from '@/utils/constants'
 import { readJSON, writeJSON, writeJSONThrottled } from '@/utils/storage'
 import { isToday, ratio } from '@/utils/format'
 
@@ -299,6 +299,94 @@ export const useStudyStore = defineStore('study', () => {
   /** 薄弱环节里错误率最高的那个分类（首页卡片用它显示摘要） */
   const weakestCategory = computed(() => weakCategories.value[0] || null)
 
+  /**
+   * 按分类合并「选择熟练度」与「简答掌握度」——「分类熟练度」页的数据源。
+   *
+   * ## 为什么要把错误率**反转**成熟练度
+   *
+   * 两个指标原本方向相反：
+   * - 选择题：`wrong / reviewed` 是**错误率**，越低越好
+   * - 简答题：`know / (know+unknown)` 是**掌握率**，越高越好
+   *
+   * 并排展示时用户会下意识横向比较这两个数字，而「40%」在左列是好、
+   * 在右列是坏 —— 必然误读。所以统一成「越高越好」的熟练度：
+   *
+   *   choicePct = 1 - 错误率    （没刷过题时为 null）
+   *   shortPct  = 掌握率        （没自评过时为 null）
+   *
+   * 两个都用同一个进度条语言，条越长越好。
+   *
+   * ## 为什么自己算而不复用 `weakCategories`
+   *
+   * `weakCategories` 有 **33% 上榜门槛**（样本不够就不进榜），
+   * 那是「值不值得给结论」的筛选，与本页「如实展示每个分类的熟练度」不是一回事：
+   * 刷了 3 题全对的分类，薄弱榜里没有它，但熟练度就是 100%。
+   * 复用会把这些分类显示成「—」，看起来像没数据。
+   * 所以这里独立统计，不受门槛影响。
+   *
+   * ## 分类顺序与空值
+   *
+   * 顺序跟随 `CATEGORIES`（业务优先级），与题库筛选、薄弱榜一致。
+   * 某一类题在题库里不存在或没做过时，该列显示「—」，不剔除整行 ——
+   * 否则分类列表会随题库变化忽多忽少。
+   */
+  const categoryProficiency = computed(() => {
+    const stats = new Map()
+
+    bank.questions.forEach((q) => {
+      if (!stats.has(q.category)) {
+        stats.set(q.category, {
+          category: q.category,
+          choiceTotal: 0,
+          choiceReviewed: 0,
+          choiceWrong: 0,
+          shortTotal: 0,
+          shortKnow: 0,
+          shortUnknown: 0,
+        })
+      }
+      const s = stats.get(q.category)
+      const r = records.value[q.id]
+      const short = isShort(q)
+
+      if (short) {
+        s.shortTotal += 1
+        if (r) {
+          if (r.status === STATUS.KNOW) s.shortKnow += 1
+          else if (r.status === STATUS.UNKNOWN) s.shortUnknown += 1
+        }
+      } else {
+        s.choiceTotal += 1
+        // 已刷：有记录且实际刷过，或已进错题本（与 weakCategories 口径一致）
+        if (r && (r.times > 0 || r.inWrong)) s.choiceReviewed += 1
+        if (r && r.inWrong) s.choiceWrong += 1
+      }
+    })
+
+    return CATEGORIES.map((c) => {
+      const s = stats.get(c)
+      if (!s) return null
+
+      const shortAnswered = s.shortKnow + s.shortUnknown
+      return {
+        category: c,
+        choice: {
+          // 错误率 → 熟练度（1 - 错率）。没刷过 → null
+          pct: s.choiceReviewed ? Math.round((1 - s.choiceWrong / s.choiceReviewed) * 100) : null,
+          reviewed: s.choiceReviewed,
+          total: s.choiceTotal,
+          wrong: s.choiceWrong,
+        },
+        short: {
+          pct: shortAnswered ? Math.round((s.shortKnow / shortAnswered) * 100) : null,
+          know: s.shortKnow,
+          total: s.shortTotal,
+          answered: shortAnswered,
+        },
+      }
+    }).filter(Boolean)
+  })
+
   /** 某题是否在错题本 */
   function isWrong(id) {
     const r = records.value[Number(id)]
@@ -504,6 +592,7 @@ export const useStudyStore = defineStore('study', () => {
     wrongList,
     weakCategories,
     weakestCategory,
+    categoryProficiency,
     favoriteList,
     // helpers
     recordOf,

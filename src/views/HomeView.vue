@@ -82,6 +82,17 @@ const dailySummary = computed(() => (daily.value ? truncate(daily.value.question
 /** 错题本数量：错题复习入口据此决定是否可用 */
 const wrongCount = computed(() => study.wrongList.length)
 
+/**
+ * 「分类熟练度」卡片的摘要：有多少个分类已经有记录（选择刷过 / 简答自评过）。
+ *
+ * 2026-11：这张卡由「薄弱分类」改名而来，副标题不再只讲「哪个最弱」——
+ * 那个页面现在同时展示两类题型的熟练度，摘要也该对应地说「有多少分类有数据」。
+ */
+const proficiencyCount = computed(
+  () =>
+    study.categoryProficiency.filter((r) => r.choice.pct !== null || r.short.pct !== null).length,
+)
+
 /** 收藏数量（「我的题集」区块显示） */
 const favCount = computed(() => study.favorites.length)
 
@@ -408,17 +419,18 @@ function openWeak() {
           </svg>
         </span>
         <span class="review__text">
-          <span class="review__title">薄弱分类</span>
+          <!--
+            2026-11：本卡由「薄弱分类」改名而来。
+            合并了「我的」页那张「各分类掌握度（仅简答题）」——
+            现在一页里左列选择题熟练度、右列简答题掌握度，所以不再只叫「薄弱」。
+          -->
+          <span class="review__title">分类熟练度</span>
           <span class="review__desc">
-            <template v-if="study.weakCategories.length">
-              {{ study.weakCategories[0].category }} ·
-              {{ study.weakCategories[0].wrong }}/{{ study.weakCategories[0].reviewed }} 错
-              <template v-if="study.weakCategories.length > 1">
-                · 共 {{ study.weakCategories.length }} 个待补
-              </template>
+            <template v-if="proficiencyCount">
+              {{ proficiencyCount }} 个分类有记录 · 按选择题熟练度分等级
             </template>
             <template v-else>
-              数据量不足 · 同分类刷题满足题量的 33% 且含错题后开始排行
+              数据量不足 · 刷过选择题后开始统计
             </template>
           </span>
         </span>
