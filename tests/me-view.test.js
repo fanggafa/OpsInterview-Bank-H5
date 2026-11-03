@@ -132,64 +132,36 @@ describe('我的 · 页面结构', () => {
   })
 })
 
-describe('我的 · 分类图表默认折叠', () => {
-  it('默认不渲染图表，标题可点', async () => {
+describe('我的 · 不再有按分类细分的图表', () => {
+  /**
+   * 2026-11：两张按分类细分的图表都移出了「我的」页。
+   * 第二张（各分类掌握度·仅简答题）在本轮并入首页「分类熟练度」页，
+   * 那边用「左选择、右简答」双列对照展示，比这里的单列柱状图信息更全。
+   *
+   * 「我的」页只留：个人卡 / 掌握情况四宫格 / 设置入口。
+   */
+  it('没有折叠条，也没有图表卡', async () => {
     const { wrapper } = await mountMe()
-    const collapses = wrapper.findAll('.collapse')
-    // 2026-11：只剩「各分类掌握度」一块（「各分类选择正确率」图表已移除）
-    expect(collapses.length).toBe(1)
+    expect(wrapper.findAll('.collapse')).toHaveLength(0)
     expect(wrapper.find('.chart-card').exists()).toBe(false)
-    expect(collapses[0].attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('各分类掌握度')
   })
 
-  it('点「各分类掌握度」后展开图表', async () => {
-    const { wrapper } = await mountMe()
-    await wrapper.findAll('.collapse')[0].trigger('click')
-    expect(wrapper.find('.chart-card').exists()).toBe(true)
-    expect(wrapper.findAll('.collapse')[0].attributes('aria-expanded')).toBe('true')
-  })
-
-  it('不再有「各分类选择正确率」图表（已随需求移除）', async () => {
+  it('不再有「各分类选择正确率」图表', async () => {
     const { wrapper } = await mountMe()
     expect(wrapper.text()).not.toContain('各分类选择正确率')
   })
 
-  it('各分类掌握度的顺序与题库页分类筛选顺序一致（CATEGORIES）', async () => {
-    /**
-     * 故意让题库里的分类顺序与 CATEGORIES 相反：
-     * 题库遍历顺序会是 MySQL → 网络基础 → Linux基础，
-     * 而 CATEGORIES 里是 Linux基础 → 网络基础 → …… → MySQL。
-     * 图表必须跟随后者，否则两个页面的分类排列会跳来跳去。
-     */
-    const bank = useBankStore()
-    bank.questions = [
-      { id: 1, type: 'short', category: 'MySQL', difficulty: '简单', question: 'q', answer: 'a', tags: ['t'], frequency: '高频' },
-      { id: 2, type: 'short', category: '网络基础', difficulty: '简单', question: 'q', answer: 'a', tags: ['t'], frequency: '高频' },
-      { id: 3, type: 'short', category: 'Linux基础', difficulty: '简单', question: 'q', answer: 'a', tags: ['t'], frequency: '高频' },
-    ]
-
+  it('总体指标仍然保留（简答掌握率 / 选择正确率）', async () => {
     const { wrapper } = await mountMe()
-    await wrapper.findAll('.collapse')[0].trigger('click')
-
-    const labels = wrapper.findAll('.bar-row__label').map((n) => n.text())
-    expect(labels).toEqual(['Linux基础', '网络基础', 'MySQL'])
+    expect(wrapper.text()).toContain('简答掌握率')
+    expect(wrapper.text()).toContain('选择正确率')
   })
 
-  it('折叠条是卡片式（带 bg/border/padding），不是裸文字', () => {
-    // 回归：早先只写了 padding: 0 2px + 无边框，视觉上像普通小标题
+  it('MeView 不再引用 BarChart 组件', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/views/MeView.vue'), 'utf8')
-    const collapseBlock = src.slice(src.indexOf('.collapse {'), src.indexOf('.collapse:active'))
-    expect(collapseBlock).toMatch(/border:\s*1px solid var\(--c-border\)/)
-    expect(collapseBlock).toMatch(/background:\s*var\(--c-card\)/)
-    expect(collapseBlock).toMatch(/border-radius:\s*var\(--radius\)/)
-    expect(collapseBlock).toMatch(/padding:\s*0 14px/)
-  })
-
-  it('展开时折叠条与图表卡贴合（去掉中间圆角）', async () => {
-    const { wrapper } = await mountMe()
-    await wrapper.findAll('.collapse')[0].trigger('click')
-    expect(wrapper.findAll('.collapse')[0].classes()).toContain('collapse--open')
-    expect(wrapper.find('.chart-card').classes()).toContain('chart-card--attached')
+    expect(src).not.toMatch(/BarChart/)
+    expect(src).not.toMatch(/\.collapse/)
   })
 })
 

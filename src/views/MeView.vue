@@ -1,10 +1,8 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
-import BarChart from '@/components/BarChart.vue'
 import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
-import { CATEGORIES } from '@/utils/constants'
 import { formatPercent } from '@/utils/format'
 
 /**
@@ -36,36 +34,18 @@ const summary = computed(() => [
   { label: '收藏', value: favCount.value },
 ])
 
-/** 分类图表默认折叠（页面太长，点开再看细节） */
-const expandedMastery = ref(false)
-
-/**
- * 各分类掌握度（仅简答题）。
- *
- * **顺序跟随题库页的分类筛选顺序**（`CATEGORIES` 的业务优先级），
- * 而不是 `categoryStats` 的原始顺序（那是按题库遍历出来的，实际是 id 顺序）。
- * 两个页面用同一套顺序，用户在两处看到的分类排列才不会跳来跳去。
- */
-const categoryMastery = computed(() => {
-  const map = new Map(study.categoryStats.map((s) => [s.category, s]))
-  return CATEGORIES.filter((c) => {
-    const s = map.get(c)
-    return s && s.shortTotal > 0
-  }).map((c) => {
-    const s = map.get(c)
-    return {
-      label: c,
-      count: s.know,
-      total: s.know + s.unknown,
-      percent: s.mastery,
-    }
-  })
-})
-
 /*
- * 2026-11：移除了「各分类选择正确率」图表（连同 categoryChoice 与 expandedChoice）。
- * 全局的「选择正确率」指标（tile）仍然保留 —— 那是学员最关心的一句话结论；
- * 去掉的只是按分类细分的第二张柱状图。
+ * 2026-11：移除了两张按分类细分的图表。
+ *
+ * ① 按分类的选择正确率图表
+ * ② 按分类的简答题掌握度图表
+ *
+ * 第二张是在本轮移除的：它被合并进了首页「分类熟练度」页 ——
+ * 那边用「左边选择题、右边简答题」的双列对照展示，
+ * 比这里的单列柱状图信息更全，也没必要在两个页面重复同一份数据。
+ *
+ * 全局的「简答掌握率」「选择正确率」指标（tile）仍然保留 ——
+ * 那是用户最关心的一句话结论，不属于「按分类细分」。
  */
 </script>
 
@@ -143,34 +123,6 @@ const categoryMastery = computed(() => {
         <span class="tile__value">{{ bank.total }}<em>题</em></span>
       </div>
     </div>
-
-    <!-- 各分类掌握度：默认折叠，点标题展开（卡片式折叠条，与其它卡片同一套视觉） -->
-    <button
-      class="collapse"
-      :class="{ 'collapse--open': expandedMastery }"
-      :aria-expanded="expandedMastery"
-      @click="expandedMastery = !expandedMastery"
-    >
-      <span class="collapse__title">
-        <span class="collapse__icon collapse__icon--indigo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="15" height="15">
-            <rect x="4" y="12" width="4" height="8" rx="1" fill="currentColor" opacity=".5" />
-            <rect x="10" y="8" width="4" height="12" rx="1" fill="currentColor" opacity=".75" />
-            <rect x="16" y="4" width="4" height="16" rx="1" fill="currentColor" />
-          </svg>
-        </span>
-        各分类掌握度
-        <span class="collapse__tip">（仅简答题）</span>
-      </span>
-      <span class="collapse__chev" :class="{ 'collapse__chev--up': expandedMastery }" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="16" height="16">
-          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </span>
-    </button>
-    <section v-if="expandedMastery" class="card chart-card chart-card--attached">
-      <BarChart :items="categoryMastery" empty-text="还没有简答题的作答记录" />
-    </section>
 
   </div>
 </template>
@@ -273,87 +225,6 @@ const categoryMastery = computed(() => {
 }
 .me__settings:active {
   background: var(--c-primary-weak);
-}
-
-/**
- * 可折叠标题（分类掌握度 / 选择正确率）。
- *
- * 这两块原来只是一行文字 + 箭头，视觉上像「普通小标题」，
- * 和上面的卡片、下面的「我的题目」不成体系。
- * 现在做成卡片样式的折叠条：带边框/底色/图标，与其它卡片同一套视觉语言。
- */
-.collapse {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  min-height: 52px;
-  margin-top: 8px;
-  padding: 0 14px;
-  border-radius: var(--radius);
-  border: 1px solid var(--c-border);
-  background: var(--c-card);
-  box-shadow: var(--shadow-card);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--c-text);
-  text-align: left;
-}
-.collapse:active {
-  background: var(--c-bg);
-}
-/* 展开后与下方图表连成一体：底部去掉圆角与分隔线 */
-.collapse--open {
-  margin-bottom: 0;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom-color: transparent;
-}
-.collapse__title {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  min-width: 0;
-}
-.collapse__tip {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--c-text-3);
-}
-.collapse__icon {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.collapse__icon--indigo {
-  color: var(--c-primary);
-  background: var(--c-primary-weak);
-}
-.collapse__icon--teal {
-  color: var(--c-tag-teal, #0d9488);
-  background: rgba(13, 148, 136, 0.12);
-}
-.collapse__chev {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  color: var(--c-text-3);
-  transition: transform 0.2s ease;
-}
-.collapse__chev--up {
-  transform: rotate(180deg);
-}
-/* 展开后的图表卡：与折叠条贴合 */
-.chart-card--attached {
-  margin-top: 0;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  border-top-color: transparent;
 }
 
 /**

@@ -246,6 +246,64 @@ export const REVIEW_CHOICE_ONLY = ['dailyDrill', 'wrong']
 export const WRONG_CLEAR_STREAK = 3
 
 /**
+ * 熟练度等级（「分类熟练度」页用）。
+ *
+ * ## 为什么用等级而不是百分比
+ *
+ * 该页原先并排两列百分比（选择题熟练度 / 简答题掌握度），用户反馈「很矛盾」：
+ * 两者口径不同（客观点选判定 vs 主观自评），并排摆两个数会诱导用户横向比较，
+ * 而它们本来不可比。
+ *
+ * 改成**等级制单指标**后，页面只表达「这块练到什么程度」这一个结论。
+ * 这也是成熟学习产品（Khan Academy 等）的常见做法：一个技能一个掌握度等级。
+ *
+ * ## 门槛
+ *
+ * | 百分比 | 等级 | 说明 |
+ * |---|---|---|
+ * | 没有样本 | 未开始 | 还没刷过 |
+ * | **0%** | **未掌握** | 刷了但全错 —— 不能说「已入门」 |
+ * | 1~49% | 入门 | 有对的，但不到一半 |
+ * | 50~79% | 熟练 | 过半 |
+ * | >= 80% | 精通 | 基本拿下 |
+ *
+ * 把 0% 单列成「未掌握」而不是「入门」：全错的人看到「入门」会困惑 ——
+ * 明明一道都没答对，怎么就已经入门了。
+ */
+export const PROFICIENCY_LEVELS = [
+  { key: 'none', label: '未开始', min: null },
+  { key: 'fail', label: '未掌握', min: 0, max: 0 },
+  { key: 'entry', label: '入门', min: 1 },
+  { key: 'skilled', label: '熟练', min: 50 },
+  { key: 'mastered', label: '精通', min: 80 },
+]
+
+/** 「精通」门槛（百分制） */
+export const PROFICIENCY_MASTERED = 80
+
+/**
+ * 把 0~100 的熟练度百分比换算成等级对象。
+ *
+ * @param {number|null} pct 百分比；null 表示没有有效样本
+ * @returns {{key:string,label:string}}
+ */
+export function proficiencyLevel(pct) {
+  if (pct === null || pct === undefined) return PROFICIENCY_LEVELS[0]
+  const n = Number(pct)
+  if (!Number.isFinite(n)) return PROFICIENCY_LEVELS[0]
+
+  // 0% 单独归「未掌握」：刷了但全错，不能算入门
+  if (n <= 0) return PROFICIENCY_LEVELS[1]
+
+  let picked = PROFICIENCY_LEVELS[2]
+  for (const lv of PROFICIENCY_LEVELS) {
+    if (lv.min !== null && lv.min <= n && (lv.max === undefined || n <= lv.max)) picked = lv
+  }
+  return picked
+}
+
+
+/**
  * 练习模式（怎么练）——与上面的「队列模式」是两个正交维度：
  *
  * - practice（做题模式）：**只有选择题**，点选项即判定，快节奏
