@@ -129,7 +129,7 @@ ops-interview-h5/
 | `groupByCategory.js` | 按分类分组（错题本 / 收藏共用；组顺序跟随 `CATEGORIES`） |
 | `practice.js` | 刷题队列（默认随机）、断点续刷（仅顺序）、复习赛抽题 |
 | `daily.js` | 每日一记（日期种子 → 稳定选题） |
-| `installGuide.js` | 安装引导（UA 识别平台 → 对应步骤；含 iPadOS 伪装 macOS 的处理） |
+| `installGuide.js` | 安装引导。**两个入口**：`installGuideAll()` 给设置页列出全部平台（`{ current, installed, groups }`）；`installGuide()` / `installSteps()` 供单平台查询。含 iPadOS 伪装 macOS 的处理 |
 | `pinch.js` | 看图缩放（双指 + 滚轮） |
 | `gestures.js` | 滑动手势判定（轴锁定 + 阈值 + 速度） |
 

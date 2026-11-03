@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { detectPlatform, installGuide, installSteps, isInstalled } from '@/utils/installGuide'
+import {
+  detectPlatform,
+  installGuide,
+  installGuideAll,
+  installSteps,
+  isInstalled,
+  GUIDE_ORDER,
+  GUIDE_LABELS,
+} from '@/utils/installGuide'
 
 describe('detectPlatform · UA 识别', () => {
   it('识别 iPhone / iPad / iPod 为 ios', () => {
@@ -100,5 +108,66 @@ describe('installGuide · 组合入口', () => {
     expect(g.installed).toBe(false)
     expect(g.platform).toBe('ios')
     expect(g.title).toBe('添加到主屏幕')
+  })
+})
+
+describe('installGuideAll · 全平台一次列出', () => {
+  /**
+   * 2026-11 改版：展开后列出**所有端**，而不只是当前平台。
+   * 目的：在电脑网页上打开也能看到「手机上可以装成 App」，知道可以换到手机用。
+   */
+  it('无论在哪一端，都返回 iOS / 安卓 / 电脑 三组', () => {
+    for (const ua of ['iPhone', 'Android', 'Windows NT 10.0']) {
+      const g = installGuideAll({ ua })
+      expect(g.groups.map((x) => x.platform)).toEqual(GUIDE_ORDER)
+      expect(g.groups.length).toBe(3)
+    }
+  })
+
+  it('手机端排在电脑前面（本应用主要给手机上用）', () => {
+    expect(GUIDE_ORDER).toEqual(['ios', 'android', 'desktop'])
+  })
+
+  it('每组都有 label、标题与非空步骤', () => {
+    const g = installGuideAll({ ua: 'Windows' })
+    for (const grp of g.groups) {
+      expect(grp.label.length).toBeGreaterThan(0)
+      expect(grp.title.length).toBeGreaterThan(0)
+      expect(grp.steps.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('标出当前设备，且只标一个', () => {
+    const g = installGuideAll({ ua: 'iPhone' })
+    expect(g.current).toBe('ios')
+    const marked = g.groups.filter((x) => x.platform === g.current)
+    expect(marked.length).toBe(1)
+  })
+
+  it('在电脑上打开时，仍然能看到 iOS 与安卓的步骤', () => {
+    /**
+     * 这是本次需求的核心：电脑端用户也能看到移动端安装方式。
+     */
+    const g = installGuideAll({ ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })
+    expect(g.current).toBe('desktop')
+
+    const ios = g.groups.find((x) => x.platform === 'ios')
+    const android = g.groups.find((x) => x.platform === 'android')
+    expect(ios.steps.some((s) => s.includes('Safari'))).toBe(true)
+    expect(android.steps.some((s) => s.includes('自带浏览器'))).toBe(true)
+  })
+
+  it('已装好时 installed 为 true，但三组说明仍然齐全', () => {
+    const g = installGuideAll({ ua: 'Android', standalone: true })
+    expect(g.installed).toBe(true)
+    expect(g.groups.length).toBe(3)
+  })
+
+  it('平台标签是人能读的名字，不是内部 key', () => {
+    for (const p of GUIDE_ORDER) {
+      expect(GUIDE_LABELS[p]).toBeTruthy()
+      expect(GUIDE_LABELS[p]).not.toBe(p)
+    }
+    expect(GUIDE_LABELS.desktop).toContain('电脑')
   })
 })

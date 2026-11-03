@@ -128,3 +128,44 @@ export function installGuide(env = {}) {
   const installed = isInstalled(env.standalone, env.navStandalone)
   return { platform, installed, ...installSteps(platform) }
 }
+
+/** 展示顺序：手机端在前（本应用主要给碎片时间刷题，手机才是主要场景） */
+export const GUIDE_ORDER = ['ios', 'android', 'desktop']
+
+/** 各平台在「全部平台」列表里的分组标题（比 `installSteps` 的 title 更适合做归纳） */
+export const GUIDE_LABELS = {
+  ios: 'iPhone / iPad',
+  android: '安卓手机',
+  desktop: '电脑（Chrome / Edge / Safari）',
+}
+
+/**
+ * **全部平台**的安装说明，供「设置 → 安装到桌面」一次全列出来。
+ *
+ * ## 为什么不再只显示当前平台
+ *
+ * 早先按 UA 只显示用户所在平台那一套。问题是：**在电脑网页上打开时，
+ * 用户根本看不到「手机上可以装成 App」这件事** —— 而这恰恰是最有价值的场景
+ * （题库是碎片时间用的，手机才是主要使用场景）。
+ *
+ * 用户反馈：既然有下拉箭头能收起，展开后把**所有端**都列出来，
+ * 反正不占位置，这样电脑上打开也能看到移动端的安装提醒、知道可以换到手机上用。
+ *
+ * 返回数组按 `GUIDE_ORDER` 排（手机在前），每项带 `platform` / `label`，
+ * 并标出 `current`：哪一个是用户当前所在的平台，页面上会加一个「当前设备」标记。
+ *
+ * @param {{ua?: string, maxTouchPoints?: number, standalone?: boolean, navStandalone?: boolean}} env
+ * @returns {{platform: string, installed: boolean, current: string, groups: Array}}
+ */
+export function installGuideAll(env = {}) {
+  const current = detectPlatform(env.ua, env.maxTouchPoints)
+  const installed = isInstalled(env.standalone, env.navStandalone)
+
+  const groups = GUIDE_ORDER.map((p) => ({
+    platform: p,
+    label: GUIDE_LABELS[p],
+    ...installSteps(p),
+  }))
+
+  return { current, installed, groups }
+}
