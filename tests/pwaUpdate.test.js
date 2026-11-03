@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { mount } from '@vue/test-utils'
-import PwaUpdateBar from '@/components/PwaUpdateBar.vue'
+import PwaUpdateDialog from '@/components/PwaUpdateDialog.vue'
 
 /**
  * PWA 更新提示。
@@ -66,14 +66,14 @@ describe('usePwaUpdate · 无 Service Worker 环境', () => {
   })
 })
 
-describe('PwaUpdateBar · 提示条联动', () => {
+describe('PwaUpdateDialog · 弹窗联动', () => {
   it('默认不显示', async () => {
     const pwa = usePwaUpdate()
     pwa.needRefresh.value = false
     pwa.dismissed.value = false
 
-    const wrapper = mount(PwaUpdateBar)
-    expect(wrapper.find('.pwa-bar').exists()).toBe(false)
+    const wrapper = mount(PwaUpdateDialog)
+    expect(wrapper.find('.pwa-dialog').exists()).toBe(false)
   })
 
   it('needRefresh 为真时显示提示与两个按钮', async () => {
@@ -81,8 +81,8 @@ describe('PwaUpdateBar · 提示条联动', () => {
     pwa.needRefresh.value = true
     pwa.dismissed.value = false
 
-    const wrapper = mount(PwaUpdateBar)
-    expect(wrapper.find('.pwa-bar').exists()).toBe(true)
+    const wrapper = mount(PwaUpdateDialog)
+    expect(wrapper.find('.pwa-dialog').exists()).toBe(true)
     expect(wrapper.text()).toContain('有新版本可用')
     expect(wrapper.text()).toContain('稍后')
     expect(wrapper.text()).toContain('立即更新')
@@ -93,19 +93,26 @@ describe('PwaUpdateBar · 提示条联动', () => {
     pwa.needRefresh.value = true
     pwa.dismissed.value = false
 
-    const wrapper = mount(PwaUpdateBar)
-    const ghost = wrapper.findAll('.pwa-bar__btn').find((b) => b.text().includes('稍后'))
+    const wrapper = mount(PwaUpdateDialog)
+    const ghost = wrapper.findAll('.pwa-dialog__btn').find((b) => b.text().includes('稍后'))
     await ghost.trigger('click')
     await wrapper.vm.$nextTick()
 
     expect(pwa.dismissed.value).toBe(true)
-    expect(wrapper.find('.pwa-bar').exists()).toBe(false)
+    expect(wrapper.find('.pwa-dialog').exists()).toBe(false)
   })
 
-  it('是页内提示条，不是 window.confirm（项目约定）', async () => {
+  it('是页内弹窗，不是 window.confirm（项目约定）', async () => {
     const { readFileSync } = await import('node:fs')
-    const src = readFileSync('src/components/PwaUpdateBar.vue', 'utf8')
+    const src = readFileSync('src/components/PwaUpdateDialog.vue', 'utf8')
     expect(src).not.toContain('window.confirm')
-    expect(src).toContain('role="status"')
+    expect(src).toContain('role="dialog"')
+    // 居中弹窗：遮罩铺满全屏 + flex 居中，不再是贴底的提示条
+    expect(src).toMatch(/position:\s*fixed/)
+    expect(src).toMatch(/inset:\s*0/)
+    expect(src).toMatch(/align-items:\s*center/)
+    expect(src).toMatch(/justify-content:\s*center/)
+    // 旧版贴底定位已移除
+    expect(src).not.toMatch(/bottom:\s*calc\(env\(safe-area-inset-bottom/)
   })
 })
