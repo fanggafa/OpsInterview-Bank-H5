@@ -791,6 +791,18 @@ function commitResult(isPassed) {
 
   passed.value = isPassed
   submitted.value = true
+  /**
+   * **答完就展开答案区**（2026-11 修复）。
+   *
+   * 早先这里没设 `expanded`，于是答完题落在「解析自动显示」那个临时分支里
+   * （`v-if="submitted && !expanded"` 的 `.explain`）；
+   * 用户再点一次「看答案」，又在 `.answer` 块里把**同一份解析再渲染一遍** ——
+   * 界面上出现两个解析块，看起来像多了一个页面（用户反馈「又多做一个页面」）。
+   *
+   * 现在答完直接 `expanded = true`：答案区立即展开，
+   * 走的是同一个 `.answer` 容器，只有一份解析。
+   */
+  expanded.value = true
 
   const s = resultToStatus(isPassed)
   if (s === STATUS.KNOW) study.markKnow(q.id)
@@ -1599,14 +1611,16 @@ const emptyDesc = computed(() => {
                 <span>{{ passed ? '回答正确' : '回答错误' }}</span>
               </div>
 
-              <!-- 判定后：解析自动显示（选择题的价值就在解析里，不用再点一次） -->
-              <div
-                v-if="submitted && canRevealAnswer && current.explanation && !expanded"
-                class="explain"
-              >
-                <p class="explain__label">解析</p>
-                <AnswerText :answer="current.explanation" />
-              </div>
+              <!--
+                2026-11：删掉了这里的「解析自动显示」临时分支
+                （早先是 `v-if="submitted && canRevealAnswer && current.explanation && !expanded"`）。
+
+                它和下面 `.answer` 块里的解析是**同一份内容**，只是展开状态不同；
+                答完题没自动展开时走这里，用户再点「看答案」又走 `.answer`，
+                于是界面上出现两个解析块 —— 看起来像多了个页面。
+
+                现在 `commitResult()` 直接 `expanded = true`，只保留 `.answer` 一个出口。
+              -->
 
               <!--
                 看答案展开区：正确答案 + 解析。
