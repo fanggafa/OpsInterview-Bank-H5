@@ -193,23 +193,61 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/actions/runs/<run_id>/jobs"
 
 目标场景：**通勤/地铁没网时也能刷题**。
 
-**缓存策略：全量预缓存**。`vite-plugin-pwa` 的 `globPatterns` 显式包含 `json`，
-把索引与全部分片纳入 precache —— 实测 `precache 71 entries (~5.2 MB)`。
+**缓存策略：外壳预缓存 + 分片运行时缓存（2026-11 变更）**
 
-> 为什么不只缓存首屏：只缓存首屏会导致「离线能打开列表、点进题目没答案」，
-> 那等于不能刷题。全量缓存只多下几 MB。
+| 内容 | 位置 | 体积 |
+|---|---|---|
+| JS / CSS / HTML / 图标 | **precache**（SW 安装时写入） | 约 1.65 MB（47 条） |
+| `questions-index.json` | **precache**（`additionalManifestEntries` 单独加回） | 422 KB |
+| 34 个答案分片 | **runtimeCaching**（`CacheFirst`，缓存名 `answers-shards`） | 约 4.37 MB |
 
-**更新策略：手动提示**（`registerType: 'prompt'`）。
+> **为什么不再全量预缓存**：早先 `globPatterns` 含 `json`，把 34 个分片（4.37 MB）
+> 也塞进 precache，实测 `precache 81 entries (~6.0 MB)`。
+> 后果是**每次发版后首次使用明显卡顿** —— 用户反馈「更新完立马用非常卡，
+> 页面切换、按钮点击都卡顿甚至无反应，过一阵子才正常」：
+>
+> ① SW 安装时一口气下载 4.37 MB 并写 Cache Storage，主线程与磁盘争用；
+> ② 同时首屏还要解析 460 KB 索引；
+> ③ `fetchJSON` 用 `cache: 'no-cache'`，每个请求都要跟正在写入的 cache 抢。
+>
+> 改后 SW 安装只需处理 1.65 MB（**降 73%**），安装瞬间完成。
+
+**离线能力如何保证**：分片由 `prewarmCache()` 在**页面空闲时分批**喂给 SW
+（`requestIdleCallback`、一次一个、失败跳过），约十几秒内全部就位；
+此后用户点开任何分类都命中缓存。索引留在 precache，保证离线也能打开列表与统计。
+
+> **预热有三个必须写对的点（都踩过，已由回归测试守住）**：
+>
+> 1. **URL 必须补 `.json` 后缀**。manifest 里的 `slugs` 是 `dns` 这种裸名，
+>    而 `urlPattern` 是 `/\/data\/answers\/.*\.json$/`。早先拼 `${slug}`，
+>    请求 `/data/answers/dns` 虽返回 200 但**不匹配缓存规则**，
+>    症状是「发出 34 个请求，缓存里只有 manifest.json 一条」。
+> 2. **只在页面已被 SW 接管时预热**（`navigator.serviceWorker.controller` 非空）。
+>    因为配了 `clientsClaim: false`，**首次访问 controller 恒为 null**，
+>    这次会话的所有 fetch 都不经过 SW，运行时缓存规则不生效。
+>    所以预热发生在**第二次及以后的页面加载**。
+> 3. **用 `requestIdleCallback` + 一次一个**，不要并发打满带宽与主线程 ——
+>    否则等于把卡顿从 SW 安装搬到了页面里。
+
+**更新策略：手动提示 + 加载缓冲层**（`registerType: 'prompt'`）。
 
 新版本安装完成后**不自动接管**，通过 `usePwaUpdate` 暴露 `needRefresh`，
 由 `PwaUpdateDialog` 弹出**屏幕正中的弹窗**（「稍后 / 立即更新」两个按钮竖排）。
+
+点「立即更新」后，`UpdateOverlay` 立刻盖住整屏显示加载动画
+（环形转圈 + 「正在更新」+ 底部进度条），作为**发版后首次加载的缓冲**：
+
+- 状态落 `sessionStorage`，**跨刷新保持** —— SW 接管会重载页面，
+  新实例读回标记继续显示，直到首屏渲染完成才淡出
+- 最短展示 900ms（太短会闪一下、反而像故障），最长 12s 兜底（不把用户困住）
+- 尊重 `prefers-reduced-motion`：关掉旋转与横移动画
 
 > **为什么是居中弹窗而不是底部提示条**：早先做成贴在 TabBar 上方的窄条
 > （`bottom: 68px`），用户反馈「底部容易被忽略」—— 底部本来就有 TabBar，
 > 视线通常停在内容区，那条窄提示很容易看漏。
 >
 > 改成弹窗后：位置在屏幕正中，无论在看哪块内容都会撞进视野；
-> 文案与按钮**竖排**更醒目（原来文字和按钮挤在一行）；加一层淡遮罩集中注意力。
+> 文案与按钮**竖排**更醒目；加一层淡遮罩集中注意力。
 >
 > 遮罩**不响应点击** —— 必须明确选「稍后」或「立即更新」才能关掉，
 > 避免误触空白处关掉而错过更新。
@@ -229,8 +267,17 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/actions/runs/<run_id>/jobs"
 - **与 `stripSourceData` 的顺序是对的**：`sw.js` 里已确认不含 `questions.json`
 
 **CI 与部署工作流都加了 PWA 产物断言**：检查 `sw.js` / `manifest.webmanifest` /
-三个图标（含 iOS 的 `apple-touch-icon.png`）存在，并 `grep` 确认 `sw.js`
-真的预缓存了索引与答案分片 —— 防止「能装但离线没数据」这种静默失效。
+三个图标（含 iOS 的 `apple-touch-icon.png`）存在，并按新架构校验三条：
+
+| 断言 | 防的是什么 |
+|---|---|
+| `questions-index.json` 在 precache | 离线能打开但列表空白 |
+| `answers-shards` + `CacheFirst` 存在 | 离线能打开但点进去没答案 |
+| **`url:"data/answers/` 不得出现在 precache** | 分片漏回 precache → 发版后首次使用卡顿 |
+
+> 第三条件之所以要**反向**断言，是因为早先的 `grep -q 'answers' dist/sw.js`
+> 在分片移出 precache 后**仍然通过** —— 它命中的只是缓存名 `answers-shards`，
+> 等于什么都没验证。这类「假通过」的断言比没有断言更危险。
 
 测试：`tests/pwaUpdate.test.js`。
 
