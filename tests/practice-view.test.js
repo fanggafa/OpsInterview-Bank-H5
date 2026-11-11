@@ -675,3 +675,40 @@ describe('刷题页 · 越界提示（与详情页同一套）', () => {
     vi.useRealTimers()
   })
 })
+
+describe('刷题页 · 答完后解析只渲染一份（回归）', () => {
+  /**
+   * 2026-11 Bug：答完选择题后，界面上出现两个解析块 ——
+   * 用户描述「答题后应该直接弹出看答案的内容即可，而不是又多做一个页面」。
+   *
+   * 根因：`commitResult()` 没设 `expanded = true`，于是答完落在
+   * 「解析自动显示」的临时分支（`submitted && !expanded`）；
+   * 用户再点「看答案」，`.answer` 块又把同一份解析渲染一遍。
+   *
+   * 修法：答完直接 `expanded = true`，并删掉那个临时分支，只留 `.answer` 一个出口。
+   */
+  it('commitResult 里答完就展开答案区', async () => {
+    const src = readFileSync('src/views/PracticeView.vue', 'utf8')
+    const i = src.indexOf("function commitResult(")
+    expect(i).toBeGreaterThan(-1)
+    const body = src.slice(i, src.indexOf("\n}", i))
+    expect(body).toMatch(/expanded\.value\s*=\s*true/)
+  })
+
+  it('不再有「submitted && !expanded」的重复解析分支', async () => {
+    const src = readFileSync('src/views/PracticeView.vue', 'utf8')
+    /**
+     * 先剥掉注释再断言 ——
+     * 修这个 Bug 时我在注释里引用了旧分支的原文作为说明，
+     * 直接正则匹配整份文件会误判成「代码里还有」。
+     */
+    const code = src
+      .replace(/<!--[\s\S]*?-->/g, '') // HTML 注释块（含模板里的说明）
+      .replace(/\/\*[\s\S]*?\*\//g, '') // JS / CSS 块注释
+      .replace(/^\s*\/\/.*$/gm, '') // 行注释
+
+    expect(code).not.toMatch(
+      /submitted\s*&&\s*canRevealAnswer\s*&&\s*current\.explanation\s*&&\s*!expanded/,
+    )
+  })
+})
