@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { mount } from '@vue/test-utils'
 import PwaUpdateDialog from '@/components/PwaUpdateDialog.vue'
@@ -114,5 +115,70 @@ describe('PwaUpdateDialog · 弹窗联动', () => {
     expect(src).toMatch(/justify-content:\s*center/)
     // 旧版贴底定位已移除
     expect(src).not.toMatch(/bottom:\s*calc\(env\(safe-area-inset-bottom/)
+  })
+})
+
+describe('更新卡顿治理（回归）', () => {
+  /**
+   * 2026-11 用户反馈：「每次更新完，立马使用会非常卡顿，页面切换、按钮点击都会卡顿
+   * 甚至无反应，过一阵子才正常」。
+   *
+   * 根因：SW 安装时一次性预缓存 81 个文件 / 4.37 MB（含全部答案分片），
+   * 同时首屏还要解析 460 KB 索引，主线程与磁盘争用。
+   *
+   * 治理：分片移出 precache → 运行时缓存；由 prewarmCache 在空闲时分批喂；
+   * 点更新时显示加载层作为缓冲。
+   */
+  const read = (p) => readFileSync(p, 'utf8')
+
+  it('答案分片不进 precache（否则每次发版首次使用都会卡）', () => {
+    const cfg = read('vite.config.js')
+    // globPatterns 不能含 json
+    const m = cfg.match(/globPatterns:\s*\[([^\]]+)\]/)
+    expect(m).toBeTruthy()
+    expect(m[1]).not.toContain("json")
+  })
+
+  it('分片走运行时缓存，且索引仍留在 precache（离线首屏必需）', () => {
+    const cfg = read('vite.config.js')
+    expect(cfg).toMatch(/runtimeCaching/)
+    expect(cfg).toMatch(/data\\\/answers/)
+    // 索引单独放回预缓存
+    expect(cfg).toMatch(/additionalManifestEntries/)
+    expect(cfg).toMatch(/questions-index\.json/)
+  })
+
+  it('预热要给分片补 .json 后缀（否则不匹配缓存规则）', () => {
+    const src = read('src/composables/usePwaUpdate.js')
+    const i = src.indexOf("data/answers/${slug}")
+    expect(i).toBeGreaterThan(-1)
+    // 必须是 ${slug}.json，不能是裸 ${slug}
+    expect(src).toMatch(/data\/answers\/\$\{slug\}\.json/)
+  })
+
+  it('预热只在页面已被 SW 接管时执行（clientsClaim:false 下首次为 null）', () => {
+    const src = read('src/composables/usePwaUpdate.js')
+    expect(src).toMatch(/navigator\.serviceWorker\.controller/)
+  })
+
+  it('applyUpdate 先亮加载层再重载，并把标记写进 sessionStorage', () => {
+    const src = read('src/composables/usePwaUpdate.js')
+    const i = src.indexOf("function applyUpdate(")
+    expect(i).toBeGreaterThan(-1)
+    const body = src.slice(i, src.indexOf("\n  }", i))
+    expect(body).toMatch(/updating\.value\s*=\s*true/)
+    expect(body).toMatch(/sessionStorage\.setItem/)
+  })
+
+  it('加载层有最短展示时长，避免一闪而过像故障', () => {
+    const src = read('src/composables/usePwaUpdate.js')
+    expect(src).toMatch(/MIN_SHOW_MS\s*=\s*\d{3,}/)
+    expect(src).toMatch(/MAX_SHOW_MS\s*=\s*\d{4,}/)
+  })
+
+  it('加载层是纯 CSS 动画，尊重 reduced-motion', () => {
+    const src = read('src/components/UpdateOverlay.vue')
+    expect(src).toMatch(/prefers-reduced-motion/)
+    expect(src).toMatch(/role="status"/)
   })
 })

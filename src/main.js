@@ -39,3 +39,16 @@ app.mount('#app')
 usePwaUpdate()
   .register()
   .catch(() => {})
+
+/**
+ * 空闲时预热答案分片（见 `prewarmCache` 的注释）。
+ *
+ * 答案分片已移出 precache，改走 CacheFirst 运行时缓存；
+ * 这里在首屏稳定后主动把它们喂给 SW —— **一次一个、仅在浏览器空闲时**，
+ * 所以不会和发版后的首次交互抢主线程（那正是用户反馈卡顿的时刻）。
+ *
+ * 延迟 2 秒起步：给首屏、索引解析、路由跳转留出干净的窗口。
+ */
+setTimeout(() => {
+  usePwaUpdate().prewarmCache().catch(() => {})
+}, 2000)

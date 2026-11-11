@@ -86,9 +86,19 @@ jobs:
           # iOS「添加到主屏幕」只认 apple-touch-icon，缺了 iOS 桌面图标会变成页面截图
           test -f dist/apple-touch-icon.png        || { echo "缺少 apple-touch-icon（iOS 主屏图标会退化成截图）"; exit 1; }
           grep -q 'apple-touch-icon' dist/index.html || { echo "index.html 未引用 apple-touch-icon"; exit 1; }
-          # sw.js 必须预缓存题库数据，否则「离线能打开但点进去没答案」
-          grep -q 'questions-index.json' dist/sw.js || { echo "sw.js 未预缓存题库索引"; exit 1; }
-          grep -q 'answers' dist/sw.js            || { echo "sw.js 未预缓存答案分片"; exit 1; }
+          # ---- PWA 缓存断言（2026-11 架构：外壳预缓存 + 分片运行时缓存）----
+          #
+          # ① 索引必须仍在 precache，否则「离线能打开但列表空白」
+          grep -q 'questions-index.json' dist/sw.js || { echo "sw.js 未预缓存题库索引（离线打不开列表）"; exit 1; }
+          # ② 答案分片必须有运行时缓存规则，否则「离线能打开但点进去没答案」
+          grep -q 'answers-shards' dist/sw.js       || { echo "sw.js 缺少答案分片的运行时缓存规则（离线点进去没答案）"; exit 1; }
+          grep -q 'CacheFirst' dist/sw.js           || { echo "sw.js 缺少 CacheFirst 策略"; exit 1; }
+          # ③ 分片不能出现在 precache 清单里 —— 否则 SW 安装要吞 4.37 MB，
+          #    发版后首次使用会明显卡顿（这正是 2026-11 修的问题）
+          if grep -q 'url:"data/answers/' dist/sw.js; then
+            echo "答案分片仍在 precache 里，会导致发版后首次使用卡顿"
+            exit 1
+          fi
           grep -q "/${{ github.event.repository.name }}/assets/" dist/index.html \
             || { echo "BASE_PATH 未生效"; exit 1; }
           echo "✓ 产物校验通过（索引 + 分片齐全，源数据已剔除，PWA 已预缓存题库）"
