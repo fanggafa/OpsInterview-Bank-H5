@@ -82,17 +82,6 @@ const dailySummary = computed(() => (daily.value ? truncate(daily.value.question
 /** 错题本数量：错题复习入口据此决定是否可用 */
 const wrongCount = computed(() => study.wrongList.length)
 
-/**
- * 「分类熟练度」卡片的摘要：有多少个分类已经有记录（选择刷过 / 简答自评过）。
- *
- * 2026-11：这张卡由「薄弱分类」改名而来，副标题不再只讲「哪个最弱」——
- * 那个页面现在同时展示两类题型的熟练度，摘要也该对应地说「有多少分类有数据」。
- */
-const proficiencyCount = computed(
-  () =>
-    study.categoryProficiency.filter((r) => r.choice.pct !== null || r.short.pct !== null).length,
-)
-
 /** 收藏数量（「我的题集」区块显示） */
 const favCount = computed(() => study.favorites.length)
 
@@ -115,11 +104,6 @@ const dateText = computed(() => {
 function openDaily() {
   // 带 from=/：详情页据此把返回指向首页（而不是一律回题库）
   if (daily.value) router.push(`/question/${daily.value.id}?from=/`)
-}
-
-/** 进入薄弱环节详情页（完整榜单在那里） */
-function openWeak() {
-  router.push('/weak')
 }
 </script>
 
@@ -398,55 +382,6 @@ function openWeak() {
         </svg>
       </span>
       </router-link>
-
-      <!--
-        薄弱环节入口：与上面两张卡同款式，只显示「最弱的是哪块」这一条摘要。
-        完整榜单（含样本量、分类题库入口）在 /weak 页。
-
-        **卡片常驻**：早先没有足够样本时整卡隐藏，导致「功能看不见、以为没了」。
-        现在无数据时显示引导文案并可点进 /weak。
-      -->
-      <button class="review" @click="openWeak">
-        <span class="review__icon review__icon--weak" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="19" height="19">
-            <path
-              d="M4 18V9m4 9V5m4 13v-6m4 6V8m4 10v-4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-        <span class="review__text">
-          <!--
-            2026-11：本卡由「薄弱分类」改名而来。
-            合并了「我的」页那张「各分类掌握度（仅简答题）」——
-            现在一页里左列选择题熟练度、右列简答题掌握度，所以不再只叫「薄弱」。
-          -->
-          <span class="review__title">分类熟练度</span>
-          <span class="review__desc">
-            <template v-if="proficiencyCount">
-              {{ proficiencyCount }} 个分类有记录 · 按选择题熟练度分等级
-            </template>
-            <template v-else>
-              数据量不足 · 刷过选择题后开始统计
-            </template>
-          </span>
-        </span>
-              <span class="review__arrow" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="15" height="15">
-          <path
-            d="M9 6l6 6-6 6"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </span>
-      </button>
     </div>
 
     <p class="home-foot">
@@ -655,10 +590,7 @@ function openWeak() {
   background: linear-gradient(135deg, #f0736f, #d64b52);
 }
 /* 薄弱环节：用琥珀色，与「错题」的红区分开 —— 它代表「趋势/分析」而非「错误」 */
-.review__icon--weak {
-  background: linear-gradient(135deg, #f7b955, #e09428);
-}
-/* 收藏：绿色，与「错题」的红、「薄弱」的琥珀都区分开 —— 它代表「主动留下」 */
+/* 收藏：绿色，与「错题」的红色区分开 —— 它代表「主动留下」 */
 .review__icon--fav {
   background: linear-gradient(135deg, #4ec38a, #2f9e6d);
 }
