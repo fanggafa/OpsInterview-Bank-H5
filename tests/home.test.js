@@ -289,21 +289,24 @@ describe('首页 · 不再承载「继续上次」', () => {
 })
 
 describe('首页 · 复习入口', () => {
-  it('刷一刷题区共 4 张卡，同一容器内间距一致', async () => {
+  it('刷一刷题区共 3 张卡，同一容器内间距一致', async () => {
     const { wrapper } = await mountHome()
     /**
      * 2026-11 区块重排：`.reviews` 现在只有两组 ——
      * ① 背一背题（每日一记 + 我的收藏，2 张）
-     * ② 刷一刷题（每日一刷 30 题 + 每日复习 30 题 + 错题本 + 分类熟练度，4 张）
+     * ② 刷一刷题（每日一刷 30 题 + 每日复习 30 题 + 错题本，3 张）
      *
      * 早先「每日一刷」和「复习组」各用一个 `.reviews`，两个容器相邻却没有外边距，
      * 结果它们之间是 0px、组内其它卡是 8px —— 看着就是「间距不对」。
      * 现在同区块的卡都在一个容器里，共用一个 gap。
+     *
+     * 2026-11 后续：「分类熟练度」卡与 `/weak` 页一并移除（纯展示、无操作，
+     * 且与「我的」页四宫格信息重复），刷一刷题区从 4 张减为 3 张。
      */
-    expect(wrapper.findAll('.reviews .review')).toHaveLength(6)
+    expect(wrapper.findAll('.reviews .review')).toHaveLength(5)
     const groups = wrapper.findAll('.reviews')
     expect(groups).toHaveLength(2)
-    expect(groups[1].findAll('.review')).toHaveLength(4)
+    expect(groups[1].findAll('.review')).toHaveLength(3)
   })
 
   it('首页分成「背一背题」「刷一刷题」两个区块', async () => {
@@ -325,9 +328,9 @@ describe('首页 · 复习入口', () => {
     expect(wrapper.findAll('.section-sub')).toHaveLength(0)
   })
 
-  it('刷一刷题区按「每日一刷 30 题 → 每日复习 30 题 → 错题本 → 分类熟练度」排列', async () => {
+  it('刷一刷题区按「每日一刷 30 题 → 每日复习 30 题 → 错题本」排列', async () => {
     const { wrapper } = await mountHome()
-    // 取最后一个 .reviews（刷一刷题区，4 张卡）
+    // 取最后一个 .reviews（刷一刷题区，3 张卡）
     const groups = wrapper.findAll('.reviews')
     const last = groups[groups.length - 1]
     const items = last.findAll('.review')
@@ -335,11 +338,13 @@ describe('首页 · 复习入口', () => {
      * 2026-11 调整：**每日复习 30 题（原「错题复习」）排到第二**，错题本退到第三 ——
      * 每日复习是「现在就练一批」的动作，错题本是「看看有哪些题要补」的清单，
      * 先练再翻清单更顺手。
+     *
+     * 2026-11 后续：原本排第四的「分类熟练度」已移除，该区固定 3 张。
      */
+    expect(items).toHaveLength(3)
     expect(items[0].text()).toContain('每日一刷 30 题')
     expect(items[1].text()).toContain('每日复习 30 题')
     expect(items[2].text()).toContain('错题本')
-    expect(items[3].text()).toContain('分类熟练度')
   })
 
   it('每日一刷显示题量、限时与产出', async () => {
