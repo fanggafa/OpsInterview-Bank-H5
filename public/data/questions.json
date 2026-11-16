@@ -2870,76 +2870,6 @@
     "frequency": "高频"
   },
   {
-    "id": 1105,
-    "type": "single",
-    "category": "DNS",
-    "difficulty": "简单",
-    "question": "把多个 IP 都配给同一个域名（如 `www` 指向 3 台服务器），用的是哪种方式？",
-    "options": [
-      {
-        "key": "A",
-        "text": "同一个域名配多条 A 记录"
-      },
-      {
-        "key": "B",
-        "text": "配一条 CNAME 记录"
-      },
-      {
-        "key": "C",
-        "text": "配 MX 记录"
-      },
-      {
-        "key": "D",
-        "text": "把 TTL 设为 0"
-      }
-    ],
-    "answer": [
-      "A"
-    ],
-    "explanation": "**多条 A 记录 = DNS 层的简单轮询**。但 DNS 轮询有几个局限：\n①客户端和中间解析器会缓存，负载未必均摊；\n②不会做健康检查，一台挂了仍会返回它的 IP；\n③无法按「连接数/延迟」调度。所以**真正的负载均衡要用 SLB/LVS**，DNS 轮询只适合做粗粒度的多机房分流。",
-    "tags": [
-      "DNS",
-      "负载均衡",
-      "基础"
-    ],
-    "frequency": "中频"
-  },
-  {
-    "id": 1106,
-    "type": "single",
-    "category": "DNS",
-    "difficulty": "简单",
-    "question": "CNAME 记录的含义是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "把一个域名指向一个 IP"
-      },
-      {
-        "key": "B",
-        "text": "把一个域名指向另一个域名（别名）"
-      },
-      {
-        "key": "C",
-        "text": "反查 IP 对应的域名"
-      },
-      {
-        "key": "D",
-        "text": "指定邮件服务器"
-      }
-    ],
-    "answer": [
-      "B"
-    ],
-    "explanation": "**CNAME 是「别名」**：`www.example.com` → `example.cdn.com`，解析器会继续追一层。**注意：CNAME 不能用在根域（裸域）上**（`example.com` 不能设 CNAME，因为根域必须同时有 SOA/NS 记录），所以裸域通常用 A 记录或厂商的 ALIAS/ANAME 特殊记录。",
-    "tags": [
-      "DNS",
-      "CNAME",
-      "基础"
-    ],
-    "frequency": "高频"
-  },
-  {
     "id": 1107,
     "type": "single",
     "category": "DNS",
@@ -3010,41 +2940,6 @@
     "frequency": "高频"
   },
   {
-    "id": 1109,
-    "type": "single",
-    "category": "DNS",
-    "difficulty": "简单",
-    "question": "`nslookup` 和 `dig` 相比，主要劣势是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "不能查 A 记录"
-      },
-      {
-        "key": "B",
-        "text": "必须用 root 才能运行"
-      },
-      {
-        "key": "C",
-        "text": "输出信息少，不易看到 TTL、权威服务器、flags 等细节"
-      },
-      {
-        "key": "D",
-        "text": "只能查 IPv6"
-      }
-    ],
-    "answer": [
-      "C"
-    ],
-    "explanation": "**`dig` 输出完整（TTL、权威段 AUTHORITY、ADDITIONAL、flags、查询耗时），更适合排障**；`nslookup` 输出简洁但信息少。生产排查建议统一用 `dig`（`dig +short` 看结果、`dig +trace` 看链路、`dig @8.8.8.8` 指定服务器对比）。",
-    "tags": [
-      "DNS",
-      "dig",
-      "工具"
-    ],
-    "frequency": "低频"
-  },
-  {
     "id": 1110,
     "type": "single",
     "category": "DNS",
@@ -3078,41 +2973,6 @@
       "缓存"
     ],
     "frequency": "中频"
-  },
-  {
-    "id": 1111,
-    "type": "single",
-    "category": "DNS",
-    "difficulty": "简单",
-    "question": "PTR 记录用来做什么？",
-    "options": [
-      {
-        "key": "A",
-        "text": "指定邮件服务器优先级"
-      },
-      {
-        "key": "B",
-        "text": "反向解析：用 IP 查域名"
-      },
-      {
-        "key": "C",
-        "text": "域名所有权验证"
-      },
-      {
-        "key": "D",
-        "text": "正向解析：用域名查 IP"
-      }
-    ],
-    "answer": [
-      "B"
-    ],
-    "explanation": "**PTR 是反向解析（IP → 域名）**，存放在 `x.y.z.in-addr.arpa` 区里。主要用途：\n①**邮件服务器反垃圾**（很多收件方要求发信 IP 有正确的 PTR，否则被判垃圾）；\n②日志里把 IP 还原成主机名；\n③部分风控系统校验。查询命令：`dig -x 1.2.3.4`。",
-    "tags": [
-      "DNS",
-      "PTR",
-      "反向解析"
-    ],
-    "frequency": "低频"
   },
   {
     "id": 1112,
@@ -10083,42 +9943,6 @@
     "frequency": "中频"
   },
   {
-    "id": 2519,
-    "type": "multiple",
-    "category": "LVS/HAProxy",
-    "difficulty": "困难",
-    "question": "评估「要不要引入 LVS」时，以下哪些是合理的判断依据？（多选）",
-    "options": [
-      {
-        "key": "A",
-        "text": "团队有能力维护内核态转发与 Keepalived"
-      },
-      {
-        "key": "B",
-        "text": "只要想提高可用性就必须上 LVS"
-      },
-      {
-        "key": "C",
-        "text": "需要按 URL/域名做七层分流，且后端服务多"
-      },
-      {
-        "key": "D",
-        "text": "当前 Nginx 已是瓶颈（CPU/连接数打满），需要更高吞吐"
-      }
-    ],
-    "answer": [
-      "A",
-      "D"
-    ],
-    "explanation": "B 恰恰是 LVS 做不到的（需要七层，应该用 Nginx/HAProxy）。D 过于绝对：可用性可以靠 Nginx + Keepalived 实现，不必引入 LVS。\n\nLVS 的价值在「四层高吞吐」，只有在 Nginx 成为瓶颈时才值得引入。",
-    "tags": [
-      "选型",
-      "LVS",
-      "架构"
-    ],
-    "frequency": "中频"
-  },
-  {
     "id": 2520,
     "type": "short",
     "category": "LVS/HAProxy",
@@ -10582,41 +10406,6 @@
       "四层",
       "七层",
       "选型"
-    ],
-    "frequency": "中频"
-  },
-  {
-    "id": 2541,
-    "type": "single",
-    "category": "LVS/HAProxy",
-    "difficulty": "中等",
-    "question": "HAProxy 的 `balance source` 算法与 `balance roundrobin` 的本质差别是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "两者完全相同"
-      },
-      {
-        "key": "B",
-        "text": "roundrobin 支持健康检查，source 不支持"
-      },
-      {
-        "key": "C",
-        "text": "source 性能更好"
-      },
-      {
-        "key": "D",
-        "text": "source 按源 IP 哈希固定后端，能实现会话保持；roundrobin 轮询不保证同一客户端落到同一后端"
-      }
-    ],
-    "answer": [
-      "D"
-    ],
-    "explanation": "`source` 是源地址哈希，同一客户端 IP 稳定落同一后端，**代价是负载可能不均**（大量请求来自同一 NAT 出口 IP 时全压一台）。`roundrobin` 最均衡但无会话保持，需应用无状态或配合共享 Session。\n\n补充：`leastconn`（最小连接，适合长连接）、`uri`（按 URI 哈希做缓存亲和）。",
-    "tags": [
-      "HAProxy",
-      "会话保持",
-      "算法"
     ],
     "frequency": "中频"
   },
@@ -12484,41 +12273,6 @@
     "frequency": "中频"
   },
   {
-    "id": 2602,
-    "type": "single",
-    "category": "LVS/HAProxy",
-    "difficulty": "简单",
-    "question": "LVS DR 模式下，VIP 在 RS（真实服务器）上通常配置在哪里？",
-    "options": [
-      {
-        "key": "A",
-        "text": "配在对外服务的物理网卡上，例如 `eth0`"
-      },
-      {
-        "key": "B",
-        "text": "RS 上不需要 VIP，只有 Director 需要"
-      },
-      {
-        "key": "C",
-        "text": "配在回环接口上，例如 `ip addr add 10.0.0.100/32 dev lo`"
-      },
-      {
-        "key": "D",
-        "text": "配在上联交换机的 VLAN 接口上"
-      }
-    ],
-    "answer": [
-      "C"
-    ],
-    "explanation": "RS 需要 VIP 是为了**用 VIP 作源地址回包**，但绝不能让它出现在物理网卡上对外应答 ARP，所以配在 **lo（回环）**上，再配合 `arp_ignore=1`、`arp_announce=2`。配在 eth0 上会导致 ARP 冲突、流量绕过 Director\nRS 完全不配 VIP 则回包源地址不对，客户端会丢弃\n交换机接口更不是主机能配 VIP 的地方。",
-    "tags": [
-      "LVS",
-      "VIP",
-      "lo接口"
-    ],
-    "frequency": "中频"
-  },
-  {
     "id": 2603,
     "type": "single",
     "category": "LVS/HAProxy",
@@ -12587,41 +12341,6 @@
       "IP隧道"
     ],
     "frequency": "高频"
-  },
-  {
-    "id": 2605,
-    "type": "single",
-    "category": "LVS/HAProxy",
-    "difficulty": "简单",
-    "question": "LVS 的 FULLNAT 模式（同时改写源和目的地址）带来的好处是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "请求只经过 Director 一次，响应由 RS 直接返回客户端"
-      },
-      {
-        "key": "B",
-        "text": "RS 上不必配置 VIP、也可以跨网段部署，便于与 LVS 部署在不同 VLAN"
-      },
-      {
-        "key": "C",
-        "text": "不需要在 Director 上做任何地址转换，纯二层转发"
-      },
-      {
-        "key": "D",
-        "text": "可以按 HTTP 头部内容做路由决策"
-      }
-    ],
-    "answer": [
-      "B"
-    ],
-    "explanation": "FULLNAT 在入向和出向都改地址，**RS 侧完全看不到 VIP**，因此不需要把 VIP 配到 lo、也不受「RS 必须与 Director 同网段」的限制（这是 DR/TUN 的硬约束），组网最灵活，典型用于 LVS 与业务机器跨 VLAN 的场景。代价是回包也要经过 Director，且 RS 上看到的源地址不是真实客户端 IP（需额外手段透传）。\n\n「响应由 RS 直接返回」是 DR 的特性。",
-    "tags": [
-      "LVS",
-      "FULLNAT",
-      "组网"
-    ],
-    "frequency": "中频"
   },
   {
     "id": 2606,
@@ -16424,41 +16143,6 @@
     "frequency": "高频"
   },
   {
-    "id": 3512,
-    "type": "single",
-    "category": "MongoDB",
-    "difficulty": "中等",
-    "question": "分片集群里，查询**没有**带片键时会怎样？",
-    "options": [
-      {
-        "key": "A",
-        "text": "直接报错"
-      },
-      {
-        "key": "B",
-        "text": "mongos 广播到所有 shard，由 mongos 合并去重"
-      },
-      {
-        "key": "C",
-        "text": "查询随机落到某个 shard，可能漏数据"
-      },
-      {
-        "key": "D",
-        "text": "mongos 自动找 config 服务器查询"
-      }
-    ],
-    "answer": [
-      "B"
-    ],
-    "explanation": "这叫 **scatter-gather（广播查询）**，功能上正确但性能差：N 个 shard 都要查，mongos 还要做归并排序。数据量大时是主要慢查询来源。\n\n所以片键必须与**最高频的查询条件**相关；确需多维度查询时，考虑把该集合放到独立 shard 上，或在 mongos 层限流。",
-    "tags": [
-      "分片",
-      "广播查询",
-      "路由"
-    ],
-    "frequency": "中频"
-  },
-  {
     "id": 3513,
     "type": "short",
     "category": "MongoDB",
@@ -16753,41 +16437,6 @@
     "frequency": "中频"
   },
   {
-    "id": 3526,
-    "type": "single",
-    "category": "MongoDB",
-    "difficulty": "中等",
-    "question": "关于索引的「覆盖查询」（covered query），以下说法正确的是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "覆盖查询会自动去重"
-      },
-      {
-        "key": "B",
-        "text": "覆盖查询只对单字段索引有效"
-      },
-      {
-        "key": "C",
-        "text": "查询字段与返回字段全在索引里，可以完全不读文档（stage 无 FETCH）"
-      },
-      {
-        "key": "D",
-        "text": "覆盖查询必须用 hint 才能生效"
-      }
-    ],
-    "answer": [
-      "C"
-    ],
-    "explanation": "三个条件才能构成覆盖查询：\n①查询条件字段在索引里；\n②返回字段（projection）全在索引里；\n③**不返回 `_id`**（除非 `_id` 在索引里）——这是最易漏的一条：不写 `{_id: 0}` 就会 FETCH。覆盖查询的价值是省掉回表 IO，高频小字段查询（如列表页只查 id+标题）提升明显。",
-    "tags": [
-      "覆盖查询",
-      "索引",
-      "优化"
-    ],
-    "frequency": "中频"
-  },
-  {
     "id": 3527,
     "type": "short",
     "category": "MongoDB",
@@ -16865,41 +16514,6 @@
       "日志"
     ],
     "frequency": "低频"
-  },
-  {
-    "id": 3531,
-    "type": "single",
-    "category": "MongoDB",
-    "difficulty": "简单",
-    "question": "TTL 索引删除过期文档的机制是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "查询时才删除"
-      },
-      {
-        "key": "B",
-        "text": "后台线程每 60 秒扫描一次，删除已过期的文档"
-      },
-      {
-        "key": "C",
-        "text": "到期瞬间立即删除"
-      },
-      {
-        "key": "D",
-        "text": "需要手动执行清理命令"
-      }
-    ],
-    "answer": [
-      "B"
-    ],
-    "explanation": "TTL 线程默认每 60 秒（`ttlMonitorSleepSecs`）跑一次，所以过期后最多 60 秒才会被删。且它是**单线程**的，大量文档同时过期时清理会很慢。要点：\n①字段必须是 `Date` 类型或包含 Date 的数组；\n②`expireAfterSeconds: 0` 表示「到期时间由字段值本身决定」，可用业务字段；\n③副本集上 TTL 只在**主节点**执行；\n④TTL 索引不能是复合索引的唯一字段。",
-    "tags": [
-      "TTL",
-      "过期",
-      "清理"
-    ],
-    "frequency": "中频"
   },
   {
     "id": 3532,
@@ -60187,43 +59801,6 @@
     "frequency": "中频"
   },
   {
-    "id": 9543,
-    "type": "multiple",
-    "category": "网络基础",
-    "difficulty": "中等",
-    "question": "以下哪些属于「应用层」协议？（多选）",
-    "options": [
-      {
-        "key": "A",
-        "text": "HTTP、DNS"
-      },
-      {
-        "key": "B",
-        "text": "TCP、UDP"
-      },
-      {
-        "key": "C",
-        "text": "MySQL 协议、Redis RESP"
-      },
-      {
-        "key": "D",
-        "text": "SSH、SMTP"
-      }
-    ],
-    "answer": [
-      "A",
-      "C",
-      "D"
-    ],
-    "explanation": "TCP、UDP 是**传输层**（四层模型的第三层）。分层速记：**物理/链路（以太网、ARP）→ 网络（IP、ICMP）→ 传输（TCP、UDP）→ 应用（HTTP、DNS、SSH、SMTP、FTP、MySQL协议、RESP）**。\n\n注意 DNS 通常走 UDP 53，但它是应用层协议，**传输层用什么不影响它的分层归属**。",
-    "tags": [
-      "分层",
-      "应用层",
-      "协议"
-    ],
-    "frequency": "中频"
-  },
-  {
     "id": 9544,
     "type": "single",
     "category": "网络基础",
@@ -62190,41 +61767,6 @@
     ]
   },
   {
-    "id": 9600,
-    "type": "single",
-    "category": "网络基础",
-    "difficulty": "简单",
-    "question": "IP 地址与路由选择属于 OSI 参考模型的哪一层？",
-    "options": [
-      {
-        "key": "A",
-        "text": "应用层（第七层）"
-      },
-      {
-        "key": "B",
-        "text": "网络层（第三层）"
-      },
-      {
-        "key": "C",
-        "text": "数据链路层（第二层）"
-      },
-      {
-        "key": "D",
-        "text": "传输层（第四层）"
-      }
-    ],
-    "answer": [
-      "B"
-    ],
-    "explanation": "网络层负责逻辑寻址（IP 地址）和路由选路，跨网段转发靠的就是这一层。数据链路层用 MAC 地址在同一链路上逐跳传输；传输层用 TCP/UDP 提供端到端的端口寻址与可靠性；应用层是 HTTP、DNS 等协议。\n\n口诀「物数网传会表应」，IP 和路由都在第三层。",
-    "tags": [
-      "OSI七层",
-      "网络层",
-      "IP"
-    ],
-    "frequency": "中频"
-  },
-  {
     "id": 9601,
     "type": "single",
     "category": "网络基础",
@@ -62643,41 +62185,6 @@
       "可用地址"
     ],
     "frequency": "低频"
-  },
-  {
-    "id": 9613,
-    "type": "single",
-    "category": "网络基础",
-    "difficulty": "简单",
-    "question": "ping 命令基于哪个协议工作？",
-    "options": [
-      {
-        "key": "A",
-        "text": "TCP"
-      },
-      {
-        "key": "B",
-        "text": "ICMP"
-      },
-      {
-        "key": "C",
-        "text": "ARP"
-      },
-      {
-        "key": "D",
-        "text": "UDP"
-      }
-    ],
-    "answer": [
-      "B"
-    ],
-    "explanation": "ping 发送 ICMP Echo Request，等对方回 Echo Reply，据此判断主机是否可达并算出往返时延。因为是 ICMP 而非 TCP/UDP，只验证三层可达性，不代表业务端口可用：ping 通但 80 端口被拦的情况很常见。\n\n云主机安全组、防火墙常直接禁 ICMP，所以 ping 不通也不能断定机器宕机。",
-    "tags": [
-      "ping",
-      "ICMP",
-      "连通性"
-    ],
-    "frequency": "高频"
   },
   {
     "id": 9614,
@@ -64076,41 +63583,6 @@
     "frequency": "高频"
   },
   {
-    "id": 10014,
-    "type": "single",
-    "category": "Kubernetes",
-    "difficulty": "中等",
-    "question": "StatefulSet 为什么要配合 Headless Service 使用？",
-    "options": [
-      {
-        "key": "A",
-        "text": "为了节省 ClusterIP 地址"
-      },
-      {
-        "key": "B",
-        "text": "为了给每个 Pod 提供稳定的 DNS 名称，供集群成员互相发现"
-      },
-      {
-        "key": "C",
-        "text": "Headless Service 才能做负载均衡"
-      },
-      {
-        "key": "D",
-        "text": "为了支持 NodePort 暴露"
-      }
-    ],
-    "answer": [
-      "B"
-    ],
-    "explanation": "Headless Service 的 DNS 会为每个 Pod 返回独立 A 记录（`pod-name.svc-name.namespace.svc.cluster.local`），这正是 ZK/Kafka/MySQL 主从「各自知道其他成员地址」所需要的。C 说反了：Headless 不做负载均衡。",
-    "tags": [
-      "StatefulSet",
-      "Headless",
-      "DNS"
-    ],
-    "frequency": "中频"
-  },
-  {
     "id": 10015,
     "type": "short",
     "category": "Kubernetes",
@@ -64189,41 +63661,6 @@
       "BestEffort"
     ],
     "frequency": "中频"
-  },
-  {
-    "id": 10019,
-    "type": "single",
-    "category": "Kubernetes",
-    "difficulty": "简单",
-    "question": "想让一批 Pod 只在带 `disk=ssd` 标签的节点上运行，最直接的做法是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "用 NetworkPolicy 限制"
-      },
-      {
-        "key": "B",
-        "text": "给 Pod 加 tolerations"
-      },
-      {
-        "key": "C",
-        "text": "为节点设置 annotation"
-      },
-      {
-        "key": "D",
-        "text": "为 Pod 设置 nodeSelector: disk: ssd"
-      }
-    ],
-    "answer": [
-      "D"
-    ],
-    "explanation": "nodeSelector 是硬匹配，最简单直接。需要更灵活的表达（拓扑、权重、多条件）用 `nodeAffinity`；需要「尽量去」用 `preferredDuringSchedulingIgnoredDuringExecution`。\n\ntolerations 是「容忍污点」，不是选择节点。",
-    "tags": [
-      "调度",
-      "nodeSelector",
-      "亲和性"
-    ],
-    "frequency": "高频"
   },
   {
     "id": 10020,
@@ -64825,41 +64262,6 @@
       "排查"
     ],
     "frequency": "高频"
-  },
-  {
-    "id": 10044,
-    "type": "single",
-    "category": "Kubernetes",
-    "difficulty": "中等",
-    "question": "一个 Deployment 有 3 副本，滚动更新时 `maxSurge: 1, maxUnavailable: 0`，更新过程中最多存在几个 Pod？",
-    "options": [
-      {
-        "key": "A",
-        "text": "3"
-      },
-      {
-        "key": "B",
-        "text": "6"
-      },
-      {
-        "key": "C",
-        "text": "5"
-      },
-      {
-        "key": "D",
-        "text": "4"
-      }
-    ],
-    "answer": [
-      "D"
-    ],
-    "explanation": "上限 = 期望副本 + maxSurge = 3 + 1 = 4；下限 = 3 - maxUnavailable = 3。所以过程中先起 1 个新的（共 4 个），等它 Ready 再删 1 个旧的，始终保持至少 3 个可用。\n\n这是「零中断」的推荐配置，代价是要多一份资源。",
-    "tags": [
-      "滚动更新",
-      "maxSurge",
-      "副本数"
-    ],
-    "frequency": "中频"
   },
   {
     "id": 10045,
@@ -66712,41 +66114,6 @@
     ]
   },
   {
-    "id": 10100,
-    "type": "single",
-    "category": "Kubernetes",
-    "difficulty": "简单",
-    "question": "与虚拟机相比，容器最本质的特点是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "每个容器都自带一套完整的操作系统内核"
-      },
-      {
-        "key": "B",
-        "text": "容器内的进程运行在用户态，不占用宿主机资源"
-      },
-      {
-        "key": "C",
-        "text": "必须依赖 VMware 之类的虚拟化软件才能运行"
-      },
-      {
-        "key": "D",
-        "text": "与宿主机共享内核，靠命名空间和 cgroups 做隔离"
-      }
-    ],
-    "answer": [
-      "D"
-    ],
-    "explanation": "容器是进程级隔离：多个容器共用宿主机同一个内核，通过 namespace 隔开 PID、网络、文件系统视图，用 cgroups 限制 CPU、内存等资源，所以启动是秒级、开销小。B 恰好是虚拟机的做法（每台虚拟机有独立内核）；D 说「不占资源」明显不对，容器仍消耗宿主机的 CPU、内存和 IO。",
-    "tags": [
-      "容器",
-      "虚拟机",
-      "namespace"
-    ],
-    "frequency": "高频"
-  },
-  {
     "id": 10104,
     "type": "single",
     "category": "Kubernetes",
@@ -67023,41 +66390,6 @@
       "ConfigMap",
       "Secret",
       "配置管理"
-    ],
-    "frequency": "高频"
-  },
-  {
-    "id": 10112,
-    "type": "single",
-    "category": "Kubernetes",
-    "difficulty": "简单",
-    "question": "查看某个 Pod 里运行过容器的日志，应该用哪个命令？",
-    "options": [
-      {
-        "key": "A",
-        "text": "`kubectl describe pod <pod>`"
-      },
-      {
-        "key": "B",
-        "text": "`kubectl get pods -o wide`"
-      },
-      {
-        "key": "C",
-        "text": "`kubectl logs <pod> -c <container>`"
-      },
-      {
-        "key": "D",
-        "text": "`kubectl exec <pod> -- top`"
-      }
-    ],
-    "answer": [
-      "C"
-    ],
-    "explanation": "`kubectl logs` 读取容器标准输出，Pod 内有多个容器时用 `-c` 指定容器名，加 `-f` 可实时跟随，加 `--previous` 可看上一个崩溃实例的日志。describe 展示事件与状态而非日志\nget pods 只列清单\nexec 进容器执行命令，适合交互排查但不用于取日志。",
-    "tags": [
-      "kubectl",
-      "日志",
-      "排障"
     ],
     "frequency": "高频"
   },
