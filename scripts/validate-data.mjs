@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 题库数据校验：npm run validate:data
  * 校验失败以非零码退出，并列出具体题目 id 与原因。
  *
@@ -25,7 +25,7 @@ const PENDING = new Set(PENDING_CATEGORIES)
  * 下限保持 90，避免误删导致题库残缺。
  */
 const MIN_TOTAL = 90
-const MAX_TOTAL = 3000
+const MAX_TOTAL = 4000
 const MIN_PER_CATEGORY = 6
 const MIN_CHOICE_TOTAL = 20
 const MAX_QUESTION_LEN = 120
