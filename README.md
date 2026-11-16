@@ -4,7 +4,7 @@
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**2892 题**（1000 简答 + 1720 单选 + 172 多选），26 个分类；含 **363 张内联 SVG 图解**
+- 题库：**3140 题**（1000 简答 + 1916 单选 + 224 多选），26 个分类；含 **363 张内联 SVG 图解**
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 
 > **装到手机桌面**：iPhone 用 **Safari** 打开后「添加到主屏幕」；Android 用 **Chrome** 的「安装应用」。
