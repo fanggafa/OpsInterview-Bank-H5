@@ -87,11 +87,27 @@ const optionStates = computed(() =>
  * 用户在「错题本 · MySQL」里看到「共 6 题」，左右滑动就该在这 6 题里走，
  * 而不是滑两下跳到别的分类、别的来源。
  *
- * URL 由入口带 `?scope=wrong|favorites&category=X` 表达；
+ * URL 由入口带 `?scope=wrong|favorites|daily&category=X` 表达；
  * 未带 scope 时才回落到全库。
+ *
+ * **`scope=daily`：单元素列表**。「每日一记」每天的定位就是**只有一道题**，
+ * 不应该能左右滑到别的题目去 —— 早先它只带 `from=/` 没带 scope，
+ * 于是回落到全库，滑一下就跑到了无关的题目（用户反馈「每日一记不就每天一题么，
+ * 怎么还能左右滑动切题」）。现在单独成 scope，滑到边界只弹「已经是第一题/最后一题」。
  */
 const scopedList = computed(() => {
   const scope = route.query.scope
+
+  /**
+   * 每日一记：**只含当前这一题**。
+   *
+   * 用单元素数组而不是直接 `[]` —— 空数组会让 `index` 为 -1，
+   * 详情页的「第 n / m 题」之类的进度显示会异常。
+   * 单元素列表下 `prevQuestion` 与 `nextQuestion` 都是 null，
+   * 越界提示正常生效，滑动不会跳走。
+   */
+  if (scope === 'daily') return question.value ? [question.value] : []
+
   if (scope !== 'wrong' && scope !== 'favorites') return bank.questions
 
   const source = scope === 'wrong' ? study.wrongList : study.favoriteList
@@ -283,7 +299,7 @@ function go(q) {
   const params = new URLSearchParams()
   if (backTo.value) params.set('from', backTo.value)
   const scope = route.query.scope
-  if (scope === 'wrong' || scope === 'favorites') {
+  if (scope === 'wrong' || scope === 'favorites' || scope === 'daily') {
     params.set('scope', scope)
     const category = route.query.category
     if (typeof category === 'string' && category) params.set('category', category)

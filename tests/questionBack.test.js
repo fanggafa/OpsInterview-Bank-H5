@@ -110,10 +110,18 @@ describe('详情页 · 返回来源', () => {
     expect(src).toMatch(/FROM_ROUTES\.includes\(from\)/)
   })
 
-  it('首页每日一题跳转时带上 from=/', () => {
+  it('首页每日一题跳转时带上 from=/ 与 scope=daily', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/views/HomeView.vue'), 'utf8')
-    // 形如 router.push(`/question/${daily.value.id}?from=/`)
-    expect(src).toContain('?from=/`')
+    /**
+     * 2026-11 修复：早先只带 `from=/`，详情页 Fallback 到全库，
+     * 于是「每日一记」这一道题还能左右滑动切到别的题目。
+     * 现在额外带 `scope=daily`，详情页据此把列表收敛成单元素。
+     *
+     * 形如 router.push(`/question/${daily.value.id}?scope=daily&from=/`)
+     */
+    expect(src).toContain('scope=daily')
+    expect(src).toContain('from=/')
+    expect(src).toMatch(/\?scope=daily&from=\//)
   })
 
   it('三个列表页都把自己的路径作为 from 传给卡片', () => {
@@ -140,5 +148,36 @@ describe('详情页 · 返回来源', () => {
     expect(src).toMatch(/URLSearchParams/)
     expect(src).toMatch(/scope/)
     expect(src).toMatch(/category/)
+  })
+})
+
+describe('每日一记 · scope=daily 收敛为单题（回归）', () => {
+  /**
+   * 2026-11 Bug：用户反馈「每日一记不就每天一题么，怎么还能左右滑动切题」。
+   *
+   * 根因：首页入口只带 `from=/`，详情页的 `scopedList` 只认
+   * `scope=wrong|favorites`，其它一律回落到全库 `bank.questions` ——
+   * 于是这一道「每日一记」能滑到全库任意题目。
+   *
+   * 修法：新增 `scope=daily`，详情页据此把列表收敛成 `[当前题]`。
+   */
+  const src = () => readFileSync(resolve(process.cwd(), 'src/views/QuestionView.vue'), 'utf8')
+
+  it('详情页识别 scope=daily 并返回单元素列表', () => {
+    const code = src()
+    expect(code).toContain("scope === 'daily'")
+    // 必须是返回单元素数组，不能返回空数组（会让 index=-1、进度显示异常）
+    expect(code).toMatch(/scope === .daily.\) return question\.value \? \[question\.value\] : \[\]/)
+  })
+
+  it('切题时保留 scope=daily（防止滑走后范围变回全库）', () => {
+    const code = src()
+    const goBody = code.slice(code.indexOf('function go('), code.indexOf('const statusText'))
+    expect(goBody).toContain("scope === 'daily'")
+  })
+
+  it('首页入口必须同时带 scope=daily 与 from=/', () => {
+    const home = readFileSync(resolve(process.cwd(), 'src/views/HomeView.vue'), 'utf8')
+    expect(home).toMatch(/\?scope=daily&from=\//)
   })
 })
