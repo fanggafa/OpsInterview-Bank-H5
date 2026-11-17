@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 全局常量：枚举值与文案的唯一来源。
  * 组件内禁止硬编码中文字面量做比较，一律引用此文件。
  */
@@ -154,6 +154,21 @@ export const TYPE_LABEL = {
   single: '单选',
   multiple: '多选',
 }
+
+/**
+ * 题库页的「题型」筛选项。
+ *
+ * 顺序与 `TYPE_LABEL` 的展示一致，**单选 / 多选在前、简答在后** ——
+ * 选择题是「点一下就判定」的高频练习形式，放前面更顺手。
+ *
+ * 值是题目数据里的 `type` 原值（不是展示名），
+ * 这样筛选时能直接和 `q.type` 比较，不必做反查映射。
+ */
+export const TYPES = [
+  { value: 'single', label: TYPE_LABEL.single },
+  { value: 'multiple', label: TYPE_LABEL.multiple },
+  { value: 'short', label: TYPE_LABEL.short },
+]
 
 /** 题型对应的判定结果文案 */
 export const CHOICE_RESULT_LABEL = {
@@ -378,7 +393,7 @@ export const SUMMARY_LENGTH = 50
  * 10 条：手机一屏约看 2-3 张卡片，10 条约 3-4 屏，扫一遍就能到底；
  * 15 条时要滚很久才见底，容易误以为「列表只有这些、没有下一页」。
  */
-export const PAGE_SIZE = 10
+export const PAGE_SIZE = 8
 
 /** 分页快捷跳页的候选步长（「上一页/下一页」之外的首页末页） */
 export const PAGE_JUMP_EDGE = true

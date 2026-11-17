@@ -45,16 +45,31 @@ export function filterByDifficulty(questions, difficulty) {
 }
 
 /**
- * 组合筛选：分类 → 频率 → 难度 → 关键词。
+ * 按题型筛选。type 为空表示「全部题型」。
+ *
+ * 题型是混在题干级别的属性（`short` / `single` / `multiple`），
+ * 不像分类那样有二级下钻，所以只是一个平铺的相等比较。
+ *
+ * @param {Array} questions
+ * @param {string|null|undefined} type
+ */
+export function filterByType(questions, type) {
+  if (!type) return questions.slice()
+  return questions.filter((q) => (q.type || 'short') === type)
+}
+
+/**
+ * 组合筛选：分类 → 题型 → 频率 → 难度 → 关键词。
  * 顺序固定，保证行为可预测。
  * @param {Array} questions
- * @param {{category?: string, frequency?: string, difficulty?: string, keyword?: string}} filters
+ * @param {{category?: string, type?: string, frequency?: string, difficulty?: string, keyword?: string}} filters
  */
 export function applyFilters(
   questions,
-  { category = '', frequency = '', difficulty = '', keyword = '' } = {}
+  { category = '', type = '', frequency = '', difficulty = '', keyword = '' } = {}
 ) {
   let result = filterByCategory(questions, category)
+  result = filterByType(result, type)
   result = filterByFrequency(result, frequency)
   result = filterByDifficulty(result, difficulty)
   result = filterByKeyword(result, keyword)
@@ -76,17 +91,26 @@ export function countByCategory(questions) {
 /**
  * 从 route.query 中解析出筛选状态，并对非法值做兜底。
  * URL 是筛选态的唯一来源，保证刷新/返回后可恢复。
+ *
  * @param {Object} query
  * @param {string[]} categories 合法分类枚举
  * @param {string[]} frequencies 合法频率枚举
  * @param {string[]} [difficulties] 合法难度枚举
+ * @param {string[]} [types] 合法题型枚举（`short` / `single` / `multiple`）
  */
-export function parseQueryState(query = {}, categories = [], frequencies = [], difficulties = []) {
+export function parseQueryState(
+  query = {},
+  categories = [],
+  frequencies = [],
+  difficulties = [],
+  types = []
+) {
   const category = categories.includes(query.category) ? query.category : ''
   const frequency = frequencies.includes(query.frequency) ? query.frequency : ''
   const difficulty = difficulties.includes(query.difficulty) ? query.difficulty : ''
+  const type = types.includes(query.type) ? query.type : ''
   const keyword = typeof query.q === 'string' ? query.q : ''
-  return { category, frequency, difficulty, keyword }
+  return { category, type, frequency, difficulty, keyword }
 }
 
 /**
@@ -94,9 +118,10 @@ export function parseQueryState(query = {}, categories = [], frequencies = [], d
  * @param {Object} state
  * @param {number} [page] 页码，1 时省略
  */
-export function toQueryState({ category, frequency, difficulty, keyword }, page = 1) {
+export function toQueryState({ category, type, frequency, difficulty, keyword }, page = 1) {
   const query = {}
   if (category) query.category = category
+  if (type) query.type = type
   if (frequency) query.frequency = frequency
   if (difficulty) query.difficulty = difficulty
   if (keyword && keyword.trim()) query.q = keyword.trim()

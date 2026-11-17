@@ -6,9 +6,20 @@ import {
   filterByDifficulty,
   filterByFrequency,
   filterByKeyword,
+  filterByType,
   parseQueryState,
   toQueryState,
 } from '@/utils/filter'
+import { TYPES } from '@/utils/constants'
+
+/**
+ * 题型原值数组（`short` / `single` / `multiple`）。
+ *
+ * `parseQueryState` / `toQueryState` 收的是**原值数组**，
+ * 不是 `TYPES` 那种带 label 的对象数组 —— 后者是给模板渲染用的。
+ * 从同一份常量推导，避免两处各写一份。
+ */
+const TYPE_VALUES = TYPES.map((t) => t.value)
 
 const QUESTIONS = [
   { id: 1, category: 'A', difficulty: '简单', question: 'q1 tcp', answer: 'a1', tags: ['网络'], frequency: '高频' },
@@ -133,9 +144,16 @@ describe('parseQueryState', () => {
 
   it('合法值原样采用', () => {
     expect(
-      parseQueryState({ category: 'A', frequency: '高频', difficulty: '中等', q: 'tcp' }, CATS, FREQS, DIFFS)
+      parseQueryState(
+        { category: 'A', type: 'single', frequency: '高频', difficulty: '中等', q: 'tcp' },
+        CATS,
+        FREQS,
+        DIFFS,
+        TYPE_VALUES
+      )
     ).toEqual({
       category: 'A',
+      type: 'single',
       frequency: '高频',
       difficulty: '中等',
       keyword: 'tcp',
@@ -144,9 +162,16 @@ describe('parseQueryState', () => {
 
   it('非法值兜底为空（防止手改 URL 导致异常状态）', () => {
     expect(
-      parseQueryState({ category: 'ZZZ', frequency: '超高', difficulty: '超难' }, CATS, FREQS, DIFFS)
+      parseQueryState(
+        { category: 'ZZZ', type: 'multi', frequency: '超高', difficulty: '超难' },
+        CATS,
+        FREQS,
+        DIFFS,
+        TYPE_VALUES
+      )
     ).toEqual({
       category: '',
+      type: '',
       frequency: '',
       difficulty: '',
       keyword: '',
@@ -154,21 +179,31 @@ describe('parseQueryState', () => {
   })
 
   it('缺省参数返回空状态', () => {
-    expect(parseQueryState({}, CATS, FREQS, DIFFS)).toEqual({
+    expect(parseQueryState({}, CATS, FREQS, DIFFS, TYPE_VALUES)).toEqual({
       category: '',
+      type: '',
       frequency: '',
       difficulty: '',
       keyword: '',
     })
   })
 
-  it('不传难度枚举时不解析难度（向后兼容）', () => {
-    expect(parseQueryState({ difficulty: '中等' }, CATS, FREQS)).toEqual({
+  it('不传枚举时不解析对应项（向后兼容）', () => {
+    expect(parseQueryState({ difficulty: '中等', type: 'single' }, CATS, FREQS)).toEqual({
       category: '',
+      type: '',
       frequency: '',
       difficulty: '',
       keyword: '',
     })
+  })
+
+  it('题型按 short / single / multiple 解析', () => {
+    for (const t of ['short', 'single', 'multiple']) {
+      expect(parseQueryState({ type: t }, CATS, FREQS, DIFFS, TYPE_VALUES).type).toBe(t)
+    }
+    // 拼错或未知值一律兜底为空
+    expect(parseQueryState({ type: 'choice' }, CATS, FREQS, DIFFS, TYPE_VALUES).type).toBe('')
   })
 })
 
@@ -194,9 +229,20 @@ describe('toQueryState', () => {
   })
 
   it('与 parseQueryState 可往返', () => {
-    const state = { category: 'A', frequency: '高频', difficulty: '中等', keyword: 'tcp' }
+    const state = {
+      category: 'A',
+      type: 'single',
+      frequency: '高频',
+      difficulty: '中等',
+      keyword: 'tcp',
+    }
     expect(
-      parseQueryState(toQueryState(state), ['A'], ['高频'], ['简单', '中等', '困难'])
+      parseQueryState(toQueryState(state), ['A'], ['高频'], ['简单', '中等', '困难'], TYPE_VALUES)
     ).toEqual(state)
+  })
+
+  it('题型写入 URL，为空时省略', () => {
+    expect(toQueryState({ type: 'short' })).toEqual({ type: 'short' })
+    expect(toQueryState({ type: '' })).toEqual({})
   })
 })

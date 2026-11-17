@@ -6,7 +6,7 @@ import QuestionCard from '@/components/QuestionCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Pagination from '@/components/Pagination.vue'
 import { useBankStore } from '@/stores/bankStore'
-import { CATEGORIES, DIFFICULTIES, FREQUENCIES, PAGE_SIZE, SEARCH_DEBOUNCE_MS } from '@/utils/constants'
+import { CATEGORIES, DIFFICULTIES, FREQUENCIES, TYPES, PAGE_SIZE, SEARCH_DEBOUNCE_MS } from '@/utils/constants'
 import { applyFilters, parseQueryState, toQueryState } from '@/utils/filter'
 import { pageMeta, paginate } from '@/utils/paginate'
 import { buildRetryHint } from '@/utils/retryHint'
@@ -16,9 +16,12 @@ const route = useRoute()
 const router = useRouter()
 const bank = useBankStore()
 
+/** 题型筛选的合法枚举（URL 里存的是 `short` / `single` / `multiple`） */
+const TYPE_VALUES = TYPES.map((t) => t.value)
+
 /** URL 是筛选态的唯一来源：刷新 / 返回都能恢复 */
 const state = computed(() =>
-  parseQueryState(route.query, CATEGORIES, FREQUENCIES, DIFFICULTIES)
+  parseQueryState(route.query, CATEGORIES, FREQUENCIES, DIFFICULTIES, TYPE_VALUES)
 )
 
 /** 搜索框本地值（输入时即时响应，防抖后才写 URL） */
@@ -61,6 +64,16 @@ function clearKeyword() {
 
 function selectCategory(cat) {
   pushState({ category: state.value.category === cat ? '' : cat })
+}
+
+/**
+ * 题型筛选。点已选中的项会取消（回到「全部题型」），与其它筛选一致。
+ *
+ * 注意这里传的是 `TYPE_VALUES`（`short` / `single` / `multiple` 原值），
+ * 不是展示名「简答」—— URL 与数据字段都按原值走，展示名只在模板里用。
+ */
+function selectType(type) {
+  pushState({ type: state.value.type === type ? '' : type })
 }
 
 function selectFrequency(freq) {
@@ -205,9 +218,17 @@ watch(
   }
 )
 
+/**
+ * 是否处于「有筛选」状态。
+ *
+ * 决定两件事：计数文案显示「共 N 题」还是「筛选出 N 题」、
+ * 「重置」按钮是否出现。**新增任何筛选维度都必须加进这里**，
+ * 否则会出现「筛了但计数不变、也没有重置按钮」的错觉（题型筛选就漏过一次）。
+ */
 const hasFilter = computed(
   () =>
     Boolean(state.value.category) ||
+    Boolean(state.value.type) ||
     Boolean(state.value.frequency) ||
     Boolean(state.value.difficulty) ||
     Boolean(state.value.keyword)
@@ -324,6 +345,30 @@ const resultText = computed(() => {
         >
           <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
+      </button>
+    </nav>
+
+    <!--
+      题型筛选：单选 / 多选 / 简答。
+      放在频率与难度**之前** —— 题型是「这道题要不要我自己判对错」这种最前置的区分，
+      比频率、难度更影响用户在不在这一页停留。
+    -->
+    <nav class="chip-wrap bank-tabs" aria-label="题型筛选">
+      <button
+        class="chip chip--sm"
+        :class="{ 'chip--active': !state.type }"
+        @click="selectType('')"
+      >
+        全部题型
+      </button>
+      <button
+        v-for="t in TYPES"
+        :key="t.value"
+        class="chip chip--sm"
+        :class="{ 'chip--active': state.type === t.value }"
+        @click="selectType(t.value)"
+      >
+        {{ t.label }}
       </button>
     </nav>
 

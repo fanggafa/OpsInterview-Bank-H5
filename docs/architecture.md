@@ -132,7 +132,7 @@ ops-interview-h5/
 | `storage.js` | localStorage 封装（容错 / 配额降级 / 节流落盘） |
 | `format.js` | 截断、百分比、相对时间、洗牌、关键词匹配 |
 | `question.js` | 题型判定（简答 / 单选 / 多选），`getType()` 带缺省回退 |
-| `filter.js` | 题库筛选 + URL query 序列化 |
+| `filter.js` | 题库筛选（分类 / 题型 / 频率 / 难度 / 关键词）+ URL query 序列化。**新增筛选维度要同步改三处**：`applyFilters`、`parseQueryState`/`toQueryState`、以及 `BankView` 的 `hasFilter`（漏了会让计数与「重置」按钮失灵） |
 | `paginate.js` | 分页计算 |
 | `groupByCategory.js` | 按分类分组（错题本 / 收藏共用；组顺序跟随 `CATEGORIES`） |
 | `practice.js` | 刷题队列（默认随机）、断点续刷（仅顺序）、复习赛抽题 |
