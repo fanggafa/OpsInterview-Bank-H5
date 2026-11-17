@@ -102,8 +102,14 @@ const dateText = computed(() => {
 })
 
 function openDaily() {
-  // 带 from=/：详情页据此把返回指向首页（而不是一律回题库）
-  if (daily.value) router.push(`/question/${daily.value.id}?from=/`)
+  /**
+   * 带 `scope=daily` + `from=/`：
+   * - `from=/` 让详情页的返回指向首页（而不是一律回题库）
+   * - `scope=daily` 让详情页**只把这一题当成列表**，左右滑动不会切到别的题 ——
+   *   「每日一记」的定位就是每天一道题，早先漏了这个参数，
+   *   滑一下就跑到了无关题目（用户反馈的 bug）。
+   */
+  if (daily.value) router.push(`/question/${daily.value.id}?scope=daily&from=/`)
 }
 </script>
 
