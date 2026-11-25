@@ -93,3 +93,37 @@ describe('题库质量 · 解析要能读', () => {
     expect(bad.length).toBeLessThan(20)
   })
 })
+
+describe('题库质量 · 题干不能重复', () => {
+  /**
+   * 2026-11 发现 **6 组题干一字不差的重复题**（补题时没做同分类查重）：
+   * DNS 1011/1100、Git 5515/5602、ELK 6016/6112、
+   * CI/CD 10519/10600、监控 11041/11103、监控 11049/11109。
+   *
+   * 其中 1100 的解析里甚至写着「同 1011 考点」—— 显然是有意重复但没登记。
+   *
+   * 归一化规则与 `scripts/validate-data.mjs` 保持一致：
+   * 去掉标点、空白、Markdown 标记后取前 30 字，只在**同分类内**比较
+   * （不同分类合法地考相似概念，如「端口」在多个分类出现）。
+   */
+  const norm = (s) =>
+    String(s || '')
+      .replace(/[*`]/g, '')
+      .replace(/[\s，。？！、：；（）()【】《》"'"'…—\-/|]/g, '')
+      .slice(0, 30)
+
+  it('同一分类内不存在题干重复的题', () => {
+    const seen = new Map()
+    const dups = []
+    for (const q of list) {
+      if (!q || !q.question) continue
+      const key = `${q.category}||${norm(q.question)}`
+      if (seen.has(key)) {
+        dups.push(`${q.category}: ${seen.get(key)} / ${q.id}`)
+      } else {
+        seen.set(key, q.id)
+      }
+    }
+    expect(dups).toEqual([])
+  })
+})
