@@ -103,6 +103,14 @@
   --hue-lime: #84cc16;
   --hue-emerald: #10b981;
   --hue-teal: #14b8a6;
+  /**
+   * slate（青灰）：2026-11 新增，供「可观测性」分类使用。
+   *
+   * 原有 12 种分类色已被 26 个分类占满（存在复用），新增分类需要一个
+   * 既与「监控告警」的 emerald、「日志与ELK」的 teal 区分开、
+   * 又符合「观测类 = 冷色」语义的颜色 —— 青灰最合适。
+   */
+  --hue-slate: #64748b;
   --hue-cyan: #06b6d4;
   --hue-sky: #0ea5e9;
 
@@ -235,6 +243,8 @@
   --hue-lime: #a3e635;
   --hue-emerald: #34d399;
   --hue-teal: #2dd4bf;
+  /* 深色下提亮，保证在深背景上可辨（与其它 hue 同处理） */
+  --hue-slate: #94a3b8;
   --hue-cyan: #22d3ee;
   --hue-sky: #38bdf8;
 
