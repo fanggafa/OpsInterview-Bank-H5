@@ -47,11 +47,28 @@ for (const f of files) {
     if (!CATEGORIES.includes(q.category)) errs.push(`${at} category 非法: ${q.category}`)
     if (!DIFFS.includes(q.difficulty)) errs.push(`${at} difficulty 非法: ${q.difficulty}`)
     if (!FREQS.includes(q.frequency)) errs.push(`${at} frequency 非法: ${q.frequency}`)
-    if (q.type !== 'single' && q.type !== 'multiple') errs.push(`${at} type 非法: ${q.type}`)
+    const isShort = q.type === 'short'
+    if (!isShort && q.type !== 'single' && q.type !== 'multiple') {
+      errs.push(`${at} type 非法: ${q.type}`)
+    }
     if (typeof q.question !== 'string' || !q.question.trim()) errs.push(`${at} question 为空`)
     else if (q.question.length > 120) errs.push(`${at} 题干 ${q.question.length} 字 > 120`)
 
-    if (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 6) {
+    if (isShort) {
+      // ---- 简答题规则 ----
+      if (q.options !== undefined) errs.push(`${at} 简答题不能有 options 字段`)
+      if (typeof q.answer !== 'string' || !q.answer.trim()) {
+        errs.push(`${at} 简答题 answer 须为非空字符串`)
+      } else {
+        const ans = q.answer
+        const fences = (ans.match(/```/g) || []).length
+        if (fences % 2 !== 0) errs.push(`${at} 答案里代码围栏未成对（${fences} 个）`)
+        const tableLines = ans.split('\n').filter((l) => l.trim().startsWith('|'))
+        if (tableLines.length >= 2 && !tableLines.some((l) => /^\|[\s:|-]+\|$/.test(l.trim()))) {
+          errs.push(`${at} 答案里有表格但缺少分隔行`)
+        }
+      }
+    } else if (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 6) {
       errs.push(`${at} options 数量须 2~6`)
     } else {
       const keys = q.options.map((o) => o.key)
@@ -62,8 +79,9 @@ for (const f of files) {
       }
     }
 
-    if (!Array.isArray(q.answer) || !q.answer.length) errs.push(`${at} answer 须为数组`)
-    else {
+    if (!isShort && (!Array.isArray(q.answer) || !q.answer.length)) {
+      errs.push(`${at} answer 须为数组`)
+    } else if (!isShort) {
       const optKeys = (q.options || []).map((o) => o.key)
       for (const k of q.answer) {
         if (!optKeys.includes(k)) errs.push(`${at} answer 引用了不存在的 key: ${k}`)
@@ -79,7 +97,11 @@ for (const f of files) {
     }
 
     const exp = q.explanation
-    if (typeof exp !== 'string' || exp.length < 10) errs.push(`${at} explanation 过短`)
+    if (isShort) {
+      // 简答题没有 explanation，内容全在 answer 里，已在上方校验
+    } else if (typeof exp !== 'string' || exp.length < 10) {
+      errs.push(`${at} explanation 过短`)
+    }
     else {
       const fences = (exp.match(/```/g) || []).length
       if (fences % 2 !== 0) errs.push(`${at} 解析里代码围栏未成对（${fences} 个）`)
