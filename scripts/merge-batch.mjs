@@ -53,6 +53,13 @@ export const ID_RANGES = {
   Python: [12500, 12999],
   'AI与大模型': [13000, 13499],
   Docker: [13500, 13999],
+  /**
+   * 2026-11 新增分类：可观测性。
+   *
+   * 编号段规则见 docs/question-authoring.md：**每个分类固定 500 个位置、按顺序顺延**。
+   * 上一个分类 Docker 占 13500–13999，所以这里接 14000。
+   */
+  可观测性: [14000, 14499],
 }
 
 const files = process.argv.slice(2)

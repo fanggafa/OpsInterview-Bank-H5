@@ -5,23 +5,49 @@
 
 ## 题库现状
 
-当前 **3149 题**：**1024 简答** + 1908 单选 + 217 多选（选择题合计 **2125** 道），分布在 26 个分类。
+当前 **3179 题**：**1031 简答** + 1928 单选 + 220 多选（选择题合计 **2148** 道），分布在 **27** 个分类。
 
 | 分类 | 选择题 | 简答 | 合计 | 分类 | 选择题 | 简答 | 合计 |
 |---|---:|---:|---:|---|---:|---:|---:|
-| 综合场景题 | 51 | 146 | 197 | 安全与跳板机 | 80 | 32 | 112 |
-| Kubernetes | 100 | 79 | 179 | 存储与备份 | 80 | 31 | 111 |
-| Linux基础 | 80 | 81 | 161 | 日志与ELK | 79 | 29 | 108 |
-| 网络基础 | 100 | 51 | 151 | 虚拟化 | 80 | 27 | 107 |
-| 云与高可用 | 100 | 45 | 145 | LVS/HAProxy | 80 | 26 | 106 |
-| Shell脚本 | 100 | 45 | 145 | Tomcat/JVM | 80 | 24 | 104 |
-| MySQL | 100 | 44 | 144 | MongoDB | 80 | 24 | 104 |
-| CI/CD | 99 | 34 | 133 | iptables/firewalld | 80 | 22 | 102 |
-| 监控告警 | 98 | 35 | 133 | Git/GitLab | 79 | 23 | 102 |
-| 自动化与配置管理 | 100 | 31 | 131 | DNS | 79 | 19 | 98 |
-| 消息队列 | 80 | 42 | 122 | AI与大模型 | 50 | 40 | 90 |
-| Redis | 80 | 40 | 120 | Python | 55 | 12 | 67 |
-| Nginx | 80 | 34 | 114 | Docker | 55 | 8 | 63 |
+| 综合场景题 | 51 | 146 | 197 | 存储与备份 | 80 | 31 | 111 |
+| Kubernetes | 100 | 79 | 179 | 日志与ELK | 79 | 29 | 108 |
+| Linux基础 | 80 | 81 | 161 | 虚拟化 | 80 | 27 | 107 |
+| 网络基础 | 100 | 51 | 151 | LVS/HAProxy | 80 | 26 | 106 |
+| 云与高可用 | 100 | 45 | 145 | Tomcat/JVM | 80 | 24 | 104 |
+| Shell脚本 | 100 | 45 | 145 | MongoDB | 80 | 24 | 104 |
+| MySQL | 100 | 44 | 144 | iptables/firewalld | 80 | 22 | 102 |
+| CI/CD | 99 | 34 | 133 | Git/GitLab | 79 | 23 | 102 |
+| 监控告警 | 98 | 35 | 133 | DNS | 79 | 19 | 98 |
+| 自动化与配置管理 | 100 | 31 | 131 | AI与大模型 | 50 | 40 | 90 |
+| 消息队列 | 80 | 42 | 122 | Python | 55 | 12 | 67 |
+| Redis | 80 | 40 | 120 | Docker | 55 | 8 | 63 |
+| Nginx | 80 | 34 | 114 | **可观测性** | **23** | **7** | **30** |
+| 安全与跳板机 | 80 | 32 | 112 |  |  |  |  |
+
+> **2026-11 新增「可观测性」分类（第 27 个）**：30 题（20 单选 + 3 多选 + 7 简答）。
+>
+> **为什么单列**：原「监控告警」98 题几乎全是「怎么配 Prometheus / 告警规则」，
+> 而可观测性是另一层能力 —— **Metrics / Logs / Traces 三支柱怎么协同定位问题**。
+> 尤其是链路追踪此前几乎零覆盖（只有个别题顺带提到 TraceID）。
+>
+> 新增的 30 题覆盖：三支柱概念与协同、Prometheus 指标类型与 PromQL
+> （`rate`/`irate`/高基数）、链路追踪（TraceID/Span/采样/OTel）、
+> SLO/错误预算/黄金指标、告警治理、日志治理、成本优化、平台化设计。
+>
+> **新增分类的完整改动清单（7 处代码 + 2 处文档，漏一处 CI 会拦）**：
+>
+> | # | 位置 | 改什么 |
+> |---|---|---|
+> | 1 | `constants.js` `CATEGORIES` | 分类名（**顺序即展示顺序**，此处插在「监控告警」之后）|
+> | 2 | `constants.js` `CATEGORY_ADVICE` | 一句话备考建议 |
+> | 3 | `constants.js` `CATEGORY_HUE` | 配色 |
+> | 4 | `styles.css` | 如果用了新颜色（本次新增 `--hue-slate`，浅/深两套）|
+> | 5 | `merge-batch.mjs` `ID_RANGES` | 500 宽 id 段 |
+> | 6 | `split-data.mjs` `CAT_SLUG` | 分片 slug |
+> | 7 | `tests/categoryOrder.test.js` `EXPECTED` | 期望顺序 |
+> | 8 | `check-batches.mjs` | 自查脚本的分类白名单 |
+> | 9 | 本文档 + README | 分类表、编号段表、题数 |
+
 
 > **2026-11 查重与多选补齐**（两件事一起做的）：
 >
@@ -179,6 +205,12 @@
 | 监控告警 | 11000 – 11499 | 安全与跳板机 | 11500 – 11999 |
 | 综合场景题 | 12000 – 12499 | Python | 12500 – 12999 |
 | AI与大模型 | 13000 – 13499 | **Docker** | **13500 – 13999** |
+| **可观测性** | **14000 – 14499** | （下一个新分类）| 14500 – 14999 |
+
+> **编号段分配规则**：**每个分类固定 500 个位置，按新增顺序顺延接上**。
+> 新分类的起点 = 当前最大段的上界 + 1（如加了 Docker 的 13999，新分类就从 14000 起）。
+> 段一旦分配**不要回收或重排** —— 已发布的题 id 会进用户的 localStorage，
+> 改 id 等于让用户的刷题记录对不上题。
 
 > **新增分类时必须同步 4 处**：`ID_RANGES`（merge-batch.mjs）、`CAT_SLUG`（split-data.mjs）、
 > `CATEGORIES` 与 `CATEGORY_ADVICE`/颜色（constants.js），以及本文档上表 + README。
@@ -351,10 +383,16 @@ npm run split:data
 
 ## 新增分类的完整步骤
 
-1. `src/utils/constants.js`：`CATEGORIES` 加值、`CATEGORY_ADVICE` 加建议、颜色映射加一项
-2. `scripts/merge-batch.mjs`：`ID_RANGES` 加区间（500 宽）
-3. `scripts/split-data.mjs`：`CAT_SLUG` 加 slug
-4. `tests/categoryOrder.test.js`：`EXPECTED` 数组加值（顺序也要正确）
-5. 本文档的分类表 + README 的功能一览
-6. 往该分类加至少 6 题（否则校验报「低于每类下限」）
-7. `npm run validate:data && npm run split:data && npm test`
+1. `src/utils/constants.js`：`CATEGORIES` 加值、`CATEGORY_ADVICE` 加建议、`CATEGORY_HUE` 加颜色
+2. `src/assets/styles.css`：若用了新颜色，**浅色与深色两套 `--hue-*` 都要加**（漏了会退回默认蓝）
+3. `scripts/merge-batch.mjs`：`ID_RANGES` 加区间（500 宽，**起点 = 当前最大上界 + 1**）
+4. `scripts/split-data.mjs`：`CAT_SLUG` 加 slug
+5. `scripts/check-batches.mjs`：`CATEGORIES` 白名单加值（**漏了自查会误报「category 非法」**）
+6. `tests/categoryOrder.test.js`：`EXPECTED` 数组加值（顺序也要正确）
+7. 本文档的分类表 + 编号段表 + README 的功能一览
+8. 往该分类加至少 6 题（否则校验报「低于每类下限」）
+9. `npm run validate:data && npm run split:data && npm test`
+
+> **第 5 步最容易漏** —— `check-batches.mjs` 里有一份硬编码的分类白名单，
+> 它不在 CI 的必经路径上（只是合并前自查），所以不会报错，
+> 但合并时会让你以为「分类名写错了」，白排查半天。

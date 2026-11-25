@@ -46,6 +46,8 @@ const CAT_SLUG = {
   'AI与大模型': 'ai-llm',
   Docker: 'docker',
   '综合场景题': 'scenario',
+  /* 2026-11 新增分类 */
+  可观测性: 'observability',
 }
 
 const bank = JSON.parse(readFileSync(SRC, 'utf8'))
