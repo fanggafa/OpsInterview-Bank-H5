@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 题库数据校验：npm run validate:data
  * 校验失败以非零码退出，并列出具体题目 id 与原因。
  *
@@ -296,6 +296,40 @@ data.forEach((q, index) => {
     if (!allowed.includes(k)) warnings.push(`[id=${where}] 存在未知字段 "${k}"`)
   })
 })
+
+/**
+ * 题干查重（同分类内）。
+ *
+ * 2026-11 背景：历次批量补题后发现有 **3 组题干一字不差的重复题**
+ * （DNS 1011/1100、Git 5515/5602、ELK 6016/6112），人工翻 3000 多题看不出来。
+ * 其中 1100 的解析里甚至写着「同 1011 考点」—— 显然是补题时有意重复但没登记。
+ *
+ * 归一化规则：去掉标点、空白、Markdown 标记后比较前 30 个字。
+ * 只比**同分类内**，因为不同分类可能合法地考相似概念（如「端口」在多个分类出现）。
+ */
+const normQuestion = (s) =>
+  String(s || '')
+    .replace(/[*`]/g, '')
+    .replace(/[\s，。？！、：；（）()【】《》"'"'…—\-/|]/g, '')
+    .slice(0, 30)
+
+const byCategory = new Map()
+data.forEach((q) => {
+  if (!q || typeof q !== 'object' || !q.question) return
+  const key = `${q.category}||${normQuestion(q.question)}`
+  if (!byCategory.has(key)) byCategory.set(key, [])
+  byCategory.get(key).push(q.id)
+})
+
+const dupGroups = [...byCategory.entries()].filter(([, ids]) => ids.length > 1)
+if (dupGroups.length) {
+  dupGroups.forEach(([key, ids]) => {
+    const cat = key.split('||')[0]
+    errors.push(
+      `✗ 分类「${cat}」存在题干重复：id ${ids.join(' / ')}（同一考点只应保留一道，或改写其中一道以增加区分度）`,
+    )
+  })
+}
 
 CATEGORIES.forEach((c) => {
   const count = categoryCount[c]

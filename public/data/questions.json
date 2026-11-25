@@ -2695,41 +2695,6 @@
     ]
   },
   {
-    "id": 1100,
-    "type": "single",
-    "category": "DNS",
-    "difficulty": "简单",
-    "question": "DNS 默认使用哪个端口？",
-    "options": [
-      {
-        "key": "A",
-        "text": "22"
-      },
-      {
-        "key": "B",
-        "text": "80"
-      },
-      {
-        "key": "C",
-        "text": "443"
-      },
-      {
-        "key": "D",
-        "text": "53"
-      }
-    ],
-    "answer": [
-      "D"
-    ],
-    "explanation": "**DNS 默认用 **53 端口**（UDP 常规查询 + TCP 大响应/区域传送）。**\n\n（同 1011 考点，这里换一个角度记忆）\n\n端口清单：\n| 用途 | 端口 | 协议 |\n|---|---|---|\n| 常规查询 | 53 | UDP（首选） |\n| 大响应/截断重试/AXFR | 53 | TCP |\n| DNS over TLS | 853 | TCP |\n| DNS over HTTPS | 443 | TCP |\n| 递归到权威 | 53 | UDP/TCP |\n\n**防火墙要同时放行 UDP 与 TCP 53**，只放一个会出现「大部分正常、偶发失败」（响应超 512 字节被截断时需 TCP 回退）。\n\n**排查链路**：`ss -lntup | grep :53` 看监听协议 → `dig +tcp` 验证 TCP 可达 → `tcpdump port 53` 看是否有 TC 标志后的 TCP 重试。\n\n**易混点**：nslookup/dig 默认走 UDP，很多「DNS 不通」其实是 TCP 53 被拦导致的偶发失败；容器环境下 `dockerd`/`kubelet` 也可能占用 53（与 dnsmasq 冲突）。\n\n案例：某机房防火墙只放行 UDP 53，DNSSEC 验证时响应超长被截断，客户端无法回退到 TCP，导致 HTTPS 站点间歇性解析失败。",
-    "tags": [
-      "DNS",
-      "端口",
-      "基础"
-    ],
-    "frequency": "高频"
-  },
-  {
     "id": 1101,
     "type": "single",
     "category": "DNS",
@@ -19868,7 +19833,7 @@
     "type": "single",
     "category": "消息队列",
     "difficulty": "中等",
-    "question": "RabbitMQ 的 prefetch（basic_qos）设得过大或过小分别有什么影响？",
+    "question": "RabbitMQ 的 prefetch 设得过小会有什么影响？和设过大相比，瓶颈有什么不同？",
     "options": [
       {
         "key": "A",
@@ -31578,41 +31543,6 @@
     "frequency": "中频"
   },
   {
-    "id": 5602,
-    "type": "single",
-    "category": "Git/GitLab",
-    "difficulty": "简单",
-    "question": "git fetch 和 git pull 的区别是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "两者完全等价"
-      },
-      {
-        "key": "B",
-        "text": "fetch 会修改工作区文件"
-      },
-      {
-        "key": "C",
-        "text": "fetch 只更新远端引用（不合并），pull = fetch + merge/rebase"
-      },
-      {
-        "key": "D",
-        "text": "pull 只下载不合并"
-      }
-    ],
-    "answer": [
-      "C"
-    ],
-    "explanation": "**`fetch` 是「安全地看一眼」**：把远端的新提交拉到本地引用（`origin/main`），但不动你的工作区与当前分支。**`pull` 会立即合并（或 rebase）**到当前分支——有冲突时直接进入冲突状态。\n\n**团队协作推荐「先 fetch 看差异，再决定 merge 还是 rebase」。**",
-    "tags": [
-      "Git",
-      "fetch",
-      "pull"
-    ],
-    "frequency": "高频"
-  },
-  {
     "id": 5603,
     "type": "single",
     "category": "Git/GitLab",
@@ -35159,41 +35089,6 @@
       "原理"
     ],
     "frequency": "高频"
-  },
-  {
-    "id": 6112,
-    "type": "single",
-    "category": "日志与ELK",
-    "difficulty": "简单",
-    "question": "日志采集链路里加 Kafka 的主要作用是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "替代 Logstash 做解析"
-      },
-      {
-        "key": "B",
-        "text": "压缩日志体积"
-      },
-      {
-        "key": "C",
-        "text": "削峰与解耦——ES 抖动时不会把采集端堵死导致丢日志"
-      },
-      {
-        "key": "D",
-        "text": "让日志查询更快"
-      }
-    ],
-    "answer": [
-      "C"
-    ],
-    "explanation": "**Filebeat 直连 ES 的最大风险是「背压传导」**：ES 写入慢 → Filebeat 内部队列满 → 开始丢数据。**加 Kafka 后生产者与消费者解耦**，任一环节抖动都不丢数据。\n\n附加好处：**一份日志可以有多个消费者**（同时进 ES 和实时计算）。B/C/A 都不对。",
-    "tags": [
-      "Kafka",
-      "日志",
-      "架构"
-    ],
-    "frequency": "中频"
   },
   {
     "id": 6113,
@@ -70574,41 +70469,6 @@
     ]
   },
   {
-    "id": 10600,
-    "type": "single",
-    "category": "CI/CD",
-    "difficulty": "简单",
-    "question": "CI 和 CD 分别指什么？",
-    "options": [
-      {
-        "key": "A",
-        "text": "CI=代码审查，CD=代码部署"
-      },
-      {
-        "key": "B",
-        "text": "两者完全等价"
-      },
-      {
-        "key": "C",
-        "text": "CI=容器镜像，CD=容器部署"
-      },
-      {
-        "key": "D",
-        "text": "CI=持续集成（频繁合并+自动构建测试），CD=持续交付/部署（自动发布到环境）"
-      }
-    ],
-    "answer": [
-      "D"
-    ],
-    "explanation": "**CI（持续集成）：开发者频繁把代码合并到主干，每次合并自动构建+跑测试**，尽早发现集成问题。**CD 有两种含义：持续交付（一直可发布，但发布需人点）与持续部署（自动上线）**。\n\n**核心价值：把「大爆炸式发布」变成「小步快跑」**，降低每次变更的风险。",
-    "tags": [
-      "CI/CD",
-      "概念",
-      "基础"
-    ],
-    "frequency": "高频"
-  },
-  {
     "id": 10601,
     "type": "single",
     "category": "CI/CD",
@@ -74737,41 +74597,6 @@
     "frequency": "中频"
   },
   {
-    "id": 11103,
-    "type": "single",
-    "category": "监控告警",
-    "difficulty": "简单",
-    "question": "告警规则里 for: 5m 的作用是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "条件持续满足 5 分钟才触发告警（避免瞬时抖动误报）"
-      },
-      {
-        "key": "B",
-        "text": "告警 5 分钟后自动恢复"
-      },
-      {
-        "key": "C",
-        "text": "告警重复发送 5 次"
-      },
-      {
-        "key": "D",
-        "text": "每 5 分钟检查一次"
-      }
-    ],
-    "answer": [
-      "A"
-    ],
-    "explanation": "**`for` 是「持续时间」——表达式连续为真达到该时长才真正触发告警**。**这是减少误报最重要的参数**：CPU 瞬时冲高 10 秒不该告警，持续 5 分钟才值得人介入。\n\n**代价是「发现变慢」**——对致命问题（如服务完全不可用）要把 `for` 设短。`for` 与 `scrape_interval` 要配合（`for` 不能小于采样间隔）。",
-    "tags": [
-      "Prometheus",
-      "告警",
-      "for"
-    ],
-    "frequency": "高频"
-  },
-  {
     "id": 11104,
     "type": "single",
     "category": "监控告警",
@@ -74945,41 +74770,6 @@
       "端口"
     ],
     "frequency": "中频"
-  },
-  {
-    "id": 11109,
-    "type": "single",
-    "category": "监控告警",
-    "difficulty": "简单",
-    "question": "「黑盒监控」与「白盒监控」的区别是？",
-    "options": [
-      {
-        "key": "A",
-        "text": "黑盒是监控数据库，白盒是监控服务器"
-      },
-      {
-        "key": "B",
-        "text": "两者完全等价"
-      },
-      {
-        "key": "C",
-        "text": "白盒看内部指标（如 QPS/内存），黑盒从外部探测「服务是否可用」"
-      },
-      {
-        "key": "D",
-        "text": "黑盒不需要网络"
-      }
-    ],
-    "answer": [
-      "C"
-    ],
-    "explanation": "**白盒（内部视角）**：应用暴露的 metrics，如请求数、延迟、GC、线程池。**黑盒（外部视角）**：从用户位置探测（HTTP 探针、ICMP、DNS 查询、端口探测）——**它回答「用户能不能用」，而不是「服务自己觉得好不好」**。\n\n**两者必须都有**：白盒能定位原因，黑盒能发现「服务自认为健康但实际不可用」（如返回 500、DNS 解析错、证书过期）。",
-    "tags": [
-      "监控",
-      "黑盒",
-      "白盒"
-    ],
-    "frequency": "高频"
   },
   {
     "id": 11110,
@@ -85042,6 +84832,216 @@
     ]
   },
   {
+    "id": 12562,
+    "type": "multiple",
+    "category": "Python",
+    "difficulty": "中等",
+    "frequency": "高频",
+    "question": "运维写 Python 脚本处理线上数据时，以下哪些做法**有助于防止脚本把生产搞坏**？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "默认 dry-run：先打印将要执行的动作，确认后才真执行"
+      },
+      {
+        "key": "B",
+        "text": "所有涉及删除/覆盖的操作加二次确认或显式开关"
+      },
+      {
+        "key": "C",
+        "text": "用 pathlib 拼接路径前，先 resolve 并校验是否在允许的目录内"
+      },
+      {
+        "key": "D",
+        "text": "为了效率，把所有异常都用 except: pass 吞掉继续跑"
+      },
+      {
+        "key": "E",
+        "text": "关键操作前先备份，并在脚本里记录操作日志"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "explanation": "**运维脚本的危险性在于「跑错一次就是生产事故」，所以设计时要把「防误操作」放在「写得快」之前。**\n\n逐项看：\n\n| 做法 | 为什么有效 |\n|---|---|\n| dry-run 先行 | 执行前能看到「要删哪 37 个文件」，而不是盲跑 |\n| 危险操作加确认 | 误触、复制粘贴、定时任务重跑都会被挡住 |\n| 路径校验 | 防住 `rm -rf /data/` 这类因变量为空导致删到根目录的事故 |\n| 先备份 + 记日志 | 出事后能恢复，也能知道谁在什么时候干了什么 |\n\n**为什么 `except: pass` 是反模式**：\n\n```python\nfor f in files:\n    try:\n        process(f)\n    except:\n        pass          # 有一半文件失败了，但脚本「成功」退出\n```\n\n它让失败变得不可见 —— 你以为全部处理完了，实际只处理了一半。正确做法是记录失败清单，最后汇总输出并以非 0 退出。\n\n**路径校验的典型写法**：\n\n```python\nfrom pathlib import Path\n\nBASE = Path('/data/allowed').resolve()\ntarget = (BASE / user_input).resolve()\nif not str(target).startswith(str(BASE)):\n    raise SystemExit(f'路径越界: {target}')\n```\n\n⚠️ **`..` 和软链接都能绕过朴素校验**，所以必须 `resolve()` 之后再比，且比的是加斜杠的前缀（否则 `/data/allowed-evil` 会被误判为在 `/data/allowed` 内）。\n\n⚠️ **定时任务里的脚本尤其危险**：它无人值守，写错一次可能每晚重复破坏。这类脚本必须有「影响行数上限」保护 —— 超过阈值直接中止并要求人工介入。",
+    "tags": [
+      "运维脚本",
+      "防误操作",
+      "幂等"
+    ]
+  },
+  {
+    "id": 12563,
+    "type": "multiple",
+    "category": "Python",
+    "difficulty": "中等",
+    "frequency": "高频",
+    "question": "关于 Python 脚本的性能优化，以下哪些说法**正确**？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "先用 cProfile / timeit 测量，找出真正的热点再优化"
+      },
+      {
+        "key": "B",
+        "text": "IO 密集型任务用多线程或 asyncio，CPU 密集型用多进程"
+      },
+      {
+        "key": "C",
+        "text": "循环里频繁字符串拼接应改用 join 或列表收集"
+      },
+      {
+        "key": "D",
+        "text": "把代码写成一行列表推导式，性能一定比 for 循环快很多倍"
+      },
+      {
+        "key": "E",
+        "text": "热点循环里调用 len()、属性访问可以提取到循环外复用"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "explanation": "**优化第一原则：先测量。没有 profiling 的优化就是猜测，而猜测通常错。**\n\n| 手段 | 适用 | 原理 |\n|---|---|---|\n| cProfile | 找函数级热点 | 统计每个函数的调用次数与累计耗时 |\n| timeit | 比较两种写法的微小差异 | 多次重复取平均，排除干扰 |\n| line_profiler | 找函数内某一行 | 逐行计时 |\n\n**IO 与 CPU 的分流**：\n\n```python\n# IO 密集（网络、磁盘）→ 线程或协程\nfrom concurrent.futures import ThreadPoolExecutor\n\n# CPU 密集（压缩、加密、图像）→ 多进程\nfrom concurrent.futures import ProcessPoolExecutor\n```\n\n原因：GIL 让多线程无法并行执行 Python 字节码，但 IO 等待时会释放 GIL 所以线程有效；CPU 密集只能靠多进程绕过 GIL。\n\n**字符串拼接为什么必须改**：\n\n```python\ns = ''\nfor x in items:\n    s += x          # ✗ O(n²)：每次创建新字符串\n\n''.join(items)      # ✓ O(n)\n```\n\n**热点循环的微优化**：\n\n```python\nfor i in range(len(data)):\n    if len(data) > 0:   # len() 每次调用\n        ...\n\nn = len(data)           # ✓ 提到循环外\nfor i in range(n):\n```\n\n实际收益取决于循环次数，几千次以下通常感知不到。\n\n**为什么「列表推导式一定快很多倍」是错的**：\n\n它确实比「for + append」快一些（省去方法查找，通常 10%~30%），但这是**常数级**差异。如果循环体里在做网络请求，推导式一点用都没有 —— 那是数量级的问题，需要用并发解决。\n\n⚠️ **别优化不在热点上的代码**。把 3% 耗时的函数优化一倍，整体只快 1.5%；把 60% 耗时的函数优化 20%，整体快 12%。**profiling 的价值就是让你知道该改哪里。**\n\n⚠️ **微优化可能降低可读性**。`''.join()`、`n = len()` 这类改法是公认惯例，可以放心用；但为省几微秒把逻辑写成一行嵌套推导式，会让后来的人（包括三个月后的你）看不懂。",
+    "tags": [
+      "性能优化",
+      "profiling",
+      "并发"
+    ]
+  },
+  {
+    "id": 12564,
+    "type": "multiple",
+    "category": "Python",
+    "difficulty": "中等",
+    "frequency": "中频",
+    "question": "以下哪些是 Python 中**容易被忽略但会导致线上问题**的坑？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "函数默认参数用可变对象（如 def f(x=[])），多次调用会共享同一份"
+      },
+      {
+        "key": "B",
+        "text": "用 dict 迭代时同时删除键，会抛 RuntimeError"
+      },
+      {
+        "key": "C",
+        "text": "浮点数直接比较相等（0.1 + 0.2 == 0.3 为 False）"
+      },
+      {
+        "key": "D",
+        "text": "int 和 str 不能相加，会抛 TypeError"
+      },
+      {
+        "key": "E",
+        "text": "多线程共享数据不加锁，导致计数丢失"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "explanation": "**这道题区分「明显的错误」和「隐蔽的坑」—— D 属于前者，一跑就报错，反而不危险。**\n\n**A. 可变默认参数（最经典）**\n\n```python\ndef add(item, bucket=[]):    # ✗ 默认值只创建一次\n    bucket.append(item)\n    return bucket\n\nadd(1)   # [1]\nadd(2)   # [1, 2]  ← 不是 [2]！\n```\n\n正确写法：`def add(item, bucket=None): if bucket is None: bucket = []`\n\n为什么危险：单次调用测试完全正常，只有在多次调用时才暴露。\n\n**B. 迭代时修改字典**\n\n```python\nfor k in d:\n    del d[k]        # RuntimeError: dictionary changed size during iteration\n```\n\n改用 `for k in list(d)` 遍历副本，或字典推导式重建。\n\n⚠️ **list 的情况更隐蔽**：不报错但会跳元素，结果静默错误。\n\n**C. 浮点精度**\n\n```python\n0.1 + 0.2 == 0.3        # False（实际是 0.30000000000000004）\n```\n\n金额计算必须用 `Decimal` 或整数分。用浮点算钱，对账时会出现「差 1 分钱」的诡异问题。\n\n**E. 多线程竞态**\n\n```python\ncounter = 0\ndef worker():\n    global counter\n    for _ in range(10000):\n        counter += 1     # ✗ 不是原子操作，结果会小于预期\n```\n\n`counter += 1` 实际是「读-加-写」三步，线程切换会丢失更新。要加锁或用 `threading.Lock`。\n\n**为什么 D 不算坑**：`1 + 'a'` 会立刻抛 TypeError，测试时必然发现。**真正危险的是「测试通过但生产出错」的问题** —— 这正是 A、B、C 的特征。\n\n⚠️ **E 有个真实变体**：以为「Python 有 GIL，多线程不用加锁」—— 错。GIL 只保证字节码不并行执行，`+=` 这样的复合操作仍会被打断。",
+    "tags": [
+      "常见坑",
+      "可变默认参数",
+      "并发"
+    ]
+  },
+  {
+    "id": 12565,
+    "type": "multiple",
+    "category": "Python",
+    "difficulty": "中等",
+    "frequency": "中频",
+    "question": "用 Python 操作远程服务器（SSH / API）批量执行任务时，以下哪些实践是必要的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "为每个连接设置超时，避免卡死拖住整个任务"
+      },
+      {
+        "key": "B",
+        "text": "单台失败不中断整体，收集失败列表最后统一报告"
+      },
+      {
+        "key": "C",
+        "text": "并发数设上限，避免同时打满目标服务器"
+      },
+      {
+        "key": "D",
+        "text": "为了快，把所有机器放到一个线程里串行执行"
+      },
+      {
+        "key": "E",
+        "text": "重试要有上限和退避，且区分可重试与不可重试的错误"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "explanation": "**批量操作的核心矛盾是「要快」和「要稳」，四条实践分别解决其中一面。**\n\n| 实践 | 解决的问题 | 不做的后果 |\n|---|---|---|\n| 超时 | 单点卡死 | 一台机器网络不通，整个任务挂在那里 |\n| 失败隔离 | 部分失败拖垮整体 | 200 台里第 3 台失败，剩下 197 台不执行 |\n| 并发上限 | 打垮目标 | 500 并发 SSH，目标 `MaxStartups` 拒绝，全失败 |\n| 退避重试 | 瞬时故障 | 网络抖动一次就判失败，或疯狂重试加剧拥塞 |\n\n**为什么 D 是反模式**：串行执行 200 台、每台 200ms，就是 40 秒；如果某台要等 TCP 超时（默认 2 分钟），整体就被拖到几分钟。而且串行并不更安全 —— 安全性来自「并发上限」而不是「串行」。\n\n**推荐结构**：\n\n```python\nfrom concurrent.futures import ThreadPoolExecutor, as_completed\n\ndef run_one(host):\n    for attempt in range(3):\n        try:\n            return {'host': host, 'ok': True, 'out': ssh(host, CMD, timeout=10)}\n        except TransientError:\n            time.sleep(2 ** attempt)      # 1s, 2s, 4s\n        except FatalError as e:            # 认证失败、主机不存在\n            return {'host': host, 'ok': False, 'err': str(e)}\n    return {'host': host, 'ok': False, 'err': '重试耗尽'}\n\nwith ThreadPoolExecutor(max_workers=20) as pool:\n    results = [f.result() for f in as_completed([pool.submit(run_one, h) for h in HOSTS])]\n\nfailed = [r for r in results if not r['ok']]\nif failed:\n    print(f'失败 {len(failed)}/{len(results)}')\n    sys.exit(1)          # 让 CI / 调度系统感知\n```\n\n⚠️ **「可重试 vs 不可重试」必须区分**。超时、连接拒绝可以重试；认证失败、命令不存在、参数错误重试多少次都不会成功，只是在浪费时间。\n\n⚠️ **退出码要反映真实结果**。全部成功返回 0，有失败返回非 0 —— 否则定时任务「看起来成功」，失败无人知晓。\n\n⚠️ **并发下的输出会交错**。多线程同时 `print` 会让日志混在一起，应该先收集结果、最后统一输出。",
+    "tags": [
+      "批量操作",
+      "并发",
+      "错误处理"
+    ]
+  },
+  {
+    "id": 12566,
+    "type": "multiple",
+    "category": "Python",
+    "difficulty": "中等",
+    "frequency": "中频",
+    "question": "关于 Python 脚本的日志与可观测性，以下哪些做法**正确**？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "用 logging 而非 print，并配置级别与格式（含时间戳）"
+      },
+      {
+        "key": "B",
+        "text": "记录异常时用 log.exception() 自动附带堆栈"
+      },
+      {
+        "key": "C",
+        "text": "日志按大小或时间轮转，并限制保留份数"
+      },
+      {
+        "key": "D",
+        "text": "把所有变量内容都打到日志里，方便排查"
+      },
+      {
+        "key": "E",
+        "text": "关键操作记录「谁、何时、对什么、做了什么、结果」以便审计"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "explanation": "**脚本的可维护性，一半取决于「出问题时能不能从日志还原现场」。**\n\n**A. 用 logging 而非 print**\n\n```python\nimport logging\nlogging.basicConfig(\n    level=logging.INFO,\n    format='%(asctime)s %(levelname)s [%(name)s] %(message)s',\n)\nlog = logging.getLogger(__name__)\n```\n\n好处：有级别（可按需过滤）、有时间戳、能同时输出到文件与控制台、能被统一配置。\n\n**B. log.exception 带堆栈**\n\n```python\ntry:\n    do_something()\nexcept Exception:\n    log.exception('处理失败')    # ✓ 自动附加完整 traceback\n```\n\n比 `log.error(f'失败: {e}')` 好得多 —— 后者只有错误消息，没有「哪一行出的错」。\n\n**C. 轮转**\n\n```python\nfrom logging.handlers import RotatingFileHandler\n\nRotatingFileHandler('app.log', maxBytes=10*1024*1024, backupCount=5)\n```\n\n不轮转的日志最终会撑满磁盘 —— 这是运维脚本最常见的「慢性事故」。\n\n**E. 审计日志**\n\n对「改配置、删数据、重启服务」这类操作，至少记录：时间、执行人、目标、动作、结果。出问题时这是唯一的追溯依据。\n\n**为什么 D 是错的**：\n\n| 问题 | 后果 |\n|---|---|\n| 日志量爆炸 | 磁盘写满、关键信息被淹没 |\n| 泄漏敏感信息 | 密码、Token、用户数据进了日志系统，且难以清除 |\n| 性能损耗 | 大对象的 `repr()` 可能很慢 |\n\n正确做法是**有选择地记录**：关键参数、决策依据、结果，而不是全量 dump。\n\n⚠️ **日志里绝不能出现密码/密钥**。用 `log.info('连接 %s，密码=***', user)` 这类写法，且定期抽查实际日志内容。\n\n⚠️ **日志里用惰性格式化**：`log.info('user=%s', user)` 比 `log.info(f'user={user}')` 好 —— 前者在被过滤掉的级别上不会构造字符串。",
+    "tags": [
+      "logging",
+      "可观测性",
+      "审计"
+    ]
+  },
+  {
     "id": 13000,
     "type": "short",
     "category": "AI与大模型",
@@ -89270,6 +89270,216 @@
       "端口映射",
       "网络",
       "命令行"
+    ]
+  },
+  {
+    "id": 13558,
+    "type": "multiple",
+    "category": "Docker",
+    "difficulty": "中等",
+    "frequency": "高频",
+    "question": "以下哪些做法能**有效减小 Docker 镜像体积**？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "用多阶段构建，把编译环境与运行环境分离"
+      },
+      {
+        "key": "B",
+        "text": "选用 alpine / distroless 等精简基础镜像"
+      },
+      {
+        "key": "C",
+        "text": "在同一条 RUN 里完成安装与清理，并删除包管理器缓存"
+      },
+      {
+        "key": "D",
+        "text": "把 Dockerfile 的 RUN 指令拆成多条，每条只做一件事"
+      },
+      {
+        "key": "E",
+        "text": "写好 .dockerignore，排除 node_modules、.git、测试数据等"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "explanation": "**镜像体积的大头通常是「基础镜像太臃肿」和「构建工具被带进了运行镜像」。**\n\n| 做法 | 收益 | 典型压缩比 |\n|---|---|---|\n| 多阶段构建 | 编译工具链不进最终镜像 | 1.5 GB → 50 MB |\n| 精简基础镜像 | 从 ubuntu 换 alpine | 75 MB → 5 MB |\n| RUN 内合并清理 | 缓存文件不占层 | 省几十到几百 MB |\n| .dockerignore | 不把无关文件拷进镜像 | 差异极大 |\n\n**为什么「同一层内清理」才有效**：\n\n```dockerfile\n# ✗ 体积不减！删掉的文件仍在下面那层里\nRUN apt-get install -y build-essential\nRUN rm -rf /var/lib/apt/lists/*\n\n# ✓ 同一层内完成\nRUN apt-get update && apt-get install -y --no-install-recommends curl \\\n && rm -rf /var/lib/apt/lists/*\n```\n\n镜像分层是只读叠加，`rm` 只是加一个「已删除」标记，文件本身还在底下的层里。\n\n**为什么 D 是反模式**：\n\n拆成多条 RUN **不减小体积，反而增加层数**。每层都有元数据开销，且构建缓存更容易失效。\n\n**多阶段构建示例**：\n\n```dockerfile\nFROM golang:1.22 AS builder\nWORKDIR /src\nCOPY . .\nRUN go build -o /out/app\n\nFROM alpine:3.19\nCOPY --from=builder /out/app /usr/local/bin/app\nCMD [\"app\"]\n```\n\n最终镜像只含 `alpine` + 二进制，编译工具全部丢弃。\n\n⚠️ **alpine 的兼容性代价**：它用 musl libc 而非 glibc，某些预编译二进制跑不起来；Python 用 alpine 时很多包没有 wheel，要现场编译（`python:3.x-slim` 通常更省事）。\n\n⚠️ **用 `docker history` 定位臃肿的层**，而不是凭感觉优化：\n\n```bash\ndocker history --no-trunc myimage | sort -k4 -h\n```\n\n⚠️ **distroless 最安全但也最难调试**：它没有 shell，`docker exec` 进不去，排查问题要依赖日志或临时 sidecar。",
+    "tags": [
+      "镜像优化",
+      "多阶段构建",
+      "体积"
+    ]
+  },
+  {
+    "id": 13559,
+    "type": "multiple",
+    "category": "Docker",
+    "difficulty": "中等",
+    "frequency": "高频",
+    "question": "容器启动后立即退出，以下哪些排查手段是**有效**的？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "docker logs 看容器内进程的输出"
+      },
+      {
+        "key": "B",
+        "text": "docker ps -a 看退出码，137 是 OOM 或 kill，143 是被 stop"
+      },
+      {
+        "key": "C",
+        "text": "用 --entrypoint /bin/sh 覆盖入口，交互式进去看主进程行为"
+      },
+      {
+        "key": "D",
+        "text": "直接重启 Docker 服务"
+      },
+      {
+        "key": "E",
+        "text": "检查 CMD/ENTRYPOINT 是不是启动了后台进程（如 service start）"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "explanation": "**「容器」本质是「一个前台进程」，主进程退出了容器就结束 —— 所以排查的重点是「主进程为什么退出」。**\n\n**最常见的根因：启动了后台型命令**\n\n```dockerfile\n# ✗ nginx 默认 daemon 模式，父进程 fork 后立刻退出 → 容器结束\nCMD nginx\n\n# ✓ 让进程留在前台\nCMD [\"nginx\", \"-g\", \"daemon off;\"]\n```\n\n这类问题退出码往往是 **0**（进程正常结束），最容易被误判为「没问题」。\n\n**退出码的含义**：\n\n| 退出码 | 含义 |\n|---|---|\n| 0 | 正常结束（常因主进程是短命令）|\n| 1 | 应用内部报错 |\n| 125/126/127 | docker 自身错误 / 命令不可执行 / 找不到命令 |\n| 137 | 128+9，SIGKILL（OOM 或 docker kill）|\n| 143 | 128+15，SIGTERM（docker stop 超时后）|\n\n**为什么 D 是错的**：重启 Docker 服务既不解决「命令写错」，还会中断这台机器上所有容器，扩大影响面。\n\n**覆盖入口进容器看真实情况**：\n\n```bash\ndocker run -it --entrypoint /bin/sh myimage\n# 进去后手动跑一遍 CMD，看它输出什么、卡在哪\n```\n\n**其它常见原因**：\n\n| 现象 | 原因 |\n|---|---|\n| 日志为空 | 应用在输出前就崩了，看 `docker inspect` 的 State.Error |\n| 配置找不到 | 挂载覆盖了配置文件 |\n| 依赖连不上 | 启动时强校验数据库连接，连不上就退出 |\n| 权限不足 | 非 root 用户无法读挂载的密钥文件 |\n\n⚠️ **`docker logs` 看不到东西时**，用 `docker inspect <id> --format '{{.State}}'` 看 `Error` 与 `OOMKilled` 字段。\n\n⚠️ **排查后别忘修根因**。用 `--restart always` 让它反复重启只是掩盖问题 —— 每几秒重启一次，日志会被刷掉，反而更难查。",
+    "tags": [
+      "容器退出",
+      "排障",
+      "退出码"
+    ]
+  },
+  {
+    "id": 13560,
+    "type": "multiple",
+    "category": "Docker",
+    "difficulty": "中等",
+    "frequency": "中频",
+    "question": "关于容器的数据持久化，以下说法**正确**的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "容器可写层随容器删除而消失，不能作为持久化手段"
+      },
+      {
+        "key": "B",
+        "text": "volume 由 Docker 管理，不依赖宿主机具体路径，跨环境更一致"
+      },
+      {
+        "key": "C",
+        "text": "bind mount 直接映射宿主机目录，便于查看但依赖宿主路径"
+      },
+      {
+        "key": "D",
+        "text": "docker commit 可以把容器内的数据做成镜像，是最佳持久化方式"
+      },
+      {
+        "key": "E",
+        "text": "docker compose down -v 会连 volume 一起删除，生产环境要谨慎"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "explanation": "**核心原则：容器的可写层是临时的，持久化必须把数据放在容器之外。**\n\n| 方式 | 位置 | 特点 |\n|---|---|---|\n| 可写层 | 容器内 | 容器删除即丢失 ✗ |\n| **volume** | `/var/lib/docker/volumes` | Docker 管理、性能好、推荐 |\n| bind mount | 宿主机任意路径 | 便于查看、依赖宿主路径 |\n| tmpfs | 内存 | 容器停止即丢，适合敏感临时数据 |\n\n**为什么 D 是错的**：\n\n`docker commit` 把容器当前状态打成镜像 —— 数据被固化在镜像层里，带来三个问题：\n\n1. **体积膨胀**：数据动辄几个 GB，镜像无法快速分发\n2. **无法增量更新**：数据变了要重新 commit，产生一堆镜像\n3. **重建容器时数据是「旧的」**：下次启动还是 commit 那一刻的数据\n\n正确做法是用 volume 挂载，镜像保持无状态。\n\n**数据库容器的特别注意点**：\n\n```bash\ndocker run -d \\\n  -v dbdata:/var/lib/mysql \\\n  mysql:8\n```\n\n- 不挂载 `/var/lib/mysql`，重建容器等于清库\n- 挂载**空目录**到该路径时，MySQL 会重新初始化（可能误覆盖）\n- 备份要备份 volume，而不是容器\n\n⚠️ **`docker compose down -v` 的 `-v` 就是「连数据一起删」**。生产环境执行前务必确认，或者干脆不用 `-v`。\n\n⚠️ **SELinux 环境要加 `:z` 或 `:Z`**：CentOS/RHEL 上不加会报 Permission denied。\n\n⚠️ **bind mount 的路径手误会静默创建空目录**：\n\n```bash\ndocker run -v /dta:/app myimage    # 把 /data 打成 /dta\n# Docker 会静默创建 /dta 空目录并挂载，应用以为数据都在，实际是空的\n```\n\n需要「路径不存在就报错」时用 `--mount type=bind`（更严格的语法）。",
+    "tags": [
+      "数据持久化",
+      "volume",
+      "bind mount"
+    ]
+  },
+  {
+    "id": 13561,
+    "type": "multiple",
+    "category": "Docker",
+    "difficulty": "中等",
+    "frequency": "中频",
+    "question": "容器内网络访问异常，以下排查步骤**合理**的有哪些？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "先 ping 外网 IP，区分「网络不通」还是「DNS 解析失败」"
+      },
+      {
+        "key": "B",
+        "text": "查看容器内 /etc/resolv.conf 确认 DNS 配置"
+      },
+      {
+        "key": "C",
+        "text": "确认两个容器是否在同一个自定义网络中（默认 bridge 无内建 DNS）"
+      },
+      {
+        "key": "D",
+        "text": "直接重启宿主机网络服务"
+      },
+      {
+        "key": "E",
+        "text": "检查端口是否真的监听在 0.0.0.0 而不是 127.0.0.1"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "explanation": "**先分层定位：网络层通不通 → DNS 通不通 → 服务是否监听 → 防火墙/安全组是否放行。**\n\n**A. 先 ping IP 再 ping 域名**\n\n```bash\ndocker exec web ping -c2 8.8.8.8      # 通 → 网络 OK\ndocker exec web ping -c2 baidu.com    # 不通 → 是 DNS 的问题\n```\n\n这一步能把问题范围缩小一半。\n\n**B. 看 resolv.conf**\n\n```bash\ndocker exec web cat /etc/resolv.conf\n```\n\nDocker 默认把宿主机的 `/etc/resolv.conf` 复制进容器，但**会过滤掉 `127.0.0.1`**（容器内的回环指向自己，无法访问宿主机的本地 DNS）。\n\n如果宿主机用 systemd-resolved（`127.0.0.53`），容器里可能拿到空的或公网 DNS，导致**内网域名解析不了**。解决：\n\n```json\n// /etc/docker/daemon.json\n{ \"dns\": [\"10.0.0.2\", \"8.8.8.8\"] }\n```\n\n**C. 服务名解析需要自定义网络**\n\n```bash\ndocker network create appnet\ndocker run -d --name db --network appnet mysql:8\ndocker run -d --name web --network appnet myapp\ndocker exec web ping db      # 自定义网络才有内建 DNS\n```\n\n**默认的 `bridge` 网络不支持容器名解析** —— 这是很多人踩过的坑。\n\n**E. 监听地址**\n\n应用监听 `127.0.0.1:8080` 时，从容器外部（包括其它容器、宿主机）都访问不到。必须监听 `0.0.0.0`。\n\n```bash\ndocker exec web ss -tlnp | grep 8080\n# LISTEN 0 128 127.0.0.1:8080  ← ✗ 只有容器自己能访问\n# LISTEN 0 128 0.0.0.0:8080    ← ✓\n```\n\n**为什么 D 是错的**：重启宿主机网络服务会短暂中断该机器上所有容器的网络，而且在没定位前就动手，可能把现场破坏掉。\n\n⚠️ **容器的 DNS 还受 firewalld/SELinux 影响**：宿主机开着 firewalld 时，容器到外部的 DNS 请求可能被 DROP，表现为解析超时。\n\n⚠️ **`--network host` 会跳过 Docker 的网络栈**，此时 DNS 直接用宿主机的配置，行为与 bridge 模式不同 —— 排查时先确认网络模式。",
+    "tags": [
+      "网络排查",
+      "DNS",
+      "容器网络"
+    ]
+  },
+  {
+    "id": 13562,
+    "type": "multiple",
+    "category": "Docker",
+    "difficulty": "中等",
+    "frequency": "中频",
+    "question": "关于 Docker 镜像构建的缓存机制，以下哪些说法**正确**？（多选）",
+    "options": [
+      {
+        "key": "A",
+        "text": "某一层失效后，它之后的所有层都必须重建"
+      },
+      {
+        "key": "B",
+        "text": "把依赖清单（如 requirements.txt）先 COPY 再安装，改代码时能复用依赖层"
+      },
+      {
+        "key": "C",
+        "text": "用 --no-cache 构建能让镜像更小"
+      },
+      {
+        "key": "D",
+        "text": "COPY . . 且没配 .dockerignore 时，任何文件变化都会让缓存失效"
+      },
+      {
+        "key": "E",
+        "text": "RUN 指令的文本没变就会命中缓存，即使远程仓库的包已更新"
+      }
+    ],
+    "answer": [
+      "A",
+      "B",
+      "D",
+      "E"
+    ],
+    "explanation": "**缓存的判定依据是「指令文本 + 输入文件内容的校验和」，逐层向前匹配，一旦某层失效后面全失效。**\n\n**A. 逐层失效**\n\n```\n层1 FROM ubuntu        ✓ 命中\n层2 RUN apt install    ✓ 命中\n层3 COPY . /app        ✗ 源码改了 → 失效\n层4 RUN pip install    ✗ 上面失效，这一层必须重建\n```\n\n这就是为什么「代码放最后」能大幅缩短构建时间 —— 改代码不会触发依赖重装。\n\n**B. 依赖层前置**\n\n```dockerfile\n# ✓ 依赖清单单独 COPY\nCOPY requirements.txt /app/\nRUN pip install -r /app/requirements.txt\nCOPY . /app\n```\n\n效果：改代码时只需重建最后两层（几秒），而不是重装全部依赖（几分钟）。\n\n**D. .dockerignore 的影响**\n\n`COPY . .` 会对**所有被复制的文件**计算校验和。没有 `.dockerignore` 时，`node_modules`、`.git`、日志文件的小变化都会让这一层失效。\n\n```\n.dockerignore\nnode_modules/\n.git/\n*.log\ndist/\n```\n\n**E. 缓存不看远程源**\n\n```dockerfile\nRUN apt-get install -y curl      # 文本没变 → 命中缓存\n```\n\n即使 apt 源里已有更新版本，Docker 也不会重新执行。所以 `apt-get update` 和 `install` **必须写在同一层**，否则会出现「用了几天前的旧索引去装包」而失败。\n\n**为什么 C 是错的**：`--no-cache` 是**禁用缓存**，让所有层重新构建 —— 构建会变慢，镜像大小通常不变（体积取决于内容，不是缓存）。它只在「怀疑缓存脏了」时临时用。\n\n⚠️ **缓存也会「脏」**：比如 `RUN pip install -r requirements.txt` 命中了缓存，但实际 PyPI 上的包已更新。要强制刷新用 `--no-cache`，或改变该层的输入（如在文件名后加日期参数）。\n\n⚠️ **多阶段构建中，每个阶段独立计算缓存**，但 `COPY --from=builder` 依赖前一阶段的产物 —— 前一阶段变了，这一层也会失效。",
+    "tags": [
+      "构建缓存",
+      "Dockerfile",
+      "构建优化"
     ]
   }
 ]
