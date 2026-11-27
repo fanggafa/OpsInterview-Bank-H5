@@ -58,6 +58,53 @@ describe('版本探针 · version.json', () => {
   })
 })
 
+describe('预缓存 · revision 必须随内容变化（2026-11 事故）', () => {
+  /**
+   * ## 事故经过
+   *
+   * 用户反馈「版本号已经是最新的，但题库还是 2892 题，电脑手机都是」。
+   *
+   * 根因：`questions-index.json` 的 precache 条目写了 `revision: null`。
+   * Workbox 用 `(url, revision)` 作为缓存键 —— revision 恒定意味着
+   * **无论 SW 怎么升级都不会重新下载这个文件**。
+   *
+   * 于是出现了最迷惑的症状：外壳（JS/CSS）是新的、版本号也是新的，
+   * 唯独决定「有多少题」的索引永远读旧缓存。
+   *
+   * 当初写 null 的理由是「避免每次重算 460 KB 摘要」，属于典型的
+   * 「优化了一个无关紧要的点，换来一个致命 bug」。
+   */
+  it('questions-index.json 的 revision 不能是 null', () => {
+    const cfg = read('vite.config.js')
+    /**
+     * 只看 `additionalManifestEntries` 的**数组字面量**，
+     * 不扫注释（注释里必然会提到 "revision: null" 这段历史）。
+     */
+    const start = cfg.indexOf('additionalManifestEntries')
+    expect(start).toBeGreaterThan(-1)
+    // 从 `additionalManifestEntries` 往后取到数组闭合
+    const block = cfg.slice(start, cfg.indexOf('],', start) + 2)
+
+    expect(block).toContain('questions-index.json')
+    expect(block).not.toContain('revision: null')
+    expect(block).toContain('hashFile')
+  })
+
+  it('revision 用内容哈希计算', () => {
+    const cfg = read('vite.config.js')
+    expect(cfg).toContain('createHash')
+    expect(cfg).toContain('sha256')
+    // 读的是 public 源文件（构建开始时 dist 还没生成）
+    expect(cfg).toContain("replace(/^dist\\//, 'public/')")
+  })
+
+  it('hashFile 有兜底，文件缺失时不阻断构建', () => {
+    const cfg = read('vite.config.js')
+    const fn = cfg.slice(cfg.indexOf('function hashFile'), cfg.indexOf('function hashFile') + 500)
+    expect(fn).toContain('catch')
+  })
+})
+
 describe('版本探针 · 前端比对逻辑', () => {
   it('用 sha 而不是 version 判断新旧', () => {
     const src = read('src/composables/useVersionCheck.js')

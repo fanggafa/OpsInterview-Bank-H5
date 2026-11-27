@@ -248,6 +248,64 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/actions/runs/<run_id>/jobs"
 > 那个「一年」的保留期设得太随意 —— 因为分片的有效性完全依附于构建版本，
 > 长保留期没有任何好处。
 
+#### ⚠️ 第二次事故：`revision: null` —— 版本号是新的，题库是旧的
+
+**症状**（比第一次更迷惑）：
+
+```
+版本显示 v1.0.0 · ece1d10 · 2026-11-27 13:47   ← 是最新的
+题库显示 2892 题                                ← 是旧的
+电脑和手机都是如此
+```
+
+外壳更新了、版本号更新了，**唯独题库数量还是旧的**。
+
+**根因**：`questions-index.json` 的 precache 条目写的是 `revision: null`。
+
+Workbox 用 `(url, revision)` 作为预缓存条目的缓存键：
+
+| revision | 行为 |
+|---|---|
+| `null` | 键恒定 → **无论 SW 怎么升级都不重新下载** |
+| 内容哈希 | 内容一变就重新下载 |
+
+所以即使 `sw.js` 换了新版、`index-xxx.js` 也换了，浏览器仍然从旧 precache
+读那份 2892 题的索引 —— 决定「有多少题」的正是这个文件。
+
+**当初为什么写成 null**：注释里的理由是「避免每次重算 460 KB 的摘要」。
+典型的**优化了无关紧要的点，换来一个致命 bug** —— 摘要只在构建时算一次，
+成本几乎为零。
+
+**修复**：改用内容哈希。
+
+```js
+additionalManifestEntries: [
+  {
+    url: 'data/questions-index.json',
+    revision: hashFile('dist/data/questions-index.json'),   // sha256 前 16 位
+  },
+],
+```
+
+`hashFile` 读的是 `public/data/questions-index.json`（构建开始时 `dist` 还没生成），
+文件缺失时退化为构建时间串，保证仍然「每次构建 revision 都会变」。
+
+**审计结果**（修复后）：
+
+```
+precache 条目 44 个
+revision: null 的 34 个 → 全在 assets/ 下（文件名自带 hash，安全）
+data/ 下 revision: null → 0 个 ✓
+data/questions-index.json rev="3d1c7ba2e0dd2ff4" ✓
+```
+
+**判据（写进 CI）**：凡是 `data/` 下的 precache 条目，**revision 不能是 null**。
+`assets/` 下的可以，因为 Vite 产出的文件名本身带内容哈希。
+
+> **两次事故的共同点**：都是「文件名不带 hash 的资源 + Workbox 的缓存键机制」。
+> 第一次是 `runtimeCaching` 的 `cacheName`，第二次是 precache 的 `revision`。
+> **记住这条规则**：任何不带 hash 的静态资源，其缓存标识必须随构建/内容变化。
+
 #### 版本标识与定位「用户跑的是哪次提交」
 
 页面上的 `v1.0.0 · 9904dbd · 2026-11-27 13:02` 来自构建期注入

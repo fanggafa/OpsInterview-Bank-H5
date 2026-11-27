@@ -1,6 +1,7 @@
 import { fileURLToPath, URL } from 'node:url'
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -8,11 +9,44 @@ import { stripSourceData } from './scripts/vite-plugin-strip-data.mjs'
 import { emitVersionFile } from './scripts/vite-plugin-version-file.mjs'
 
 /**
+ * 计算文件内容的短哈希，用作 Workbox 预缓存条目的 `revision`。
+ *
+ * ## 为什么必须有它
+ *
+ * Workbox 用 `(url, revision)` 作为预缓存条目的缓存键：
+ * - `revision` 为 `null` → 键恒定 → **SW 升级也不会重新下载该文件**
+ * - `revision` 变化 → 才会重新拉取
+ *
+ * 2026-11 的事故就是 `questions-index.json` 用了 `revision: null`：
+ * 外壳和版本号都更新了，但索引永远命中旧缓存，
+ * 用户看到的题库停在 2892 题（详见 docs/deployment.md）。
+ *
+ * ## 读源文件而不是 dist 产物
+ *
+ * Vite 配置在**构建开始时**就会求值，那时 `dist/data/questions-index.json`
+ * 还不存在（它是 `split:data` 阶段生成、被复制进 dist 的）。
+ * 所以读 `public/data/questions-index.json` —— 两者内容一致。
+ *
+ * 文件不存在时退化为基于版本信息的固定串，保证构建不会因此失败。
+ */
+function hashFile(relPath) {
+  try {
+    // relPath 形如 dist/data/questions-index.json → 改读 public 源文件
+    const srcPath = relPath.replace(/^dist\//, 'public/')
+    const buf = readFileSync(new URL(`./${srcPath}`, import.meta.url))
+    return createHash('sha256').update(buf).digest('hex').slice(0, 16)
+  } catch {
+    // 文件缺失时用构建时间兜底：仍然保证「每次构建 revision 都会变」
+    return `build-${APP_VERSION_INFO.builtAt}`
+  }
+}
+
+/**
  * 把「生成 version.json」包成一个 Vite 插件。
  *
  * 用 `closeBundle` 而不是 `writeBundle`：要等所有产物（含 SW 的 precache 清单）
  * 都写完之后再生成，避免 version.json 被误纳入 precache。
- * 实际上它还靠下面 runtimeCaching 的 NetworkOnly 规则保证不被缓存。
+ * 实际上它还靠 runtimeCaching 的 NetworkOnly 规则保证不被缓存。
  */
 function versionFile(info) {
   return {
@@ -162,16 +196,36 @@ export default defineConfig({
         /**
          * 索引单独放回预缓存。
          *
-         * `globPatterns` 去掉了 json，但 `questions-index.json`（460 KB）是**首屏必需**的：
-         * 列表、统计、筛选都靠它，离线时必须可用。它只有 1 个文件、460 KB，
-         * 放进预缓存不会造成卡顿；真正重的是 34 个答案分片（4.37 MB），
-         * 那些走下面的运行时缓存。
+         * `globPatterns` 去掉了 json，但 `questions-index.json`（约 200 KB）是**首屏必需**的：
+         * 列表、统计、筛选都靠它，离线时必须可用。它只有 1 个文件，
+         * 放进预缓存不会造成卡顿；真正重的是答案分片（4 MB+），那些走运行时缓存。
          *
-         * 用 `url` + `revision: null` 而不是走 glob：
-         * - 文件名不带 hash，靠 SW 版本号整体失效（新版本换新 sw.js）
-         * - `revision: null` 表示「不按内容改动判断」，避免工作台每次都重算 460 KB 的摘要
+         * ## ⚠️ 2026-11 事故：`revision: null` 导致题库永久停在旧版本
+         *
+         * 早先这里写的是 `revision: null`，注释里的理由是
+         * 「文件名不带 hash，靠 SW 版本号整体失效；避免每次重算 460 KB 摘要」。
+         *
+         * **这个假设是错的。** Workbox 判断「预缓存条目是否要重新下载」时，
+         * 依据的是 `(url, revision)` 这一对键：
+         *
+         * - `revision` 是 `null` → 键永远不变 → **无论 SW 怎么升级都不重新下载**
+         * - 只有 `revision` 变化才会触发重新拉取
+         *
+         * 所以即使 `sw.js` 换了新版本、`index-xxx.js` 也换了，
+         * 浏览器仍然从旧的 precache 里读那份 2892 题的索引 ——
+         * 用户看到的就是「版本号是最新的，但题库还是旧的」。
+         *
+         * ## 现在怎么修
+         *
+         * 用**内容哈希**做 revision：文件内容一变，revision 就变，必然重新下载。
+         * 摘要只在构建时算一次（不是每次请求都算），成本可以忽略。
          */
-        additionalManifestEntries: [{ url: 'data/questions-index.json', revision: null }],
+        additionalManifestEntries: [
+          {
+            url: 'data/questions-index.json',
+            revision: hashFile('dist/data/questions-index.json'),
+          },
+        ],
 
         /**
          * 答案分片：运行时按需缓存（CacheFirst）。
