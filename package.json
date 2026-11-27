@@ -1,7 +1,7 @@
 {
   "name": "ops-interview-h5",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "运维面试题库 H5 应用（OpsInterview Bank）",
   "scripts": {
@@ -33,5 +33,9 @@
     "vite": "^5.4.11",
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^2.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fanggafa/OpsInterview-Bank-H5.git"
   }
 }

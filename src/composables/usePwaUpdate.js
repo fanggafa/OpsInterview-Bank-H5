@@ -293,6 +293,36 @@ export function usePwaUpdate() {
     idle(step)
   }
 
+  /**
+   * 主动检查更新（供「我的」页「检查更新」按钮调用）。
+   *
+   * 为什么需要手动触发：内置的定时检查是**每小时一次**，
+   * 用户发版后立刻想看新版本，等一小时不现实。这个函数让用户能自己催一次。
+   *
+   * 返回 `'found' | 'latest' | 'unsupported'`：
+   * - `found`：发现新版本，`needRefresh` 已置真，界面会弹出更新提示
+   * - `latest`：已是最新
+   * - `unsupported`：浏览器不支持 SW（如 HTTP 环境、部分内嵌浏览器）
+   */
+  async function checkUpdate() {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      return 'unsupported'
+    }
+    try {
+      const reg = await navigator.serviceWorker.getRegistration()
+      if (!reg) return 'unsupported'
+      await reg.update()
+      /**
+       * `reg.update()` 只是去拉新 sw.js，是否「有新版」由 `onNeedRefresh` 回调决定。
+       * 它可能是异步的，所以这里稍等一拍再读状态。
+       */
+      await new Promise((r) => setTimeout(r, 800))
+      return needRefresh.value ? 'found' : 'latest'
+    } catch {
+      return 'latest'
+    }
+  }
+
   shared = {
     needRefresh,
     offlineReady,
@@ -301,6 +331,7 @@ export function usePwaUpdate() {
     register,
     applyUpdate,
     dismiss,
+    checkUpdate,
     prewarmCache,
     // 更新加载层
     updating,

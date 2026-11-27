@@ -95,6 +95,11 @@ jobs:
           # ② 答案分片必须有运行时缓存规则，否则「离线能打开但点进去没答案」
           grep -q 'answers-shards' dist/sw.js          || { echo "sw.js 缺少答案分片的运行时缓存规则（离线点进去没答案）"; exit 1; }
           grep -q 'CacheFirst' dist/sw.js              || { echo "sw.js 缺少 CacheFirst 策略"; exit 1; }
+          # ②b 缓存名必须带构建时间戳，否则用户会永久停在旧题库 ——
+          #     2026-11 真实事故：固定 cacheName + 365 天保留期，导致
+          #     用户手机上的答案分片一年不回源，索引更新了但题目内容还是旧的。
+          grep -Eq 'answers-shards-[0-9]{10,}' dist/sw.js \
+            || { echo "分片缓存名未带构建时间戳，用户会永久停在旧题库（见 deployment.md 的事故记录）"; exit 1; }
           # ③ 分片不能出现在 precache 清单里 —— 否则 SW 安装要吞 4.37 MB，
           #    发版后首次使用会明显卡顿（这正是 2026-11 修的问题）
           if grep -q 'url:"data/answers/' dist/sw.js; then
@@ -104,7 +109,13 @@ jobs:
           ls dist/assets/*.js >/dev/null 2>&1          || { echo "缺少 JS 产物"; exit 1; }
           ls dist/assets/*.css >/dev/null 2>&1         || { echo "缺少 CSS 产物"; exit 1; }
           grep -q '/ops/assets/' dist/index.html       || { echo "BASE_PATH 未生效"; exit 1; }
-          echo "✓ 构建产物完整，BASE_PATH 生效，源数据已剔除，PWA 已预缓存数据"
+          # ④ 版本号必须被注入到产物 —— 硬编码版本会让用户无法判断自己是哪个版本
+          #    （2026-11 事故：设置页写死 '0.3.0'，与 package.json 的 0.1.0 对不上）
+          #    产物里的形态是裸版本串（如 "1.0.0"），`v` 前缀是运行时拼的，所以不匹配 v 前缀
+          VER="$(node -p "require('./package.json').version")"
+          grep -rq "\"${VER}\"" dist/assets/*.js \
+            || { echo "产物中未找到版本号 ${VER}，检查 vite define 是否生效"; exit 1; }
+          echo "✓ 构建产物完整，BASE_PATH 生效，源数据已剔除，PWA 缓存名带版本，版本号 v${VER} 已注入"
 
       # 上传构建产物，方便在 Actions 页直接下载部署
       - name: 上传构建产物
