@@ -70,6 +70,17 @@ describe('版本标识 · 构建期注入', () => {
     const src = read('src/utils/version.js')
     expect(src).toContain('github.com/fanggafa/OpsInterview-Bank-H5')
   })
+
+  it('sha 用 rev-parse --short，而非 git describe', () => {
+    /**
+     * 这条守住「浅克隆可用性」：
+     * CI 的 actions/checkout 默认 fetch-depth: 1，
+     * `git describe` 需要 tag 历史会失败，`rev-parse --short HEAD` 只读 HEAD 没问题。
+     */
+    const cfg = read('vite.config.js')
+    expect(cfg).toContain('git rev-parse --short HEAD')
+    expect(cfg).not.toContain('git describe')
+  })
 })
 
 describe('PWA · 分片缓存必须随构建失效', () => {
