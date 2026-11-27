@@ -1194,6 +1194,9 @@ CI 里构建天然满足（checkout 的是确定提交），本地手动构建�
 - [ ] 设置页「关于」的版本号与「我的」页一致，且**不是硬编码字符串**
 - [ ] 「检查更新」按钮有明确三态反馈（发现新版 / 已是最新 / 环境不支持）
 - [ ] **`dist/data/version.json` 已生成**，且**不在 precache 里**
+- [ ] **`questions-index.json` 的 precache revision 是内容哈希**（不是 `null`），
+      否则「版本号是新的、题库是旧的」
+- [ ] `data/` 下不存在 `revision: null` 的 precache 条目
 - [ ] SW 对 `version.json` 用 **NetworkOnly**（不是 NetworkFirst），且规则在 answers 之前
 - [ ] 服务器版本更新时，**首页顶部出现橙色横幅**，显示 `本地sha → 远端sha`
 - [ ] 横幅可点击更新、可点 × 关闭（关闭后本次会话不再弹）
@@ -1295,3 +1298,4 @@ CI 里构建天然满足（checkout 的是确定提交），本地手动构建�
 | **v2.45** | **新增「SRE与故障管理」分类（第 28 个）**：30 题（15 单选 + 3 多选 + 12 简答）。与「综合场景题」的分工：后者 197 题是**技术排查**（怎么定位、怎么止损），本分类是**体系与流程** —— 故障分级、止损优先、无责复盘、On-call 设计、变更管理、MTTR/MTTD/MTTF、故障演练（含无预告）、指挥人机制、依赖强弱、容量规划、Runbook、Toil 治理、SLO 制定、跨团队协调、升级/降级判定。**id 段 14500–14999**。同步改 9 处（含 `check-batches.mjs` 白名单）。另记录一条反复踩到的坑：手写选择题时总把正确项放在 A，本次 15 道单选一度 **15/15 全是 A**，已按 id 播种打散（A6/B2/C4/D3），并修掉 2 处因打散而失配的解析字母引用 |
 | **v2.46** | **修复 PWA 更新失效 + 新增版本标识**：用户反馈「手机题库永远停在 2892 题」。根因是两件事叠加 ——① 答案分片用 `CacheFirst` + 固定 `cacheName: answers-shards` + **保留期 365 天**，而 `cleanupOutdatedCaches` 只清 precache、**不管 runtimeCaching 的缓存桶**，于是分片一年不回源，索引更新到 30xx 题但内容还是旧的；② `registerType: prompt` + `skipWaiting: false`，用户不点就不更新，而自动检查是每小时一次。**修复**：cacheName 改为带构建时间戳 `answers-shards-<ts>`（每次构建=全新缓存桶）、保留期降到 30 天、新增「检查更新」按钮、`package.json` 版本 0.1.0 → **1.0.0**。**新增版本标识**：Vite `define` 注入 `__APP_VERSION__`/`__APP_SHA__`/`__APP_BUILT_AT__`/`__APP_REPO__`，「我的」页底部显示 `v1.0.0 · 9904dbd · 2026-11-27 13:02`，设置页「关于」显示同源信息 + 检查更新 + **GitHub 开源地址**（新窗口打开）|
 | **v2.47** | **新增「有新版本」横幅，解决存量用户无感知更新的问题**：SW 更新弹窗要求「新 SW 已装好进 waiting」，而旧版本用户常不满足（旧 SW 每小时才检查、检查时 App 需开着、弹窗可能被「稍后」关掉）。**解法**：构建时生成 `data/version.json`，前端每 5 分钟 `fetch` 一次（`NetworkOnly` 永不缓存、规则排在 answers 之前），比对 `sha`；不一致则在首页挂橙色 sticky 横幅（`cb12d8e → abcdef9`），整条可点击更新、可关闭（`sessionStorage` 记忆，新会话仍提示）。三态设计：`latest`/`stale`/`unknown`，**`unknown` 必须静默**（离线、老部署无此文件时不能误报）。配套把 SW 的 `registration.update()` 从 1 小时改为 **5 分钟**。**效果**：存量用户只要打开一次 App，5 分钟内就会看到横幅，不需要等 SW 检查、不需要点对弹窗、也不需要知道任何 URL 参数 |
+| **v2.48** | **修复「版本号是新的但题库仍是 2892 题」**：根因是 `questions-index.json` 的 precache 条目写了 `revision: null` —— Workbox 用 `(url, revision)` 作缓存键，revision 恒定意味着**SW 升级也不会重新下载索引**。于是外壳和版本号都更新了，唯独决定题库数量的索引永远读旧缓存（电脑手机皆如此）。**改法**：`revision` 改用内容哈希（`sha256` 前 16 位，构建时算一次，成本可忽略），读取 `public/data/questions-index.json`，缺失时退化为构建时间串。**审计**：修复后 `data/` 下已无 `revision: null`；34 个 null 全在 `assets/`（文件名自带 hash，安全）。**CI 加断言**：`data/` 下条目 revision 不得为 null。**注**：当初写 null 的理由是「避免重算 460KB 摘要」—— 优化了无关紧要的点，换来致命 bug |

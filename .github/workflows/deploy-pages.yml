@@ -104,6 +104,13 @@ jobs:
             exit 1
           fi
           grep -q 'NetworkOnly' dist/sw.js                 || { echo "version.json 缺少 NetworkOnly 规则"; exit 1; }
+          # ②d 索引 revision 不能为 null，否则用户永久停在旧题库
+          if grep -q 'url:"data/questions-index.json",revision:null' dist/sw.js; then
+            echo "questions-index.json 的 revision 为 null，用户会永久停在旧题库"
+            exit 1
+          fi
+          grep -Eq 'url:"data/questions-index\.json",revision:"[a-f0-9]+"' dist/sw.js \
+            || { echo "questions-index.json 缺少内容哈希 revision"; exit 1; }
           # ③ 分片不能出现在 precache 清单里 —— 否则 SW 安装要吞 4.37 MB，
           #    发版后首次使用会明显卡顿（这正是 2026-11 修的问题）
           if grep -q 'url:"data/answers/' dist/sw.js; then
