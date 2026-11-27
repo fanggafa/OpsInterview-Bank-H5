@@ -93,6 +93,10 @@ jobs:
           # ② 答案分片必须有运行时缓存规则，否则「离线能打开但点进去没答案」
           grep -q 'answers-shards' dist/sw.js       || { echo "sw.js 缺少答案分片的运行时缓存规则（离线点进去没答案）"; exit 1; }
           grep -q 'CacheFirst' dist/sw.js           || { echo "sw.js 缺少 CacheFirst 策略"; exit 1; }
+          # ②b 缓存名必须带构建时间戳，否则用户会永久停在旧题库
+          #     （2026-11 真实事故，详见 docs/deployment.md）
+          grep -Eq 'answers-shards-[0-9]{10,}' dist/sw.js \
+            || { echo "分片缓存名未带构建时间戳，用户会永久停在旧题库"; exit 1; }
           # ③ 分片不能出现在 precache 清单里 —— 否则 SW 安装要吞 4.37 MB，
           #    发版后首次使用会明显卡顿（这正是 2026-11 修的问题）
           if grep -q 'url:"data/answers/' dist/sw.js; then

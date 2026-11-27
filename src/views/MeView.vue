@@ -1,9 +1,10 @@
-<script setup>
+﻿<script setup>
 import { computed } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
 import { formatPercent } from '@/utils/format'
+import { VERSION_LABEL, formatBuiltAt } from '@/utils/version'
 
 /**
  * 「我的」页：只做「看我自己的数据 + 快速进入错题/收藏」。
@@ -20,6 +21,14 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
 const favCount = computed(() => study.favorites.length)
 const wrongCount = computed(() => study.wrongList.length)
 const percentText = computed(() => formatPercent(study.progressRate))
+
+/**
+ * 版本信息（我的页底部）。
+ *
+ * 用途不是「展示」，而是**排障入口**：用户说「我这还是旧题库」时，
+ * 让他念一下这里的版本号和构建时间，就能判断是 SW 没更新，还是真的没发版。
+ */
+const builtAtText = computed(() => formatBuiltAt())
 
 /**
  * 头部三格数据：**纯展示，不再做跳转**。
@@ -124,6 +133,17 @@ const summary = computed(() => [
       </div>
     </div>
 
+    <!--
+      版本标识：用户反馈「手机上的题库停在 2892 题，不知道自己是哪个版本」。
+      放在「我的」页最底部，一眼能看到当前版本与构建时间，点进去是设置页（有检查更新）。
+      不显眼但一直在 —— 需要时可查，平时不打扰。
+    -->
+    <router-link to="/settings" class="version">
+      <span class="version__label">{{ VERSION_LABEL }}</span>
+      <span class="version__dot">·</span>
+      <span class="version__time">{{ builtAtText }}</span>
+    </router-link>
+
   </div>
 </template>
 
@@ -194,6 +214,36 @@ const summary = computed(() => [
   color: rgba(255, 255, 255, 0.72);
 }
 
+/* ---------- 版本条 ---------- */
+/*
+ * 底部版本标识：刻意做得不显眼（小字、淡色、无背景），
+ * 它的作用是「需要时可查」，不该抢视觉焦点。
+ * 但仍然做成可点击（进设置页），因为用户往往是从这里去找「检查更新」。
+ */
+.version {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 18px 0 4px;
+  padding: 6px;
+  font-size: 11px;
+  color: var(--c-text-3);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.version:active {
+  opacity: 0.65;
+}
+.version__label {
+  font-weight: 600;
+}
+.version__dot {
+  opacity: 0.5;
+}
+.version__time {
+  opacity: 0.85;
+}
 /* ---------- 四宫格 ---------- */
 .grid {
   display: grid;
@@ -355,3 +405,4 @@ const summary = computed(() => [
 
 /* ---------- 轻提示 ---------- */
 </style>
+

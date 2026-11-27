@@ -197,9 +197,9 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/actions/runs/<run_id>/jobs"
 
 | 内容 | 位置 | 体积 |
 |---|---|---|
-| JS / CSS / HTML / 图标 | **precache**（SW 安装时写入） | 约 1.65 MB（47 条） |
+| JS / CSS / HTML / 图标 | **precache**（SW 安装时写入） | 约 1.65 MB（45 条） |
 | `questions-index.json` | **precache**（`additionalManifestEntries` 单独加回） | 422 KB |
-| 34 个答案分片 | **runtimeCaching**（`CacheFirst`，缓存名 `answers-shards`） | 约 4.37 MB |
+| 34 个答案分片 | **runtimeCaching**（`CacheFirst`，缓存名 `answers-shards-<构建时间戳>`） | 约 4.37 MB |
 
 > **为什么不再全量预缓存**：早先 `globPatterns` 含 `json`，把 34 个分片（4.37 MB）
 > 也塞进 precache，实测 `precache 81 entries (~6.0 MB)`。
@@ -211,6 +211,42 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/actions/runs/<run_id>/jobs"
 > ③ `fetchJSON` 用 `cache: 'no-cache'`，每个请求都要跟正在写入的 cache 抢。
 >
 > 改后 SW 安装只需处理 1.65 MB（**降 73%**），安装瞬间完成。
+
+#### ⚠️ 一次真实事故：用户手机「永远停在 2892 题」
+
+> 用户反馈：手机上题库始终是 2892 题，怎么刷新都不更新。
+>
+> **根因是两件事叠加**：
+>
+> **① cacheName 固定 + 保留期 365 天**
+>
+> 答案分片用的是 `CacheFirst` + 固定缓存名 `answers-shards` + `maxAgeSeconds: 365 天`。
+> 分片文件名不带 hash（就是 `answers/<分类>.json`），一旦缓存，
+> **一年之内任何请求都命中旧缓存，永远不回源**。
+>
+> 关键在于：`cleanupOutdatedCaches` 只清理 **precache manifest** 里的旧条目，
+> 对 `runtimeCaching` 产生的缓存桶**完全不管**。
+> 所以 SW 换了新版本、索引也更新成 30xx 题了，
+> 但点进题目读的还是那份 2892 题时期的旧分片 —— **索引与分片对不上**。
+>
+> **② `registerType: 'prompt'` + `skipWaiting: false`**
+>
+> 用户不点「立即更新」，新 SW 就永远不接管。而内置的自动检查是**每小时一次**，
+> 用户发版后想立刻看新版没有入口。
+>
+> **修复**：
+>
+> | 改动 | 作用 |
+> |---|---|
+> | cacheName 带构建时间戳 `answers-shards-202611270502` | 每次构建 = 全新缓存桶，必然重新拉取 |
+> | `maxAgeSeconds` 365 天 → **30 天** | 旧桶不会长期堆积（分片是派生数据，删了会自动重拉） |
+> | 新增「检查更新」按钮 | 用户不必等一小时的定时器 |
+> | 注入构建版本号（version + sha + 构建时间） | 能判断「手机上是不是旧版本」 |
+>
+> **教训**：用 `runtimeCaching` 缓存**文件名不带 hash 的静态数据**时，
+> cacheName 必须随构建变化，否则 SW 更新对这份数据毫无意义。
+> 那个「一年」的保留期设得太随意 —— 因为分片的有效性完全依附于构建版本，
+> 长保留期没有任何好处。
 
 **离线能力如何保证**：分片由 `prewarmCache()` 在**页面空闲时分批**喂给 SW
 （`requestIdleCallback`、一次一个、失败跳过），约十几秒内全部就位；

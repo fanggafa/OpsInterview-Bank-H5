@@ -12,6 +12,8 @@ import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
 import { readJSON, writeJSON, isStorageAvailable } from '@/utils/storage'
 import { installGuideAll } from '@/utils/installGuide'
+import { VERSION_LABEL, REPO_LINKS, formatBuiltAt } from '@/utils/version'
+import { usePwaUpdate } from '@/composables/usePwaUpdate'
 
 /**
  * 设置页：把「我的」页里偏配置的项收进来。
@@ -78,7 +80,44 @@ function toast(text) {
 
 const favCount = computed(() => study.favorites.length)
 const storageOk = computed(() => isStorageAvailable())
-const appVersion = '0.3.0'
+
+/**
+ * 版本与构建信息。
+ *
+ * 早先这里是硬编码的 `const appVersion = '0.3.0'` —— 既不随代码变化，
+ * 也和 package.json 对不上，导致「用户手机上是哪个版本」完全无法判断。
+ * 现在改为构建期注入（见 `utils/version.js`）。
+ */
+const builtAtText = computed(() => `构建于 ${formatBuiltAt()}`)
+
+/** 手动检查更新：给用户一个不必等一小时定时器的入口 */
+const pwa = usePwaUpdate()
+const checking = ref(false)
+const checkHint = ref('')
+
+async function onCheckUpdate() {
+  if (checking.value) return
+  checking.value = true
+  checkHint.value = ''
+  try {
+    const r = await pwa.checkUpdate()
+    if (r === 'found') {
+      checkHint.value = '发现新版本，请在顶部提示里点「立即更新」'
+    } else if (r === 'latest') {
+      checkHint.value = '已是最新版本'
+    } else {
+      checkHint.value = '当前环境不支持自动更新（如非 HTTPS），可尝试强制刷新'
+    }
+  } catch {
+    checkHint.value = '检查失败，请稍后再试'
+  } finally {
+    checking.value = false
+    // 提示 4 秒后淡出，避免一直挂在界面上
+    setTimeout(() => {
+      checkHint.value = ''
+    }, 4000)
+  }
+}
 
 /**
  * 安装引导：**列出全部平台**（iOS / 安卓 / 电脑），并标出当前设备。
@@ -280,8 +319,11 @@ const guideOpen = ref(false)
     <h2 class="section-title">关于</h2>
     <div class="group card">
       <div class="row row--static">
-        <div class="row__text"><span class="row__title">版本</span></div>
-        <span class="row__value">v{{ appVersion }}</span>
+        <div class="row__text">
+          <span class="row__title">版本</span>
+          <span class="row__desc">{{ builtAtText }}</span>
+        </div>
+        <span class="row__value">{{ VERSION_LABEL }}</span>
       </div>
       <div class="row row--static">
         <div class="row__text"><span class="row__title">存储方式</span></div>
@@ -291,6 +333,27 @@ const guideOpen = ref(false)
         <div class="row__text"><span class="row__title">题库</span></div>
         <span class="row__value">{{ bank.total }} 题 · {{ CATEGORIES.length }} 分类</span>
       </div>
+
+      <!--
+        检查更新：手动催一次 SW。
+        内置的自动检查是每小时一次，发版后用户不可能等一小时 —— 给他一个自己能点的按钮。
+      -->
+      <button class="row" :disabled="checking" @click="onCheckUpdate">
+        <div class="row__text">
+          <span class="row__title">检查更新</span>
+          <span class="row__desc">{{ checkHint }}</span>
+        </div>
+        <span class="row__value">{{ checking ? '检查中…' : '›' }}</span>
+      </button>
+
+      <!-- 开源地址：直接跳转，方便 star / 反馈问题 -->
+      <a class="row" :href="REPO_LINKS.home" target="_blank" rel="noopener noreferrer">
+        <div class="row__text">
+          <span class="row__title">GitHub 开源地址</span>
+          <span class="row__desc">查看源码、提交问题、给个 Star ⭐</span>
+        </div>
+        <span class="row__value">›</span>
+      </a>
     </div>
 
     <p class="foot muted">数据只存在本机浏览器，清除浏览器数据或换设备会丢失。</p>

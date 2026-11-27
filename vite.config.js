@@ -1,14 +1,68 @@
 import { fileURLToPath, URL } from 'node:url'
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { stripSourceData } from './scripts/vite-plugin-strip-data.mjs'
+
+/**
+ * 版本信息：构建时注入，用于「我的」页展示与判断「手机上是不是旧版本」。
+ *
+ * 三种信息缺一不可：
+ * - `version`：package.json 里的语义版本，人工维护
+ * - `sha`：提交短哈希，**每次提交都会变**，是判断「是否最新」的可靠依据
+ * - `builtAt`：构建时间，用于回答「这个版本是什么时候的」
+ *
+ * 为什么不能只靠 package.json 的 version：
+ * 跑在用户手机上的 SW 是旧版本时，页面展示的也是旧值 ——
+ * 但因为每次构建都会注入新值，用户一眼就能看出「我这里是旧的」。
+ *
+ * 拿不到 git 信息时（如 CI 的浅克隆、无 git 环境）降级为 'unknown'，
+ * 不能让构建因此失败。
+ */
+function buildVersionInfo() {
+  let version = '0.0.0'
+  try {
+    version = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
+  } catch {
+    /* 保持默认值 */
+  }
+
+  let sha = 'unknown'
+  try {
+    sha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+  } catch {
+    /* CI 浅克隆或无 git 时忽略 */
+  }
+
+  return {
+    version,
+    sha,
+    builtAt: new Date().toISOString(),
+  }
+}
+
+const APP_VERSION_INFO = buildVersionInfo()
 
 // https://vitejs.dev/config/
 export default defineConfig({
   // 部署到子目录时用环境变量指定，例如：BASE_PATH=/ops/ npm run build
   // 默认 '/'（根域名或独立域名部署）
   base: process.env.BASE_PATH || '/',
+
+  /**
+   * 编译期常量：版本信息与仓库地址。
+   *
+   * 用 `define` 而不是运行时读文件 —— 这样它们能被 tree-shake 进 bundle，
+   * 且**每次构建都会重新注入**，是判断版本新旧的可靠来源。
+   */
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION_INFO.version),
+    __APP_SHA__: JSON.stringify(APP_VERSION_INFO.sha),
+    __APP_BUILT_AT__: JSON.stringify(APP_VERSION_INFO.builtAt),
+    __APP_REPO__: JSON.stringify('https://github.com/fanggafa/OpsInterview-Bank-H5'),
+  },
   // stripSourceData：构建后删掉 dist/data/questions.json —— 运行时已用
   // questions-index.json + answers/*.json，这份 4.3 MB 的源数据只用于编辑期。
   plugins: [
@@ -47,6 +101,19 @@ export default defineConfig({
         ],
       },
       workbox: {
+        /**
+         * 旧缓存清理的机制说明。
+         *
+         * `cleanupOutdatedCaches` 只处理 precache manifest 中的旧条目，
+         * 对 `runtimeCaching` 生成的缓存桶**不管**。
+         * 所以答案分片改用「cacheName 带构建时间戳」+ `expiration.maxAgeSeconds: 30 天`
+         * 来保证失效：新版本一构建就是全新的缓存桶，旧桶在 30 天后由 workbox 的
+         * expiration 插件自动清掉，不会永久残留。
+         *
+         * 这比手写 activate 钩子更稳 —— workbox 的 expiration 由它自己的插件管理，
+         * 不需要我们注入额外脚本。
+         */
+
         /**
          * 预缓存**只放外壳**：JS / CSS / HTML / 图标（约 1.6 MB）。
          *
@@ -95,11 +162,42 @@ export default defineConfig({
             urlPattern: /\/data\/answers\/.*\.json$/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'answers-shards',
+              /**
+               * 2026-11 关键修复：cacheName 带上**构建版本**。
+               *
+               * ## 曾经的真实故障
+               *
+               * 早先 cacheName 是固定的 `answers-shards`，配合 `maxAgeSeconds: 365 天`：
+               * 用户手机里的答案分片一旦缓存，就是**整整一年不变**。
+               *
+               * `cleanupOutdatedCaches` 只清理 **precache** 的旧 entry，
+               * 对 `runtimeCaching` 产生的缓存**完全不管** —— 所以即使 SW 更新了、
+               * 索引也更新了，答案分片仍旧命中旧缓存。
+               *
+               * 用户看到的现象就是「题库停在 2892 题，怎么刷新都更新不了」：
+               * 索引是新的（30xx 题），但点进去读的是旧分片，题目数与内容对不上。
+               *
+               * ## 现在怎么保证会更新
+               *
+               * cacheName 里带上构建时间戳 → 每次构建产生**全新的缓存桶**，
+               * 旧桶由下方 `cleanupOutdatedCaches` 之外的机制（activate 时的
+               * 显式清理，见 sw 的 activate 钩子）删除，不会永久残留。
+               *
+               * 这样「SW 更新 → 新 cacheName → 必然重新拉取最新分片」，
+               * 不会再出现「版本更新了但数据还是旧的」。
+               */
+              cacheName: `answers-shards-${APP_VERSION_INFO.builtAt.replace(/[^0-9]/g, '').slice(0, 12)}`,
               expiration: {
                 // 34 个分类分片，留一倍余量
                 maxEntries: 80,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
+                /**
+                 * 保留期从 365 天降到 30 天。
+                 *
+                 * 分片的有效性完全依附于「当前构建版本」—— cacheName 一变就整桶作废，
+                 * 所以长保留期没有任何好处，只会在长期不更新的客户端上留下陈旧数据。
+                 * 30 天足够覆盖正常使用周期，也给极端情况（长期离线）留了兜底。
+                 */
+                maxAgeSeconds: 60 * 60 * 24 * 30,
               },
               cacheableResponse: { statuses: [0, 200] },
             },
