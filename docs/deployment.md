@@ -248,6 +248,54 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/actions/runs/<run_id>/jobs"
 > 那个「一年」的保留期设得太随意 —— 因为分片的有效性完全依附于构建版本，
 > 长保留期没有任何好处。
 
+#### 版本标识与定位「用户跑的是哪次提交」
+
+页面上的 `v1.0.0 · 9904dbd · 2026-11-27 13:02` 来自构建期注入
+（`vite.config.js` 的 `buildVersionInfo()` → `define`）。
+
+**`9904dbd` 是 Git 提交哈希的前 7 位**，不是自定义编号：
+
+```bash
+git rev-parse --short HEAD     # 9904dbd8c46134fa52... → 取前 7 位
+```
+
+完整的 40 位才是 SHA-1 全值。7 位是**缩写形式**，GitHub 与 git 都支持用它反查：
+
+| 查法 | 命令 / 操作 |
+|---|---|
+| 网页 | `https://github.com/fanggafa/OpsInterview-Bank-H5/commit/9904dbd` |
+| 搜索框 | 粘贴 `9904dbd` |
+| 本地 | `git show 9904dbd` |
+
+Git 用前缀匹配展开缩写，并会检测前缀冲突（撞了会要求输更长）。7 位 = 2680 万组合，
+个人项目实际不会撞。
+
+**排障流程**：
+
+```bash
+# 1. 记下用户报的 sha
+# 2. 对比 main 的最新提交
+git log origin/main -1 --format='%h %s'
+
+# 一致   → 版本不是问题，转查数据缓存 / localStorage
+# 不一致 → 用户是旧版本，引导「检查更新」或卸载重装
+```
+
+**为什么不用 `git describe`**：
+
+`actions/checkout@v5` 默认 **`fetch-depth: 1`（浅克隆）**。
+`git describe` 需要 tag 历史，浅克隆下会报错；而 `git rev-parse --short HEAD`
+只读 HEAD，浅克隆下依然可用。
+
+**边界情况**：
+
+⚠️ **本地有未提交改动时，sha 不准确** —— 它指向的是上一个提交，
+但产物已包含未提交内容。CI 构建天然没有这个问题（checkout 的是确定提交）。
+
+⚠️ **构建失败时启用的是上一次的产物**。Pages 部署失败不会自动回滚到上一个成功版本，
+用户的 sha 可能对应一个「已构建但未成功部署」的提交 —— 排查时以
+Actions 的部署记录为准，而不是只看 sha。
+
 **离线能力如何保证**：分片由 `prewarmCache()` 在**页面空闲时分批**喂给 SW
 （`requestIdleCallback`、一次一个、失败跳过），约十几秒内全部就位；
 此后用户点开任何分类都命中缓存。索引留在 precache，保证离线也能打开列表与统计。
