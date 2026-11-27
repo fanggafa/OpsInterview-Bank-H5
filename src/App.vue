@@ -61,6 +61,5 @@ onMounted(async () => {
     <!-- PWA 更新提示：只有新版本就绪时才出现，不打扰正常使用 -->
     <PwaUpdateDialog />
     <!-- 更新加载层：点「立即更新」后盖住整屏，跨刷新保持 -->
-    <UpdateOverlay />
-  </div>
+    <UpdateOverlay />  </div>
 </template>

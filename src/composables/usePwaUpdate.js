@@ -53,13 +53,24 @@ export function usePwaUpdate() {
           offlineReady.value = true
         },
         onRegisteredSW(_url, registration) {
-          // 定期检查更新（每小时一次）：应用常驻时也能发现新版本
+          /**
+           * 定期检查更新。
+           *
+           * ## 2026-11：从每小时改成每 5 分钟
+           *
+           * 旧节奏下，用户发版后要等一小时才可能出现更新提示；
+           * 而「永久停在旧题库」的那批用户，一小时里可能早就关掉 App 了，
+           * 于是永远等不到那次检查。
+           *
+           * `registration.update()` 只是拉一次 sw.js 并比对字节，
+           * 命中 HTTP 缓存时几乎零成本，5 分钟一次不会造成负担。
+           */
           if (!registration) return
           const timer = setInterval(
             () => {
               registration.update().catch(() => {})
             },
-            60 * 60 * 1000,
+            5 * 60 * 1000,
           )
           killWatch = () => clearInterval(timer)
         },

@@ -5,6 +5,24 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { stripSourceData } from './scripts/vite-plugin-strip-data.mjs'
+import { emitVersionFile } from './scripts/vite-plugin-version-file.mjs'
+
+/**
+ * 把「生成 version.json」包成一个 Vite 插件。
+ *
+ * 用 `closeBundle` 而不是 `writeBundle`：要等所有产物（含 SW 的 precache 清单）
+ * 都写完之后再生成，避免 version.json 被误纳入 precache。
+ * 实际上它还靠下面 runtimeCaching 的 NetworkOnly 规则保证不被缓存。
+ */
+function versionFile(info) {
+  return {
+    name: 'emit-version-file',
+    apply: 'build',
+    closeBundle() {
+      emitVersionFile('dist', info)
+    },
+  }
+}
 
 /**
  * 版本信息：构建时注入，用于「我的」页展示与判断「手机上是不是旧版本」。
@@ -68,6 +86,15 @@ export default defineConfig({
   plugins: [
     vue(),
     stripSourceData(),
+    /**
+     * 生成 `dist/data/version.json` —— 前端用来探测「服务器上是不是有更新」。
+     *
+     * 这是解决「存量用户不知道自己该更新」的关键：
+     * SW 的更新弹窗只在「新版已装好进 waiting」时出现，
+     * 而旧 SW 什么时候去检查、检不检查得到，用户完全无感。
+     * 有了这个静态探针，前端可以主动比对 sha，不一致就在首页挂横幅。
+     */
+    versionFile(APP_VERSION_INFO),
     /**
      * PWA：把整个应用（含题库数据）缓存到本地，断网也能刷题。
      *
@@ -158,6 +185,20 @@ export default defineConfig({
          * 用户正常浏览时点开某分类，也会自然把它们缓存下来。
          */
         runtimeCaching: [
+          /**
+           * `version.json` 必须**永远走网络** —— 它存在的唯一目的就是拿到服务器最新值。
+           *
+           * 用 `NetworkOnly` 而不是 `NetworkFirst`：
+           * NetworkFirst 在网络失败时会回落到缓存，返回一个**过期的版本号**，
+           * 那会让前端误判「已是最新」，恰好掩盖了需要更新的情况。
+           * 拿不到就让它失败，前端按「未知」处理（不误报、也不误判为最新）。
+           *
+           * 必须放在 answers 规则**之前**：workbox 按数组顺序匹配，先命中先生效。
+           */
+          {
+            urlPattern: /\/data\/version\.json$/,
+            handler: 'NetworkOnly',
+          },
           {
             urlPattern: /\/data\/answers\/.*\.json$/,
             handler: 'CacheFirst',
