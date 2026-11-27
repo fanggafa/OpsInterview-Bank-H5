@@ -269,6 +269,37 @@ describe('分类 Tab · 折叠与展开', () => {
     expect(rule).toMatch(/overscroll-behavior:\s*contain/)
   })
 
+  it('滚动条中线与箭头中线对齐', () => {
+    const src = read('src/views/BankView.vue')
+
+    /**
+     * ## 几何关系
+     *
+     * 箭头是 26×26 的圆，`right: 0` → 圆心落在「右边缘 - 13px」。
+     * 滚动条宽 4px，要让中线也落在 13px 处 → `right = 13 - 4/2 = 11px`。
+     *
+     * 早先写的是 `right: 1px`，视觉上偏右 10px、与箭头不在一条线上
+     * （实测中心 375 vs 365）。
+     */
+    const arrowBlock = src.match(/\.bank-cats__more\s*\{[^}]*\}/)
+    const barBlock = src.match(/\.bank-cats__bar\s*\{[^}]*\}/)
+    expect(arrowBlock).toBeTruthy()
+    expect(barBlock).toBeTruthy()
+
+    const arrowW = Number(arrowBlock[0].match(/width:\s*(\d+)px/)[1])
+    const barW = Number(barBlock[0].match(/width:\s*(\d+)px/)[1])
+    const arrowRight = Number((arrowBlock[0].match(/right:\s*(\d+)px/) || [, '0'])[1])
+    const barRight = Number(barBlock[0].match(/right:\s*(\d+)px/)[1])
+
+    // 各自中线距容器右边缘的距离应相等
+    const arrowCenterFromRight = arrowRight + arrowW / 2
+    const barCenterFromRight = barRight + barW / 2
+    expect(
+      Math.abs(arrowCenterFromRight - barCenterFromRight),
+      `箭头中线距右 ${arrowCenterFromRight}px，滚动条中线距右 ${barCenterFromRight}px，应对齐`,
+    ).toBeLessThan(0.5)
+  })
+
   it('滚动指示条的滑块随滚动位置更新', async () => {
     const { wrapper } = await mountBank()
     const vm = wrapper.vm

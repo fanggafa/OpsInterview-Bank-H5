@@ -769,14 +769,25 @@ const resultText = computed(() => {
 /**
  * 展开态的滚动指示条：位于箭头**正下方**，构成右侧纵向操作栏。
  *
- * `top` = 箭头底部（3 + 26 = 29px）+ 4px 间距 = 33px。
- * 底部留 2px，避免贴住网格边缘。
+ * ## 水平对齐：中线必须与箭头一致
+ *
+ * 箭头是 26×26 的圆，`right: 0` → 圆心在 `右边缘 - 13px`。
+ * 滚动条宽 4px，要让它的中线也落在 13px 处，
+ * 则 `right = 13 - 4/2 = 11px`。
+ *
+ * 早先写的是 `right: 1px` —— 视觉上明显偏右 10px，与箭头不在一条线上。
+ *
+ * ## 垂直范围
+ *
+ * `top` = 箭头底部（3 + 26 = 29px）+ 4px 间距 = 33px，
+ * 底部留 2px 不贴边。
  */
 .bank-cats__bar {
   position: absolute;
   top: 33px;
   bottom: 2px;
-  right: 1px;
+  /* 中线对齐箭头：13 - 4/2 = 11 */
+  right: 11px;
   width: 4px;
   border-radius: 2px;
   background: color-mix(in srgb, var(--c-text-3) 14%, transparent);
