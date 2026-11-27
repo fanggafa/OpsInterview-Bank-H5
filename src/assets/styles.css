@@ -786,6 +786,22 @@ ul {
   max-height: 298px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /**
+   * ⚠️ **`overscroll-behavior: contain` 不能省。**
+   *
+   * 不加这条时，内层滚到底后**继续滑动会把剩余手势传给外层页面**（滚动链），
+   * 手机上表现为「分类列表已经到底了，再往上滑整个题库页面跟着动」——
+   * 用户本想继续看更多分类，结果题目列表被滑走了。
+   *
+   * `contain` 表示：滚动到这个容器的边界就停住，不传递给祖先元素。
+   * 这是移动端嵌套滚动的标准做法。
+   *
+   * 实测对比（390×844 触摸序列）：
+   * - 有 contain：页面 scrollY 120 → 120，未动 ✓
+   * - 无 contain：页面 scrollY 479 → 584，被带动 105px ✗
+   */
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   /* 右侧让出 9px 给自定义指示条，避免它压住 chip 边缘 */
   padding-right: 9px;
   /* 关掉原生滚动条，改由自定义指示条承担「还有更多」的提示 */

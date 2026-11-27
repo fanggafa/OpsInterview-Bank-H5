@@ -246,6 +246,29 @@ describe('分类 Tab · 折叠与展开', () => {
     expect(src).toContain('catsExpanded && catScrollable')
   })
 
+  it('内层滚到底后不能带动外层页面（滚动链）', () => {
+    const css = read('src/assets/styles.css')
+    const block = css.match(/\.chip-grid--scroll\s*\{[^}]*\}/)
+    expect(block).toBeTruthy()
+    const rule = block[0].replace(/\/\*[\s\S]*?\*\//g, '')
+
+    /**
+     * ## 不加会怎样
+     *
+     * 内层滚到底后继续滑动，剩余手势会传给外层（滚动链）——
+     * 手机上表现为「分类列表已到底，再往上滑整个题库页面跟着动」，
+     * 用户本想继续看更多分类，结果题目列表被滑走了。
+     *
+     * ## 实测对比（390×844 真实触摸序列）
+     *
+     * | | 页面 scrollY |
+     * |---|---|
+     * | 有 `contain` | 120 → 120（未动）✓ |
+     * | 无 `contain` | 479 → 584（被带动 105px）✗ |
+     */
+    expect(rule).toMatch(/overscroll-behavior:\s*contain/)
+  })
+
   it('滚动指示条的滑块随滚动位置更新', async () => {
     const { wrapper } = await mountBank()
     const vm = wrapper.vm
