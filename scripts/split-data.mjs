@@ -48,6 +48,8 @@ const CAT_SLUG = {
   '综合场景题': 'scenario',
   /* 2026-11 新增分类 */
   可观测性: 'observability',
+  /* 2026-11 新增分类 */
+  SRE与故障管理: 'sre',
 }
 
 const bank = JSON.parse(readFileSync(SRC, 'utf8'))
