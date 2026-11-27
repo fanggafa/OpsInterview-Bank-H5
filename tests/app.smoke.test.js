@@ -15,7 +15,7 @@ import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
 
 const FIXTURE = [
-  { id: 1, category: 'Linux基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
+  { id: 1, category: 'Linux 基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
   { id: 2, category: 'MySQL', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t2'], frequency: '中频' },
 ]
 

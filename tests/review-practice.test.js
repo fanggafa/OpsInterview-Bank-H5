@@ -32,7 +32,7 @@ import { REVIEW_SIZES, STATUS } from '@/utils/constants'
 const mk = (i, type = 'single', extra = {}) => ({
   id: i,
   type,
-  category: 'Linux基础',
+  category: 'Linux 基础',
   difficulty: '中等',
   frequency: '高频',
   question: `题目 ${i}`,
@@ -53,7 +53,7 @@ const FIXTURE = Array.from({ length: 20 }, (_, i) => mk(i + 1))
 const SHORT_FIXTURE = Array.from({ length: 20 }, (_, i) => ({
   id: i + 1,
   type: 'short',
-  category: 'Linux基础',
+  category: 'Linux 基础',
   difficulty: '中等',
   frequency: '高频',
   question: `简答题 ${i + 1}`,

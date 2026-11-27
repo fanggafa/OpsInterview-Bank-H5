@@ -13,7 +13,7 @@ import { STATUS } from '@/utils/constants'
 const SINGLE = {
   id: 1,
   type: 'single',
-  category: 'Linux基础',
+  category: 'Linux 基础',
   difficulty: '简单',
   question: '哪个命令查看打开的文件？',
   options: [
@@ -30,7 +30,7 @@ const SINGLE = {
 const MULTIPLE = {
   id: 2,
   type: 'multiple',
-  category: 'Linux基础',
+  category: 'Linux 基础',
   difficulty: '中等',
   question: '以下哪些是软链接特性？',
   options: [
@@ -291,7 +291,7 @@ describe('详情页 · 简答题保持原行为', () => {
 
 describe('刷题页 · 选择题', () => {
   it('选择题按选项渲染，单选给出点击提示而非提交按钮', async () => {
-    const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
+    const { wrapper } = await mountPractice({ category: 'Linux 基础', mode: 'sequential' })
     expect(wrapper.findAll('.option').length).toBeGreaterThan(0)
     // 单选点选项即判定，操作区显示提示文案
     expect(wrapper.find('.actions__submit').exists()).toBe(false)
@@ -302,7 +302,7 @@ describe('刷题页 · 选择题', () => {
   it('单选点选项即判定并记录', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
+      const { wrapper } = await mountPractice({ category: 'Linux 基础', mode: 'sequential' })
       await wrapper.findAll('.option')[1].trigger('click')
       await wrapper.vm.$nextTick()
 
@@ -325,7 +325,7 @@ describe('刷题页 · 选择题', () => {
   it('判定后停在本题，不自动进入下一题（才看得到解析）', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
+      const { wrapper } = await mountPractice({ category: 'Linux 基础', mode: 'sequential' })
       await wrapper.findAll('.option')[1].trigger('click')
       await vi.advanceTimersByTimeAsync(3000)
       await wrapper.vm.$nextTick()
@@ -344,7 +344,7 @@ describe('刷题页 · 选择题', () => {
   it('判定后出现「下一题 →」按钮，点了才前进', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
+      const { wrapper } = await mountPractice({ category: 'Linux 基础', mode: 'sequential' })
       await wrapper.findAll('.option')[1].trigger('click')
       await wrapper.vm.$nextTick()
 
@@ -393,7 +393,7 @@ describe('刷题页 · 选择题', () => {
   it('键盘 A-D 可选择选项', async () => {
     vi.useFakeTimers()
     try {
-      const { wrapper } = await mountPractice({ category: 'Linux基础', mode: 'sequential' })
+      const { wrapper } = await mountPractice({ category: 'Linux 基础', mode: 'sequential' })
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b' }))
       await wrapper.vm.$nextTick()
 

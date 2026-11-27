@@ -41,10 +41,10 @@ describe('groupByCategory', () => {
 
   it('组顺序跟随 CATEGORIES，而不是题目出现顺序', () => {
     // 故意让 Redis 先出现，但它在 CATEGORIES 里比 MySQL 靠前
-    const list = [mk(1, 'Redis'), mk(2, 'MySQL'), mk(3, 'Linux基础')]
+    const list = [mk(1, 'Redis'), mk(2, 'MySQL'), mk(3, 'Linux 基础')]
     const groups = groupByCategory(list)
-    // CATEGORIES 顺序：Linux基础(0) → Redis(9) → MySQL(10)
-    expect(groups.map((g) => g.category)).toEqual(['Linux基础', 'Redis', 'MySQL'])
+    // CATEGORIES 顺序：Linux 基础(0) → Redis(9) → MySQL(10)
+    expect(groups.map((g) => g.category)).toEqual(['Linux 基础', 'Redis', 'MySQL'])
   })
 
   it('组内保持调用方传入的顺序（收藏按时间倒序、错题按入本顺序）', () => {

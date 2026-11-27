@@ -16,7 +16,7 @@ const TOTAL = PAGE_SIZE * 3 + 5
 const MANY = Array.from({ length: TOTAL }, (_, i) => ({
   id: i + 1,
   type: 'short',
-  category: 'Linux基础',
+  category: 'Linux 基础',
   difficulty: '中等',
   question: `题目 ${i + 1}`,
   answer: `答案 ${i + 1}`,
@@ -37,14 +37,14 @@ const OVER_ONE_PAGE = PAGE_SIZE + 5
  * 第 1 页 4 组（20 题）、第 2 页 2 组（10 题）。
  *
  * ⚠️ 分类顺序必须按 `CATEGORIES` 的**真实业务顺序**排列
- * （Linux基础 → 网络基础 → Nginx → Redis → MySQL → Kubernetes），
+ * （Linux 基础 → 网络基础 → Nginx → Redis → MySQL → Kubernetes），
  * 分组后组的先后就按它来 —— 随便写一个自认为的顺序会让断言与实现不一致。
  *
  * ⚠️ **选择题与简答题要分开造**：2026-11 起
  * 「错题本只收选择题、收藏只收简答题」，
  * 一份混合夹具会让两个页面的列表都缺一半。
  */
-const CATS = ['Linux基础', '网络基础', 'Nginx', 'Redis', 'MySQL', 'Kubernetes']
+const CATS = ['Linux 基础', '网络基础', 'Nginx', 'Redis', 'MySQL', 'Kubernetes']
 const PER_CAT = 5
 
 /** 错题本用：选择题 */
@@ -256,7 +256,7 @@ describe('错题本 · 分类汇总 → 明细', () => {
     expect(router.currentRoute.value.query.category).toBe(cat)
     // 明细里只有这一类的 5 题
     expect(wrapper.findAll('.qcard')).toHaveLength(PER_CAT)
-    // 分类名写在页头标题里（「错题本 · Linux基础」），不再在正文里重复一行
+    // 分类名写在页头标题里（「错题本 · Linux 基础」），不再在正文里重复一行
     expect(wrapper.find('.header__title').text()).toContain(cat)
   })
 
@@ -365,6 +365,6 @@ describe('收藏页 · 分类汇总 → 明细', () => {
      * 现在改成 `v-if="!list.length"` 独立判断。
      */
     expect(wrapper.text()).not.toContain('还没有收藏')
-    expect(wrapper.findAll('.cat')).toHaveLength(1) // 3 题都在 Linux基础 一类的场景下
+    expect(wrapper.findAll('.cat')).toHaveLength(1) // 3 题都在 Linux 基础 一类的场景下
   })
 })

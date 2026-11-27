@@ -12,8 +12,8 @@ import { STATUS } from '@/utils/constants'
 
 /** 夹具使用真实分类名，与 constants.js 的 10 个枚举一致 */
 const FIXTURE = [
-  { id: 1, category: 'Linux基础', difficulty: '简单', question: 'tcp handshake?', answer: 'three way', tags: ['网络', 'tcp'], frequency: '高频' },
-  { id: 2, category: 'Linux基础', difficulty: '中等', question: 'redis cache?', answer: 'eviction', tags: ['缓存'], frequency: '中频' },
+  { id: 1, category: 'Linux 基础', difficulty: '简单', question: 'tcp handshake?', answer: 'three way', tags: ['网络', 'tcp'], frequency: '高频' },
+  { id: 2, category: 'Linux 基础', difficulty: '中等', question: 'redis cache?', answer: 'eviction', tags: ['缓存'], frequency: '中频' },
   { id: 3, category: 'MySQL', difficulty: '困难', question: 'mysql index?', answer: 'B+ tree', tags: ['DB'], frequency: '高频' },
 ]
 
@@ -81,20 +81,20 @@ describe('题库页 · 渲染', () => {
   it('分类 Tab = 全部 + 题库中实际存在的分类', async () => {
     const { wrapper } = await mountBank()
     const tabs = wrapper.findAll('nav[aria-label="分类筛选"] .chip')
-    // 夹具只有 Linux基础 与 MySQL 两个分类
+    // 夹具只有 Linux 基础 与 MySQL 两个分类
     expect(tabs).toHaveLength(3)
     expect(tabs[0].text()).toContain('全部')
-    expect(tabs[1].text()).toContain('Linux基础')
+    expect(tabs[1].text()).toContain('Linux 基础')
     expect(tabs[2].text()).toContain('MySQL')
   })
 
   it('分类 Tab 显示题量角标', async () => {
     const { wrapper } = await mountBank()
-    expect(categoryTab(wrapper, 'Linux基础').text()).toContain('2')
+    expect(categoryTab(wrapper, 'Linux 基础').text()).toContain('2')
   })
 
   it('频率筛选含重置按钮（有筛选时）', async () => {
-    const { wrapper } = await mountBank({ category: 'Linux基础' })
+    const { wrapper } = await mountBank({ category: 'Linux 基础' })
     expect(wrapper.find('.chip--reset').exists()).toBe(true)
   })
 
@@ -106,7 +106,7 @@ describe('题库页 · 渲染', () => {
 
 describe('题库页 · URL 筛选态', () => {
   it('URL 带分类时只显示该分类', async () => {
-    const { wrapper } = await mountBank({ category: 'Linux基础' })
+    const { wrapper } = await mountBank({ category: 'Linux 基础' })
     expect(wrapper.findAll('.qcard')).toHaveLength(2)
     expect(wrapper.text()).toContain('筛选出 2 题')
   })
@@ -123,14 +123,14 @@ describe('题库页 · URL 筛选态', () => {
 
   it('点击分类写入 URL', async () => {
     const { wrapper, router } = await mountBank()
-    await categoryTab(wrapper, 'Linux基础').trigger('click')
+    await categoryTab(wrapper, 'Linux 基础').trigger('click')
     await new Promise((r) => setTimeout(r, 10))
-    expect(router.currentRoute.value.query.category).toBe('Linux基础')
+    expect(router.currentRoute.value.query.category).toBe('Linux 基础')
   })
 
   it('再次点击同一分类可取消筛选', async () => {
-    const { wrapper, router } = await mountBank({ category: 'Linux基础' })
-    await categoryTab(wrapper, 'Linux基础').trigger('click')
+    const { wrapper, router } = await mountBank({ category: 'Linux 基础' })
+    await categoryTab(wrapper, 'Linux 基础').trigger('click')
     await new Promise((r) => setTimeout(r, 10))
     expect(router.currentRoute.value.query.category).toBeUndefined()
   })

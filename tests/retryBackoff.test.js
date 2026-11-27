@@ -35,7 +35,7 @@ describe('bankStore · 重试退避（mock dataService 驱动真实 loadIndex）
         DataError: DE,
         fetchIndex: vi.fn(async () => {
           if (state.fail) throw state.fail
-          return [{ id: 1, type: 'short', category: 'Linux基础', difficulty: '简单', frequency: '高频', question: 'q', tags: [] }]
+          return [{ id: 1, type: 'short', category: 'Linux 基础', difficulty: '简单', frequency: '高频', question: 'q', tags: [] }]
         }),
         fetchAnswerShard: vi.fn(async () => []),
         fetchAnswersManifest: vi.fn(async () => ({})),

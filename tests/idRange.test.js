@@ -23,13 +23,103 @@ const REID = resolve(__dirname, '../scripts/reid-ranges.mjs')
 const DOC = resolve(__dirname, '../docs/question-authoring.md')
 const BANK = resolve(__dirname, '../public/data/questions.json')
 
-/** 从源码里解析出区间表（不执行脚本，避免副作用） */
+/**
+ * 从源码里解析出区间表（不执行脚本，避免副作用）。
+ *
+ * 支持两种 key 写法：
+ * - 带引号：`'Linux 基础': [8500, 8999]`（含空格/斜杠的分类必须加引号）
+ * - 不带引号：`Kubernetes: [10000, 10499]`
+ *
+ * ⚠️ 未加引号的分支必须允许**空格** —— 2026-11 分类名改为
+ * 「Linux 基础」「Shell 脚本」这类含空格的形式后，旧正则
+ * `[A-Za-z一-龥/]+` 匹配不到，导致区间表解析为空、
+ * 整个题库被判「没有区间定义」。
+ */
 function parseRanges(source, pattern) {
-  const body = source.slice(source.indexOf('export const ' + pattern), source.indexOf('}', source.indexOf('export const ' + pattern)))
+  const start = source.indexOf('export const ' + pattern)
+  if (start < 0) return {}
+
+  /**
+   * 不能简单地 `indexOf('}')` 截断 —— 区间表的注释里也含 `}`
+   * （例如「{ a: 1 }」这类说明），会在注释处提前结束，后面的分类全丢。
+   *
+   * 这里从 `{` 开始做**括号配对**，跳过注释与字符串，找到真正的闭合位置。
+   */
+  const braceStart = source.indexOf('{', start)
+  if (braceStart < 0) return {}
+
+  let depth = 0
+  let end = -1
+  let inLineComment = false
+  let inBlockComment = false
+  let inString = null
+
+  for (let i = braceStart; i < source.length; i++) {
+    const ch = source[i]
+    const next = source[i + 1]
+
+    if (inLineComment) {
+      if (ch === '\n') inLineComment = false
+      continue
+    }
+    if (inBlockComment) {
+      if (ch === '*' && next === '/') {
+        inBlockComment = false
+        i++
+      }
+      continue
+    }
+    if (inString) {
+      if (ch === '\\') {
+        i++
+        continue
+      }
+      if (ch === inString) inString = null
+      continue
+    }
+
+    if (ch === '/' && next === '/') {
+      inLineComment = true
+      i++
+      continue
+    }
+    if (ch === '/' && next === '*') {
+      inBlockComment = true
+      i++
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      inString = ch
+      continue
+    }
+
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) {
+        end = i
+        break
+      }
+    }
+  }
+
+  const body = source.slice(braceStart, end < 0 ? source.length : end + 1)
   const out = {}
-  for (const m of body.matchAll(/(?:'([^']+)'|([A-Za-z一-龥/]+)):\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]/g)) {
-    const key = m[1] || m[2]
-    out[key] = [Number(m[3]), Number(m[4])]
+
+  /**
+   * ⚠️ 未加引号分支里**只能用字面空格 ` `，不能用 `\s`**。
+   *
+   * `\s` 会匹配换行 —— 一旦某行末尾换行，正则就能跨越行边界、
+   * 把后面注释里的 `/` 和下一个条目一起吞掉，导致解析结果出现
+   * 形如 `/\n  可观测性` 的脏 key、真正的条目丢失。
+   *
+   * 分类名中间的空格都是普通空格，用 ` ` 足够。
+   */
+  const re =
+    /(?:'([^']+)'|([A-Za-z\u4e00-\u9fa5/][A-Za-z\u4e00-\u9fa5/ ]*?)):[ \t]*\[[ \t]*(\d+)[ \t]*,[ \t]*(\d+)[ \t]*\]/g
+  for (const m of body.matchAll(re)) {
+    const key = (m[1] || m[2] || '').trim()
+    if (key) out[key] = [Number(m[3]), Number(m[4])]
   }
   return out
 }

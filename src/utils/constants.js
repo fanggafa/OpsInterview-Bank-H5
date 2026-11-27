@@ -7,14 +7,14 @@
  * 分类枚举（**顺序即 UI 展示顺序**，题库页筛选条按这个顺序渲染）。
  *
  * 顺序是**人工指定的业务优先级**（不是字母序）：
- * 高频必考的分类放前面（Linux基础、网络基础、综合场景题领先），
+ * 高频必考的分类放前面（Linux 基础、网络基础、综合场景题领先），
  * 冷门/辅助分类靠后。改顺序只需改这个数组。
  *
  * 由 `tests/categoryOrder.test.js` 守护：顺序被意外改动、或有分类漏登记时，
  * 测试会失败，避免「加分类时忘了更新展示顺序」。
  */
 export const CATEGORIES = [
-  'Linux基础',
+  'Linux 基础',
   '网络基础',
   '综合场景题',
   '虚拟化',
@@ -27,12 +27,12 @@ export const CATEGORIES = [
   'MySQL',
   'MongoDB',
   'Git/GitLab',
-  'Shell脚本',
+  'Shell 脚本',
   'Python',
   'CI/CD',
   '自动化与配置管理',
   '消息队列',
-  '日志与ELK',
+  '日志与 ELK',
   'Docker',
   'Kubernetes',
   '存储与备份',
@@ -58,16 +58,16 @@ export const CATEGORIES = [
    * 排在「可观测性」之后：可观测性是「看得见」，SRE 是「看得见之后怎么组织人处理」，
    * 属于能力递进关系。
    */
-  'SRE与故障管理',
+  'SRE 与故障管理',
   '安全与跳板机',
-  'AI与大模型',
+  'AI 与大模型',
 ]
 
 /** 各分类一句话复习建议，用于「我的」页「薄弱分类」文案 */
 export const CATEGORY_ADVICE = {
-  Linux基础:
+  'Linux 基础':
     '重点补 CPU/内存/IO 排查链路：top → vmstat → iostat → pidstat，并熟记 inode、软硬链接、进程与线程区别。',
-  Shell脚本:
+  'Shell 脚本':
     '把 set -euo pipefail、引号与变量展开、$? 与管道退出码、find/xargs 组合过一遍，能手写日志清理与批量巡检脚本。',
   网络基础:
     '吃透 TCP 三次握手/四次挥手、TIME_WAIT、tcpdump 抓包定位思路，以及 DNS 解析链路与常见连通性排查顺序。',
@@ -103,7 +103,7 @@ export const CATEGORY_ADVICE = {
     '掌握分支策略、merge 与 rebase 的差异、冲突解决、GitLab CI 的 stages/job/runner，以及仓库备份与迁移。',
   监控告警:
     '重点补黄金三指标（延迟/流量/错误/饱和度）、Prometheus 指标类型与 PromQL 常用函数、告警收敛与值班响应流程。',
-  '日志与ELK':
+  '日志与 ELK':
     '理清采集（Filebeat）→ 缓冲（Kafka）→ 处理（Logstash）→ 存储检索（ES）的链路，理解 ES 分片/副本与索引生命周期。',
   自动化与配置管理:
     '掌握 Ansible 的 inventory/模块/幂等性、playbook 与 roles 组织，理解为什么幂等是自动化脚本的第一要求。',
@@ -113,7 +113,7 @@ export const CATEGORY_ADVICE = {
     '理解 SLB/VPC/安全组的分工、多可用区与异地容灾的 RTO/RPO、弹性伸缩与容量评估，能讲清单点在哪。',
   Python:
     '掌握虚拟环境与依赖锁定、GIL 与多进程/多线程/协程的取舍、内存与常见 OOM、以及线上 Python 服务的排查手段。',
-  'AI与大模型':
+  'AI 与大模型':
     '理解 LLM 推理链路（Token/上下文/量化/GPU 显存）、RAG 与 Agent 的落地方式，以及运维视角的观测、成本、安全与灰度发布。',
   /**
    * 可观测性的复习建议：强调「三支柱协同」而不是单个工具怎么配。
@@ -124,7 +124,7 @@ export const CATEGORY_ADVICE = {
   /**
    * SRE 的复习建议：强调「用数据决策」而不是「凭感觉救火」。
    */
-  SRE与故障管理:
+  'SRE 与故障管理':
     '重点练「用数据说话」：SLI/SLO/错误预算怎么定与用、故障分级与升级路径、On-call 轮值如何不把人熬废、复盘怎么产出可验证的改进项、变更管理如何兼顾速度与稳定。',
   综合场景题:
     '按「先止损 → 再定位 → 后复盘」的顺序组织回答，量化影响面与耗时，并给出可落地的预防措施。',
@@ -139,8 +139,8 @@ export const DIFFICULTIES = ['简单', '中等', '困难']
  * 键名固定，新增分类时在此登记；未登记的会退化为主色。
  */
 export const CATEGORY_HUE = {
-  Linux基础: 'blue',
-  Shell脚本: 'cyan',
+  'Linux 基础': 'blue',
+  'Shell 脚本': 'cyan',
   '网络基础': 'sky',
   DNS: 'indigo',
   'iptables/firewalld': 'orange',
@@ -158,22 +158,22 @@ export const CATEGORY_HUE = {
   'CI/CD': 'violet',
   'Git/GitLab': 'orange',
   监控告警: 'emerald',
-  '日志与ELK': 'teal',
+  '日志与 ELK': 'teal',
   '自动化与配置管理': 'fuchsia',
   '安全与跳板机': 'rose',
   '云与高可用': 'sky',
   Python: 'lime',
-  'AI与大模型': 'indigo',
+  'AI 与大模型': 'indigo',
   /**
    * 可观测性用 slate（青灰）—— 与「监控告警」的 emerald（翠绿）和
-   * 「日志与ELK」的 teal（青）都能区分开，又同属「冷色系」的观测类。
+   * 「日志与 ELK」的 teal（青）都能区分开，又同属「冷色系」的观测类。
    */
   可观测性: 'slate',
   /**
    * SRE 用 orange —— 与「可观测性」的 slate（青灰）明显区分，
    * 且橙色在 UI 里常用于「流程/警示」，与故障管理的语义相符。
    */
-  SRE与故障管理: 'orange',
+  'SRE 与故障管理': 'orange',
   综合场景题: 'amber',
 }
 
