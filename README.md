@@ -1,10 +1,10 @@
-# 运维面试题库 H5（OpsInterview Bank）
+﻿# 运维面试题库 H5（OpsInterview Bank）
 
 面向运维工程师的面试题库刷题工具：手机浏览器 / 微信内打开，利用碎片时间背题自测。
 
 - 技术栈：Vue 3 + Vite + Vue Router + Pinia（纯 JavaScript，无 TypeScript）
 - 形态：SPA，移动端优先，**无后端、无登录、无 API Key**，可部署到任意静态托管
-- 题库：**3179 题**（1031 简答 + 1928 单选 + 220 多选），**27 个分类**；含 **363 张内联 SVG 图解**
+- 题库：**3209 题**（1043 简答 + 1943 单选 + 223 多选），**28 个分类**；含 **363 张内联 SVG 图解**
 - 线上演示：**https://fanggafa.github.io/OpsInterview-Bank-H5/**
 
 > **装到手机桌面**：iPhone 用 **Safari** 打开后「添加到主屏幕」；Android 用 **Chrome** 的「安装应用」。

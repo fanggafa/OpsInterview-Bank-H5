@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 批量校验新出题目的合法性（合并前先自查，避免污染主库）。
  *
  * 用法：node scripts/check-batches.mjs scripts/batch40-virt.json [...]
@@ -9,7 +9,7 @@ const CATEGORIES = [
   'DNS', 'iptables/firewalld', 'Nginx', 'LVS/HAProxy', 'Tomcat/JVM', 'MongoDB',
   '消息队列', '存储与备份', '虚拟化', 'Git/GitLab', '日志与ELK', '自动化与配置管理',
   '云与高可用', 'MySQL', 'Redis', 'Linux基础', 'Shell脚本', '网络基础', 'Kubernetes',
-  'CI/CD', '监控告警', '可观测性', '安全与跳板机', '综合场景题', 'Python', 'AI与大模型', 'Docker',
+  'CI/CD', '监控告警', '可观测性', 'SRE与故障管理', '安全与跳板机', '综合场景题', 'Python', 'AI与大模型', 'Docker',
 ]
 const DIFFS = ['简单', '中等', '困难']
 const FREQS = ['高频', '中频', '低频']
