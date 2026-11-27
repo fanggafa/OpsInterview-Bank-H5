@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Ring from '@/components/Ring.vue'
+import UpdateBanner from '@/components/UpdateBanner.vue'
 import { useBankStore } from '@/stores/bankStore'
 import { useStudyStore } from '@/stores/studyStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -115,6 +116,14 @@ function openDaily() {
 
 <template>
   <div class="page">
+    <!--
+      有新版本横幅：**只挂在首页**。
+      不放到 App.vue 全局是因为它会 sticky 在顶部，放在所有页面会遮挡
+      题库筛选栏、详情页内容等；而首页是用户每次进入的落脚点，
+      放这里既能保证「打开就能看到」，又不干扰其它页的操作。
+    -->
+    <UpdateBanner />
+
     <!-- 头部：渐变主卡 -->
     <header class="hero">
       <div class="hero__glow" aria-hidden="true" />

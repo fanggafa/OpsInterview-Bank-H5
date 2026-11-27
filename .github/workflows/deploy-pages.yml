@@ -97,6 +97,13 @@ jobs:
           #     （2026-11 真实事故，详见 docs/deployment.md）
           grep -Eq 'answers-shards-[0-9]{10,}' dist/sw.js \
             || { echo "分片缓存名未带构建时间戳，用户会永久停在旧题库"; exit 1; }
+          # ②c 版本探针：必须存在、不进 precache、走 NetworkOnly
+          test -f dist/data/version.json                   || { echo "缺少 data/version.json（版本探针）"; exit 1; }
+          if grep -q 'url:"data/version.json' dist/sw.js; then
+            echo "version.json 进了 precache，版本探针会永远读到旧值"
+            exit 1
+          fi
+          grep -q 'NetworkOnly' dist/sw.js                 || { echo "version.json 缺少 NetworkOnly 规则"; exit 1; }
           # ③ 分片不能出现在 precache 清单里 —— 否则 SW 安装要吞 4.37 MB，
           #    发版后首次使用会明显卡顿（这正是 2026-11 修的问题）
           if grep -q 'url:"data/answers/' dist/sw.js; then

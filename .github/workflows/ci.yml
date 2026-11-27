@@ -100,6 +100,14 @@ jobs:
           #     用户手机上的答案分片一年不回源，索引更新了但题目内容还是旧的。
           grep -Eq 'answers-shards-[0-9]{10,}' dist/sw.js \
             || { echo "分片缓存名未带构建时间戳，用户会永久停在旧题库（见 deployment.md 的事故记录）"; exit 1; }
+          # ②c version.json 不能进 precache，且必须有 NetworkOnly 规则 ——
+          #     它是「存量用户能否发现自己该更新」的探针，被缓存就完全失效
+          test -f dist/data/version.json                   || { echo "缺少 data/version.json（版本探针）"; exit 1; }
+          if grep -q 'url:"data/version.json' dist/sw.js; then
+            echo "version.json 进了 precache，会导致版本探针永远读到旧值"
+            exit 1
+          fi
+          grep -q 'NetworkOnly' dist/sw.js                 || { echo "version.json 缺少 NetworkOnly 规则"; exit 1; }
           # ③ 分片不能出现在 precache 清单里 —— 否则 SW 安装要吞 4.37 MB，
           #    发版后首次使用会明显卡顿（这正是 2026-11 修的问题）
           if grep -q 'url:"data/answers/' dist/sw.js; then

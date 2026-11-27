@@ -8,6 +8,7 @@ import { useSettingsStore } from './stores/settingsStore'
 import { useStudyStore } from './stores/studyStore'
 import { useBankStore } from './stores/bankStore'
 import { usePwaUpdate } from './composables/usePwaUpdate'
+import { useVersionCheck } from './composables/useVersionCheck'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -39,6 +40,19 @@ app.mount('#app')
 usePwaUpdate()
   .register()
   .catch(() => {})
+
+/**
+ * 启动「远端版本探测」：每 5 分钟 fetch 一次 data/version.json，
+ * 比对 sha 判断服务器上是不是有更新。
+ *
+ * **为什么不能只靠 SW 的更新弹窗**：
+ * 那个弹窗要求「新 SW 已装好并进入 waiting」，而旧 SW 何时去检查、
+ * 用户会不会在检查前关掉 App，都不可控 —— 2026-11 就有用户
+ * 因此永久停在 2892 题的旧版本上，自己毫不知情。
+ *
+ * 这个探测完全不依赖 SW 生命周期，发现不一致就在首页挂横幅。
+ */
+useVersionCheck().startWatching()
 
 /**
  * 空闲时预热答案分片（见 `prewarmCache` 的注释）。
