@@ -141,26 +141,76 @@ describe('版本探针 · 前端比对逻辑', () => {
   })
 })
 
-describe('版本横幅 · UI 接线', () => {
-  it('横幅挂在首页，且只在 stale 时显示', () => {
+describe('新版本提示 · 只在设置页，不做首页横幅', () => {
+  /**
+   * ## 2026-11 设计调整
+   *
+   * 早先在首页顶部做了一条橙色 sticky 横幅。用户反馈两个问题：
+   *
+   * ① **视觉突兀** —— 橙色是警示色，与首页的渐变蓝紫主题完全不搭，
+   *    而且它是页面上最亮的东西，一进来就看到，喧宾夺主。
+   * ② **功能重复** —— 项目里已经有居中弹窗（`PwaUpdateDialog`）负责
+   *    「提醒有新版本」，再挂一条横幅属于同一件事说两遍。
+   *
+   * 现在统一收进「我的 → 设置 → 关于 → 检查更新」：
+   * 那里本来就是用户主动找更新的地方，信息密度也更合适。
+   */
+  it('首页不再有版本横幅', () => {
     const home = read('src/views/HomeView.vue')
-    expect(home).toContain('UpdateBanner')
-
-    const banner = read('src/components/UpdateBanner.vue')
-    expect(banner).toContain("remoteState.value === 'stale'")
+    expect(home).not.toContain('UpdateBanner')
+    expect(home).not.toContain('upbanner')
   })
 
-  it('点横幅能触发更新，且兼容「没有 waiting 版本」的情况', () => {
-    const banner = read('src/components/UpdateBanner.vue')
-    // 有 waiting 走标准流程，没有则直接重载
-    expect(banner).toContain('pwa.applyUpdate()')
-    expect(banner).toContain('window.location.reload()')
+  it('横幅组件已移除', () => {
+    expect(() => read('src/components/UpdateBanner.vue')).toThrow()
   })
 
-  it('关闭状态用 sessionStorage，刷新不重复弹但新会话仍提示', () => {
-    const banner = read('src/components/UpdateBanner.vue')
-    expect(banner).toContain('sessionStorage')
-    expect(banner).toContain('oi_version_banner_hidden')
+  it('检查更新行能显示「有新版本」，右侧变「更新」按钮', () => {
+    const s = read('src/views/SettingsView.vue')
+    // 组合判定：SW 就绪 或 远端 sha 不一致
+    expect(s).toContain('hasUpdate')
+    expect(s).toMatch(/pwa\.needRefresh\.value\s*\|\|/)
+    expect(s).toContain("remoteState.value === 'stale'")
+    // 同一行切换语义：检查 ↔ 更新
+    expect(s).toContain('onApplyUpdate')
+    expect(s).toContain('有新版本可用')
+    expect(s).toContain('row__value--act')
+  })
+
+  it('不额外占用一行说同一件事', () => {
+    const s = read('src/views/SettingsView.vue')
+    /**
+     * 曾短暂做成「检查更新」+「立即更新到最新版本」两行，
+     * 但那两行表达的是同一件事，会让「关于」区块变长且重复。
+     * 现在合并成一行：无更新时是「检查更新」，有更新时变「有新版本可用 + 更新按钮」。
+     */
+    expect(s).not.toContain('立即更新到最新版本')
+    expect(s).not.toContain('row--action')
+  })
+
+  it('更新动作兼容「SW 未就绪」的情况', () => {
+    const s = read('src/views/SettingsView.vue')
+    expect(s).toContain('pwa.applyUpdate()')
+    expect(s).toContain('window.location.reload()')
+  })
+
+  it('检查更新会先主动探测远端，再催 SW', () => {
+    const s = read('src/views/SettingsView.vue')
+    const fn = s.slice(s.indexOf('async function onCheckUpdate'), s.indexOf('function onApplyUpdate'))
+    /**
+     * 顺序不能反：只问 SW 时，若远端 sha 已变但新 SW 还没装好，
+     * 会得到「已是最新」的错误结论。
+     */
+    expect(fn.indexOf('probe()')).toBeLessThan(fn.indexOf('pwa.checkUpdate()'))
+  })
+
+  it('视觉沿用主题色，不用橙色警示色', () => {
+    const s = read('src/views/SettingsView.vue')
+    const styleBlock = s.slice(s.indexOf('<style'))
+    expect(styleBlock).toContain('--c-primary')
+    // 橙色（#f59e0b / #ea580c）已随横幅一起移除
+    expect(styleBlock).not.toContain('#f59e0b')
+    expect(styleBlock).not.toContain('#ea580c')
   })
 
   it('探针在 main.js 启动', () => {

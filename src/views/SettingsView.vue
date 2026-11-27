@@ -14,6 +14,7 @@ import { readJSON, writeJSON, isStorageAvailable } from '@/utils/storage'
 import { installGuideAll } from '@/utils/installGuide'
 import { VERSION_LABEL, REPO_LINKS, formatBuiltAt } from '@/utils/version'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
+import { useVersionCheck } from '@/composables/useVersionCheck'
 
 /**
  * 设置页：把「我的」页里偏配置的项收进来。
@@ -90,32 +91,79 @@ const storageOk = computed(() => isStorageAvailable())
  */
 const builtAtText = computed(() => `构建于 ${formatBuiltAt()}`)
 
-/** 手动检查更新：给用户一个不必等一小时定时器的入口 */
+/** 手动检查更新：给用户一个不必等定时器的入口 */
 const pwa = usePwaUpdate()
+const { remoteState, remoteInfo, probe } = useVersionCheck()
+
 const checking = ref(false)
 const checkHint = ref('')
 
+/**
+ * 「有新版本」的判定要**同时**看两个来源，缺一不可：
+ *
+ * | 来源 | 能发现什么 | 局限 |
+ * |---|---|---|
+ * | `pwa.needRefresh` | 新 SW 已装好、等待接管 | 旧 SW 不去检查就永远为 false |
+ * | `remoteState === 'stale'` | 服务器上的 sha 与本地不同 | 可能还没装好新 SW |
+ *
+ * 只看第一个会漏掉「旧 SW 根本不检查」的情况；
+ * 只看第二个会在「知道有新版本但 SW 还没就绪」时点了没反应。
+ * 两者结合才是准确且可操作的判断。
+ */
+const hasUpdate = computed(() => pwa.needRefresh.value || remoteState.value === 'stale')
+
+/** 远端版本号（有新版本时用于展示「有新版本 vX.Y.Z」） */
+const remoteVersion = computed(() => remoteInfo.value?.version || '')
+
+/**
+ * 检查更新的主流程。
+ *
+ * 顺序很重要：**先主动探测远端**，再问 SW。
+ * 因为 SW 的 `update()` 只是「去看有没有新 sw.js」，
+ * 如果远端 sha 已经变了但 SW 还没装好，只问 SW 会得到「已是最新」的错误结论。
+ */
 async function onCheckUpdate() {
   if (checking.value) return
   checking.value = true
   checkHint.value = ''
   try {
+    // ① 主动探测远端版本（不依赖 SW 生命周期）
+    await probe()
+
+    // ② 再催一次 SW 去检查
     const r = await pwa.checkUpdate()
-    if (r === 'found') {
-      checkHint.value = '发现新版本，请在顶部提示里点「立即更新」'
-    } else if (r === 'latest') {
-      checkHint.value = '已是最新版本'
-    } else {
+
+    if (pwa.needRefresh.value || remoteState.value === 'stale') {
+      checkHint.value = '发现新版本，点击下方按钮更新'
+    } else if (r === 'unsupported') {
       checkHint.value = '当前环境不支持自动更新（如非 HTTPS），可尝试强制刷新'
+    } else {
+      checkHint.value = '已是最新版本'
     }
   } catch {
     checkHint.value = '检查失败，请稍后再试'
   } finally {
     checking.value = false
-    // 提示 4 秒后淡出，避免一直挂在界面上
+    // 提示 5 秒后淡出，避免一直挂在界面上
     setTimeout(() => {
       checkHint.value = ''
-    }, 4000)
+    }, 5000)
+  }
+}
+
+/**
+ * 执行更新。
+ *
+ * 两种路径：
+ * - SW 已就绪 → `applyUpdate()` 走标准流程（显示加载层、skipWaiting、重载）
+ * - 未就绪（旧 SW 不认识新版本）→ 直接重载，让浏览器重新拉 index.html 与 sw.js
+ */
+function onApplyUpdate() {
+  if (pwa.needRefresh.value) {
+    pwa.applyUpdate()
+  } else {
+    // 重载会触发 SW 的 update() 检查，相当于帮用户手动催了一次
+    window.location.reload()
   }
 }
 
@@ -338,12 +386,33 @@ const guideOpen = ref(false)
         检查更新：手动催一次 SW。
         内置的自动检查是每小时一次，发版后用户不可能等一小时 —— 给他一个自己能点的按钮。
       -->
-      <button class="row" :disabled="checking" @click="onCheckUpdate">
+      <!--
+        检查更新。
+        有新版本时这一行**直接变成可执行的动作**（右侧「更新」按钮），
+        而不是再额外加一行 —— 用户找到这里就是为了把版本更新掉，
+        两行说同一件事只会让「关于」区块变长。
+      -->
+      <button
+        class="row"
+        :class="{ 'row--accent': hasUpdate && !checking }"
+        :disabled="checking"
+        @click="hasUpdate ? onApplyUpdate() : onCheckUpdate()"
+      >
         <div class="row__text">
-          <span class="row__title">检查更新</span>
-          <span class="row__desc">{{ checkHint }}</span>
+          <span class="row__title">
+            {{ hasUpdate ? '有新版本可用' : '检查更新' }}
+            <span v-if="hasUpdate && remoteVersion" class="row__badge">v{{ remoteVersion }}</span>
+          </span>
+          <span class="row__desc">
+            <template v-if="checking">正在检查…</template>
+            <template v-else-if="hasUpdate">{{ VERSION_LABEL }} → v{{ remoteVersion || '最新' }}</template>
+            <template v-else-if="checkHint">{{ checkHint }}</template>
+            <template v-else>自动检查已开启，也可手动检查</template>
+          </span>
         </div>
-        <span class="row__value">{{ checking ? '检查中…' : '›' }}</span>
+        <span v-if="checking" class="row__value">…</span>
+        <span v-else-if="hasUpdate" class="row__value row__value--act">更新</span>
+        <span v-else class="row__value">›</span>
       </button>
 
       <!-- 开源地址：直接跳转，方便 star / 反馈问题 -->
@@ -450,6 +519,37 @@ const guideOpen = ref(false)
   flex-shrink: 0;
   font-size: 12.5px;
   color: var(--c-text-3);
+}
+
+/**
+ * 「有新版本」状态的强调样式。
+ *
+ * 用主题色（`--c-primary`）而不是橙色 —— 橙色是为了在首页抢注意力，
+ * 但在设置页里它是**一个正常的操作项**，跟主题色一致才不会突兀。
+ */
+.row--accent .row__title {
+  color: var(--c-primary);
+  font-weight: 700;
+}
+.row__value--act {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--c-primary);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+/* 版本号小徽标，贴在标题后面 */.row__badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--c-primary-weak);
+  color: var(--c-primary);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
 }
 .row__chev {
   flex-shrink: 0;
