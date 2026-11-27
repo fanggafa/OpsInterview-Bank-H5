@@ -1,10 +1,10 @@
-﻿<script setup>
+<script setup>
 import { computed } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useStudyStore } from '@/stores/studyStore'
 import { useBankStore } from '@/stores/bankStore'
 import { formatPercent } from '@/utils/format'
-import { VERSION_LABEL, formatBuiltAt } from '@/utils/version'
+import { VERSION_LABEL } from '@/utils/version'
 
 /**
  * 「我的」页：只做「看我自己的数据 + 快速进入错题/收藏」。
@@ -21,14 +21,6 @@ const choiceText = computed(() => formatPercent(study.choiceRate))
 const favCount = computed(() => study.favorites.length)
 const wrongCount = computed(() => study.wrongList.length)
 const percentText = computed(() => formatPercent(study.progressRate))
-
-/**
- * 版本信息（我的页底部）。
- *
- * 用途不是「展示」，而是**排障入口**：用户说「我这还是旧题库」时，
- * 让他念一下这里的版本号和构建时间，就能判断是 SW 没更新，还是真的没发版。
- */
-const builtAtText = computed(() => formatBuiltAt())
 
 /**
  * 头部三格数据：**纯展示，不再做跳转**。
@@ -135,13 +127,15 @@ const summary = computed(() => [
 
     <!--
       版本标识：用户反馈「手机上的题库停在 2892 题，不知道自己是哪个版本」。
-      放在「我的」页最底部，一眼能看到当前版本与构建时间，点进去是设置页（有检查更新）。
-      不显眼但一直在 —— 需要时可查，平时不打扰。
+      放在「我的」页最底部，一眼能看到当前版本，点进去是设置页（有检查更新与构建时间）。
+
+      **只显示「版本 · sha」，不显示构建日期**：
+      早先是 `v1.0.0 · ae245d1 · 2026-11-27 14:22`，那个日期很容易被误读成
+      「当前时间」（它长得就像右上角的时钟），而且 sha 已经能定位到具体提交，
+      日期是冗余信息 —— 真要看构建时间，进设置页有完整展示。
     -->
     <router-link to="/settings" class="version">
       <span class="version__label">{{ VERSION_LABEL }}</span>
-      <span class="version__dot">·</span>
-      <span class="version__time">{{ builtAtText }}</span>
     </router-link>
 
   </div>
@@ -237,12 +231,6 @@ const summary = computed(() => [
 }
 .version__label {
   font-weight: 600;
-}
-.version__dot {
-  opacity: 0.5;
-}
-.version__time {
-  opacity: 0.85;
 }
 /* ---------- 四宫格 ---------- */
 .grid {

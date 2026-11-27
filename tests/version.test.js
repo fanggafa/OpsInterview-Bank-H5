@@ -50,6 +50,25 @@ describe('版本标识 · 不能硬编码', () => {
     // 有对应的模板节点
     expect(src).toMatch(/class="version"/)
   })
+
+  it('「我的」页版本条只显示版本+sha，不显示构建日期', () => {
+    /**
+     * 早先这里是 `v1.0.0 · ae245d1 · 2026-11-27 14:22`。
+     * 那个日期长得就像右上角的时钟，容易被误读成「当前时间」；
+     * 而 sha 已能定位到具体提交，日期属冗余。
+     * 真要看构建时间，设置页「关于」里有带「构建于」前缀的完整展示。
+     */
+    const src = read('src/views/MeView.vue')
+
+    // 模板里不能再用构建时间
+    const tpl = src.slice(src.indexOf('<template>'), src.indexOf('</template>', src.indexOf('<template>')))
+    expect(tpl).not.toContain('builtAtText')
+    expect(tpl).not.toContain('formatBuiltAt')
+
+    // 也不该再引入这个函数
+    expect(src).not.toContain('formatBuiltAt')
+    expect(src).not.toContain('version__time')
+  })
 })
 
 describe('版本标识 · 构建期注入', () => {
