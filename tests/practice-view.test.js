@@ -21,8 +21,8 @@ import { STATUS, STORAGE_KEYS } from '@/utils/constants'
  * 靠这道选择题拿到队列。
  */
 const FIXTURE = [
-  { id: 1, type: 'short', category: 'Linux基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
-  { id: 2, type: 'short', category: 'Linux基础', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t2'], frequency: '中频' },
+  { id: 1, type: 'short', category: 'Linux 基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
+  { id: 2, type: 'short', category: 'Linux 基础', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t2'], frequency: '中频' },
   { id: 3, type: 'short', category: 'MySQL', difficulty: '困难', question: 'q3', answer: 'a3', tags: ['t3'], frequency: '高频' },
   {
     id: 4,

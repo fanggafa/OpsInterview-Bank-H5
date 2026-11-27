@@ -20,7 +20,7 @@ const FIXTURE = [
   {
     id: 1,
     type: 'short',
-    category: 'Linux基础',
+    category: 'Linux 基础',
     difficulty: '简单',
     question: 'q1',
     answer: 'a1',

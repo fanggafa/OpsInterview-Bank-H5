@@ -7,9 +7,9 @@ import { readFileSync } from 'node:fs'
 
 const CATEGORIES = [
   'DNS', 'iptables/firewalld', 'Nginx', 'LVS/HAProxy', 'Tomcat/JVM', 'MongoDB',
-  '消息队列', '存储与备份', '虚拟化', 'Git/GitLab', '日志与ELK', '自动化与配置管理',
-  '云与高可用', 'MySQL', 'Redis', 'Linux基础', 'Shell脚本', '网络基础', 'Kubernetes',
-  'CI/CD', '监控告警', '可观测性', 'SRE与故障管理', '安全与跳板机', '综合场景题', 'Python', 'AI与大模型', 'Docker',
+  '消息队列', '存储与备份', '虚拟化', 'Git/GitLab', '日志与 ELK', '自动化与配置管理',
+  '云与高可用', 'MySQL', 'Redis', 'Linux 基础', 'Shell 脚本', '网络基础', 'Kubernetes',
+  'CI/CD', '监控告警', '可观测性', 'SRE 与故障管理', '安全与跳板机', '综合场景题', 'Python', 'AI 与大模型', 'Docker',
 ]
 const DIFFS = ['简单', '中等', '困难']
 const FREQS = ['高频', '中频', '低频']

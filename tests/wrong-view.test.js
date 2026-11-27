@@ -20,7 +20,7 @@ import { WRONG_CLEAR_STREAK } from '@/utils/constants'
 const FIXTURE = Array.from({ length: 5 }, (_, i) => ({
   id: i + 1,
   type: 'single',
-  category: 'Linux基础',
+  category: 'Linux 基础',
   difficulty: '中等',
   frequency: '高频',
   question: `题目 ${i + 1}`,
@@ -60,7 +60,7 @@ beforeEach(() => {
 /**
  * 挂载错题本。
  *
- * @param {Object} [query] 例如 `{ category: 'Linux基础' }` 直接进该分类的明细视图。
+ * @param {Object} [query] 例如 `{ category: 'Linux 基础' }` 直接进该分类的明细视图。
  *   2026-11 起页面默认是**分类汇总**，只有带 category 才铺题目卡，
  *   所以凡是断言「题卡 / 连对进度」的用例都要传 category。
  */
@@ -88,7 +88,7 @@ describe('错题本 · 连对移出规则', () => {
   it('每道错题显示当前连对进度（0/3）', async () => {
     study.markUnknown(1)
     study.markUnknown(2)
-    const { wrapper } = await mountWrong({ category: 'Linux基础' })
+    const { wrapper } = await mountWrong({ category: 'Linux 基础' })
     const hints = wrapper.findAll('.progress-hint')
     expect(hints).toHaveLength(2)
     expect(hints[0].text()).toContain('连对 0 / 3')
@@ -97,7 +97,7 @@ describe('错题本 · 连对移出规则', () => {
   it('答对一次后进度点亮一个，题仍在列表里', async () => {
     study.markUnknown(1)
     study.markKnow(1)
-    const { wrapper } = await mountWrong({ category: 'Linux基础' })
+    const { wrapper } = await mountWrong({ category: 'Linux 基础' })
     expect(wrapper.findAll('.qcard')).toHaveLength(1)
     expect(wrapper.find('.progress-hint').text()).toContain('连对 1 / 3')
     expect(wrapper.findAll('.progress-dot--on')).toHaveLength(1)
@@ -107,7 +107,7 @@ describe('错题本 · 连对移出规则', () => {
     study.markUnknown(1)
     study.markKnow(1)
     study.markKnow(1)
-    const { wrapper } = await mountWrong({ category: 'Linux基础' })
+    const { wrapper } = await mountWrong({ category: 'Linux 基础' })
     expect(wrapper.find('.progress-hint').text()).toContain('连对 2 / 3')
     expect(wrapper.findAll('.progress-dot--on')).toHaveLength(2)
   })
@@ -122,7 +122,7 @@ describe('错题本 · 连对移出规则', () => {
     const { wrapper } = await mountWrong()
     expect(wrapper.text()).toContain('共 1 道错题')
     // 明细视图里也确实只剩 1 张卡
-    const detail = await mountWrong({ category: 'Linux基础' })
+    const detail = await mountWrong({ category: 'Linux 基础' })
     expect(detail.wrapper.findAll('.qcard')).toHaveLength(1)
   })
 

@@ -25,10 +25,10 @@ import { useStudyStore } from '@/stores/studyStore'
  * - 背题模式（memorize）只看简答题：id 1、3（共 2 题）
  */
 const FIXTURE = [
-  { id: 1, type: 'short', category: 'Linux基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
+  { id: 1, type: 'short', category: 'Linux 基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t1'], frequency: '高频' },
   { id: 2, type: 'single', category: 'MySQL', difficulty: '中等', question: 'q2', answer: ['B'], tags: ['t2'], frequency: '中频', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧' },
   { id: 3, type: 'short', category: 'MySQL', difficulty: '困难', question: 'q3', answer: 'a3', tags: ['t3'], frequency: '低频' },
-  { id: 4, type: 'single', category: 'Linux基础', difficulty: '简单', question: 'q4', answer: ['A'], tags: ['t1'], frequency: '高频', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧' },
+  { id: 4, type: 'single', category: 'Linux 基础', difficulty: '简单', question: 'q4', answer: ['A'], tags: ['t1'], frequency: '高频', options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧' },
 ]
 
 function makeRouter() {

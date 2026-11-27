@@ -20,8 +20,8 @@ import { useStudyStore } from '@/stores/studyStore'
  * 这里标成 single 才能让滑动用例拿到题卡。
  */
 const FIXTURE = [
-  { id: 1, type: 'single', category: 'Linux基础', difficulty: '简单', question: 'q1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧', tags: ['t1'], frequency: '高频' },
-  { id: 2, type: 'single', category: 'Linux基础', difficulty: '中等', question: 'q2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧', tags: ['t2'], frequency: '中频' },
+  { id: 1, type: 'single', category: 'Linux 基础', difficulty: '简单', question: 'q1', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧', tags: ['t1'], frequency: '高频' },
+  { id: 2, type: 'single', category: 'Linux 基础', difficulty: '中等', question: 'q2', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧', tags: ['t2'], frequency: '中频' },
   { id: 3, type: 'single', category: 'MySQL', difficulty: '困难', question: 'q3', answer: ['A'], options: [{ key: 'A', text: 'a' }, { key: 'B', text: 'b' }], explanation: '解析文本够长了吧', tags: ['t3'], frequency: '高频' },
 ]
 

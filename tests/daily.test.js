@@ -3,7 +3,7 @@ import { dateKey, hashString, pickDailyQuestion } from '@/utils/daily'
 
 const mk = (id, frequency = '高频', extra = {}) => ({
   id,
-  category: 'Linux基础',
+  category: 'Linux 基础',
   difficulty: '中等',
   frequency,
   question: `q${id}`,

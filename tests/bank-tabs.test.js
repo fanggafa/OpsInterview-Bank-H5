@@ -485,7 +485,7 @@ describe('分类 Tab · 从题库动态推导（可扩展）', () => {
     bank.questions = [ALL_CATEGORIES_FIXTURE[0]]
     const { wrapper } = await mountBank()
     const tabs = wrapper.findAll('nav[aria-label="分类筛选"] .chip')
-    expect(tabs).toHaveLength(2) // 全部 + Linux基础
+    expect(tabs).toHaveLength(2) // 全部 + Linux 基础
   })
 
   it('枚举之外的新分类也会出现（未来扩展不被静默隐藏）', async () => {

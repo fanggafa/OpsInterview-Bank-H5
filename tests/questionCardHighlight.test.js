@@ -23,7 +23,7 @@ beforeEach(() => {
 const Q = {
   id: 5001,
   type: 'short',
-  category: 'Linux基础',
+  category: 'Linux 基础',
   difficulty: '简单',
   frequency: '高频',
   question: '三次握手发生在 TCP 的哪个阶段？',

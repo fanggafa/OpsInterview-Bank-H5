@@ -10,8 +10,8 @@ import { pickDailyQuestion } from '@/utils/daily'
 import { STATUS } from '@/utils/constants'
 
 const FIXTURE = [
-  { id: 1, type: 'short', category: 'Linux基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t'], frequency: '高频' },
-  { id: 2, type: 'short', category: 'Linux基础', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t'], frequency: '高频' },
+  { id: 1, type: 'short', category: 'Linux 基础', difficulty: '简单', question: 'q1', answer: 'a1', tags: ['t'], frequency: '高频' },
+  { id: 2, type: 'short', category: 'Linux 基础', difficulty: '中等', question: 'q2', answer: 'a2', tags: ['t'], frequency: '高频' },
   { id: 3, type: 'short', category: 'MySQL', difficulty: '中等', question: 'q3', answer: 'a3', tags: ['t'], frequency: '中频' },
   {
     id: 4,
@@ -395,7 +395,7 @@ describe('首页 · 复习入口', () => {
       ...Array.from({ length: 35 }, (_, i) => ({
         id: 100 + i,
         type: 'single',
-        category: 'Linux基础',
+        category: 'Linux 基础',
         difficulty: '中等',
         question: `q${100 + i}`,
         answer: ['A'],

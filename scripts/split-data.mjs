@@ -20,8 +20,8 @@ const ANS_DIR = 'public/data/answers'
 
 /** 分类 → 文件名 slug（用拼音/英文，避免中文文件名在 URL 里转义 */
 const CAT_SLUG = {
-  'Linux基础': 'linux',
-  'Shell脚本': 'shell',
+  'Linux 基础': 'linux',
+  'Shell 脚本': 'shell',
   '网络基础': 'network',
   DNS: 'dns',
   'iptables/firewalld': 'iptables',
@@ -38,18 +38,18 @@ const CAT_SLUG = {
   'CI/CD': 'cicd',
   'Git/GitLab': 'git',
   '监控告警': 'monitoring',
-  '日志与ELK': 'logs-elk',
+  '日志与 ELK': 'logs-elk',
   '自动化与配置管理': 'config-mgmt',
   '安全与跳板机': 'security',
   '云与高可用': 'cloud-ha',
   Python: 'python',
-  'AI与大模型': 'ai-llm',
+  'AI 与大模型': 'ai-llm',
   Docker: 'docker',
   '综合场景题': 'scenario',
   /* 2026-11 新增分类 */
   可观测性: 'observability',
   /* 2026-11 新增分类 */
-  SRE与故障管理: 'sre',
+  'SRE 与故障管理': 'sre',
 }
 
 const bank = JSON.parse(readFileSync(SRC, 'utf8'))
@@ -91,7 +91,7 @@ let maxSlug = ''
 /**
  * 单个分片的 gzip 体积预算。
  *
- * 背景：题量增长后「综合场景题」「Linux基础」单分片过大，导致
+ * 背景：题量增长后「综合场景题」「Linux 基础」单分片过大，导致
  * 「索引 + 最大分片」的首屏预算被突破（tests/splitData.test.js 会拦住）。
  * 所以这里对超过阈值的分类**自动再拆分片**，前端按 slugs 数组依次拉取。
  *

@@ -18,7 +18,7 @@ const read = (p) => readFileSync(resolve(process.cwd(), p), 'utf8')
 const INDEX_ROW = {
   id: 1,
   type: 'short',
-  category: 'Linux基础',
+  category: 'Linux 基础',
   difficulty: '简单',
   frequency: '高频',
   question: '什么是 inode？',
@@ -57,7 +57,7 @@ describe('bankStore · 分片加载', () => {
     const bank = useBankStore()
     bank.questions = [{ ...INDEX_ROW, answer: 'inode 是文件的元数据索引节点' }]
 
-    const merged = await bank.hydrateCategory('Linux基础')
+    const merged = await bank.hydrateCategory('Linux 基础')
     expect(merged[0].answer).toBe('inode 是文件的元数据索引节点')
   })
 
@@ -69,8 +69,8 @@ describe('bankStore · 分片加载', () => {
 
   it('分片里的答案字段命名与源码一致（a/e/o 短名映射）', () => {
     const manifest = JSON.parse(read('public/data/answers/manifest.json'))
-    // Linux基础 题量大，会被拆成多个分片，取第一片即可
-    const slug = manifest['Linux基础'].slugs[0]
+    // Linux 基础 题量大，会被拆成多个分片，取第一片即可
+    const slug = manifest['Linux 基础'].slugs[0]
     const rows = JSON.parse(read(`public/data/answers/${slug}.json`))
     const sample = rows.find((r) => r.e) // 找一条带解析的
     expect(sample).toBeTruthy()
